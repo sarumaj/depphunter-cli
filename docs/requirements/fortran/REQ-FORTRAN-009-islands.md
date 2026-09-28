@@ -18,8 +18,9 @@ nor a known package provides) and the hidden **Fortran intrinsic modules**
 (`fortran-std`, Std), plus the cpp plugin's `vcpkg`, `conan` and
 `c-external` islands for C libraries. OSV and Trivy have no Fortran or fpm
 ecosystem, and fpm's registry has no documented dependency API, so fpm
-packages are neither checked for advisories nor asked about by
-`--online`.
+packages are not asked about by `--online` and are checked for advisories
+only by their commit, when one pins them to a git repository on a public
+forge (REQ-FND-026).
 
 ## Rationale
 

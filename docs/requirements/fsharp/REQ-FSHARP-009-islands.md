@@ -17,7 +17,9 @@ hidden) - and a new `paket` island ("Paket git, GitHub and HTTP
 sources"); every package it emits **shall** belong to one of them. F#
 packages **shall** reach OSV as NuGet, Trivy's `nuget` reports and the
 NuGet index of `--online` by the `nuget` id; `paket` **shall** be a
-private-pattern prefix and have no OSV ecosystem.
+private-pattern prefix and have no OSV ecosystem (a GitHub or git source
+locked to a full commit on a public forge is asked about by that commit,
+REQ-FND-026).
 
 ## Rationale
 

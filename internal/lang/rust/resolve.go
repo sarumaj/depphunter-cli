@@ -41,6 +41,9 @@ type resolver struct {
 	// sources is the registry Cargo.lock says each "package version" came from,
 	// when it is not crates.io: its index URL.
 	sources map[string]string
+	// gits is the checkout Cargo.lock says each "package version" came from when
+	// its source is a git repository: "<repository URL>#<commit>" (Target.Git).
+	gits map[string]string
 }
 
 // locked is one crate in Cargo.lock: its name, and its version when the lock names
@@ -63,7 +66,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 		}
 		out = append(out, lang.Target{
 			Ecosystem: ecoCrates, Package: dep.name, Version: version, Pinned: version != "",
-			Registry: r.sources[dep.name+" "+version],
+			Registry: r.sources[dep.name+" "+version], Git: r.gits[dep.name+" "+version],
 		})
 	}
 	return out
@@ -126,7 +129,7 @@ func norm(name string) string { return strings.ReplaceAll(name, "-", "_") }
 // Implements: REQ-RS-004, REQ-RS-006, REQ-RS-007
 func newResolver(all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, members: map[string]string{}, locked: map[string][]string{},
-		tree: map[string][]locked{}, sources: map[string]string{}}
+		tree: map[string][]locked{}, sources: map[string]string{}, gits: map[string]string{}}
 	workspaceDeps := map[string]dep{}
 	type manifest struct {
 		f   *scan.File
@@ -160,6 +163,9 @@ func newResolver(all []*scan.File) *resolver {
 					r.locked[p.Name] = append(r.locked[p.Name], p.Version)
 					if reg := lockRegistry(p.Source); reg != "" {
 						r.sources[p.Name+" "+p.Version] = reg
+					}
+					if g := lockGit(p.Source); g != "" {
+						r.gits[p.Name+" "+p.Version] = g
 					}
 					for _, d := range p.Dependencies {
 						// "name", or "name version" and possibly " (source)".
@@ -262,6 +268,23 @@ func lockRegistry(source string) string {
 	return u
 }
 
+// lockGit is the checkout a Cargo.lock `source` of a git dependency names,
+// "git+<url>?rev=…#<commit>" read as "<url>#<commit>", else "".
+//
+// Implements: REQ-FND-026
+func lockGit(source string) string {
+	rest, ok := strings.CutPrefix(source, "git+")
+	if !ok {
+		return ""
+	}
+	u, commit, ok := strings.Cut(rest, "#")
+	if !ok || !lang.Commit(commit) {
+		return ""
+	}
+	u, _, _ = strings.Cut(u, "?")
+	return u + "#" + commit
+}
+
 // target is the crates target of a registry dependency: the version Cargo.lock
 // holds for it, and the registry it comes from when that is not crates.io.
 //
@@ -273,6 +296,7 @@ func (r *resolver) target(d dep) lang.Target {
 		if t.Registry == "" {
 			t.Registry = r.sources[d.pkg+" "+exact]
 		}
+		t.Git = r.gits[d.pkg+" "+exact]
 	}
 	return t
 }

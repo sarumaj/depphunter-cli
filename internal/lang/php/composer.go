@@ -34,6 +34,7 @@ type pkg struct {
 	require       map[string]string
 	prefixes      []string // the namespaces (PSR-4, PSR-0) it autoloads
 	installed     bool     // known from vendor/composer/installed.json, not a lock
+	git           string   // "<repository URL>#<commit>" of a branch checkout (dev-main)
 }
 
 type project struct {
@@ -65,6 +66,11 @@ type lockedPackage struct {
 		Type string `json:"type"`
 		URL  string `json:"url"`
 	} `json:"dist"`
+	Source struct {
+		Type      string `json:"type"`
+		URL       string `json:"url"`
+		Reference string `json:"reference"`
+	} `json:"source"`
 }
 
 // strs reads a JSON string or list of strings.
@@ -143,6 +149,13 @@ func readProject(root, rel, abs string) (*project, []mapping) {
 			}
 		}
 		k := &pkg{name: name, version: lp.Version, require: requirements(lp.Require), installed: installed}
+		// A branch's version names no release, so the commit it was locked at is the
+		// only thing the vulnerability database could be asked about.
+		// Implements: REQ-FND-026
+		if v := strings.ToLower(lp.Version); (strings.HasPrefix(v, "dev-") || strings.HasSuffix(v, "-dev")) &&
+			lp.Source.Type == "git" && lp.Source.URL != "" && lang.Commit(lp.Source.Reference) {
+			k.git = lp.Source.URL + "#" + lp.Source.Reference
+		}
 		for prefix := range lp.Autoload.PSR4 {
 			k.prefixes = append(k.prefixes, prefix)
 		}
@@ -250,7 +263,7 @@ func (p *project) target(name string) lang.Target {
 	t := lang.Target{Ecosystem: ecoComposer, Package: name}
 	constraint := p.require[name]
 	if k := p.locked[name]; k != nil && k.version != "" {
-		t.Version, t.Pinned = k.version, true
+		t.Version, t.Pinned, t.Git = k.version, true, k.git
 		if constraint != "" && constraint != k.version {
 			t.Requested = constraint
 		}

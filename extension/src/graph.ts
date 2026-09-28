@@ -105,6 +105,14 @@ export interface GraphNode {
    * Implements: REQ-PY-015
    */
   origin?: string;
+
+  /**
+   * Git is the git checkout a package was built from, "<repository URL>#<full
+   * commit>", when its Version shows something else (lang.Target.Git).
+   *
+   * Implements: REQ-FND-026
+   */
+  git?: string;
 }
 
 /**

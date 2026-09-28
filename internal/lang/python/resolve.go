@@ -66,6 +66,7 @@ type dist struct {
 	version   string
 	requested string // the manifest's specifier once a lock file replaced it
 	pinned    bool
+	git       string // "<repository URL>#<commit>" of a direct reference to a commit
 }
 
 type resolver struct {
@@ -259,7 +260,7 @@ func (r *resolver) distribution(parts []string) lang.Target {
 // outside any index, it says where from, and takes the installed version when the
 // project names none.
 func (r *resolver) declared(d *dist) lang.Target {
-	t := lang.Target{Ecosystem: ecoPyPI, Package: d.name, Version: d.version, Requested: d.requested, Pinned: d.pinned}
+	t := lang.Target{Ecosystem: ecoPyPI, Package: d.name, Version: d.version, Requested: d.requested, Pinned: d.pinned, Git: d.git}
 	if in := r.env.get(d.name); in != nil && in.origin != "" {
 		t.Origin = in.origin
 		if t.Version == "" {
@@ -317,7 +318,34 @@ func (r *resolver) addDist(name, spec string, locked bool) {
 		d.version, d.pinned = version, true
 	case !d.pinned: // a range must not loosen what a lock already fixed
 		d.version, d.pinned = version, lang.Pinned(spec)
+		if g := directCommit(spec); g != "" {
+			d.pinned, d.git = true, g
+		}
 	}
+}
+
+// directCommit is the checkout a PEP 508 direct reference to a git commit names
+// ("@ git+https://github.com/o/r@<sha>", a "#egg=" fragment allowed), as
+// "<repository URL>#<commit>"; "" for anything else. Such a reference installs
+// that commit and nothing else, so it pins.
+//
+// Implements: REQ-PY-013, REQ-FND-026
+func directCommit(spec string) string {
+	ref, ok := strings.CutPrefix(strings.TrimSpace(spec), "@")
+	if !ok {
+		return ""
+	}
+	ref, _, _ = strings.Cut(strings.TrimSpace(ref), "#")
+	ref, _, _ = strings.Cut(ref, ";") // an environment marker
+	u, ok := strings.CutPrefix(strings.TrimSpace(ref), "git+")
+	if !ok {
+		return ""
+	}
+	i := strings.LastIndex(u, "@")
+	if i < 0 || !lang.Commit(u[i+1:]) || !strings.Contains(u[:i], "/") {
+		return ""
+	}
+	return u[:i] + "#" + u[i+1:]
 }
 
 // Implements: REQ-PY-006

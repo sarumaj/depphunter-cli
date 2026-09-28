@@ -388,7 +388,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	for _, name := range names {
 		d := lang.Target{Ecosystem: ecoComposer, Package: name, Version: k.require[name], Pinned: pinned(k.require[name])}
 		if dep := p.locked[name]; dep != nil && dep.version != "" {
-			d.Version, d.Pinned = dep.version, true
+			d.Version, d.Pinned, d.Git = dep.version, true, dep.git
 		}
 		out = append(out, d)
 	}

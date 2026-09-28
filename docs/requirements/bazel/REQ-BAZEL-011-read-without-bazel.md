@@ -22,7 +22,9 @@ directory from the scanned root, not from a nested workspace. Only a lock
 file says which version minimal version selection picked; without one a
 module is shown at its declared minimum. Buck2 and other Starlark dialects
 are not read. OSV has no Bazel ecosystem, so modules and WORKSPACE downloads
-are not asked about; `--online` follows modules through registries
+are not asked about by name and version (a `git_override` or `git_repository`
+at a full commit on a public forge is asked about by that commit,
+REQ-FND-026); `--online` follows modules through registries
 (REQ-SUP-057), not WORKSPACE repositories.
 
 ## Rationale

@@ -20,7 +20,9 @@ evaluated from that file's own directory (so usually dropped), the installed
 module versions of `.terraform/modules/modules.json` are not read, a provider's
 own dependencies are not asked of any registry (a provider depends on none),
 and OSV has no Terraform ecosystem and Trivy no Terraform package type, so no
-vulnerability is reported for a module or provider.
+vulnerability is reported for a registry module or a provider; a module
+fetched from a git repository on a public forge at a full commit is asked
+about by that commit (REQ-FND-026).
 
 ## Rationale
 

@@ -95,6 +95,11 @@ type Node struct {
 	//
 	// Implements: REQ-PY-015
 	Origin string `json:"origin,omitempty"`
+	// Git is the git checkout a package was built from, "<repository URL>#<full
+	// commit>", when its Version shows something else (lang.Target.Git).
+	//
+	// Implements: REQ-FND-026
+	Git string `json:"git,omitempty"`
 }
 
 // Implements: REQ-MOD-006

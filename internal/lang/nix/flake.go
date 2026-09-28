@@ -243,7 +243,7 @@ func (r ref) target() (lang.Target, bool) {
 	}
 	switch {
 	case r.rev != "":
-		t.Version, t.Pinned = short(r.rev), true
+		t.Version, t.Pinned, t.Git = short(r.rev), true, r.git()
 		if r.ref != "" && r.ref != r.rev {
 			t.Requested = r.ref
 		}
@@ -259,6 +259,31 @@ func (r ref) target() (lang.Target, bool) {
 		}
 	}
 	return t, true
+}
+
+// git is the checkout a reference locks, "<repository URL>#<commit>", for
+// Target.Git: the version shows the commit shortened, as Nix prints it, and the
+// vulnerability database is asked about the whole one. "" for anything that is
+// not a git repository at a full commit.
+//
+// Implements: REQ-FND-026
+func (r ref) git() string {
+	if !lang.Commit(r.rev) {
+		return ""
+	}
+	switch r.typ {
+	case "github", "gitlab", "sourcehut":
+		host := r.host
+		if host == "" {
+			host = map[string]string{"github": "github.com", "gitlab": "gitlab.com", "sourcehut": "git.sr.ht"}[r.typ]
+		}
+		owner := strings.ReplaceAll(strings.ReplaceAll(r.owner, "%2F", "/"), "%2f", "/")
+		return "https://" + host + "/" + owner + "/" + r.repo + "#" + r.rev
+	case "git":
+		u, _, _ := strings.Cut(strings.TrimPrefix(r.url, "git+"), "?")
+		return u + "#" + r.rev
+	}
+	return ""
 }
 
 // short is a commit shortened as Nix prints it, or a content hash's first

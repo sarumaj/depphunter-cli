@@ -254,7 +254,7 @@ func run(ctx context.Context, cfg config.Config) error {
 			if refs != nil {
 				extra["references"] = refs
 			}
-			if f := loadFindings(ctx, cfg, cacheDir, g, credentials); !f.Empty() {
+			if f := loadFindings(ctx, cfg, cacheDir, g, credentials, private); !f.Empty() {
 				extra["findings"] = f
 			}
 		} else if refs != nil {
@@ -262,7 +262,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		}
 		return writeExport(g, cfg, extra, cfg.Export, cfg.Output)
 	}
-	return serve(ctx, cfg, g, opts, c, cacheDir, newReport, credentials)
+	return serve(ctx, cfg, g, opts, c, cacheDir, newReport, credentials, private)
 }
 
 // explain writes the resolution report when --explain asked for it, wherever the log
@@ -350,7 +350,7 @@ func loadReferences(ctx context.Context, cfg config.Config, cacheDir string, g *
 //
 // Implements: REQ-FND-014, REQ-FND-015, REQ-MD-010, REQ-MD-012, REQ-MD-016
 func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *graph.Graph,
-	credentials *auth.Store) *findings.Set {
+	credentials *auth.Store, private *scope.Private) *findings.Set {
 	if !cfg.FindingsEnabled() {
 		return nil
 	}
@@ -371,7 +371,7 @@ func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *gr
 		}
 		if cfg.Vulns {
 			opts.OSV = findings.NewOSV(store, findingsCacheTTL, indexTimeout)
-			opts.Packages = pinned(g)
+			opts.Packages = pinned(g, private.Match)
 		}
 		if cfg.Links {
 			links := ""
@@ -438,25 +438,47 @@ func fixed(p string) bool {
 
 // pinned is every external package the map fixes to one version: the only ones a
 // vulnerability database can answer about, since a floating range resolves to
-// something else on the next install.
+// something else on the next install. A package fixed to a git commit on a public
+// forge carries the commit too (lang.GitPin), which OSV answers for whatever the
+// ecosystem.
 //
-// Implements: REQ-FND-013, REQ-SUP-040
-func pinned(g *graph.Graph) []findings.Package {
+// Implements: REQ-FND-013, REQ-SUP-040, REQ-FND-026
+func pinned(g *graph.Graph, private func(eco, name string) bool) []findings.Package {
+	if private == nil {
+		private = func(string, string) bool { return false }
+	}
 	var out []findings.Package
 	for _, n := range g.Nodes {
 		if n.Kind != graph.KindPackage || n.Version == "" || n.Floating {
-			continue
-		}
-		// An organization's own package is not asked about: the question hands the
-		// name and version of internal code to somebody else's server.
-		if n.Private {
 			continue
 		}
 		eco := n.Parent
 		if i := strings.LastIndex(eco, ":"); i >= 0 {
 			eco = eco[i+1:]
 		}
-		out = append(out, findings.Package{Ecosystem: eco, Name: n.Name, Version: n.Version})
+		p := findings.Package{Ecosystem: eco, Name: n.Name, Version: n.Version}
+		commit, repo, public := lang.GitPin(eco, n.Name, n.Version, n.Origin, n.Git)
+		// A version that is itself a git reference (npm's github:owner/repo#<sha>, a
+		// Python "@ git+<url>@<sha>") is no release of the ecosystem's index: only
+		// the commit is a question, and the reference names the repository.
+		reference := commit != "" && !strings.EqualFold(n.Version, commit) &&
+			strings.Contains(strings.ToLower(n.Version), commit)
+		// The commit of a private repository is not sent: its repository is on a
+		// public forge (a private host would be the disclosure), the package is not
+		// private by name (--private, GOPRIVATE: it is only private for having been
+		// installed from outside every index), and neither the package nor its
+		// repository matches a private pattern.
+		if commit != "" && public && !(n.Private && n.Origin == "") &&
+			!private(eco, n.Name) && (repo == "" || !private(eco, repo)) {
+			p.Commit, p.Repo = commit, repo
+		}
+		// An organization's own package is not asked about: the question hands the
+		// name and version of internal code to somebody else's server.
+		p.CommitOnly = n.Private || reference
+		if p.CommitOnly && p.Commit == "" {
+			continue
+		}
+		out = append(out, p)
 	}
 	return out
 }
@@ -486,7 +508,7 @@ func writeExport(g *graph.Graph, cfg config.Config, extra map[string]any, format
 
 // Implements: REQ-SRV-001
 func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Options, c *cache.Cache,
-	cacheDir string, newReport func() *trace.Report, credentials *auth.Store) error {
+	cacheDir string, newReport func() *trace.Report, credentials *auth.Store, private *scope.Private) error {
 	if cfg.Editor == "" {
 		cfg.Editor = editor.Detect(os.Getenv, exec.LookPath)
 	}
@@ -524,7 +546,7 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 		srv.SetReferences(loadReferences(ctx, cfg, cacheDir, g))
 	})
 	findingsRun := newLatest(func(g *graph.Graph) {
-		srv.SetFindings(loadFindings(ctx, cfg, cacheDir, g, credentials))
+		srv.SetFindings(loadFindings(ctx, cfg, cacheDir, g, credentials, private))
 	})
 	if cfg.History {
 		go historyRun.Run(g)

@@ -125,7 +125,7 @@ func (l *lockFile) target(dir, key string) (lang.Target, string) {
 	t.Floating, t.Requested = false, ""
 	switch {
 	case locked.rev != "":
-		t.Version, t.Pinned = short(locked.rev), true
+		t.Version, t.Pinned, t.Git = short(locked.rev), true, locked.git()
 	case locked.narHash != "":
 		t.Version, t.Pinned = first(t.Version, short(locked.narHash)), true
 	}

@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/config"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
+	"github.com/sarumaj/depphunter-cli/internal/scope"
 )
 
 // execute runs the command with args and returns what it printed.
@@ -243,7 +246,7 @@ func TestPrivatePackagesAreNotAskedAbout(t *testing.T) {
 		t.Fatal("the private package is not on the map as a pinned private package")
 	}
 	var asked []string
-	for _, p := range pinned(&g) {
+	for _, p := range pinned(&g, nil) {
 		asked = append(asked, p.Name)
 		if strings.HasPrefix(p.Name, "corp.example/") {
 			t.Errorf("%s would be sent to the vulnerability database", p.Name)
@@ -251,5 +254,79 @@ func TestPrivatePackagesAreNotAskedAbout(t *testing.T) {
 	}
 	if len(asked) != 1 || asked[0] != "github.com/pub/lib" {
 		t.Errorf("asked about %v, want the public package only", asked)
+	}
+}
+
+// TestCommitPinnedPackagesAreAskedByCommit reads what the vulnerability database
+// would be asked about the git dependencies of a map: a full commit on a public
+// forge is asked about; a commit on a company host, of a repository or package a
+// private pattern names, or of a package private by name is not, nor is a
+// shortened one; a package private only for having been installed from GitHub is
+// asked about by its commit alone; and a version that is itself a git reference is
+// not sent as a version.
+//
+// Verifies: REQ-FND-026, REQ-SUP-040
+func TestCommitPinnedPackagesAreAskedByCommit(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	pkg := func(eco, name, version string, set func(*graph.Node)) *graph.Node {
+		n := &graph.Node{ID: graph.PackageID(eco, name), Kind: graph.KindPackage, Name: name,
+			Parent: graph.EcosystemID(eco), Version: version}
+		if set != nil {
+			set(n)
+		}
+		return n
+	}
+	g := &graph.Graph{Nodes: []*graph.Node{
+		pkg("zig", "github.com/ziglibs/known-folders", sha, nil),
+		pkg("carthage", "git.example.com/ios/Kit", sha, nil),
+		pkg("jsonnet-bundler", "git.acme.internal/ops/libs", sha, func(n *graph.Node) {
+			n.Origin, n.Private = "git@git.acme.internal:ops/libs.git", true
+		}),
+		pkg("hex", "phoenix", sha, func(n *graph.Node) {
+			n.Origin, n.Private = "https://github.com/phoenixframework/phoenix.git", true
+		}),
+		pkg("swiftpm", "github.com/acme/private-kit", sha, nil),
+		pkg("shards", "internal-shard", sha, func(n *graph.Node) { n.Private = true }),
+		pkg("shards", "markd", sha, nil),
+		pkg("paket", "github.com/fsharp/FAKE", sha, func(n *graph.Node) { n.Private = true }),
+		pkg("nix", "github.com/numtide/flake-utils", "b1d9ab7", func(n *graph.Node) {
+			n.Git = "https://github.com/numtide/flake-utils#" + sha
+		}),
+		pkg("npm", "forge-std", "github:foundry-rs/forge-std#1eea5ba", nil),
+		pkg("npm", "left-pad", "github:stevemao/left-pad#"+sha, nil),
+		pkg("pypi", "foo", "@ git+https://git.corp.example/o/foo@"+sha, func(n *graph.Node) {
+			n.Git = "https://git.corp.example/o/foo#" + sha
+		}),
+		pkg("pypi", "bar", "@ git+https://github.com/o/bar@"+sha, func(n *graph.Node) {
+			n.Git = "https://github.com/o/bar#" + sha
+		}),
+		pkg("fpm", "floating", sha, func(n *graph.Node) { n.Floating = true }),
+	}}
+	private := scope.New([]string{"github.com/acme/*", "shards:internal-*"})
+	var got []string
+	for _, p := range pinned(g, private.Match) {
+		s := p.Ecosystem + " " + p.Name
+		if p.Commit != "" {
+			s += " commit=" + p.Repo
+		}
+		if p.CommitOnly {
+			s += " only"
+		}
+		got = append(got, s)
+	}
+	sort.Strings(got)
+	want := []string{
+		"carthage git.example.com/ios/Kit", // named, as before; its commit stays here
+		"hex phoenix commit=github.com/phoenixframework/phoenix only",
+		"nix github.com/numtide/flake-utils commit=github.com/numtide/flake-utils",
+		"npm forge-std", // Bun's shortened commit: the version is sent, as before
+		"npm left-pad commit=github.com/stevemao/left-pad only",
+		"pypi bar commit=github.com/o/bar only",
+		"shards markd commit=",
+		"swiftpm github.com/acme/private-kit",
+		"zig github.com/ziglibs/known-folders commit=github.com/ziglibs/known-folders",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("asked\n%q\nwant\n%q", got, want)
 	}
 }

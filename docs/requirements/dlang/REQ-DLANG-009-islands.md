@@ -14,8 +14,9 @@ verification:
 The D plugin **shall** declare two islands: **dub packages** (`dub`, a
 private-pattern prefix, asked about by `--online` through the registry of
 REQ-SUP-060) and the hidden **D runtime and standard library** (`d-std`,
-Std). OSV and Trivy have no D ecosystem, so dub packages are not checked
-for advisories.
+Std). OSV and Trivy have no D ecosystem, so dub packages are checked for
+advisories only by their commit, when one pins them to a git repository on a
+public forge (REQ-FND-026).
 
 ## Rationale
 

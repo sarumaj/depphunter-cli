@@ -248,6 +248,9 @@ func readDistInfo(info string) *installed {
 			}
 		}
 	}
+	if sc.Err() != nil {
+		return nil
+	}
 	if d.name == "" {
 		return nil
 	}

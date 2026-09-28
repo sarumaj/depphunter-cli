@@ -18,7 +18,9 @@ name only (a local set called `fpkgs` is taken for nixpkgs) and only in the
 package lists of REQ-NIX-007; the nixpkgs fetchers of package sources are
 not read. There is no Nix registry or package index for `--online`; the
 GitHub API is not asked about flake inputs. OSV has no Nix ecosystem and
-Trivy no Nix package type, so no advisories are asked for.
+Trivy no Nix package type, so nixpkgs packages and tarball inputs are not
+asked about; a flake input, niv or npins source locked to a git commit on a
+public forge is asked about by that commit (REQ-FND-026).
 
 ## Rationale
 

@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -14,6 +16,7 @@ import (
 
 	"golang.org/x/mod/semver"
 
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/store"
 )
 
@@ -26,8 +29,11 @@ const (
 )
 
 // osvEcosystems maps this project's ecosystem ids onto OSV's names. An ecosystem that
-// is not here is not asked about: a PowerShell Gallery module or a CI runner image has
-// no OSV counterpart, and guessing one would invent findings. Neither CocoaPods nor
+// is not here is not asked about by name and version: a PowerShell Gallery module or a
+// CI runner image has no OSV counterpart, and guessing one would invent findings. (A
+// package of any ecosystem pinned to a git commit on a public forge is asked about by
+// that commit - see Package.Commit - which is how Carthage, Zig, shards, Paket's
+// GitHub files, submodules, jsonnet-bundler and the rest below get an answer.) Neither CocoaPods nor
 // Carthage is an OSV ecosystem, so pods are not asked about; nor are LuaRocks and
 // Wally, so rocks and Wally packages are not either, nor CPAN (OSV's ecosystem list
 // has none for Perl), so CPAN distributions are not, nor Zig packages, nor Bazel
@@ -78,12 +84,32 @@ var osvEcosystems = map[string]string{
 	"julia": "Julia",
 }
 
-// Package is one thing to ask the database about: a dependency pinned to a version.
+// Package is one thing to ask the database about: a dependency pinned to a version,
+// to a git commit, or to both.
 type Package struct {
 	Ecosystem string
 	Name      string
 	Version   string
+	// Commit is the full git commit the package was built from (lang.GitPin). It is
+	// asked about on its own - OSV matches a commit against the repositories and
+	// commit ranges its advisories record, whatever the ecosystem - so a package of
+	// an ecosystem OSV does not know can still be answered for.
+	//
+	// Implements: REQ-FND-026
+	Commit string
+	// Repo is the repository the commit is from, as lang.RepoName spells it. It is
+	// not sent; it chooses which of an advisory's fixed commits to suggest.
+	Repo string
+	// CommitOnly sends the commit and nothing else: the package itself is private
+	// (it came from outside every index), although its repository is public.
+	CommitOnly bool
 }
+
+// SourceCommit is the source a finding answered for a package's git commit is
+// reported under, apart from "osv" for its name and version.
+//
+// Implements: REQ-FND-026
+const SourceCommit = "OSV (git commit)"
 
 // OSV asks api.osv.dev which of the given packages are known to be vulnerable.
 type OSV struct {
@@ -100,17 +126,44 @@ func NewOSV(dir string, ttl, timeout time.Duration) *OSV {
 	return &OSV{http: &http.Client{Timeout: timeout}, cache: store.New(dir, ttl)}
 }
 
+// question is one query of a batch: a package at a version, or a commit alone.
+type question struct {
+	pkg    Package // the name and the version asked about; zero for a commit
+	commit string
+}
+
+// key is where a question's answer is kept.
+func (q question) key() string {
+	if q.commit != "" {
+		return "osv-commit|" + q.commit
+	}
+	return queryKey(q.pkg)
+}
+
 // Query returns a finding per (package, vulnerability) pair, and whether anything was
 // left unasked. A database that will not answer is not an error the map can use: the
 // set is marked partial and what did arrive is kept.
 //
-// Implements: REQ-FND-010, REQ-FND-016
+// A package pinned to a git commit is asked about by that commit too. An advisory
+// both questions return is reported once, from the package's name and version: the
+// same id, or one listed among the other's aliases (a GHSA and the CVE it names),
+// is the same advisory.
+//
+// Implements: REQ-FND-010, REQ-FND-016, REQ-FND-026
 func (o *OSV) Query(ctx context.Context, pkgs []Package) ([]*Finding, bool) {
-	queries := make([]Package, 0, len(pkgs))
+	var queries []Package
+	byCommit := map[string][]Package{}
 	seen := map[string]bool{}
 	for _, p := range pkgs {
+		if c := strings.ToLower(p.Commit); lang.Commit(c) && p.Name != "" {
+			p.Commit = c
+			if k := "commit|" + p.Ecosystem + "|" + p.Name + "|" + c; !seen[k] {
+				seen[k] = true
+				byCommit[c] = append(byCommit[c], p)
+			}
+		}
 		eco, ok := osvEcosystems[p.Ecosystem]
-		if !ok || p.Name == "" || p.Version == "" {
+		if !ok || p.CommitOnly || p.Name == "" || p.Version == "" {
 			continue
 		}
 		p.Version = osvVersion(p.Ecosystem, p.Version)
@@ -121,26 +174,52 @@ func (o *OSV) Query(ctx context.Context, pkgs []Package) ([]*Finding, bool) {
 		seen[key] = true
 		queries = append(queries, p)
 	}
-	if len(queries) == 0 {
+	if len(queries) == 0 && len(byCommit) == 0 {
 		return nil, false
 	}
 	sort.Slice(queries, func(i, j int) bool {
 		a, b := queries[i], queries[j]
 		return a.Ecosystem+a.Name+a.Version < b.Ecosystem+b.Name+b.Version
 	})
+	var asked []question
+	for _, p := range queries {
+		asked = append(asked, question{pkg: Package{Ecosystem: p.Ecosystem, Name: p.Name, Version: p.Version}})
+	}
+	for _, c := range slices.Sorted(maps.Keys(byCommit)) {
+		asked = append(asked, question{commit: c})
+	}
 
-	ids, partial := o.ids(ctx, queries)
+	ids, partial := o.ids(ctx, asked)
 	entries, missed := o.entries(ctx, ids)
 	partial = partial || missed
 
 	var out []*Finding
+	// known is every id and alias already reported per package, so the answer to a
+	// commit does not repeat what its name and version said.
+	known := map[string]bool{}
 	for _, p := range queries {
-		for _, id := range ids[p] {
+		for _, id := range ids[question{pkg: Package{Ecosystem: p.Ecosystem, Name: p.Name, Version: p.Version}}] {
 			e, ok := entries[id]
 			if !ok {
 				continue
 			}
+			for _, a := range append([]string{e.ID}, e.Aliases...) {
+				known[p.Ecosystem+"|"+p.Name+"|"+a] = true
+			}
 			out = append(out, e.finding(p))
+		}
+	}
+	for _, c := range slices.Sorted(maps.Keys(byCommit)) {
+		for _, p := range byCommit[c] {
+			for _, id := range ids[question{commit: c}] {
+				e, ok := entries[id]
+				if !ok || known[p.Ecosystem+"|"+p.Name+"|"+e.ID] || slices.ContainsFunc(e.Aliases, func(a string) bool {
+					return known[p.Ecosystem+"|"+p.Name+"|"+a]
+				}) {
+					continue
+				}
+				out = append(out, e.commitFinding(p))
+			}
 		}
 	}
 	return out, partial
@@ -149,21 +228,21 @@ func (o *OSV) Query(ctx context.Context, pkgs []Package) ([]*Finding, bool) {
 // queryKey is where one package's answer is kept.
 func queryKey(p Package) string { return "osv-query|" + p.Ecosystem + "|" + p.Name + "|" + p.Version }
 
-// ids asks which vulnerabilities affect each package. The answer is only a list of
+// ids asks which vulnerabilities each question matches. The answer is only a list of
 // ids, which is what makes one batch request enough for a whole dependency tree.
 //
 // Implements: REQ-FND-011, REQ-FND-012
-func (o *OSV) ids(ctx context.Context, pkgs []Package) (map[Package][]string, bool) {
-	out := map[Package][]string{}
-	ask := pkgs[:0:0]
-	for _, p := range pkgs {
-		if ids, ok := store.Get[[]string](o.cache, queryKey(p)); ok {
+func (o *OSV) ids(ctx context.Context, qs []question) (map[question][]string, bool) {
+	out := map[question][]string{}
+	ask := qs[:0:0]
+	for _, q := range qs {
+		if ids, ok := store.Get[[]string](o.cache, q.key()); ok {
 			if len(ids) > 0 {
-				out[p] = ids
+				out[q] = ids
 			}
 			continue
 		}
-		ask = append(ask, p)
+		ask = append(ask, q)
 	}
 	partial := false
 	for start := 0; start < len(ask); start += osvBatch {
@@ -181,7 +260,7 @@ func (o *OSV) ids(ctx context.Context, pkgs []Package) (map[Package][]string, bo
 			partial = true
 			continue
 		}
-		for i, p := range batch {
+		for i, q := range batch {
 			var ids []string
 			for _, v := range res[i].Vulns {
 				ids = append(ids, v.ID)
@@ -191,10 +270,10 @@ func (o *OSV) ids(ctx context.Context, pkgs []Package) (map[Package][]string, bo
 				// the whole answer and is not cached as one.
 				partial = true
 			} else {
-				o.cache.Put(queryKey(p), ids)
+				o.cache.Put(q.key(), ids)
 			}
 			if len(ids) > 0 {
-				out[p] = ids
+				out[q] = ids
 			}
 		}
 	}
@@ -208,21 +287,29 @@ type batchResult struct {
 	NextPageToken string `json:"next_page_token"`
 }
 
-func (o *OSV) batch(ctx context.Context, pkgs []Package) ([]batchResult, error) {
+// batch sends one /v1/querybatch request. A package question names the package and
+// its version; a commit question is {"commit": "<sha>"} and nothing else, which is
+// how OSV's API asks about a commit.
+func (o *OSV) batch(ctx context.Context, qs []question) ([]batchResult, error) {
+	type pkg struct {
+		Name      string `json:"name"`
+		Ecosystem string `json:"ecosystem"`
+	}
 	type query struct {
-		Package struct {
-			Name      string `json:"name"`
-			Ecosystem string `json:"ecosystem"`
-		} `json:"package"`
-		Version string `json:"version"`
+		Commit  string `json:"commit,omitempty"`
+		Package *pkg   `json:"package,omitempty"`
+		Version string `json:"version,omitempty"`
 	}
 	body := struct {
 		Queries []query `json:"queries"`
 	}{}
-	for _, p := range pkgs {
-		var q query
-		q.Package.Name, q.Package.Ecosystem, q.Version = p.Name, osvEcosystems[p.Ecosystem], p.Version
-		body.Queries = append(body.Queries, q)
+	for _, q := range qs {
+		if q.commit != "" {
+			body.Queries = append(body.Queries, query{Commit: q.commit})
+			continue
+		}
+		p := q.pkg
+		body.Queries = append(body.Queries, query{Package: &pkg{Name: p.Name, Ecosystem: osvEcosystems[p.Ecosystem]}, Version: p.Version})
 	}
 	buf, err := json.Marshal(body)
 	if err != nil {
@@ -246,7 +333,7 @@ func (o *OSV) batch(ctx context.Context, pkgs []Package) ([]batchResult, error) 
 // fetched, and each one only once however many packages it affects.
 //
 // Implements: REQ-FND-011
-func (o *OSV) entries(ctx context.Context, ids map[Package][]string) (map[string]*osvEntry, bool) {
+func (o *OSV) entries(ctx context.Context, ids map[question][]string) (map[string]*osvEntry, bool) {
 	want := map[string]bool{}
 	for _, list := range ids {
 		for _, id := range list {
@@ -364,6 +451,7 @@ type osvEntry struct {
 		} `json:"package"`
 		Ranges []struct {
 			Type   string `json:"type"`
+			Repo   string `json:"repo"` // a GIT range's repository
 			Events []struct {
 				Introduced string `json:"introduced"`
 				Fixed      string `json:"fixed"`
@@ -396,6 +484,55 @@ func (e *osvEntry) finding(p Package) *Finding {
 		Fixed:     e.fixed(p.Name, p.Version),
 	}
 	return f
+}
+
+// commitFinding places the vulnerability on a package its git commit matched. The
+// fix is the commit an affected GIT range of the package's own repository names.
+//
+// Implements: REQ-FND-026
+func (e *osvEntry) commitFinding(p Package) *Finding {
+	f := e.finding(Package{Ecosystem: p.Ecosystem, Name: p.Name, Version: p.Version})
+	f.Source = SourceCommit
+	f.Fixed = e.fixedCommit(p.Repo)
+	// Which commit it was: the version the map shows may be a release or a shortened
+	// commit, and an advisory matched by commit says nothing about releases.
+	how := "Matched by its git commit " + p.Commit
+	if p.Repo != "" {
+		how += " of " + p.Repo
+	}
+	if f.Detail != "" {
+		how = f.Detail + "\n\n" + how
+	}
+	f.Detail = how + "."
+	if f.Version == "" {
+		f.Version = p.Commit
+	}
+	return f
+}
+
+// fixedCommit is the last fixed commit of a GIT range in repo ("" matches any
+// repository), "" when the advisory names none.
+func (e *osvEntry) fixedCommit(repo string) string {
+	for _, a := range e.Affected {
+		for _, r := range a.Ranges {
+			if r.Type != "GIT" || repo != "" && !within(repo, lang.RepoName(r.Repo)) {
+				continue
+			}
+			for i := len(r.Events) - 1; i >= 0; i-- {
+				if fix := r.Events[i].Fixed; fix != "" {
+					return fix
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// within reports whether repo, which may name a directory inside a repository
+// (github.com/grafana/jsonnet-libs/ksonnet-util), is in the repository r.
+func within(repo, r string) bool {
+	repo, r = strings.ToLower(repo), strings.ToLower(r)
+	return r != "" && (repo == r || strings.HasPrefix(repo, r+"/"))
 }
 
 func (e *osvEntry) title() string {
