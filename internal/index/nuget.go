@@ -231,9 +231,10 @@ func (c *Config) lend(feed, user, pass string) {
 
 // vouched reports whether this machine vouches for a feed the repository names:
 // the user did with --trust-index (by URL or host), or this machine's own
-// configuration names a source of the ecosystem on the feed's host.
+// configuration names a source of the ecosystem on the feed's host (for PyPI, a
+// Poetry repository or an explicit uv index there counts too).
 func (c *Config) vouched(eco, feed string, u *url.URL) bool {
-	if c.trusted[c.recorded(feed)] || c.trusted[u.Host] {
+	if c.trusted[c.recorded(feed)] || c.trusted[u.Host] || eco == PyPI && c.py.hosts[strings.ToLower(u.Host)] {
 		return true
 	}
 	for _, s := range c.sources[eco] {

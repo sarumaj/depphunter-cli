@@ -34,6 +34,17 @@ tool looks for it, reading the variables from the machine's environment only:
   existing file, then `PIP_CONFIG_FILE`; `PIP_INDEX_URL` and
   `PIP_EXTRA_INDEX_URL` over all of them. `PIP_CONFIG_FILE` set to the null
   device reads no file.
+- uv: the file `UV_CONFIG_FILE` names alone, when set; else the user's
+  `uv.toml` (`$XDG_CONFIG_HOME/uv` or `~/.config/uv`; Windows
+  `%APPDATA%\uv`) and the system's (the first `$XDG_CONFIG_DIRS/uv/uv.toml`
+  that exists, else `/etc/uv/uv.toml`; Windows `%ProgramData%\uv`); none
+  under `UV_NO_CONFIG`.
+- Poetry: `config.toml` and `auth.toml` in `POETRY_CONFIG_DIR`, else
+  `%APPDATA%\pypoetry` on Windows, `~/Library/Application Support/pypoetry`
+  on macOS, else `$XDG_CONFIG_HOME/pypoetry` (`~/.config/pypoetry`).
+- PDM: `PDM_CONFIG_FILE`, else `config.toml` in `%LOCALAPPDATA%\pdm\pdm` on
+  Windows, `~/Library/Application Support/pdm` on macOS, else
+  `$XDG_CONFIG_HOME/pdm` (`~/.config/pdm`).
 - Cargo: `config` (else `config.toml`) in `CARGO_HOME`, else in `~/.cargo`;
   `CARGO_REGISTRIES_<NAME>_INDEX` defining a registry or overriding its
   index, the name matched as Cargo spells it in a variable (upper case, `-` as
@@ -84,6 +95,10 @@ fixed `$HOME` paths missed the feed the machine actually uses.
 8. `YARN_RC_FILENAME` renames the home Yarn file, and
    `YARN_NPM_REGISTRY_SERVER` replaces its registry; Bun's
    `$XDG_CONFIG_HOME/.bunfig.toml` wins over the home one.
+9. `UV_CONFIG_FILE` and `UV_NO_CONFIG`, `$XDG_CONFIG_DIRS` for uv's system
+   file, `POETRY_CONFIG_DIR` and `PDM_CONFIG_FILE` are honoured, and the
+   Windows and macOS directories used on those platforms (falling through to
+   the XDG ones on a Windows without its variables).
 
 ## Notes
 

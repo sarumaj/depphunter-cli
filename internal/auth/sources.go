@@ -304,6 +304,7 @@ func (c *Store) readMachineSources(m userconf.Machine, lookPath func(string) (st
 	c.readComposer(m)
 	c.readBundler(m)
 	c.readJVM(m)
+	c.readPython(m)
 	// The first file to hold a registry's credential is the one used, so they are
 	// read from the last to the first, each over the one before.
 	files := m.ContainerAuthFiles()

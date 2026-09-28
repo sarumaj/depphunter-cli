@@ -34,6 +34,17 @@ that registry's path
 or password written out, one only a fallback fills, and a user:password in a
 repository registry URL **shall** be discarded.
 
+The same **shall** hold for a Python index the repository names
+([REQ-AUTH-026](REQ-AUTH-026-python-tool-credentials.md)): this machine's
+`UV_INDEX_<NAME>_*` variables, Poetry http-basic credential or PDM
+`[pypi.<name>]` credential for a repository index of that name, and a user
+name or password that is exactly `$NAME` or `${NAME}` in a repository
+`Pipfile` or PDM source URL, **shall** be lent only to an index vouched for
+with `--trust-index` or on the host of a PyPI index this machine's
+configuration names (or of a Poetry repository or explicit uv index of this
+machine's), and only for that index's path. A password written into a
+repository index URL **shall** be discarded.
+
 ## Rationale
 
 The usual CI setup is a repository `nuget.config` or `paket.dependencies`
@@ -58,6 +69,11 @@ user's say-so, or this machine's own configuration of that host, decides.
    `$VAR` password are lent to a vouched registry or one on the host of a
    machine registry, and to nothing else; a written-out token, a fallback and
    a written-out URL password are not; a machine token for the host is kept.
+6. A repository uv, Poetry or PDM index gets this machine's credential of its
+   name, and a `Pipfile` or PDM `${VAR}` URL credential is lent, only when
+   vouched for or on the host of a machine uv index, Poetry repository or PDM
+   source, and only under the index's path; a written-out URL password is
+   not lent.
 
 ## Notes
 
