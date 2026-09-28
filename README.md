@@ -1245,11 +1245,13 @@ written for and to no other.
 | `~/.terraformrc`, `~/.tofurc`, `TF_CLI_CONFIG_FILE`           | Terraform's and OpenTofu's `credentials "<host>"` tokens; a `host` block names a registry without one             |
 | `~/.terraform.d/credentials.tfrc.json`                        | the tokens `terraform login` stores (OpenTofu's under `~/.config/opentofu`)                                       |
 | `TF_TOKEN_<host>`                                             | a token supplied by a pipeline, for HCP Terraform and the hosts named above                                       |
+| `auth.json` in Composer's home                                | `http-basic`, `bearer`, `gitlab-token`, `gitlab-oauth`, `github-oauth`, per host                                  |
+| `COMPOSER_AUTH`                                               | the same keys supplied by a pipeline, merged host by host over `auth.json`                                        |
 | the index URL itself                                          | `https://user:password@host/simple`, as a private pip or Cargo mirror is set                                      |
 
 Between them these cover Nexus, Artifactory, Azure Artifacts, ProGet, GitHub
-Packages, Harbor, GHCR, a private crate registry and a private Terraform
-registry.
+Packages, Harbor, GHCR, a private crate registry, a private Terraform
+registry, and Private Packagist, Satis, Repman and GitLab's Composer registry.
 
 In `~/.npmrc`, `settings.xml` and `NuGet.Config`, a value that is exactly
 `${NAME}`, `${env.NAME}` or `%NAME%` is read from the environment, so a password
@@ -1264,6 +1266,20 @@ document recommends sharing. Only a URL supplied by this machine's own
 configuration contributes a credential; one supplied by the repository is
 stripped and discarded, since a repository able to supply a credential would
 also be choosing where it is sent.
+
+Composer's home is the one Composer itself uses: `COMPOSER_HOME` when set, else
+`$XDG_CONFIG_HOME/composer` (`~/.config/composer`) or `~/.composer`, whichever
+exists first (`%APPDATA%\Composer` on Windows). The same keys under the
+`"config"` of its `config.json` are read too, `auth.json` over them and
+`COMPOSER_AUTH` over both. An `http-basic` entry, and a `gitlab-token` with a
+`username` (a deploy or job token), is sent as Basic credentials; `bearer`,
+`gitlab-oauth`, `github-oauth` and a bare `gitlab-token` as a Bearer token, a
+`github.com` token to `api.github.com` as well. For a host named under several
+of these, the one Composer loads last wins, `bearer` over `http-basic`.
+`bitbucket-oauth` is not read: it is an OAuth consumer key and secret that
+Composer exchanges for a token on every run. The `auth.json` beside a
+repository's `composer.json`, and the `"config"` of a `composer.json`, belong to
+the repository and are never read.
 
 Most container registries no longer store a credential in `config.json`; they
 name a helper instead, and depphunter runs it as `docker login` does —

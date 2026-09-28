@@ -17,7 +17,9 @@ repository's Composer 2 metadata: for Packagist
 the `metadata-url` its `packages.json` names (asked once per run). It
 **shall** expand the minified version list, take the version asked for (with
 or without a leading `v`) or else the newest, and return its `require`
-without the platform requirements, each with its constraint.
+without the platform requirements, each with its constraint. A request to a
+repository **shall** carry the Composer credential this machine keeps for its
+host ([REQ-AUTH-016](../auth/REQ-AUTH-016-composer-auth-json-credentials.md)).
 
 ## Rationale
 
@@ -36,3 +38,5 @@ request.
 4. Metadata that does not list the package is "not found", and the next
    repository (Packagist, unless switched off) is asked
    ([REQ-SUP-063](REQ-SUP-063-additive-sources-fall-back-to-the-public-index.md)).
+5. A repository that refuses requests without Basic credentials answers when
+   `~/.composer/auth.json` holds its `http-basic` entry, and refuses without.

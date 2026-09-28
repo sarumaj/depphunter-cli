@@ -18,8 +18,11 @@ it), `~/.npmrc`, `~/.config/pip/pip.conf`,
 `~/.pip/pip.conf`, `~/.cargo/config.toml`, the mirrors of `~/.m2/settings.xml`,
 `~/.nuget/NuGet/NuGet.Config`, `~/.config/NuGet/NuGet.Config`, and the
 `composer` repositories of Composer's `config.json` in `COMPOSER_HOME`,
-`~/.config/composer` and `~/.composer`, Bundler's rubygems.org mirror
-(`BUNDLE_MIRROR__RUBYGEMS__ORG`, `~/.bundle/config`), the sources of
+`~/.config/composer` and `~/.composer` (whose credentials are read from
+Composer's `auth.json` and `COMPOSER_AUTH`,
+[REQ-AUTH-016](../auth/REQ-AUTH-016-composer-auth-json-credentials.md)),
+Bundler's rubygems.org mirror (`BUNDLE_MIRROR__RUBYGEMS__ORG`,
+`~/.bundle/config`), the sources of
 `~/.gemrc`, pub's `PUB_HOSTED_URL`, the Hex API of `HEX_API_URL`, R's
 `RENV_CONFIG_REPOS_OVERRIDE` and the `options(repos = ...)` of `~/.Rprofile`
 and `R_PROFILE_USER`, and the `repository` stanzas of cabal's configuration
@@ -33,7 +36,10 @@ indexes of `pyproject.toml` (with the dependencies pinned to an explicit
 one), `NuGet.config` (and its `<clear/>`), the repositories other than Maven
 Central of `pom.xml` and of Gradle build and settings scripts (outside
 `pluginManagement` and `buildscript`), `.cargo/config.toml`, the `composer`
-repositories of `composer.json` (and `"packagist.org": false`), the `source`
+repositories of `composer.json` (and `"packagist.org": false`; a
+repository's `auth.json` is not read,
+[REQ-AUTH-017](../auth/REQ-AUTH-017-repository-composer-credentials-discarded.md)),
+the `source`
 lines of a `Gemfile` (a `source ... do` block serving only the gems inside
 it), the GEM remotes of
 `Gemfile.lock`, the `hosted:` servers of a `pubspec.yaml` or

@@ -329,6 +329,43 @@ func TestComposerDependencies(t *testing.T) {
 	}
 }
 
+// A private Composer repository - Private Packagist, a Satis behind a password - is
+// asked with the credential this machine's Composer keeps for its host.
+//
+// Verifies: REQ-SUP-044, REQ-AUTH-016
+func TestComposerRepositoryWithMachineCredentials(t *testing.T) {
+	stub, _ := stubComposer(t)
+	var refused int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if user, pass, ok := r.BasicAuth(); !ok || user != "token" || pass != "pp-secret" {
+			refused++
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		stub.Config.Handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	home := t.TempDir()
+	doc := fmt.Sprintf(`{"http-basic": {%q: {"username": "token", "password": "pp-secret"}}}`, srv.Listener.Addr().String())
+	if err := os.MkdirAll(filepath.Join(home, ".composer"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".composer", "auth.json"), []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	target := lang.Target{Ecosystem: Composer, Package: "monolog/monolog", Version: "3.5.0"}
+	if got := names(clientFor(t, Composer, srv.URL+"/composer", home).Dependencies(target)); len(got) != 1 {
+		t.Errorf("got %v with the credential, want psr/log", got)
+	}
+	if refused != 0 {
+		t.Errorf("%d requests went without the credential", refused)
+	}
+	// Without it the repository refuses, which proves the header was what let it in.
+	if got := clientFor(t, Composer, srv.URL+"/composer", t.TempDir()).Dependencies(target); len(got) != 0 {
+		t.Errorf("got %v without the credential", names(got))
+	}
+}
+
 // Verifies: REQ-SUP-044
 func TestPackagistIsAskedDirectly(t *testing.T) {
 	var asked []string
