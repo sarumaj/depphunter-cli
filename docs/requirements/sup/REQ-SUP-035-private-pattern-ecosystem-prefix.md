@@ -50,7 +50,9 @@ Qlot's git sources), Solidity's `soldeer` (Soldeer packages) and
 `git-submodule` (git submodules, named by repository), Nim's `nimble`
 (nimble packages, a URL requirement named by its repository), Jsonnet's
 `jsonnet-bundler` (jb dependencies, named by repository and
-subdirectory), and CUE's `cue` (CUE modules).
+subdirectory), CUE's `cue` (CUE modules), Dhall's `dhall` (remote Dhall
+packages) and Puppet's `puppet-forge` (Forge modules by slug, git modules
+by repository).
 
 A Clojure dependency is a Maven package named `group:artifact`; a `maven:`
 (or unscoped) pattern matches it by its group (`maven:com.acme.*` matches

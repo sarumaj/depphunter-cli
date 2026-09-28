@@ -146,6 +146,9 @@ The server **shall** ...
 | `nim`        | The Nim plugin: modules, NimScript, .nimble files, nimble.lock, atlas.lock and installed packages.      |
 | `jsonnet`    | The Jsonnet plugin: imports, the library path, jsonnet-bundler's manifest, lock and vendor/.            |
 | `cue`        | The CUE plugin: packages, cue.mod/module.cue dependencies, generated and vendored trees in cue.mod.     |
+| `dhall`      | The Dhall plugin: local and remote imports, hashes, the Dhall reader shared with PureScript.            |
+| `puppet`     | The Puppet plugin: manifests, modules, Puppetfile, metadata.json, .fixtures.yml and r10k's modules/.    |
+| `rego`       | The Rego plugin: packages, imports and data references between policies.                                |
 | `terraform`  | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                    |
 | `proto`      | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.            |
 | `shell`      | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                     |
@@ -378,6 +381,13 @@ requirements of type `limitation` in their scopes:
   directories are not linked, build attributes are not evaluated, module
   dependencies' own dependencies are not read, and the central registry
   is not asked (no `--online`).
+- Dhall is read without running `dhall`: remote imports are not fetched
+  or followed, `env:` imports are dropped, and there is no registry to ask.
+- Puppet is read without compiling a catalog: class names from variables
+  and Hiera are not followed, only r10k's install directory is read, and
+  the Forge is not asked (no `--online`).
+- Rego is read without OPA: data documents and bundles are not linked and
+  references through variables are not followed.
 - Bun's binary `bun.lockb` is not read: without a `bun.lock` or a `yarn.lock`
   beside it, a Bun project's npm packages keep their declared ranges.
 - pip's keyring is not consulted for credentials.

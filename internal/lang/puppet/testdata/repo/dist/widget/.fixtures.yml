@@ -1,0 +1,16 @@
+fixtures:
+  forge_modules:
+    archive:
+      repo: "puppet/archive"
+      ref: "1.2.3"
+    inifile: "puppetlabs-inifile"
+  repositories:
+    stdlib: "https://github.com/puppetlabs/puppetlabs-stdlib.git"
+    yumrepo_core:
+      repo: "https://github.com/puppetlabs/puppetlabs-yumrepo_core.git"
+      branch: "main"
+    facts:
+      repo: "https://github.com/puppetlabs/puppetlabs-facts.git"
+      ref: "v1.4.0"
+  symlinks:
+    widget: "#{source_dir}"

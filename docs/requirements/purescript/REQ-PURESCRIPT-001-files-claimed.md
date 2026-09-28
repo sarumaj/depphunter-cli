@@ -15,8 +15,9 @@ The PureScript plugin **shall** claim PureScript modules (`.purs`), spago's
 `spago.yaml` and `spago.lock`, legacy spago's `spago.dhall`, `packages.dhall`
 and other Dhall configurations named for spago (`spago-*.dhall`,
 `test.dhall`), and `bower.json`, telling them apart from other YAML, JSON
-and Dhall files by name, and **shall not** claim anything under `.spago/` or
-`bower_components/`, where spago and bower install packages. The scanner
+and Dhall files by name (the predicate the Dhall plugin shares, so no
+Dhall file is claimed twice), and **shall not** claim anything under
+`.spago/` or `bower_components/`, where spago and bower install packages. The scanner
 **shall** label `.purs` files PureScript and `.dhall` files Dhall.
 
 ## Rationale

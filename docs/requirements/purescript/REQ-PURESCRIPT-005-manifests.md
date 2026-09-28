@@ -17,7 +17,8 @@ The PureScript plugin **shall** read `spago.yaml` (`package.name`,
 `workspace.extraPackages` from the registry, git or a path), `spago.lock`
 (YAML or JSON: each package's type, version, git URL and revision, path and
 dependencies, and the workspace's packages), `spago.dhall` and
-`packages.dhall` with a Dhall reader of its own, and the `purescript-*`
+`packages.dhall` with the Dhall reader the Dhall plugin shares
+(`internal/lang/dhall`), and the `purescript-*`
 dependencies of `bower.json`. Each package a manifest lists, and each
 package a lock records, **shall** be an import of that package. The Dhall
 reader **shall** evaluate records, lists of strings, `let`, field selection,

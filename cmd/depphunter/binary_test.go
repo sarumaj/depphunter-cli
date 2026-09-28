@@ -198,6 +198,9 @@ func start(t *testing.T, cmd *exec.Cmd) *running {
 		for sc.Scan() {
 			r.lines <- sc.Text()
 		}
+		if err := sc.Err(); err != nil {
+			t.Error(err)
+		}
 		cmd.Wait()
 		close(r.exit)
 	}()

@@ -44,6 +44,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/cue"
 	dlang "github.com/sarumaj/depphunter-cli/internal/lang/d"
 	"github.com/sarumaj/depphunter-cli/internal/lang/dart"
+	"github.com/sarumaj/depphunter-cli/internal/lang/dhall"
 	"github.com/sarumaj/depphunter-cli/internal/lang/docker"
 	"github.com/sarumaj/depphunter-cli/internal/lang/elm"
 	"github.com/sarumaj/depphunter-cli/internal/lang/fortran"
@@ -67,10 +68,12 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/php"
 	"github.com/sarumaj/depphunter-cli/internal/lang/powershell"
 	"github.com/sarumaj/depphunter-cli/internal/lang/proto"
+	"github.com/sarumaj/depphunter-cli/internal/lang/puppet"
 	"github.com/sarumaj/depphunter-cli/internal/lang/purescript"
 	"github.com/sarumaj/depphunter-cli/internal/lang/python"
 	"github.com/sarumaj/depphunter-cli/internal/lang/r"
 	"github.com/sarumaj/depphunter-cli/internal/lang/racket"
+	"github.com/sarumaj/depphunter-cli/internal/lang/rego"
 	"github.com/sarumaj/depphunter-cli/internal/lang/ruby"
 	"github.com/sarumaj/depphunter-cli/internal/lang/rust"
 	"github.com/sarumaj/depphunter-cli/internal/lang/scala"
@@ -190,7 +193,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		Scan: scan.Options{Exclude: cfg.Exclude, MaxFileSize: cfg.MaxFileSize},
 		Plugins: []lang.Plugin{
 			golang.Plugin{}, javascript.Plugin{}, python.Plugin{Interpreter: cfg.Python, Getenv: os.Getenv}, rust.Plugin{}, java.Plugin{},
-			kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, fsharp.Plugin{}, cpp.Plugin{}, cmake.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, objc.Plugin{}, dart.Plugin{}, beam.Plugin{}, r.Plugin{}, haskell.Plugin{}, lua.Plugin{}, perl.Plugin{}, ocaml.Plugin{}, julia.Plugin{}, zig.Plugin{}, clojure.Plugin{}, bazel.Plugin{}, nix.Plugin{}, gleam.Plugin{}, elm.Plugin{}, purescript.Plugin{}, crystal.Plugin{}, dlang.Plugin{}, fortran.Plugin{}, haxe.Plugin{}, ada.Plugin{}, racket.Plugin{}, commonlisp.Plugin{}, solidity.Plugin{}, nim.Plugin{}, jsonnet.Plugin{}, cue.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, terraform.Plugin{}, proto.Plugin{}, shell.Plugin{}, markdown.Plugin{},
+			kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, fsharp.Plugin{}, cpp.Plugin{}, cmake.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, objc.Plugin{}, dart.Plugin{}, beam.Plugin{}, r.Plugin{}, haskell.Plugin{}, lua.Plugin{}, perl.Plugin{}, ocaml.Plugin{}, julia.Plugin{}, zig.Plugin{}, clojure.Plugin{}, bazel.Plugin{}, nix.Plugin{}, gleam.Plugin{}, elm.Plugin{}, purescript.Plugin{}, crystal.Plugin{}, dlang.Plugin{}, fortran.Plugin{}, haxe.Plugin{}, ada.Plugin{}, racket.Plugin{}, commonlisp.Plugin{}, solidity.Plugin{}, nim.Plugin{}, jsonnet.Plugin{}, cue.Plugin{}, dhall.Plugin{}, puppet.Plugin{}, rego.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, terraform.Plugin{}, proto.Plugin{}, shell.Plugin{}, markdown.Plugin{},
 		},
 		Cache:        c,
 		ResolveDepth: cfg.ResolveDepth,

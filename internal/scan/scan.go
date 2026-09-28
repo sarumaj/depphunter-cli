@@ -166,7 +166,9 @@ func walkFiles(ctx context.Context, root string) ([]string, error) {
 // typechain-types/ beside a hardhat.config.*, and the packages Atlas clones
 // into deps/ beside a .nimble file or an Atlas configuration (a marker with
 // a wildcard is a glob), and CUE's dependency trees pkg/, gen/ and usr/ in a
-// cue.mod directory (beside its module.cue).
+// cue.mod directory (beside its module.cue), and the Puppet modules r10k
+// installs into modules/ beside a Puppetfile and the spec helper into a
+// module's spec/fixtures/modules.
 // Elsewhere an output/, lib/ or packages/ directory may well be source.
 var generatedBeside = map[string][]string{
 	"output": {"spago.yaml", "spago.dhall"},
@@ -197,6 +199,10 @@ var generatedBeside = map[string][]string{
 	"pkg": {"module.cue"},
 	"gen": {"module.cue"},
 	"usr": {"module.cue"},
+	// r10k (and Code Manager, g10k) install a control repository's modules
+	// into modules/ beside its Puppetfile; puppetlabs_spec_helper installs a
+	// module's test fixtures into spec/fixtures/modules.
+	"modules": {"Puppetfile", "../../.fixtures.yml"},
 }
 
 // besideManifest reports whether the directory name in dir is such a directory.

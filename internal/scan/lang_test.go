@@ -2,7 +2,7 @@ package scan
 
 import "testing"
 
-// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001, REQ-JULIA-001, REQ-ZIG-001, REQ-NIX-001, REQ-FORTRAN-001, REQ-HAXE-001, REQ-ADA-001, REQ-RACKET-001, REQ-COMMONLISP-001, REQ-SOLIDITY-001, REQ-NIM-001, REQ-JSONNET-001, REQ-CUE-001
+// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001, REQ-JULIA-001, REQ-ZIG-001, REQ-NIX-001, REQ-FORTRAN-001, REQ-HAXE-001, REQ-ADA-001, REQ-RACKET-001, REQ-COMMONLISP-001, REQ-SOLIDITY-001, REQ-NIM-001, REQ-JSONNET-001, REQ-CUE-001, REQ-PUPPET-001, REQ-REGO-001
 func TestLanguageByName(t *testing.T) {
 	for p, want := range map[string]string{
 		"a.go":                           "Go",
@@ -125,6 +125,10 @@ func TestLanguageByName(t *testing.T) {
 		"jsonnetfile.json":               "jsonnet-bundler",
 		"jsonnetfile.lock.json":          "jsonnet-bundler",
 		"schema/a.cue":                   "CUE",
+		"manifests/site.pp":              "Puppet",
+		"Puppetfile":                     "Puppet",
+		"policy/deny.rego":               "Rego",
+		"types/Deployment.dhall":         "Dhall",
 		"source/shop/app.d":              "D",
 		"import/shop/cart.di":            "D",
 		"dub.sdl":                        "SDLang",

@@ -83,9 +83,11 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 // artifacts/, cache/ and typechain-types/ beside a hardhat.config.* what
 // Hardhat compiled, and deps/ beside a .nimble file or with Atlas's
 // atlas.config what Atlas cloned, and pkg/, gen/ and usr/ beside a CUE
-// module.cue what CUE vendored and generated; another output/, lib/,
-// packages/, alire/, systems/, cache/, artifacts/, deps/ or pkg/ directory
-// is kept.
+// module.cue what CUE vendored and generated, and modules/ beside a
+// Puppetfile and in spec/fixtures below a .fixtures.yml the Puppet modules
+// r10k and the spec helper installed; another output/, lib/, packages/,
+// alire/, systems/, cache/, artifacts/, deps/, pkg/ or modules/ directory is
+// kept.
 //
 // Verifies: REQ-LANG-018
 func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
@@ -132,6 +134,11 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 		"cue/cue.mod/pkg/github.com/a/b/b.cue":                  "package b\n",
 		"cue/cue.mod/usr/k8s.io/api/core/v1/custom.cue":         "package v1\n",
 		"web/pkg/api/api.go":                                    "package api\n",
+		"ctl/Puppetfile":                                        "mod 'puppetlabs-stdlib', '9.4.1'\n",
+		"ctl/modules/stdlib/manifests/init.pp":                  "class stdlib {}\n",
+		"pup/.fixtures.yml":                                     "fixtures: {}\n",
+		"pup/spec/fixtures/modules/stdlib/manifests/init.pp":    "class stdlib {}\n",
+		"web/modules/app.js":                                    "export {}\n",
 	} {
 		abs := filepath.Join(root, p)
 		os.MkdirAll(filepath.Dir(abs), 0o755)
@@ -145,9 +152,9 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 	for _, f := range got {
 		paths = append(paths, f.Path)
 	}
-	want := []string{"app/spago.yaml", "app/src/Main.purs", "cl/ocicl.csv", "crate/alire.toml", "cue/cue.mod/module.cue", "docs/alire/intro.md", "fs/paket.dependencies",
-		"game/systems/physics.lisp", "hh/hardhat.config.ts", "legacy/spago.dhall", "make/deps/app.d", "nim/shop.nimble", "report/output/summary.md", "shop/shard.yml",
-		"site/artifacts/report.md", "site/cache/page.html", "sol/foundry.toml", "sol/src/Counter.sol", "tools/lib/helper.cr", "web/packages/app.fs", "web/pkg/api/api.go"}
+	want := []string{"app/spago.yaml", "app/src/Main.purs", "cl/ocicl.csv", "crate/alire.toml", "ctl/Puppetfile", "cue/cue.mod/module.cue", "docs/alire/intro.md", "fs/paket.dependencies",
+		"game/systems/physics.lisp", "hh/hardhat.config.ts", "legacy/spago.dhall", "make/deps/app.d", "nim/shop.nimble", "pup/.fixtures.yml", "report/output/summary.md", "shop/shard.yml",
+		"site/artifacts/report.md", "site/cache/page.html", "sol/foundry.toml", "sol/src/Counter.sol", "tools/lib/helper.cr", "web/modules/app.js", "web/packages/app.fs", "web/pkg/api/api.go"}
 	if !reflect.DeepEqual(paths, want) {
 		t.Errorf("got %v, want %v", paths, want)
 	}

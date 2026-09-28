@@ -11,8 +11,8 @@
 // JavaScript companion, the .js file of the same name beside it.
 //
 // PureScript is read by a small lexer of its own (source.go), not the vendored
-// tree-sitter grammar (REQ-PURESCRIPT-010), and Dhall by a small evaluator
-// (dhall.go).
+// tree-sitter grammar (REQ-PURESCRIPT-010), and Dhall by the small evaluator
+// the dhall plugin shares (internal/lang/dhall).
 package purescript
 
 import (
@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/dhall"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -44,7 +45,7 @@ const (
 type Plugin struct{}
 
 func (Plugin) Name() string { return "purescript" }
-func (Plugin) Version() int { return 1 }
+func (Plugin) Version() int { return 2 }
 
 // Claims takes PureScript modules and spago's and bower's manifests, except
 // what spago and bower install (.spago/, bower_components/).
@@ -81,11 +82,12 @@ func (Plugin) Class(f *scan.File) string {
 		return classYAML
 	case base == "spago.lock":
 		return classLock
-	case base == "packages.dhall":
-		return classSet
 	case base == "bower.json":
 		return classBower
-	case path.Ext(base) == ".dhall" && (strings.Contains(base, "spago") || base == "test.dhall"):
+	case dhall.Spago(f.Path):
+		if base == "packages.dhall" {
+			return classSet
+		}
 		return classDhall
 	}
 	return ""
