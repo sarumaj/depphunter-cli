@@ -20,6 +20,11 @@ import (
 // nothing on the machine running them is read.
 var SystemRoot = string(filepath.Separator)
 
+// Platform is the GOOS New gives a machine: runtime.GOOS. Tests whose fixtures sit
+// where one platform's tools keep their files pin it, so that they pass on every
+// platform CI runs them on.
+var Platform = runtime.GOOS
+
 // Machine is the user whose configuration is read: the home directory, the
 // environment and the platform. The environment is read through Env only; Environ
 // only lists the names, for the variables whose names cannot be known in advance, so
@@ -36,7 +41,7 @@ func New(home string, env func(string) string) Machine {
 	if env == nil {
 		env = func(string) string { return "" }
 	}
-	return Machine{Home: home, Env: env, GOOS: runtime.GOOS, Environ: os.Environ}
+	return Machine{Home: home, Env: env, GOOS: Platform, Environ: os.Environ}
 }
 
 // join is filepath.Join, or "" when base is: a path under a directory nobody named
