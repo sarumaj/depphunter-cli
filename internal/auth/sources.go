@@ -297,6 +297,7 @@ func (c *Store) readMachineSources(home string, env func(string) string, lookPat
 	}
 	c.readCargoEnv(env, cargoConfig)
 	c.readTerraform(home, env)
+	c.readComposer(home, env)
 	for _, name := range dockerConfigs(home) {
 		if data, err := os.ReadFile(name); err == nil {
 			c.readDockerConfig(data, lookPath)

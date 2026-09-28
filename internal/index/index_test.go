@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -332,6 +333,38 @@ func TestACredentialInAnIndexURLIsNotRecorded(t *testing.T) {
 	store.Apply(theirs)
 	if got := theirs.Header.Get("Authorization"); got != "" {
 		t.Errorf("a credential the repository supplied was sent: %q", got)
+	}
+}
+
+// A repository that names a Composer repository may not also supply its password:
+// neither the auth.json beside its composer.json, nor the "config" section, nor a
+// user:password in the repository's URL is sent to that host.
+//
+// Verifies: REQ-AUTH-012, REQ-AUTH-017
+func TestARepositorysComposerCredentialsAreDiscarded(t *testing.T) {
+	store := auth.Read(t.TempDir(), env(nil))
+	d := NewDiscoverer(env(nil), "")
+	d.Config().Credentials(store)
+	cfg := d.Discover(write(t, map[string]string{
+		"composer.json": `{"repositories": [{"type": "composer", "url": "https://satis.corp"},
+			{"type": "composer", "url": "https://repo:leak@private.corp"}],
+			"config": {"http-basic": {"satis.corp": {"username": "repo", "password": "leak"}}}}`,
+		"auth.json": `{"http-basic": {"satis.corp": {"username": "repo", "password": "leak"}},
+			"bearer": {"private.corp": "leak"}}`,
+	}))
+	var urls []string
+	for _, s := range cfg.Report() {
+		urls = append(urls, s.URL)
+	}
+	if !slices.Contains(urls, "https://satis.corp") || !slices.Contains(urls, "https://private.corp") {
+		t.Fatalf("the repository's Composer repositories were not recorded: %v", urls)
+	}
+	for _, raw := range []string{"https://satis.corp/packages.json", "https://private.corp/packages.json"} {
+		req, _ := http.NewRequest(http.MethodGet, raw, nil)
+		store.Apply(req)
+		if got := req.Header.Get("Authorization"); got != "" {
+			t.Errorf("%s: a credential the repository supplied was sent: %q", raw, got)
+		}
 	}
 }
 
