@@ -215,6 +215,38 @@ func (m Machine) NpmGlobalConfig() string {
 	return join(env["prefix"], "etc", "npmrc")
 }
 
+// YarnRCFilename is the name Yarn Berry gives its configuration files, in the
+// home directory and in a project alike: YARN_RC_FILENAME, else .yarnrc.yml.
+//
+// Implements: REQ-SUP-064
+func (m Machine) YarnRCFilename() string {
+	if name := m.Env("YARN_RC_FILENAME"); name != "" && !strings.ContainsAny(name, `/\`) {
+		return name
+	}
+	return ".yarnrc.yml"
+}
+
+// YarnUserConfig is Yarn Berry's configuration in the home directory.
+//
+// Implements: REQ-SUP-064
+func (m Machine) YarnUserConfig() string { return join(m.Home, m.YarnRCFilename()) }
+
+// YarnClassicConfig is Yarn 1's ~/.yarnrc.
+//
+// Implements: REQ-SUP-064
+func (m Machine) YarnClassicConfig() string { return join(m.Home, ".yarnrc") }
+
+// BunConfig is Bun's global bunfig: $XDG_CONFIG_HOME/.bunfig.toml when that
+// exists, else ~/.bunfig.toml.
+//
+// Implements: REQ-SUP-064
+func (m Machine) BunConfig() string {
+	if xdg := m.Env("XDG_CONFIG_HOME"); xdg != "" && isFile(filepath.Join(xdg, ".bunfig.toml")) {
+		return filepath.Join(xdg, ".bunfig.toml")
+	}
+	return join(m.Home, ".bunfig.toml")
+}
+
 // ---------------------------------------------------------------- pip
 
 // PipConfigFiles are the configuration files pip loads, in the order it loads them,

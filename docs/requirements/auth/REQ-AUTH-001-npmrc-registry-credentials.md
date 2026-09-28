@@ -16,7 +16,8 @@ The system **shall** read from npm's global npmrc, the user's npmrc and the
 ([REQ-AUTH-020](REQ-AUTH-020-credential-file-locations.md)) the four per-registry
 credential forms `//<host>/...:_authToken`, `:_auth` (base64 "user:password"),
 `:username` and `:_password` (base64), and **shall** file each under the host it
-names.
+names - and, for a key with a path, under that path only
+([REQ-AUTH-025](REQ-AUTH-025-npm-path-scoped-credentials.md)).
 
 ## Rationale
 

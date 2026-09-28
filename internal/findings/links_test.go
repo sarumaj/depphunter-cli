@@ -9,9 +9,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/sarumaj/depphunter-cli/internal/auth"
 )
 
 // docs writes a small documented project and returns its root.
@@ -191,5 +194,44 @@ func TestOnlyAGoneAnswerIsAFinding(t *testing.T) {
 	if asked.Load()-before >= before {
 		t.Errorf("the second run asked %d times, the first %d: nothing was cached",
 			asked.Load()-before, before)
+	}
+}
+
+// The link checker sends this machine's credentials the way the index client does:
+// a registry token npm keeps for one path of a host goes with a link under that
+// path and with no other link to the host.
+//
+// Verifies: REQ-AUTH-025, REQ-AUTH-011
+func TestALinkIsNotSentAnotherPathsRegistryToken(t *testing.T) {
+	var mu sync.Mutex
+	sent := map[string]string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		sent[r.URL.Path] = r.Header.Get("Authorization")
+		mu.Unlock()
+	}))
+	defer srv.Close()
+	home := t.TempDir()
+	npmrc := "//" + srv.Listener.Addr().String() + "/api/v4/projects/1/packages/npm/:_authToken=registry-token\n"
+	if err := os.WriteFile(filepath.Join(home, ".npmrc"), []byte(npmrc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	web := NewWeb(t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil))
+	web.http = srv.Client()
+	web.Check(context.Background(), []string{
+		srv.URL + "/wiki/Home",
+		srv.URL + "/api/v4/projects/2/packages/npm/x",
+		srv.URL + "/api/v4/projects/1/packages/npm/x",
+	}, func(string, ...any) {})
+	mu.Lock()
+	defer mu.Unlock()
+	for p, want := range map[string]string{
+		"/wiki/Home":                        "",
+		"/api/v4/projects/2/packages/npm/x": "",
+		"/api/v4/projects/1/packages/npm/x": "Bearer registry-token",
+	} {
+		if got := sent[p]; got != want {
+			t.Errorf("%s was sent %q, want %q", p, got, want)
+		}
 	}
 }

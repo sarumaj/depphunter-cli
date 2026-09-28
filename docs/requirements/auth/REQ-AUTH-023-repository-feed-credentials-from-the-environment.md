@@ -23,6 +23,17 @@ writes out **shall** be discarded, a Paket `authtype` other than `basic`
 **shall** give nothing, and a host that already has a credential of this
 machine's **shall** keep it.
 
+The same **shall** hold for an npm-family registry the repository names: an
+`npmAuthToken` or `npmAuthIdent` of a repository `.yarnrc.yml` that is exactly
+`${NAME}` (or `${NAME:-x}` with `NAME` set), and a `token` or `password` of a
+repository `bunfig.toml` that is exactly `$NAME` or `${NAME}`, **shall** be
+lent only to a registry vouched for with `--trust-index` or on the host of a
+registry this machine's npm, Yarn or Bun configuration names, and only for
+that registry's path
+([REQ-AUTH-025](REQ-AUTH-025-npm-path-scoped-credentials.md)). A token, ident
+or password written out, one only a fallback fills, and a user:password in a
+repository registry URL **shall** be discarded.
+
 ## Rationale
 
 The usual CI setup is a repository `nuget.config` or `paket.dependencies`
@@ -43,9 +54,16 @@ user's say-so, or this machine's own configuration of that host, decides.
 3. On the host of a machine source, the Paket password is sent; a machine
    credential for the host is kept over a lent one.
 4. A vouched Paket feed is asked with the lent credential, end to end.
+5. A repository `.yarnrc.yml` `${VAR}` token or ident and a `bunfig.toml`
+   `$VAR` password are lent to a vouched registry or one on the host of a
+   machine registry, and to nothing else; a written-out token, a fallback and
+   a written-out URL password are not; a machine token for the host is kept.
 
 ## Notes
 
-A user name may be written out. Paket's own credential store
+A user name may be written out (in a Paket source and in a `bunfig.toml`
+table). A repository registry URL made of a variable is not recorded: its
+value would come from this machine's environment and be drawn on the map.
+Paket's own credential store
 (`paket config add-credentials`, `paket.config` in the user's application data
 directory) keeps passwords encrypted with a salt, and is not read.

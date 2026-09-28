@@ -18,6 +18,11 @@ tool looks for it, reading the variables from the machine's environment only:
   winning; `registry`, `@scope:registry`), then the user's npmrc
   (`npm_config_userconfig`, else `~/.npmrc`), then the global npmrc
   (`npm_config_globalconfig`, else `etc/npmrc` under `npm_config_prefix`).
+- Yarn Berry: `YARN_NPM_REGISTRY_SERVER`, then the file `YARN_RC_FILENAME`
+  names (else `.yarnrc.yml`) in the home directory, its `${VAR}` references
+  resolved from the environment; Yarn 1: `~/.yarnrc`.
+- Bun: `$XDG_CONFIG_HOME/.bunfig.toml` when it exists, else
+  `~/.bunfig.toml`, its `$VAR` references resolved from the environment.
 - pip: its files in pip's load order, each setting replacing the same setting
   of an earlier file - the site-wide files (`$XDG_CONFIG_DIRS/pip/pip.conf`,
   default `/etc/xdg`, then `/etc/pip.conf`; macOS
@@ -76,6 +81,9 @@ fixed `$HOME` paths missed the feed the machine actually uses.
 7. `MAVEN_HOME`'s settings, `GRADLE_USER_HOME`'s init scripts, `CLJ_CONFIG`'s
    and `$XDG_CONFIG_HOME/clojure`'s `deps.edn`, `LEIN_HOME` and a moved sbt
    repositories file are read instead of, or beside, the home defaults.
+8. `YARN_RC_FILENAME` renames the home Yarn file, and
+   `YARN_NPM_REGISTRY_SERVER` replaces its registry; Bun's
+   `$XDG_CONFIG_HOME/.bunfig.toml` wins over the home one.
 
 ## Notes
 

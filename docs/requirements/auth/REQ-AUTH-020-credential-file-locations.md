@@ -18,6 +18,9 @@ environment:
 - npm: the global npmrc, then the user's (`npm_config_userconfig`, else
   `~/.npmrc`), then `npm_config_//<host>/:<field>` variables in any case, each
   key replacing the same key before it.
+- Yarn Berry and Bun: the home `.yarnrc.yml` (named by `YARN_RC_FILENAME`)
+  with the `YARN_NPM_*` variables over it, and Bun's global bunfig
+  ([REQ-AUTH-024](REQ-AUTH-024-yarn-and-bun-credentials.md)).
 - netrc: `NETRC`; else `~/_netrc` on Windows when it exists; else `~/.netrc`.
 - containers: `REGISTRY_AUTH_FILE` alone when set; else
   `$XDG_RUNTIME_DIR/containers/auth.json` on Linux

@@ -224,13 +224,22 @@ func (c *Config) lend(feed, user, pass string) {
 	if err != nil || u.Host == "" {
 		return
 	}
-	vouched := c.trusted[c.recorded(feed)] || c.trusted[u.Host]
-	for _, s := range c.sources[NuGet] {
-		if m, err := url.Parse(s.URL); err == nil && s.Trusted && strings.EqualFold(m.Host, u.Host) {
-			vouched = true
-		}
-	}
-	if vouched {
+	if c.vouched(NuGet, feed, u) {
 		c.credentials.Lend(feed, user, pass)
 	}
+}
+
+// vouched reports whether this machine vouches for a feed the repository names:
+// the user did with --trust-index (by URL or host), or this machine's own
+// configuration names a source of the ecosystem on the feed's host.
+func (c *Config) vouched(eco, feed string, u *url.URL) bool {
+	if c.trusted[c.recorded(feed)] || c.trusted[u.Host] {
+		return true
+	}
+	for _, s := range c.sources[eco] {
+		if m, err := url.Parse(s.URL); err == nil && s.Trusted && strings.EqualFold(m.Host, u.Host) {
+			return true
+		}
+	}
+	return false
 }

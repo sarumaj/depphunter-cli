@@ -1088,7 +1088,10 @@ tree following one would not terminate.
 
 Every external package records the index it comes from. depphunter reads both
 the index configuration present on this machine and the configuration the
-repository carries — `.npmrc`, including `@scope:registry`; `.yarnrc.yml`;
+repository carries — `.npmrc`, including `@scope:registry`; `.yarnrc.yml`
+and `~/.yarnrc.yml` (`npmRegistryServer`, `npmScopes`,
+`YARN_NPM_REGISTRY_SERVER`); Yarn 1's `.yarnrc` and `~/.yarnrc`; Bun's
+`bunfig.toml` and global bunfig (`[install] registry`, `[install.scopes]`);
 `pip.conf` and a requirements file's `--index-url` and `--extra-index-url`;
 Poetry and uv sources in `pyproject.toml`; `NuGet.config` and the `source`
 lines of `paket.dependencies` and feeds of `paket.lock` (nuget.org itself and
@@ -1134,6 +1137,8 @@ and platform paths:
 | Tool       | Where, in the tool's order of precedence                                                                                                                                                                                                                                                                                                                                                                                                        |
 |------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | npm        | `npm_config_*` variables in any case (`npm_config_registry`, `npm_config_@scope:registry`, `npm_config_//host/:_authToken`; the lower-case spelling wins); the user's npmrc (`npm_config_userconfig`, else `~/.npmrc`); the global npmrc (`npm_config_globalconfig`, else `etc/npmrc` under `npm_config_prefix`; npm's built-in prefix is not guessed)                                                                                          |
+| Yarn       | `YARN_NPM_REGISTRY_SERVER`, `YARN_NPM_AUTH_TOKEN`, `YARN_NPM_AUTH_IDENT`; Yarn Berry's `.yarnrc.yml` in the home directory (the name `YARN_RC_FILENAME` gives it), `${VAR}` resolved from the environment; Yarn 1's `~/.yarnrc` (registries only: Yarn 1 takes credentials from the npmrc)                                                                                                                                                      |
+| Bun        | `$XDG_CONFIG_HOME/.bunfig.toml` when it exists, else `~/.bunfig.toml`, `$VAR` resolved from the environment                                                                                                                                                                                                                                                                                                                                     |
 | pip        | `PIP_INDEX_URL` and `PIP_EXTRA_INDEX_URL`; the file `PIP_CONFIG_FILE` names; the user's `pip.conf` (`$XDG_CONFIG_HOME/pip`, `~/Library/Application Support/pip` on macOS, `%APPDATA%\pip\pip.ini` on Windows, and the legacy `~/.pip`), skipped when `PIP_CONFIG_FILE` names an existing file; the site-wide `/etc/pip.conf`, `$XDG_CONFIG_DIRS/pip/pip.conf`, `%ProgramData%\pip\pip.ini`. `PIP_CONFIG_FILE=/dev/null` switches every file off |
 | Cargo      | `CARGO_REGISTRIES_<NAME>_INDEX` and `_TOKEN` (the name upper-cased, `-` as `_`); `config`/`config.toml` and `credentials`/`credentials.toml` in `CARGO_HOME`, else `~/.cargo` (the file without an extension when both exist)                                                                                                                                                                                                                   |
 | Go         | the environment, else the go env file (`GOENV`, else `go/env` in the user configuration directory; `GOENV=off` for none), for `GOPROXY`, `GOPRIVATE`, `GONOPROXY` and `GONOSUMDB`                                                                                                                                                                                                                                                               |
@@ -1172,7 +1177,7 @@ default or is asked **beside** it:
 | NuGet                         | nothing: nuget.org is off when the merged configuration leaves it out (a `<clear/>` with no closer entry for it, or it disabled)                                                                                                                                                                                           | every enabled feed                                                                                                                                                                                                                                                                                                               |
 | Go                            | `GOPROXY`: its proxies are asked in order, and proxy.golang.org only if it is on the list                                                                                                                                                                                                                                  | —                                                                                                                                                                                                                                                                                                                                |
 | crates.io                     | `[source.crates-io] replace-with` (followed to the end of the chain)                                                                                                                                                                                                                                                       | —                                                                                                                                                                                                                                                                                                                                |
-| npm and every other ecosystem | the first unscoped source found (npm's `registry`)                                                                                                                                                                                                                                                                         | —                                                                                                                                                                                                                                                                                                                                |
+| npm and every other ecosystem | the first unscoped source found (npm's `registry`, then Yarn's `npmRegistryServer`, `~/.yarnrc`'s `registry` and Bun's `[install] registry`)                                                                                                                                                                               | —                                                                                                                                                                                                                                                                                                                                |
 
 A package is asked of the sources beside the public default first, in the
 order they were found (this machine's, then the repository's), and of the
@@ -1279,7 +1284,9 @@ written for and to no other.
 
 | Source                                                      | Holds                                                                                                          |
 |-------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
-| npm's user and global npmrc, `npm_config_//<host>/:<field>` | `_authToken`, `_auth`, and `username` with `_password`, per registry                                           |
+| npm's user and global npmrc, `npm_config_//<host>/:<field>` | `_authToken`, `_auth`, and `username` with `_password`, per registry host and path                             |
+| the home `.yarnrc.yml`, `YARN_NPM_AUTH_TOKEN`/`_IDENT`      | Yarn Berry's `npmAuthToken` and `npmAuthIdent`: top level, `npmScopes`, `npmRegistries`                        |
+| Bun's global bunfig                                         | `token`, or `username` and `password`, of `[install] registry` and `[install.scopes]`                          |
 | `~/.netrc` (`NETRC`; `~/_netrc` on Windows)                 | the machine/login/password triples git, curl, Go and pip already read                                          |
 | Maven's `settings.xml` (`~/.m2`, `MAVEN_HOME`)              | each `<server>`, matched to a `<mirror>`, profile `<repository>` or user `deps.edn` repository                 |
 | the user's and machine-wide `NuGet.Config`                  | `<packageSourceCredentials>` (`ClearTextPassword`), matched to its enabled `<packageSources>` entry            |
@@ -1336,6 +1343,34 @@ the repository is discarded. A NuGet credential for `pkgs.dev.azure.com`, which
 every Azure DevOps organization shares, serves only its organization's path.
 NuGet's Windows-encrypted `Password` and Paket's encrypted credential store
 (`paket config add-credentials`) are not read.
+
+The same holds for Yarn and Bun: a repository `.yarnrc.yml` whose
+`npmAuthToken` or `npmAuthIdent` is exactly `${NAME}` (or `${NAME:-x}` with
+`NAME` set), and a repository `bunfig.toml` whose `token` or `password` is
+exactly `$NAME` or `${NAME}`, get the variable's value only for a registry on
+the host of one this machine's npm, Yarn or Bun configuration names, or one
+vouched for with `--trust-index`. A token or password written out, one only a
+fallback fills, and a `user:password` in a repository registry URL are
+discarded; a repository registry URL made of a variable is not recorded.
+
+In this machine's own Yarn Berry configuration an `npmRegistries` entry's
+credential goes to its registry, a scope's to the scope's `npmRegistryServer`,
+and the top-level one (or `YARN_NPM_AUTH_TOKEN`, `YARN_NPM_AUTH_IDENT`) to the
+default registry — the file's `npmRegistryServer` or `YARN_NPM_REGISTRY_SERVER`,
+else registry.yarnpkg.com and registry.npmjs.org. `npmAuthToken` is sent as a
+Bearer token and `npmAuthIdent` (`user:password`) as Basic credentials; a
+`${VAR}` naming an unset variable without a fallback is dropped, as Yarn
+refuses it. What the npmrc holds for a registry wins over Yarn's and Bun's.
+Credentials are filed by registry, not by scope: two scopes on one registry
+share one.
+
+**An npm credential serves its registry's path.** A key such as
+`//gitlab.corp/api/v4/projects/1/packages/npm/:_authToken` is sent only
+under that path, the longest matching key winning, so two
+projects' registries on one host each keep their own token and a Markdown link
+elsewhere on the host carries none; `//host/:_authToken` serves the whole
+host. Yarn's and Bun's credentials for a registry with a path are limited the
+same way.
 
 Composer's home is the one Composer itself uses: `COMPOSER_HOME` when set, else
 `$XDG_CONFIG_HOME/composer` (`~/.config/composer`) or `~/.composer`, whichever
