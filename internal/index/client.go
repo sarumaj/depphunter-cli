@@ -63,9 +63,12 @@ type Client struct {
 	opamCopies memo[*opamCopy]
 	// listings are directories of public index repositories GitHub listed.
 	listings memo[[]string]
-	// juliaDirs is where each package's files are in a Julia registry other than
-	// General, from its Registry.toml: one request per registry.
-	juliaDirs map[string]map[string]string
+	// juliaRegistries is where each package's files are in a Julia registry
+	// other than General, from its Registry.toml: read once per registry.
+	juliaRegistries memo[*juliaPaths]
+	// juliaCopies are the registries installed in a Julia depot, an archive
+	// read once.
+	juliaCopies memo[*juliaCopy]
 	// qlSystems is what each Quicklisp dist's system index lists: one request
 	// per dist version rather than one per project.
 	qlSystems map[string]*qlIndex
@@ -129,7 +132,6 @@ func NewClient(cfg *Config, dir string, ttl, timeout time.Duration,
 		repos:       map[string]map[string][]dep{},
 		rocks:       map[string]map[string][]string{},
 		cpanModules: map[string]string{},
-		juliaDirs:   map[string]map[string]string{},
 		qlSystems:   map[string]*qlIndex{},
 		qlFailed:    map[string]qlFailure{},
 		located:     map[string]located{},
@@ -228,6 +230,16 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 		c.locate(t, untrusted, false)
 		c.report(l)
 		return nil
+	}
+	if t.Ecosystem == Bazel {
+		for _, k := range asked {
+			if u, err := url.Parse(k.url); err == nil {
+				if scope, ok := c.cfg.bazelHelperFor(u.Hostname()); ok {
+					// Implements: REQ-BAZEL-011, REQ-TRC-017
+					c.note(trace.NoteHelperNotRun, bazelHelperNote(k.url, scope))
+				}
+			}
+		}
 	}
 	key := t.Ecosystem + " " + t.Package + "@" + t.Version + " " + t.Registry
 	c.mu.Lock()
@@ -368,9 +380,14 @@ type answer struct {
 	requests []trace.Request
 }
 
-// cacheKey is where an index's answer about a package is kept on disk.
+// cacheKey is where an index's answer about a package is kept on disk. A Julia
+// package is its UUID: two registries' packages of one name are two packages.
 func cacheKey(t lang.Target, index string) string {
-	return t.Ecosystem + "|" + index + "|" + t.Package + "|" + t.Version
+	key := t.Ecosystem + "|" + index + "|" + t.Package + "|" + t.Version
+	if t.Ecosystem == Julia && t.Registry != "" {
+		key += "|" + strings.ToLower(t.Registry)
+	}
+	return key
 }
 
 // cached is an index's answer from the disk cache, if it has one.
@@ -804,7 +821,7 @@ type dep struct {
 	Eco string `json:"e,omitempty"`
 	// Registry is where a crate's dependency is published, as a Cargo index line
 	// says it: "" for the registry of the crate itself, crates.io for crates.io,
-	// else the other registry's index URL.
+	// else the other registry's index URL. A Julia package's dependency's UUID.
 	Registry string `json:"r,omitempty"`
 }
 
@@ -817,6 +834,9 @@ func (d dep) registry(from lang.Target) string {
 		// The Hex API does not say which repository a requirement is in; the
 		// registry's rule is the parent's own unless it says otherwise.
 		return from.Registry
+	case from.Ecosystem == Julia:
+		// A registry's Deps.toml names each dependency's UUID.
+		return d.Registry
 	case from.Ecosystem != Cargo:
 		return ""
 	case d.Registry == "":

@@ -529,15 +529,16 @@ func (r *resolver) declared(p *project, name, uuid string, segments []string, fi
 	if juliapkg.Stdlib(name) {
 		return std(name)
 	}
-	return compatTarget(name, p.compat[name])
+	return compatTarget(name, uuid, p.compat[name])
 }
 
 // compatTarget is a registry package as a [compat] entry asks for it: "=1.2.3" pins,
-// anything else ("1.2" is ^1.2) is kept as written and floats, none floats.
+// anything else ("1.2" is ^1.2) is kept as written and floats, none floats. Its
+// UUID is what the registries know it by.
 //
 // Implements: REQ-JULIA-008
-func compatTarget(name, compat string) lang.Target {
-	t := lang.Target{Ecosystem: ecoJulia, Package: name}
+func compatTarget(name, uuid, compat string) lang.Target {
+	t := lang.Target{Ecosystem: ecoJulia, Package: name, Registry: uuid}
 	switch v, ok := juliapkg.ExactCompat(compat); {
 	case ok:
 		t.Version, t.Pinned = v, true
@@ -570,7 +571,7 @@ func (r *resolver) entry(m *manifest, e *entry, segments []string, file string) 
 	if v == "" {
 		v = e.tree // a package added by URL without a version: its tree hash
 	}
-	t := lang.Target{Ecosystem: ecoJulia, Package: e.name, Version: v, Pinned: v != "", Origin: e.repoURL}
+	t := lang.Target{Ecosystem: ecoJulia, Package: e.name, Version: v, Pinned: v != "", Origin: e.repoURL, Registry: e.uuid}
 	t.Floating = v == ""
 	return t
 }

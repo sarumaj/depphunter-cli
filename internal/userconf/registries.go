@@ -2,7 +2,9 @@ package userconf
 
 import (
 	"path/filepath"
+	"slices"
 	"sort"
+	"strings"
 )
 
 // ---------------------------------------------------------------- dub
@@ -100,4 +102,45 @@ func (m Machine) AlireSettingsDir() string {
 		return join(m.Home, ".config", "alire")
 	}
 	return join(m.xdgConfigHome(), "alire")
+}
+
+// ---------------------------------------------------------------- Julia
+
+// JuliaDepots lists the Julia depots whose registries Pkg reads, in order:
+// the entries of `JULIA_DEPOT_PATH` (`;`-separated on Windows, else
+// `:`-separated; `~` is the home directory), where an empty entry stands for
+// the default depot, else the default depot ~/.julia alone. The depots bundled
+// with a Julia installation, which an empty entry also brings in, are not
+// known here: where Julia is installed is not. A depot is listed once.
+//
+// Implements: REQ-SUP-055, REQ-SUP-064
+func (m Machine) JuliaDepots() []string {
+	user := join(m.Home, ".julia")
+	sep := ":"
+	if m.GOOS == "windows" {
+		sep = ";"
+	}
+	var out []string
+	add := func(d string) {
+		if d != "" && !slices.Contains(out, d) {
+			out = append(out, d)
+		}
+	}
+	value := m.Env("JULIA_DEPOT_PATH")
+	if value == "" {
+		add(user)
+		return out
+	}
+	for _, d := range strings.Split(value, sep) {
+		switch {
+		case d == "":
+			d = user
+		case d == "~":
+			d = m.Home
+		case strings.HasPrefix(d, "~/") || strings.HasPrefix(d, `~\`):
+			d = join(m.Home, d[2:])
+		}
+		add(d)
+	}
+	return out
 }

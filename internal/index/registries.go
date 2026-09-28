@@ -21,11 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/BurntSushi/toml"
-
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/ada"
-	"github.com/sarumaj/depphunter-cli/internal/lang/juliapkg"
 	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
 	"github.com/sarumaj/depphunter-cli/internal/lang/opam"
 	"github.com/sarumaj/depphunter-cli/internal/lang/starlark"
@@ -1826,165 +1823,6 @@ func (c *Client) opamPackage(ctx context.Context, index string, t lang.Target) (
 	return out, nil
 }
 
-// ---------------------------------------------------------------- julia
-
-// juliaPackage reads a package's dependencies from a Julia registry's files:
-// <registry>/<dir>/Versions.toml for the version (the one pinned, else the newest a
-// [compat] range admits, else the newest not yanked), then Deps.toml and Compat.toml,
-// whose sections are keyed by the version ranges they hold for ("0.21.2 - 0"). A
-// dependency's version is its compat range for that release, in the registry's
-// notation, where a whole "1.2.3" is that release; julia itself is not a dependency,
-// and Julia's standard libraries are julia-std.
-//
-// Implements: REQ-SUP-055
-func (c *Client) juliaPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
-	base := strings.TrimRight(index, "/")
-	dir, err := c.juliaDir(ctx, base, t.Package)
-	if err != nil || dir == "" {
-		return nil, err
-	}
-	dir = base + "/" + dir + "/"
-	body, err := c.accept(ctx, dir+"Versions.toml", "text/plain")
-	if err != nil {
-		return nil, err
-	}
-	var versions map[string]struct {
-		Yanked bool `toml:"yanked"`
-	}
-	if _, err := toml.Decode(string(body), &versions); err != nil {
-		return nil, err
-	}
-	var listed []string
-	for v, meta := range versions {
-		if !meta.Yanked {
-			listed = append(listed, v)
-		}
-	}
-	version := strings.TrimSpace(t.Version)
-	if _, ok := versions[version]; !ok {
-		ranges, _ := juliapkg.CompatRanges(version)
-		if version = juliapkg.Newest(listed, ranges); version == "" {
-			version = juliapkg.Newest(listed, nil)
-		}
-	}
-	v, ok := juliapkg.ParseVersion(version)
-	if !ok {
-		return nil, nil
-	}
-	body, err = c.accept(ctx, dir+"Deps.toml", "text/plain")
-	if err != nil {
-		return nil, nil // a package without dependencies has no Deps.toml
-	}
-	deps := juliaSections(body, v)
-	compat := map[string]string{}
-	if body, err := c.accept(ctx, dir+"Compat.toml", "text/plain"); err == nil {
-		for name, value := range juliaSections(body, v) {
-			compat[name] = juliaCompat(value)
-		}
-	}
-	var out []dep
-	for name := range deps {
-		if name == "julia" {
-			continue
-		}
-		d := dep{Name: name, Version: compat[name]}
-		if juliapkg.Stdlib(name) {
-			d = dep{Name: name, Eco: "julia-std"}
-		}
-		out = append(out, d)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out, nil
-}
-
-// juliaSections merges the sections of a Deps.toml or Compat.toml whose range key
-// holds for a version.
-func juliaSections(body []byte, v juliapkg.Version) map[string]any {
-	var doc map[string]map[string]any
-	if _, err := toml.Decode(string(body), &doc); err != nil {
-		return nil
-	}
-	out := map[string]any{}
-	for key, section := range doc {
-		if r, ok := juliapkg.RegistryRange(key); ok && r.Contains(v) {
-			for name, value := range section {
-				out[name] = value
-			}
-		}
-	}
-	return out
-}
-
-// juliaCompat writes a Compat.toml value - a range or a list of them, "0.1-0.3"
-// compressed - as one string, hyphen ranges spaced so that no range reads as a
-// pre-release: ["0.1-0.3", "1"] is "0.1 - 0.3, 1".
-func juliaCompat(value any) string {
-	var parts []string
-	switch v := value.(type) {
-	case string:
-		parts = []string{v}
-	case []any:
-		for _, x := range v {
-			if s, ok := x.(string); ok {
-				parts = append(parts, s)
-			}
-		}
-	}
-	for i, p := range parts {
-		if lo, hi, ok := strings.Cut(p, "-"); ok && !strings.Contains(p, " - ") {
-			parts[i] = strings.TrimSpace(lo) + " - " + strings.TrimSpace(hi)
-		}
-	}
-	return strings.Join(parts, ", ")
-}
-
-// juliaDir is where a registry keeps a package's files. The General registry's
-// layout is known (J/JSON); another registry's Registry.toml lists each package's
-// path, read once per registry.
-func (c *Client) juliaDir(ctx context.Context, base, name string) (string, error) {
-	if base == public[Julia] {
-		return juliapkg.RegistryDir(name), nil
-	}
-	c.mu.Lock()
-	dirs, ok := c.juliaDirs[base]
-	c.mu.Unlock()
-	if !ok {
-		body, err := c.accept(ctx, base+"/Registry.toml", "text/plain")
-		if err != nil {
-			return "", err
-		}
-		dirs = juliaRegistryPaths(body)
-		c.mu.Lock()
-		c.juliaDirs[base] = dirs
-		c.mu.Unlock()
-	}
-	return dirs[name], nil
-}
-
-// juliaRegistry is what a Registry.toml says: the registry's name and repository,
-// and each package's name and directory, keyed by UUID.
-type juliaRegistry struct {
-	Name     string `toml:"name"`
-	Repo     string `toml:"repo"`
-	Packages map[string]struct {
-		Name string `toml:"name"`
-		Path string `toml:"path"`
-	} `toml:"packages"`
-}
-
-// juliaRegistryPaths maps each package of a Registry.toml to its directory.
-func juliaRegistryPaths(body []byte) map[string]string {
-	var reg juliaRegistry
-	out := map[string]string{}
-	if _, err := toml.Decode(string(body), &reg); err != nil {
-		return out
-	}
-	for _, p := range reg.Packages {
-		out[p.Name] = p.Path
-	}
-	return out
-}
-
 // ---------------------------------------------------------------- Maven
 
 // mavenPOM is what a POM says about a release's dependencies: its own, its parent's
@@ -2136,6 +1974,18 @@ func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target)
 }
 
 // ---------------------------------------------------------------- Bazel
+
+// bazelHelperNote says that the credential helper a .bazelrc names for a
+// registry was not run.
+func bazelHelperNote(index, scope string) string {
+	who := "for every host"
+	if scope != "" {
+		who = "for " + scope
+	}
+	return "a .bazelrc names a credential helper " + who + " (--credential_helper): helpers are programs and " +
+		"are not run, so " + index + " is asked without its credentials (a netrc entry for the host is sent, " +
+		"which Bazel would not use in the helper's place)"
+}
 
 // bazelModule reads a module's dependencies from a Bazel registry laid out as files
 // (the Bazel Central Registry, or one a .bazelrc names with --registry):

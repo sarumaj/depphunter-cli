@@ -76,7 +76,8 @@ type Target struct {
 	// that registry serves the package (see internal/index). For Hex, the
 	// repositories asked in order, comma-separated: "hexpm:acme" for a private
 	// organization's package, a rebar3 project's list ending in "*" for the
-	// machine's. Empty for the ecosystem's default.
+	// machine's. For Julia, the package's UUID, by which Pkg looks it up in every
+	// registry. Empty for the ecosystem's default.
 	Registry string
 }
 

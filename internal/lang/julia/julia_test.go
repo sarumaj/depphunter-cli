@@ -19,14 +19,28 @@ import (
 // environment and a docs environment with [sources]; a tools environment with a plain
 // and a versioned manifest; a script outside every environment; Artifacts.toml.
 
+// uuids are the fixture's registry packages' UUIDs, which their targets carry for
+// the registries to find them by.
+var uuids = map[string]string{
+	"Aqua":       "4c88cf16-eb10-579e-8560-4a9242c79595",
+	"CairoPlot":  "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+	"DataFrames": "a93c6f00-e57d-5684-b7b6-d8193f3e46c0",
+	"Documenter": "e30172f5-a6a5-5a46-863b-614d45cd2de4",
+	"HTTP":       "cd3eb016-35fb-5094-929b-558a96fad6f3",
+	"JSON":       "682c06a0-de6a-54ab-a142-c8b1cf79cde6",
+	"Parsers":    "69de0a69-1ddd-5017-9359-2bf0b02dc9f0",
+	"Plots":      "91a5bcdd-55d7-5caf-9e0b-520d859cae80",
+	"Statistics": "10745b16-79ce-11e8-11f9-7d13ad32a3b2",
+}
+
 func pkg(eco, name, version string, pinned bool) lang.Target {
-	return lang.Target{Ecosystem: eco, Package: name, Version: version, Pinned: pinned}
+	return lang.Target{Ecosystem: eco, Package: name, Version: version, Pinned: pinned, Registry: uuids[name]}
 }
 
 // Verifies: REQ-JULIA-002, REQ-JULIA-004, REQ-JULIA-005, REQ-JULIA-008, REQ-JULIA-010
 func TestSourceImports(t *testing.T) {
 	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	json := lang.Target{Ecosystem: ecoJulia, Package: "JSON", Version: "0.21.4", Requested: "0.21", Pinned: true}
+	json := lang.Target{Ecosystem: ecoJulia, Package: "JSON", Version: "0.21.4", Requested: "0.21", Pinned: true, Registry: uuids["JSON"]}
 	langtest.CheckImports(t, res["src/Shop.jl"], map[string]lang.Target{
 		"using JSON":          json,
 		"using HTTP":          pkg(ecoJulia, "HTTP", "1.10.8", true),
@@ -102,10 +116,10 @@ func TestSymbols(t *testing.T) {
 // Verifies: REQ-JULIA-005, REQ-JULIA-006, REQ-JULIA-007, REQ-JULIA-008
 func TestManifests(t *testing.T) {
 	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	cairo := lang.Target{Ecosystem: ecoJulia, Package: "CairoPlot", Version: "0.2.0", Pinned: true, Origin: "https://github.com/example/CairoPlot.jl"}
+	cairo := lang.Target{Ecosystem: ecoJulia, Package: "CairoPlot", Version: "0.2.0", Pinned: true, Origin: "https://github.com/example/CairoPlot.jl", Registry: uuids["CairoPlot"]}
 	langtest.CheckImports(t, res["Project.toml"], map[string]lang.Target{
 		"deps.HTTP":               pkg(ecoJulia, "HTTP", "1.10.8", true),
-		"deps.JSON":               {Ecosystem: ecoJulia, Package: "JSON", Version: "0.21.4", Requested: "0.21", Pinned: true},
+		"deps.JSON":               {Ecosystem: ecoJulia, Package: "JSON", Version: "0.21.4", Requested: "0.21", Pinned: true, Registry: uuids["JSON"]},
 		"deps.LinearAlgebra":      {Ecosystem: ecoStd, Package: "LinearAlgebra"},
 		"deps.Statistics":         pkg(ecoJulia, "Statistics", "1.11.1", true),
 		"deps.Utils":              {Local: "lib/Utils/src/Utils.jl"},
@@ -212,7 +226,7 @@ func TestCompatPins(t *testing.T) {
 		"=1.2.3, =1.3": {Ecosystem: ecoJulia, Package: "X", Version: "=1.2.3, =1.3"},
 		"":             {Ecosystem: ecoJulia, Package: "X", Floating: true},
 	} {
-		if got := compatTarget("X", compat); got != want {
+		if got := compatTarget("X", "", compat); got != want {
 			t.Errorf("%q: got %+v, want %+v", compat, got, want)
 		}
 	}

@@ -18,7 +18,9 @@ followed (such a relative import reaches the parent module's file, or is
 dropped); `import A.b` is read as the module path `A.b`, so a function
 imported so is an edge to the package; a package's version is not chosen by
 Pkg's resolver without a manifest; registries other than General are known
-only when installed in a depot and hosted on GitHub.
+only when installed in a depot (read from that copy, whatever their host),
+and a Pkg server (`JULIA_PKG_SERVER`) is not asked
+([REQ-SUP-055](../sup/REQ-SUP-055-julia-registry-files.md)).
 
 ## Rationale
 
