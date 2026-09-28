@@ -10,6 +10,7 @@ package index
 
 import (
 	"net/url"
+	"path"
 	"slices"
 	"sort"
 	"strings"
@@ -253,8 +254,8 @@ const (
 	// asks it too, so a package it lacks is still found on the default.
 	Additive
 	// Listed is an entry of an ordered list that replaces the public default
-	// entry by entry: GOPROXY. Every entry is asked in turn, and nothing that is
-	// not on the list.
+	// entry by entry: GOPROXY, Poetry's primary sources. Every entry is asked in
+	// turn, and nothing that is not on the list.
 	Listed
 )
 
@@ -322,6 +323,9 @@ type Config struct {
 	// what they say merged with the repository's (applyNuGet).
 	nugetMachine []nuget.ConfigFile
 	nuget        nuget.Settings
+	// py is what this machine's uv, Poetry and PDM configuration names beyond its
+	// sources: indexes and credentials a repository refers to by name.
+	py pythonMachine
 }
 
 func New() *Config {
@@ -677,6 +681,14 @@ func matches(eco, scope, pkg string) bool {
 		// A Maven package is group:artifact; the scope is a group prefix.
 		group, _, _ := strings.Cut(pkg, ":")
 		return group == scope || strings.HasPrefix(group, scope+".")
+	case PyPI:
+		// Names compare as PEP 503 normalizes them; a PDM include_packages
+		// pattern is a glob.
+		if strings.ContainsAny(scope, "*?[") {
+			ok, _ := path.Match(pypiName(scope), pypiName(pkg))
+			return ok
+		}
+		return pypiName(scope) == pypiName(pkg)
 	}
 	return strings.EqualFold(scope, pkg)
 }

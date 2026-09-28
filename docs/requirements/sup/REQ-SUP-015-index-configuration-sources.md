@@ -48,9 +48,11 @@ and `R_PROFILE_USER`, and the `repository` stanzas of cabal's configuration
 The system **shall** read index configuration from the repository: `.npmrc`,
 `.yarnrc.yml` (or the name `YARN_RC_FILENAME` gives it), `.yarnrc`,
 `bunfig.toml` (a registry URL made of a variable not recorded), `pip.conf`,
-`pip.ini`, `requirements*.txt`, the Poetry and uv
-indexes of `pyproject.toml` (with the dependencies pinned to an explicit
-one), `NuGet.config` (merged with this machine's NuGet configuration, see
+`pip.ini`, `requirements*.txt`, the Poetry, uv and PDM
+indexes of `pyproject.toml`, `uv.toml`, `Pipfile`, `Pipfile.lock` and
+`pdm.toml` (with the packages pinned to one,
+[REQ-SUP-066](REQ-SUP-066-python-tool-indexes.md)), `NuGet.config` (merged
+with this machine's NuGet configuration, see
 [REQ-SUP-065](REQ-SUP-065-nuget-configuration-layers-and-source-mapping.md)),
 the repositories other than Maven
 Central of `pom.xml`, of Gradle build and settings scripts (outside

@@ -101,6 +101,7 @@ func (c *Config) machine(m userconf.Machine) {
 	read(m.NpmGlobalConfig(), plain(parseNpmrc))
 	machineYarnBun(m, k)
 	machinePip(m, k)
+	c.machinePython(m, k)
 	parseGoproxy(m.GoEnv("GOPROXY"), k)
 	// Cargo: the registries the environment defines, before config.toml's, since a
 	// variable overrides the same registry's index there.
@@ -327,6 +328,7 @@ func (c *Config) project(files []*scan.File) {
 	// The repository's nuget.config files are merged with this machine's before
 	// anything else names a NuGet feed, so a feed both name stays this machine's.
 	c.applyNuGet(projectNuGet(ordered))
+	python := c.projectPython(ordered)
 	for _, f := range ordered {
 		base := strings.ToLower(path.Base(f.Path))
 		if base == "nuget.config" {
@@ -334,6 +336,9 @@ func (c *Config) project(files []*scan.File) {
 		}
 		data, err := os.ReadFile(f.Abs)
 		if err != nil {
+			continue
+		}
+		if python(f, base, data, k) {
 			continue
 		}
 		switch {
@@ -349,8 +354,6 @@ func (c *Config) project(files []*scan.File) {
 			parsePipConf(data, k)
 		case strings.HasPrefix(base, "requirements") && strings.HasSuffix(base, ".txt"):
 			parseRequirements(data, k)
-		case base == "pyproject.toml":
-			parsePyproject(data, k)
 		case base == "paket.dependencies":
 			parsePaketSources(data, k)
 			c.lendPaket(data)
@@ -485,99 +488,6 @@ func parseRequirements(data []byte, k sink) {
 			k.add(PyPI, value, "")
 		case "--extra-index-url":
 			k.extra(PyPI, value)
-		}
-	}
-}
-
-// parsePyproject reads the indexes Poetry and uv declare, as each tool uses them.
-//
-// A Poetry source is primary unless its priority says otherwise, and a primary
-// source replaces PyPI; a supplemental one (or a legacy secondary one) is asked
-// beside it; an explicit one serves only the dependencies that name it with
-// `source = "<name>"`. A uv index is asked before PyPI unless it is the default
-// (default = true), which replaces PyPI; an explicit one serves only the packages
-// [tool.uv.sources] pins to it, as any index a package is pinned to does.
-//
-// Implements: REQ-SUP-015, REQ-SUP-063
-func parsePyproject(data []byte, k sink) {
-	type poetrySource struct {
-		Name, URL, Priority string
-		Default, Secondary  bool
-	}
-	var doc struct {
-		Tool struct {
-			Poetry struct {
-				Source       []poetrySource
-				Dependencies map[string]any
-				Group        map[string]struct{ Dependencies map[string]any }
-			}
-			UV struct {
-				Index []struct {
-					Name, URL         string
-					Default, Explicit bool
-				}
-				Sources map[string]any
-			} `toml:"uv"`
-		}
-	}
-	if _, err := toml.Decode(string(data), &doc); err != nil {
-		return
-	}
-	poetry := doc.Tool.Poetry
-	named := map[string]string{}
-	for _, s := range poetry.Source {
-		named[s.Name] = s.URL
-		switch {
-		case s.Priority == "explicit":
-		case s.Priority == "supplemental" || s.Secondary || s.Priority == "secondary":
-			k.extra(PyPI, s.URL)
-		default:
-			k.add(PyPI, s.URL, "")
-		}
-	}
-	deps := []map[string]any{poetry.Dependencies}
-	for _, g := range slices.Sorted(maps.Keys(poetry.Group)) {
-		deps = append(deps, poetry.Group[g].Dependencies)
-	}
-	for _, d := range deps {
-		for _, name := range slices.Sorted(maps.Keys(d)) {
-			if spec, ok := d[name].(map[string]any); ok {
-				if src, ok := spec["source"].(string); ok && named[src] != "" {
-					k.add(PyPI, named[src], name)
-				}
-			}
-		}
-	}
-	uv := doc.Tool.UV
-	clear(named)
-	for _, s := range uv.Index {
-		named[s.Name] = s.URL
-		switch {
-		case s.Explicit:
-		case s.Default:
-			k.add(PyPI, s.URL, "")
-		default:
-			k.extra(PyPI, s.URL)
-		}
-	}
-	for _, name := range slices.Sorted(maps.Keys(uv.Sources)) {
-		// { index = "name" }, or a list of such entries with markers
-		specs, ok := uv.Sources[name].([]map[string]any)
-		if !ok {
-			if list, isList := uv.Sources[name].([]any); isList {
-				for _, e := range list {
-					if m, ok := e.(map[string]any); ok {
-						specs = append(specs, m)
-					}
-				}
-			} else if m, isMap := uv.Sources[name].(map[string]any); isMap {
-				specs = append(specs, m)
-			}
-		}
-		for _, spec := range specs {
-			if idx, ok := spec["index"].(string); ok && named[idx] != "" {
-				k.add(PyPI, named[idx], name)
-			}
 		}
 	}
 }

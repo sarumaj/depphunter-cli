@@ -41,6 +41,9 @@ environment:
   `$XDG_CONFIG_HOME/clojure`, else `~/.clojure`, for its repository names.
 - sbt, Coursier and Gradle: the files of
   [REQ-AUTH-021](REQ-AUTH-021-jvm-build-tool-credentials.md).
+- uv, Poetry and PDM: the `uv.toml` files, Poetry's configuration directory
+  and PDM's `config.toml` index discovery reads, and the tools' variables
+  ([REQ-AUTH-026](REQ-AUTH-026-python-tool-credentials.md)).
 
 ## Rationale
 

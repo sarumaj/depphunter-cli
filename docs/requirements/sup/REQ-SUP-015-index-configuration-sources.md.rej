@@ -1,0 +1,11 @@
+diff a/docs/requirements/sup/REQ-SUP-015-index-configuration-sources.md b/docs/requirements/sup/REQ-SUP-015-index-configuration-sources.md	(rejected hunks)
+@@ -19,7 +19,8 @@ global npmrc), Yarn Berry's `npmRegistryServer` and `npmScopes` registries
+ (`YARN_NPM_REGISTRY_SERVER`, the home `.yarnrc.yml`), Yarn 1's `registry` and
+ `"@scope:registry"` (`~/.yarnrc`), Bun's `[install] registry` and
+ `[install.scopes]` (the global bunfig), pip's `index-url` and `extra-index-url` (`PIP_INDEX_URL`,
+-`PIP_EXTRA_INDEX_URL` and pip's configuration files), `GOPROXY` (its proxies
++`PIP_EXTRA_INDEX_URL` and pip's configuration files), uv's and PDM's indexes
++([REQ-SUP-066](REQ-SUP-066-python-tool-indexes.md)), `GOPROXY` (its proxies
+ up to the first `direct` or `off`, each with the separator after it; from the
+ environment or the go env file), Cargo's `config.toml` and
+ `CARGO_REGISTRIES_<NAME>_INDEX`, the mirrors of Maven's settings files and

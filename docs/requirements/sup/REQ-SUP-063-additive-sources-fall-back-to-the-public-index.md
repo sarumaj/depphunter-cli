@@ -14,22 +14,26 @@ verification:
 The system **shall** model each unscoped index source as either replacing the
 ecosystem's public default or being asked beside it, as the package manager
 does: pip's `extra-index-url` (`PIP_EXTRA_INDEX_URL`, `pip.conf`,
-requirements files), a supplemental Poetry source and a uv index that is not
-the default, the repositories of a POM, a Gradle script, an sbt build, a
+requirements files), a supplemental Poetry source, a uv index that is not
+the default, a Pipfile source after the first and a PDM source not named
+`pypi`, the repositories of a POM, a Gradle script, an sbt build, a
 Clojure manifest, an active Maven settings profile and the Gradle, Clojure,
 Leiningen and sbt user configuration, a Maven mirror of a repository other
 than `central`, `*` and `external:*`,
 Composer repositories and NuGet feeds are asked beside it; `index-url`, a
-primary Poetry source, a default uv index, a Maven mirror of `central`, a
+default uv index, a Pipfile's first source, a PDM source named `pypi`, a
+Maven mirror of `central`, a
 Maven mirror of `*` (which also stands in for every repository asked beside
 Central), Cargo's `replace-with` and every other ecosystem's unscoped source
 replace it (so does a Maven settings profile or Clojure repository with the
-id `central`); `GOPROXY`, `COURSIER_REPOSITORIES` and sbt's repositories file
-under `-Dsbt.override.build.repos=true` are ordered lists that replace it.
+id `central`); `GOPROXY`, `COURSIER_REPOSITORIES`, sbt's repositories file
+under `-Dsbt.override.build.repos=true` and Poetry's default and primary
+sources are ordered lists that replace it.
 
 For each package the index client **shall** ask the sources beside the public
 default first, in the order found, then the public default or the source that
-replaces it (every `GOPROXY` entry in order), and **shall** move on to the
+replaces it (every entry of an ordered list, `GOPROXY`'s or Poetry's, in
+order), and **shall** move on to the
 next index only when one answers that it does not have the package (HTTP 404
 or 410, or an answer that does not list it), or after any failure of a
 `GOPROXY` entry followed by `|`. Any other failure **shall** end the question.
@@ -90,6 +94,8 @@ plants.
    public registry.
 9. A package matching a private pattern that the extra index lacks is not
    asked of the public index.
+10. Of two Poetry primary sources, the second answers what the first lacks,
+    and PyPI is not asked.
 
 ## Notes
 
