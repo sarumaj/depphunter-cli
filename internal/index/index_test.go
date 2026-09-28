@@ -861,3 +861,33 @@ repositories {
 		t.Errorf("maven sources %v, want %v", got, want)
 	}
 }
+
+// A credential says the user can reach a host, not that every feed on it is theirs:
+// an index the repository names on a host this machine holds a credential for is
+// still not known until the user vouches for it. Container images and Terraform
+// registry modules name their host themselves, so there a credential does count.
+//
+// Verifies: REQ-SUP-043
+func TestAMachineCredentialDoesNotVouchForARepositoryIndex(t *testing.T) {
+	home := t.TempDir()
+	put(t, filepath.Join(home, ".npmrc"), "//nexus.corp/:_authToken=machine-token\n")
+	// cSpell: ignore dXNlcjpwYXNz
+	put(t, filepath.Join(home, ".docker", "config.json"), `{"auths": {"ghcr.io": {"auth": "dXNlcjpwYXNz"}}}`)
+	put(t, filepath.Join(home, ".terraform.d", "credentials.tfrc.json"), `{"credentials": {"tf.corp": {"token": "machine-token"}}}`)
+	c := New()
+	c.Credentials(auth.Read(home, env(nil)))
+	c.Add(NPM, Source{URL: "https://nexus.corp/repository/other-team"})
+	if _, known := c.For(NPM, "@acme/widgets"); known {
+		t.Error("a repository index was trusted because this machine holds a credential for its host")
+	}
+	if _, known := c.For(OCI, "ghcr.io/org/app"); !known {
+		t.Error("an image on a registry this machine is logged in to was not known")
+	}
+	if _, known := c.For(TerraformModule, "tf.corp/acme/vpc/aws"); !known {
+		t.Error("a module on a registry this machine holds a token for was not known")
+	}
+	c.Trust([]string{"https://nexus.corp/repository/other-team"})
+	if _, known := c.For(NPM, "@acme/widgets"); !known {
+		t.Error("the index was not known once the user vouched for it")
+	}
+}
