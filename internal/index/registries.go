@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -704,6 +705,32 @@ func (c *Client) cranRepo(ctx context.Context, index string) (map[string][]dep, 
 	c.repos[index] = pkgs
 	c.mu.Unlock()
 	return pkgs, nil
+}
+
+// bioconductorPackage reads a Bioconductor package's dependencies from its release's
+// software repository, a CRAN-like repository whose src/contrib/PACKAGES is read
+// once (cranRepo). A dependency the same PACKAGES lists is a Bioconductor package;
+// any other is CRAN's, where Bioconductor packages take their CRAN dependencies
+// from.
+//
+// Implements: REQ-SUP-048
+func (c *Client) bioconductorPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	pkgs, err := c.cranRepo(ctx, index)
+	if err != nil {
+		return nil, err
+	}
+	deps, ok := pkgs[t.Package]
+	if !ok {
+		return nil, errAbsent
+	}
+	out := make([]dep, 0, len(deps))
+	for _, d := range deps {
+		if _, bioc := pkgs[d.Name]; !bioc {
+			d.Eco = CRAN
+		}
+		out = append(out, d)
+	}
+	return out, nil
 }
 
 // ---------------------------------------------------------------- Hackage
@@ -2548,7 +2575,8 @@ func (c *Client) quicklispProject(ctx context.Context, index string, t lang.Targ
 	}
 	systems := idx.projects[name]
 	if len(systems) == 0 {
-		return nil, fmt.Errorf("%s: no project %q", distinfo, name)
+		// Not this dist's: the next dist may have it.
+		return nil, fmt.Errorf("%s: no project %q: %w", distinfo, name, errAbsent)
 	}
 	var own []qlSystem
 	for _, s := range systems {
@@ -2589,14 +2617,41 @@ func (c *Client) quicklispProject(ctx context.Context, index string, t lang.Targ
 	return out, nil
 }
 
-// quicklispIndex reads a distinfo and the system index it names, once.
+// qlFailure is why a dist could not be read, and when.
+type qlFailure struct {
+	err error
+	at  time.Time
+}
+
+// quicklispIndex reads a distinfo and the system index it names, once; a dist that
+// could not be read is not asked again until failRetry has passed.
+//
+// Implements: REQ-SUP-062
 func (c *Client) quicklispIndex(ctx context.Context, distinfo string) (*qlIndex, error) {
 	c.mu.Lock()
 	idx, ok := c.qlSystems[distinfo]
+	failed, gave := c.qlFailed[distinfo]
 	c.mu.Unlock()
 	if ok {
 		return idx, nil
 	}
+	if gave && time.Since(failed.at) < failRetry {
+		return nil, failed.err
+	}
+	idx, err := c.readQuicklispIndex(ctx, distinfo)
+	c.mu.Lock()
+	if err != nil {
+		c.qlFailed[distinfo] = qlFailure{err, time.Now()}
+	} else {
+		delete(c.qlFailed, distinfo)
+		c.qlSystems[distinfo] = idx
+	}
+	c.mu.Unlock()
+	return idx, err
+}
+
+// readQuicklispIndex reads a distinfo and the system index it names.
+func (c *Client) readQuicklispIndex(ctx context.Context, distinfo string) (*qlIndex, error) {
 	info, err := c.accept(ctx, distinfo, "text/plain")
 	if err != nil {
 		return nil, err
@@ -2614,7 +2669,7 @@ func (c *Client) quicklispIndex(ctx context.Context, distinfo string) (*qlIndex,
 	if err != nil {
 		return nil, err
 	}
-	idx = &qlIndex{projects: map[string][]qlSystem{}, project: map[string]string{}}
+	idx := &qlIndex{projects: map[string][]qlSystem{}, project: map[string]string{}}
 	for _, line := range strings.Split(string(body), "\n") {
 		f := strings.Fields(line)
 		if len(f) < 3 || strings.HasPrefix(f[0], "#") {
@@ -2626,9 +2681,6 @@ func (c *Client) quicklispIndex(ctx context.Context, distinfo string) (*qlIndex,
 			idx.project[s.name] = f[0]
 		}
 	}
-	c.mu.Lock()
-	c.qlSystems[distinfo] = idx
-	c.mu.Unlock()
 	return idx, nil
 }
 

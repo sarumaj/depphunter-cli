@@ -88,6 +88,9 @@ type resolver struct {
 	// roots are the first segments of the project's packages and of the declared
 	// groups: the root packages known to exist.
 	roots map[string]bool
+	// locked is what the Gradle locks record, by group:artifact ("" when two of
+	// them disagree).
+	locked map[string]string
 }
 
 // NewResolver is the Java resolver for another JVM language: its imports reach the
@@ -120,12 +123,15 @@ func newResolver(all []*scan.File, l Language) *resolver {
 			r.readGradle(f.Abs)
 		case base == "libs.versions.toml":
 			r.readCatalog(f.Abs)
+		case gradleLockfile(f.Path):
+			r.readGradleLock(f.Abs)
 		case strings.HasSuffix(base, ".sbt") && path.Base(path.Dir(f.Path)) != "project":
 			// project/*.sbt configures sbt itself (its plugins), not the code.
 			sbt = append(sbt, f)
 		}
 	}
 	r.readSBTs(sbt)
+	r.applyLocks()
 	r.finish(l)
 	for d := range dirs {
 		r.dirs = append(r.dirs, d)
@@ -415,6 +421,73 @@ func scalaBinary(v string) string {
 		return parts[0] + "." + parts[1]
 	}
 	return ""
+}
+
+// gradleLockfile reports whether a file is a Gradle dependency lock: a project's
+// gradle.lockfile, or one configuration's <name>.lockfile under
+// gradle/dependency-locks (the format before Gradle 7). The locks of the build
+// script's own classpath (buildscript-gradle.lockfile, settings-gradle.lockfile,
+// buildscript-*.lockfile) hold Gradle plugins, not what the code imports.
+func gradleLockfile(p string) bool {
+	base := path.Base(p)
+	if base == "gradle.lockfile" {
+		return true
+	}
+	dir := path.Dir(p)
+	return strings.HasSuffix(base, ".lockfile") && !strings.HasPrefix(base, "buildscript-") &&
+		path.Base(dir) == "dependency-locks" && path.Base(path.Dir(dir)) == "gradle"
+}
+
+// readGradleLock reads a Gradle dependency lock: `group:artifact:version=configurations`
+// lines (`group:artifact:version` alone in a per-configuration lock), `#` comments and
+// the `empty=` line aside. Every locked module is recorded by group:artifact; locks
+// that disagree on a module's version lock none.
+//
+// Implements: REQ-JAVA-013
+func (r *resolver) readGradleLock(abs string) {
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		return
+	}
+	if r.locked == nil {
+		r.locked = map[string]string{}
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		coords, _, _ := strings.Cut(line, "=")
+		parts := strings.Split(strings.TrimSpace(coords), ":")
+		if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+			continue // the empty= line, or not a module
+		}
+		key := parts[0] + ":" + parts[1]
+		if have, ok := r.locked[key]; ok && have != parts[2] {
+			r.locked[key] = "" // locked at two versions: neither is the one
+			continue
+		}
+		r.locked[key] = parts[2]
+	}
+}
+
+// applyLocks puts what a Gradle lock records on the artifacts the build declares: the
+// locked version replaces the declared one (a dynamic 2.3.+, a range, or none at
+// all), which is kept as requested. A module only the lock names - a transitive
+// dependency - is not declared by it: imports resolve to what the build asks for.
+//
+// Implements: REQ-JAVA-013
+func (r *resolver) applyLocks() {
+	for key, v := range r.locked {
+		a := r.artifacts[key]
+		if a == nil || v == "" {
+			continue
+		}
+		if a.version != v {
+			a.requested = a.version
+		}
+		a.version, a.conflict = v, false
+	}
 }
 
 // readCatalog reads a Gradle version catalog: [libraries] entries as "g:a:v" or

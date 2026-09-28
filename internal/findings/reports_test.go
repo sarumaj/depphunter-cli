@@ -202,3 +202,30 @@ func TestReadRejectsWhatIsNotAReport(t *testing.T) {
 		}
 	}
 }
+
+// Every language package type Trivy reports lands on the island of the ecosystem
+// Trivy's own vulnerability driver asks for it; a type without an island (conda,
+// Bitnami, an OS package database) leaves the finding on the scanned file.
+//
+// Verifies: REQ-FND-005
+func TestTrivyPackageTypes(t *testing.T) {
+	for typ, want := range map[string]string{
+		"bun": "npm", "javascript": "npm", "pnpm": "npm", "yarn": "npm", "node-pkg": "npm",
+		"uv": "pypi", "pylock": "pypi", "poetry": "pypi",
+		"sbt": "maven", "gradle": "maven", "jar": "maven",
+		"packages-props": "nuget", "dotnet-core": "nuget",
+		"rustbinary": "crates", "cargo": "crates",
+		"gobinary": "go", "composer-vendor": "composer", "gemspec": "rubygems",
+		"swift": "swiftpm", "cocoapods": "cocoapods", "pub": "pub", "hex": "hex", "conan": "conan", "julia": "julia",
+		"conda-pkg": "", "bitnami": "", "debian": "",
+	} {
+		doc := `{"Results":[{"Target":"lock","Class":"lang-pkgs","Type":"` + typ + `","Vulnerabilities":[{"VulnerabilityID":"CVE-1","PkgName":"p","InstalledVersion":"1"}]}]}`
+		found, err := readTrivy([]byte(doc))
+		if err != nil || len(found) != 1 {
+			t.Fatalf("%s: %v %v", typ, found, err)
+		}
+		if found[0].Ecosystem != want {
+			t.Errorf("%s: ecosystem %q, want %q", typ, found[0].Ecosystem, want)
+		}
+	}
+}

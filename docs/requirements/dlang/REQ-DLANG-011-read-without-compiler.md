@@ -16,8 +16,7 @@ generates is not read, every branch of `version`, `debug` and `static if`
 counts, an import's module is found by name only (no `-I` flags beyond
 dub's recipes), a module of a package dub has not fetched is attributed by
 the curated table or the declared name it spells, every platform's
-settings count at once, dub's own settings (`registryUrls`) are not read,
-and a string import needs a literal path.
+settings count at once, and a string import needs a literal path.
 
 ## Rationale
 

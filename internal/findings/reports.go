@@ -526,16 +526,20 @@ func readTrivy(data []byte) ([]*Finding, error) {
 	return out, nil
 }
 
-// trivyEcosystems maps Trivy's package types onto this project's ecosystem ids. A type
-// that is not here (an OS package database) leaves the finding without an island, and
-// it is shown on the file Trivy scanned instead.
+// trivyEcosystems maps Trivy's package types (its fanal LangType names) onto this
+// project's ecosystem ids. A type that is not here (an OS package database, a conda
+// package, a Bitnami component, a Kubernetes distribution) leaves the finding without
+// an island, and it is shown on the file Trivy scanned instead.
+//
+// Implements: REQ-FND-005
 var trivyEcosystems = map[string]string{
-	"npm": "npm", "yarn": "npm", "pnpm": "npm", "node-pkg": "npm",
-	"gomod": "go", "gobinary": "go",
-	"pip": "pypi", "poetry": "pypi", "pipenv": "pypi", "python-pkg": "pypi",
-	"cargo": "crates",
-	"pom":   "maven", "gradle": "maven", "jar": "maven",
-	"nuget": "nuget", "dotnet-core": "nuget",
+	"npm": "npm", "yarn": "npm", "pnpm": "npm", "bun": "npm", "node-pkg": "npm",
+	"javascript": "npm", // a library file found by name (jquery.min.js), which npm publishes
+	"gomod":      "go", "gobinary": "go",
+	"pip": "pypi", "poetry": "pypi", "pipenv": "pypi", "uv": "pypi", "pylock": "pypi", "python-pkg": "pypi",
+	"cargo": "crates", "rustbinary": "crates",
+	"pom": "maven", "gradle": "maven", "sbt": "maven", "jar": "maven",
+	"nuget": "nuget", "dotnet-core": "nuget", "packages-props": "nuget",
 	"conan":    "conan",
 	"composer": "composer", "composer-vendor": "composer",
 	"bundler": "rubygems", "gemspec": "rubygems", "cocoapods": "cocoapods",

@@ -9,8 +9,10 @@
 package index
 
 import (
+	"cmp"
 	"net/url"
 	"path"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -43,6 +45,10 @@ const (
 	// CRAN is R's, as install.packages and renv install from it; its package
 	// metadata is read from crandb (see cranPackage).
 	CRAN = "cran"
+	// Bioconductor is the R plugin's island of Bioconductor packages; each
+	// Bioconductor release serves a CRAN-like repository of its software
+	// packages (see bioconductorPackage).
+	Bioconductor = "bioconductor"
 	// Hackage is Haskell's, as cabal and stack install from it.
 	Hackage = "hackage"
 	// TerraformModule is the Terraform plugin's island of modules; the public
@@ -102,7 +108,10 @@ var public = map[string]string{
 	Pub:      "https://pub.dev",
 	Hex:      "https://hex.pm/api",
 	CRAN:     "https://cloud.r-project.org",
-	Hackage:  "https://hackage.haskell.org",
+	// The current release's software repository; a project's renv.lock names
+	// the release it was made with (see Config.publicURL).
+	Bioconductor: "https://bioconductor.org/packages/release/bioc",
+	Hackage:      "https://hackage.haskell.org",
 	// Terraform's public registry; OpenTofu's registry.opentofu.org serves the same
 	// namespaces, and the plugin names modules of either without a host.
 	TerraformModule: "https://registry.terraform.io",
@@ -330,6 +339,9 @@ type Config struct {
 	// in order; rebar3Replace says they replace hex.pm's (see hexRepositories).
 	rebar3Repos   []string
 	rebar3Replace bool
+	// biocRelease is the Bioconductor release the repository's renv.lock was made
+	// with ("" for the current one): the release whose packages it installed.
+	biocRelease string
 }
 
 func New() *Config {
@@ -376,8 +388,27 @@ func (c *Config) Trust(urls []string) {
 //
 // Implements: REQ-SUP-038
 func (c *Config) Public(eco, index string) bool {
-	return index != "" && (index == public[eco] || eco == Maven && index == clojarsURL)
+	return index != "" && (index == c.publicURL(eco) || eco == Maven && index == clojarsURL)
 }
+
+// publicURL is an ecosystem's public default: public's, except that Bioconductor's is
+// the release the repository's renv.lock was made with (Bioconductor.Version), which
+// is the same public host at another release's directory.
+//
+// Implements: REQ-SUP-048
+func (c *Config) publicURL(eco string) string {
+	if eco == Bioconductor {
+		return bioconductorPackages + "/" + cmp.Or(c.biocRelease, "release") + "/bioc"
+	}
+	return public[eco]
+}
+
+// bioconductorPackages is where every Bioconductor release's repositories are, as
+// <release>/bioc; tests point it at their own server.
+var bioconductorPackages = "https://bioconductor.org/packages"
+
+// biocVersion is a Bioconductor release number as renv.lock records it: 3.18.
+var biocVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)
 
 // Add records a source for an ecosystem. Sources added first are preferred, which is
 // why the machine's own configuration is read before the repository's.
@@ -407,7 +438,7 @@ func (c *Config) Add(eco string, s Source) {
 
 // forgetProject drops what the repository declared, before it is read again.
 func (c *Config) forgetProject() {
-	c.clojure = false
+	c.clojure, c.biocRelease = false, ""
 	for eco, origin := range c.off {
 		if origin == OriginProject {
 			delete(c.off, eco)
@@ -444,7 +475,7 @@ func (c *Config) Report() []trace.Source {
 				Origin: c.origin(s), Trusted: c.fetchable(eco, s),
 			})
 		}
-		if url := public[eco]; url != "" && !c.has(eco, url) && c.off[eco] == "" {
+		if url := c.publicURL(eco); url != "" && !c.has(eco, url) && c.off[eco] == "" {
 			out = append(out, trace.Source{Ecosystem: eco, URL: url, Origin: OriginPublic, Trusted: true})
 		}
 		if eco == Maven && c.clojure && !c.has(eco, Clojars) {
@@ -487,7 +518,7 @@ func (c *Config) origin(s Source) string {
 //
 // Implements: REQ-SUP-019, REQ-SUP-042
 func (c *Config) fetchable(eco string, s Source) bool {
-	return s.Trusted || s.URL == public[eco] || c.trusted[s.URL]
+	return s.Trusted || s.URL == c.publicURL(eco) || c.trusted[s.URL]
 }
 
 // For reports which index a package is attributed to, and whether anything here
@@ -656,8 +687,8 @@ func (c *Config) candidates(eco, pkg, registry string) []candidate {
 			}
 		}
 	}
-	if chosen == nil && c.off[eco] == "" && public[eco] != "" {
-		primary = append(primary, candidate{url: public[eco], known: true, primary: true})
+	if chosen == nil && c.off[eco] == "" && c.publicURL(eco) != "" {
+		primary = append(primary, candidate{url: c.publicURL(eco), known: true, primary: true})
 	}
 	if eco == Maven && c.clojure && (chosen == nil || chosen.Kind != ReplaceAll) && c.off[eco] == "" {
 		// Clojure's tools search Clojars after Maven Central (or its mirror)

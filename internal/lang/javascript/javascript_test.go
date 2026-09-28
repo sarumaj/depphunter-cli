@@ -535,3 +535,45 @@ func TestBunLockTruncated(t *testing.T) {
 		newTree().addBunTree(entries)
 	}
 }
+
+// TestNpmShrinkwrap: npm-shrinkwrap.json is read as package-lock.json is - its
+// versions pin, its tree is walked - and beside one in the same directory npm reads
+// only it, so package-lock.json there says nothing. Another directory's
+// package-lock.json still answers for its own package.
+//
+// Verifies: REQ-JS-007, REQ-SUP-009
+func TestNpmShrinkwrap(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"package.json":          `{"dependencies":{"react":"^18.2.0","chalk":"^5.3.0"}}`,
+		"npm-shrinkwrap.json":   `{"lockfileVersion":3,"packages":{"":{},"node_modules/react":{"version":"18.3.1","dependencies":{"loose-envify":"^1.1.0"}},"node_modules/loose-envify":{"version":"1.4.0"}}}`,
+		"package-lock.json":     `{"lockfileVersion":3,"packages":{"":{},"node_modules/react":{"version":"18.2.0"},"node_modules/chalk":{"version":"5.3.0"}}}`,
+		"index.js":              "import 'react';\nimport 'chalk';\n",
+		"app/package.json":      `{"dependencies":{"chalk":"^5.0.0"}}`,
+		"app/package-lock.json": `{"lockfileVersion":2,"packages":{"":{},"node_modules/chalk":{"version":"5.2.0"}}}`,
+		"app/main.js":           "import 'chalk';\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, filepath.FromSlash(name))), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res := langtest.Analyze(t, Plugin{}, dir)
+	langtest.CheckImports(t, res["index.js"], map[string]lang.Target{
+		"react": {Ecosystem: "npm", Package: "react", Version: "18.3.1", Requested: "^18.2.0", Pinned: true},
+		"chalk": {Ecosystem: "npm", Package: "chalk", Version: "^5.3.0"},
+	})
+	langtest.CheckImports(t, res["app/main.js"], map[string]lang.Target{
+		"chalk": {Ecosystem: "npm", Package: "chalk", Version: "5.2.0", Requested: "^5.0.0", Pinned: true},
+	})
+	r, err := (Plugin{}).Resolver(dir, langtest.Files(t, dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r.(lang.Transitive).Dependencies(lang.Target{Ecosystem: "npm", Package: "react"})
+	if len(got) != 1 || got[0].Package != "loose-envify" || got[0].Version != "1.4.0" {
+		t.Errorf("react depends on %+v, want loose-envify 1.4.0 from the shrinkwrap", got)
+	}
+}

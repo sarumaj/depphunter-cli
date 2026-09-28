@@ -96,7 +96,13 @@ func newResolver(all []*scan.File) *resolver {
 		// One decoding of each lock file serves both the versions the project's
 		// imports pin and the tree the transitive walk follows: a monorepo's
 		// pnpm-lock.yaml runs to megabytes of YAML.
-		case "package-lock.json":
+		case "package-lock.json", "npm-shrinkwrap.json":
+			// npm-shrinkwrap.json is package-lock.json's format under the name a
+			// published package's lock takes; beside one, npm reads only it.
+			// Implements: REQ-JS-007
+			if path.Base(f.Path) == "package-lock.json" && r.files[path.Join(dir, "npm-shrinkwrap.json")] {
+				continue
+			}
 			var lock packageLock
 			if readJSON(f.Abs, &lock) == nil {
 				r.addLock(dir, lock.versions())
@@ -329,8 +335,8 @@ func (r *resolver) viaConfig(c *tsconfig, spec string) (lang.Target, bool) {
 // declared looks up pkg in the nearest package.json files that declare it, preferring
 // the exact version from the nearest lock file: the range in package.json is what
 // was asked for, the lock is what is installed. Where several lock files sit in one
-// directory, the first to answer wins, in the order package-lock.json,
-// pnpm-lock.yaml, yarn.lock, bun.lock.
+// directory, the first to answer wins, in the order npm-shrinkwrap.json (or else
+// package-lock.json), pnpm-lock.yaml, yarn.lock, bun.lock.
 //
 // Implements: REQ-JS-006, REQ-JS-007, REQ-JS-010
 func (r *resolver) declared(pkg, dir string) (lang.Target, bool) {
@@ -574,7 +580,7 @@ func (lock *pnpmLock) versions() map[string]map[string]string {
 	return out
 }
 
-// packageLock is package-lock.json, v1 through v3.
+// packageLock is package-lock.json (or npm-shrinkwrap.json), v1 through v3.
 type packageLock struct {
 	// v2 and v3 list every installed path under "packages".
 	Packages map[string]struct {
@@ -614,8 +620,8 @@ func (lock *packageLock) versions() map[string]string {
 // Implements: REQ-SOLIDITY-008
 type Packages struct{ r *resolver }
 
-// ReadPackages reads the package.json and lock files (package-lock.json,
-// pnpm-lock.yaml, yarn.lock, bun.lock) of the project.
+// ReadPackages reads the package.json and lock files (npm-shrinkwrap.json,
+// package-lock.json, pnpm-lock.yaml, yarn.lock, bun.lock) of the project.
 func ReadPackages(all []*scan.File) *Packages { return &Packages{r: newResolver(all)} }
 
 // Package resolves a bare specifier ("@scope/name/sub/path") that file

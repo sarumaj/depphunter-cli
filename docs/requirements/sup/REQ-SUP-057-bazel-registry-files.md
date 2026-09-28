@@ -21,7 +21,15 @@ Registry (`https://bcr.bazel.build`) is the public index; registries a
 `.bazelrc` names with `--registry` **shall** be recorded as the
 repository's (the project's `.bazelrc` files) or this machine's
 (`~/.bazelrc`), except the Bazel Central Registry itself and `file://`
-registries.
+registries. The files a `.bazelrc`'s `import`, `try-import` and
+`try-import-if-bazel-version` lines name **shall** be read where the line
+stands: `%workspace%` is the workspace's directory (the nearest directory
+with `MODULE.bazel`, `REPO.bazel`, `WORKSPACE` or `WORKSPACE.bazel`, else the
+repository's root; none for `~/.bazelrc`, whose `%workspace%` lines are
+skipped); another relative path is taken from the workspace, as Bazel run
+there does, else from the importing file's directory. A repository's
+`.bazelrc` imports no file outside the repository; a missing file and an
+import loop are passed over.
 
 ## Rationale
 
@@ -35,6 +43,10 @@ A registry is a file tree; a module's MODULE.bazel is its manifest.
 2. A project `.bazelrc` naming BCR, an internal registry and a `file://`
    one records only the internal registry, untrusted; `~/.bazelrc` is
    trusted.
+3. Registries of imported files (`%workspace%`, workspace- and
+   file-relative, a file outside the scan, a versioned import) come in the
+   order of the import lines; a missing file, a loop and a file outside the
+   repository add nothing; `~/.bazelrc`'s import is this machine's.
 
 ## Notes
 

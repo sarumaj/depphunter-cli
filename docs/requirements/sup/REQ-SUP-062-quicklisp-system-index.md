@@ -22,7 +22,15 @@ file's primary system, test systems left out) **shall** be returned, each
 named by the project releasing it, without ASDF, UIOP and SBCL's contribs;
 a dated version answers at that same dist version (pinned). A name that is
 not a Quicklisp project name (a git source's repository name) is not
-asked.
+asked. A dist without the project **shall** say so, so that the next dist is
+asked; a dist whose distinfo or system index cannot be read **shall not** be
+asked again for another project until the retry interval (REQ-SUP-032) has
+passed. The dists a qlfile adds (`dist <url>`, `dist <name> <url>`) are asked
+before the Quicklisp dist and an `ultralisp <project>` line names the
+Ultralisp dist (`https://dist.ultralisp.org/`) as that project's, all of
+them the repository's (untrusted); the `distinfo-subscription-url` of each
+dist installed in `~/quicklisp/dists` is this machine's (asked before the
+Quicklisp dist, trusted). The Quicklisp dist itself is never recorded.
 
 ## Rationale
 
@@ -35,3 +43,8 @@ collects into its system index; one request answers every project.
    usocket from the current dist; babel at `2023-10-21` asks that
    version's distinfo and yields its dependencies at that version; each
    system index is fetched once.
+2. A project the machine's corp dist does not list is answered by the
+   Quicklisp dist; a failing distinfo is asked once for three projects and
+   again once the failure is older than the retry interval.
+3. A qlfile's `dist` lines and `ultralisp` line and `~/quicklisp`'s installed
+   dists are recorded as stated, the Quicklisp dist's own lines not.

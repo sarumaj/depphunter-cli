@@ -18,8 +18,11 @@ keep on this machine, each filed under the host it names:
   `.credentials` in sbt's global directory (`-Dsbt.global.base`, else
   `~/.sbt`) and `~/.ivy2/.credentials`, whatever `realm=` they give.
 - Coursier: `COURSIER_CREDENTIALS`, holding `host(realm) user:password` lines
-  itself or naming a properties file (an absolute path or a `file:` URL); when
-  it is unset, `credentials.properties` in Coursier's configuration directory
+  itself or naming a properties file (an absolute path or a `file:` URL, read
+  as the JVM reads one: on Windows `file:///C:/x` is `C:\x` and
+  `file://server/share/x` the UNC path `\\server\share\x`; elsewhere a
+  host other than `localhost` names no local file); when it is unset,
+  `credentials.properties` in Coursier's configuration directory
   (`COURSIER_CONFIG_DIR`; `%APPDATA%\Coursier\config` on Windows;
   `~/Library/Application Support/Coursier` on macOS; else
   `$XDG_CONFIG_HOME/coursier` or `~/.config/coursier`), whose
@@ -52,6 +55,10 @@ developer's or a pipeline's Nexus or Artifactory credential is for these tools.
 3. A Gradle init script's repository asking for `PasswordCredentials` gets
    `gradle.properties`' properties before the `ORG_GRADLE_PROJECT_` ones; a
    repository that does not ask for them gets none.
+4. On Windows (the platform pinned, not the host's) `file:///C:/x`,
+   `file:/C:/x`, `file://C:/x` and `file:C:/x` name `C:\x`, percent escapes
+   are decoded and `file://server/share/c.properties` names
+   `\\server\share\c.properties`; on Linux that URL names no file.
 
 ## Notes
 

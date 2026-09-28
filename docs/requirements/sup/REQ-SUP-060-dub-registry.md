@@ -22,7 +22,14 @@ sub-packages and of its first (default) configuration are returned under
 their base package's name as the specifications they are; optional and
 path dependencies and the package's own sub-packages are left out.
 code.dlang.org is the public index; a name that is not a dub package name
-is not asked.
+is not asked. The registries dub asks before it **shall** be this machine's
+(additive, trusted), in dub's order: `DUB_REGISTRY` (`;`-separated), then
+the `registryUrls` of dub's settings files, the user's before the system's
+(REQ-SUP-064); a repository's `dub.settings.json` names registries of its
+own, untrusted. Only `http(s)` registries are recorded (dub's `file://` and
+`mvn+` suppliers have no API). `skipRegistry` is honoured from the file of
+highest priority that sets it: `standard` switches code.dlang.org off,
+`configured` the settings' registries too, `all` every registry.
 
 ## Rationale
 
@@ -33,6 +40,10 @@ dub.selections.json is flat; the registry serves every version's recipe.
 1. vibe-d 0.9.7 asks `/api/packages/vibe-d/0.9.7/info` only and yields
    diet-ng, eventcore and vibe-http; `~>0.9.5` asks `/api/packages/vibe-d/info`
    and reads 0.9.8, not 0.10.0, a pre-release or `~master`.
+2. `DUB_REGISTRY`, then the user's and the system's `registryUrls` come
+   before code.dlang.org; each `skipRegistry` value drops what dub drops; a
+   repository's `dub.settings.json` registry is untrusted; a registry of the
+   user's settings answers without code.dlang.org being asked.
 
 ## Notes
 
