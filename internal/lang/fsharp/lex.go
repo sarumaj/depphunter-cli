@@ -32,15 +32,14 @@ type token struct {
 const maxNest = 200
 
 type lexer struct {
-	s          string
-	i          int
-	line       int
-	lineStart  int
-	tokens     []token
-	lastLine   int // line of the last token, for token.first
-	lastEnd    int // offset just past the last token
-	bol        bool
-	pendingDir bool
+	s         string
+	i         int
+	line      int
+	lineStart int
+	tokens    []token
+	lastLine  int // line of the last token, for token.first
+	lastEnd   int // offset just past the last token
+	bol       bool
 }
 
 // lex splits F# source into tokens. Comments are dropped: `//` to the end of the

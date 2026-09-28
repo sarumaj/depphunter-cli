@@ -34,22 +34,6 @@ type dependency struct {
 	line                  int
 }
 
-// requirement is what the entry asks for, as shown when fpm fetched something
-// else.
-func (d *dependency) requirement() string {
-	switch {
-	case d.rev != "":
-		return d.rev
-	case d.tag != "":
-		return d.tag
-	case d.branch != "":
-		return d.branch
-	case d.v != "":
-		return d.v
-	}
-	return d.meta
-}
-
 // program is an [[executable]], [[test]] or [[example]] entry.
 type program struct {
 	kind, name, dir, main string

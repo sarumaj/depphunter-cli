@@ -585,12 +585,13 @@ func (c *Client) cranPackage(ctx context.Context, index string, t lang.Target) (
 	}
 	base := strings.TrimRight(crandbAPI, "/") + "/" + url.PathEscape(t.Package)
 	var body []byte
-	var err error
 	if v := strings.TrimSpace(t.Version); lang.Pinned(v) {
-		body, err = c.get(ctx, base+"/"+url.PathEscape(v))
+		// A failure here falls back to the current release below.
+		body, _ = c.get(ctx, base+"/"+url.PathEscape(v))
 	}
 	if body == nil {
 		// No release named, or crandb does not have it: the current one answers.
+		var err error
 		if body, err = c.get(ctx, base); err != nil {
 			return nil, err
 		}
@@ -1387,8 +1388,7 @@ func (c *Client) cocoapodsPod(ctx context.Context, index string, t lang.Target) 
 	}
 	seen := map[string]bool{}
 	var out []dep
-	var walk func(s podSpec)
-	walk = func(s podSpec) {
+	walk := func(s podSpec) {
 		for _, name := range slices.Sorted(maps.Keys(s.Dependencies)) {
 			root, _, _ := strings.Cut(name, "/")
 			if root == t.Package || seen[root] {

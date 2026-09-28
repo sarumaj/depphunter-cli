@@ -51,8 +51,8 @@ func TestOpensAndReferences(t *testing.T) {
 		"open Shop.Domain":                  {Local: "src/Shop.Domain/Types.fs"},
 		"open type Shop.Domain.Cart.Cart":   {Local: "src/Shop.Domain/Cart.fs"},
 		// A module of Fake.Core.Target, not of the FAKE package whose id prefixes it.
-		"open Fake.Core.TargetOperators": {Ecosystem: "nuget", Package: "Fake.Core.Target", Version: "6.0.0", Pinned: true},
-		"open Mystery.Lib":               {Ecosystem: "nuget", Package: "Mystery.Lib", Unresolved: true},
+		"open Fake.Core.TargetOperators":                               {Ecosystem: "nuget", Package: "Fake.Core.Target", Version: "6.0.0", Pinned: true},
+		"open Mystery.Lib":                                             {Ecosystem: "nuget", Package: "Mystery.Lib", Unresolved: true},
 		"module P = Shop.Domain.Pricing (src/Shop.Domain/Pricing.fs)":  {Local: "src/Shop.Domain/Pricing.fs"},
 		"module P = Shop.Domain.Pricing (src/Shop.Domain/Pricing.fsi)": {Local: "src/Shop.Domain/Pricing.fsi"},
 		"Cart": {Local: "src/Shop.Domain/Cart.fs"},

@@ -50,9 +50,6 @@ var metaLibraries = map[string]string{
 	"mpi": "mpi.h", "hdf5": "hdf5.h", "netcdf": "netcdf.h", "blas": "blas.h",
 }
 
-// metaPackages are fpm's metapackages that fpm fetches as fpm packages.
-var metaPackages = map[string]bool{"stdlib": true, "minpack": true}
-
 // knownPackages maps module name prefixes of well-known fpm packages to the
 // package: for projects that use them without saying where they come from.
 // Longest prefix first; a prefix ending in "_" also matches the bare word.
