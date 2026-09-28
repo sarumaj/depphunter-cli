@@ -2,6 +2,7 @@ package auth
 
 import (
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -92,10 +93,17 @@ other.password=no-user
 		}
 	}
 
+	// The file is a real one on the platform running the test, so that platform
+	// reads it, and its file URLs are written as that platform's are: file:///C:/x
+	// and the loose file://C:/x on Windows, file:///x elsewhere.
 	file := filepath.Join(t.TempDir(), "creds.properties")
 	writeFile(t, file, "x.host=file.corp\nx.username=f\nx.password=p\n")
-	for _, v := range []string{file, "file://" + filepath.ToSlash(file)} {
-		c = onMachine(t, home, "linux", map[string]string{"COURSIER_CREDENTIALS": v})
+	values := []string{file, "file://" + filepath.ToSlash(file)}
+	if runtime.GOOS == "windows" {
+		values = append(values, "file:///"+filepath.ToSlash(file))
+	}
+	for _, v := range values {
+		c = onMachine(t, home, runtime.GOOS, map[string]string{"COURSIER_CREDENTIALS": v})
 		if got := c.basic["file.corp"]; got != "f:p" {
 			t.Errorf("%s: %q", v, got)
 		}
