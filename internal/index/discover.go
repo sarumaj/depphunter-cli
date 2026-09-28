@@ -19,6 +19,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/edn"
 	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
 	"github.com/sarumaj/depphunter-cli/internal/lang/nuget"
+	"github.com/sarumaj/depphunter-cli/internal/npmconf"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 	"github.com/sarumaj/depphunter-cli/internal/userconf"
 )
@@ -98,6 +99,7 @@ func (c *Config) machine(m userconf.Machine) {
 	}
 	read(m.NpmUserConfig(), plain(parseNpmrc))
 	read(m.NpmGlobalConfig(), plain(parseNpmrc))
+	machineYarnBun(m, k)
 	machinePip(m, k)
 	parseGoproxy(m.GoEnv("GOPROXY"), k)
 	// Cargo: the registries the environment defines, before config.toml's, since a
@@ -337,8 +339,12 @@ func (c *Config) project(files []*scan.File) {
 		switch {
 		case base == ".npmrc":
 			parseNpmrc(data, add)
-		case base == ".yarnrc.yml":
-			parseYarnrc(data, add)
+		case base == ".yarnrc.yml" || base == strings.ToLower(c.yarnRCFilename()):
+			c.projectYarnrc(data, add)
+		case base == ".yarnrc":
+			addNpmSettings(npmconf.ParseYarnClassic(data), add, nil)
+		case base == "bunfig.toml":
+			c.projectBunfig(data, add)
 		case base == "pip.conf", base == "pip.ini":
 			parsePipConf(data, k)
 		case strings.HasPrefix(base, "requirements") && strings.HasSuffix(base, ".txt"):
@@ -406,31 +412,6 @@ func parseNpmrc(data []byte, add func(eco, url, scope string)) {
 			add(NPM, value, "")
 		case strings.HasSuffix(key, ":registry") && strings.HasPrefix(key, "@"):
 			add(NPM, value, strings.TrimSuffix(key, ":registry"))
-		}
-	}
-}
-
-// parseYarnrc reads Yarn Berry's npmRegistryServer and its per-scope equivalent.
-func parseYarnrc(data []byte, add func(eco, url, scope string)) {
-	scope := ""
-	for _, line := range strings.Split(string(data), "\n") {
-		trimmed := strings.TrimSpace(line)
-		value := func() string {
-			_, v, _ := strings.Cut(trimmed, ":")
-			return strings.Trim(strings.TrimSpace(v), `"'`)
-		}
-		switch {
-		case strings.HasPrefix(trimmed, "npmRegistryServer:"):
-			if strings.HasPrefix(line, " ") {
-				add(NPM, value(), scope) // inside npmScopes
-			} else {
-				add(NPM, value(), "")
-			}
-		case !strings.HasPrefix(line, " ") && strings.HasSuffix(trimmed, ":"):
-			scope = ""
-		case strings.HasPrefix(line, "  ") && strings.HasSuffix(trimmed, ":") && !strings.Contains(trimmed, " "):
-			// "  acme:" inside npmScopes names a scope without its @.
-			scope = "@" + strings.TrimSuffix(trimmed, ":")
 		}
 	}
 }

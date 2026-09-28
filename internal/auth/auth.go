@@ -42,10 +42,25 @@ type Store struct {
 	// names; see TerraformHost.
 	terraform map[string]bool
 	// scoped holds the credentials that serve one path of a host and no other:
-	// host -> path prefix (ending in "/") -> "user:password". A host many
+	// host -> path prefix (ending in "/") -> credential. A host many
 	// organizations share - Azure Artifacts' pkgs.dev.azure.com - gets each
-	// organization's credential this way.
-	scoped map[string]map[string]string
+	// organization's credential this way, and so does an npm registry that
+	// lives under a path, as GitLab's per-project registries do.
+	scoped map[string]map[string]secret
+}
+
+// secret is a credential of scoped: a Bearer token, or a Basic "user:password".
+type secret struct {
+	bearer bool
+	value  string
+}
+
+// header is the Authorization header that sends it.
+func (s secret) header() string {
+	if s.bearer {
+		return "Bearer " + s.value
+	}
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(s.value))
 }
 
 // Read collects the credentials from the files and variables the package managers of
@@ -69,6 +84,8 @@ func readMachine(m userconf.Machine) *Store {
 		return c
 	}
 	c.readNpm(m)
+	c.readYarn(m)
+	c.readBun(m)
 	if data, err := os.ReadFile(m.Netrc()); err == nil {
 		c.readNetrc(data)
 	}
@@ -268,7 +285,12 @@ func npmKeys(data []byte) map[string]string {
 // fields npm accepts: a bearer token, a base64 "user:password", or the two halves of
 // that pair written separately, the password itself base64.
 //
-// Implements: REQ-AUTH-001
+// A key names a registry by host and path, as npm does: //host/:field serves the
+// whole host, and //host/some/path/:field only the URLs under that path, the
+// longest such path winning (see Apply) - two GitLab projects' registries on one
+// host keep their own tokens, and neither goes to anything else on the host.
+//
+// Implements: REQ-AUTH-001, REQ-AUTH-025
 func (c *Store) applyNpm(keys map[string]string) {
 	user, password := map[string]string{}, map[string]string{}
 	for _, key := range slices.Sorted(maps.Keys(keys)) {
@@ -280,25 +302,68 @@ func (c *Store) applyNpm(keys map[string]string) {
 		if host == "" || value == "" {
 			continue
 		}
+		prefix := pathPrefix(hostPath[len(host):])
 		switch field {
 		case "_authToken":
-			c.bearer[host] = value
+			c.file(host, prefix, secret{bearer: true, value: value}, true)
 		case "_auth":
 			if pair, err := base64.StdEncoding.DecodeString(value); err == nil && strings.Contains(string(pair), ":") {
-				c.basic[host] = string(pair)
+				c.file(host, prefix, secret{value: string(pair)}, true)
 			}
 		case "username":
-			user[host] = value
+			user[hostPath] = value
 		case "_password":
 			if plain, err := base64.StdEncoding.DecodeString(value); err == nil {
-				password[host] = string(plain)
+				password[hostPath] = string(plain)
 			}
 		}
 	}
-	for host, name := range user {
-		if _, taken := c.basic[host]; !taken {
-			c.basic[host] = name + ":" + password[host]
+	for hostPath, name := range user {
+		host, _, _ := strings.Cut(hostPath, "/")
+		c.file(host, pathPrefix(hostPath[len(host):]), secret{value: name + ":" + password[hostPath]}, false)
+	}
+}
+
+// pathPrefix is the path a registry's credential is limited to: "" for a registry
+// at the root of its host, whose credential is the host's, else the path ending in
+// "/", so that /npm does not also cover /npm-private.
+func pathPrefix(p string) string {
+	p = strings.TrimRight(p, "/")
+	if p == "" {
+		return ""
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return p + "/"
+}
+
+// file files a credential for a host, or for one path prefix of it. Without
+// replace, a credential already filed for the same host and prefix is kept: the
+// bearer and basic kinds of a host count as one.
+func (c *Store) file(host, prefix string, s secret, replace bool) {
+	if prefix != "" {
+		if _, taken := c.scoped[host][prefix]; taken && !replace {
+			return
 		}
+		if c.scoped == nil {
+			c.scoped = map[string]map[string]secret{}
+		}
+		if c.scoped[host] == nil {
+			c.scoped[host] = map[string]secret{}
+		}
+		c.scoped[host][prefix] = s
+		return
+	}
+	_, hasBearer := c.bearer[host]
+	_, hasBasic := c.basic[host]
+	if (hasBearer || hasBasic) && !replace {
+		return
+	}
+	if s.bearer {
+		c.bearer[host] = s.value
+	} else {
+		c.basic[host] = s.value
 	}
 }
 
@@ -351,8 +416,8 @@ func (c *Store) Apply(req *http.Request) {
 		return
 	}
 	for _, host := range [...]string{req.URL.Host, req.URL.Hostname()} {
-		if pair, ok := scopedPair(c.scoped[host], req.URL.Path); ok {
-			req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(pair)))
+		if s, ok := scopedSecret(c.scoped[host], req.URL.Path); ok {
+			req.Header.Set("Authorization", s.header())
 			return
 		}
 	}
@@ -370,16 +435,16 @@ func (c *Store) Apply(req *http.Request) {
 	}
 }
 
-// scopedPair is the credential of the longest prefix of path among a host's scoped
-// ones.
-func scopedPair(prefixes map[string]string, path string) (pair string, ok bool) {
+// scopedSecret is the credential of the longest prefix of path among a host's
+// scoped ones, as npm takes the registry key with the longest matching path.
+func scopedSecret(prefixes map[string]secret, path string) (s secret, ok bool) {
 	best := -1
 	for prefix, p := range prefixes {
 		if strings.HasPrefix(path, prefix) && len(prefix) > best {
-			best, pair, ok = len(prefix), p, true
+			best, s, ok = len(prefix), p, true
 		}
 	}
-	return pair, ok
+	return s, ok
 }
 
 // loopback reports whether host is this machine, where plain http leaves nothing on

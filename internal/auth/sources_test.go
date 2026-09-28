@@ -24,7 +24,8 @@ registry=https://registry.npmjs.org
 //split.corp/:_password=` + base64.StdEncoding.EncodeToString([]byte("p4ss")) + `
 //nothing.corp/:email=dev@corp
 `))
-	if got := c.bearer["nexus.corp"]; got != "from-the-environment" {
+	// A registry under a path keeps its token for that path.
+	if got := authorization(t, c, "https://nexus.corp/repository/npm-group/react"); got != "Bearer from-the-environment" {
 		t.Errorf("nexus.corp: %q - npm's ${VAR} was not resolved", got)
 	}
 	if got := c.basic["basic.corp"]; got != "build:secret" {

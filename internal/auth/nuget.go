@@ -127,16 +127,8 @@ func sharedHostPrefix(u *url.URL) string {
 	return "/" + org + "/"
 }
 
-// scope files a credential for one path prefix of a host.
-func (c *Store) scope(host, prefix, pair string) {
-	if c.scoped == nil {
-		c.scoped = map[string]map[string]string{}
-	}
-	if c.scoped[host] == nil {
-		c.scoped[host] = map[string]string{}
-	}
-	c.scoped[host][prefix] = pair
-}
+// scope files a Basic credential for one path prefix of a host.
+func (c *Store) scope(host, prefix, pair string) { c.file(host, prefix, secret{value: pair}, true) }
 
 // Lend files a credential for a feed that the repository names but this machine's
 // environment supplies the secret for - a paket.dependencies `password: "%PAT%"`, a
