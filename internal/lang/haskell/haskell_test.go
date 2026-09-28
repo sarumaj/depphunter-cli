@@ -1,7 +1,10 @@
 package haskell
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -286,5 +289,70 @@ func TestClaims(t *testing.T) {
 	if (Plugin{}).Class(&scan.File{Path: "package.yaml"}) == (Plugin{}).Class(&scan.File{Path: "config.yaml"}) ||
 		(Plugin{}).Class(&scan.File{Path: "package.yaml"}) == (Plugin{}).Class(&scan.File{Path: "stack.yaml"}) {
 		t.Error("package.yaml and stack.yaml share a cache class with other YAML")
+	}
+}
+
+// cabal.project's packages: globs match the repository's package directories
+// and .cabal files ({a,b} alternatives too), and its import: brings in the
+// constraints and packages of a local project file (once, however it imports
+// itself); a URL, a path outside the repository and a glob matching nothing
+// name nothing. A garbage or missing imported file adds nothing.
+//
+// Verifies: REQ-HASKELL-005, REQ-HASKELL-007
+func TestProjectGlobsAndImports(t *testing.T) {
+	files := map[string]string{
+		"cabal.project": "packages: libs/*/\n          apps/{web,cli}/*.cabal\n          missing/*/\n" +
+			"import: cabal.project.common\nimport: https://example.org/stackage.config\nimport: ../outside.project\n",
+		"cabal.project.common":   "constraints: aeson ==2.2.1.0\nimport: ./cabal.project.common\npackages: extra/\n",
+		"libs/a/a.cabal":         "name: a\nlibrary\n  build-depends: aeson, b, text\n",
+		"libs/b/b.cabal":         "name: b\nlibrary\n",
+		"apps/web/web.cabal":     "name: web\nexecutable web\n",
+		"apps/cli/cli.cabal":     "name: cli\nexecutable cli\n",
+		"apps/other/other.cabal": "name: other\nexecutable other\n",
+		"extra/extra.cabal":      "name: extra\nlibrary\n",
+	}
+	root := langtest.Write(t, files)
+	// Beside the repository: the import of ../outside.project must not read it.
+	if err := os.WriteFile(filepath.Join(filepath.Dir(root), "outside.project"), []byte("constraints: text ==2.1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, res["cabal.project"], map[string]lang.Target{
+		"packages: libs/*/ (libs/a/a.cabal)":                    {Local: "libs/a/a.cabal"},
+		"packages: libs/*/ (libs/b/b.cabal)":                    {Local: "libs/b/b.cabal"},
+		"packages: apps/{web,cli}/*.cabal (apps/cli/cli.cabal)": {Local: "apps/cli/cli.cabal"},
+		"packages: apps/{web,cli}/*.cabal (apps/web/web.cabal)": {Local: "apps/web/web.cabal"},
+		"packages: missing/*/":                                  {},
+		"import: cabal.project.common":                          {Local: "cabal.project.common"},
+		"import: https://example.org/stackage.config":           {},
+		"import: ../outside.project":                            {},
+	})
+	aeson := lang.Target{Ecosystem: ecoHackage, Package: "aeson", Version: "2.2.1.0", Pinned: true}
+	langtest.CheckImports(t, res["libs/a/a.cabal"], map[string]lang.Target{
+		"build-depends: aeson": aeson,
+		"build-depends: b":     {Local: "libs/b/b.cabal"},
+		"build-depends: text":  {Ecosystem: ecoHackage, Package: "text", Floating: true},
+	})
+	r := newResolver(root, langtest.Files(t, root))
+	if got, want := r.projectOf("cabal.project").members, []string{"libs/a", "libs/b", "apps/cli", "apps/web", "extra"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("members %v, want %v", got, want)
+	}
+	if got, want := braces("{a,b}/{c,d}x"), []string{"a/cx", "a/dx", "b/cx", "b/dx"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("braces %v", got)
+	}
+	if got := braces(strings.Repeat("{a,b,c}", 40)); len(got) != maxAlternatives {
+		t.Errorf("braces: %d alternatives", len(got))
+	}
+
+	for _, garbage := range []string{"\x00{{{ :\n  import:\n\timport: [", ""} {
+		files["cabal.project.common"] = garbage
+		if garbage == "" {
+			delete(files, "cabal.project.common")
+		}
+		root := langtest.Write(t, files)
+		res := langtest.Analyze(t, Plugin{}, root)
+		if got := langtest.Imports(t, res["libs/a/a.cabal"])["build-depends: aeson"]; got.Pinned {
+			t.Errorf("%q: aeson %+v", garbage, got)
+		}
 	}
 }

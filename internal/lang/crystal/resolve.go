@@ -4,6 +4,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -28,10 +29,11 @@ type resolver struct {
 	projects map[string]*project // by directory
 	libC     map[string][]string // a src/ directory with lib_c/ -> its target triples
 	order    []*project          // shallowest first
+	paths    []string            // CRYSTAL_PATH's directories of the repository
 }
 
 // Implements: REQ-CRYSTAL-004, REQ-CRYSTAL-005, REQ-CRYSTAL-006, REQ-CRYSTAL-008
-func newResolver(root string, all []*scan.File) *resolver {
+func newResolver(root string, all []*scan.File, getenv func(string) string) *resolver {
 	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, projects: map[string]*project{}}
 	abs := map[string]string{}
 	for _, f := range all {
@@ -110,7 +112,39 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 		return r.order[i].dir < r.order[j].dir
 	})
+	r.paths = r.crystalPath(root, getenv("CRYSTAL_PATH"))
 	return r
+}
+
+// crystalPath reads CRYSTAL_PATH, the compiler's list of directories to look a
+// require by name up in (lib/ and the standard library's src/ by default), in
+// the platform's list form. An entry is kept when it is a directory of the
+// repository: relative (to the repository's root, where the compiler would run)
+// or absolute inside it. Entries elsewhere (the standard library's own
+// directory) and `$ORIGIN` entries name nothing of the repository.
+//
+// Implements: REQ-CRYSTAL-004
+func (r *resolver) crystalPath(root, value string) []string {
+	var out []string
+	for _, e := range filepath.SplitList(value) {
+		if e = strings.TrimSpace(e); e == "" || strings.Contains(e, "$") {
+			continue
+		}
+		if filepath.IsAbs(e) {
+			base, err := filepath.Abs(root)
+			if root == "" || err != nil {
+				continue
+			}
+			if e, err = filepath.Rel(base, e); err != nil {
+				continue
+			}
+		}
+		d := path.Clean(filepath.ToSlash(e))
+		if (d == "." || r.dirs[d]) && !slices.Contains(out, d) {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 func depth(dir string) int {
@@ -264,6 +298,16 @@ func (r *resolver) require(file, spec string) lang.Target {
 	}
 	for _, base := range r.srcRoots(file) {
 		if f := r.probe(base, spec); f != "" {
+			return lang.Target{Local: f}
+		}
+	}
+	// CRYSTAL_PATH's directories, by the rules for a shard in lib/: x.cr,
+	// x/x.cr, then the shard directory x/'s own layout.
+	for _, dir := range r.paths {
+		if f := r.probe(dir, spec); f != "" {
+			return lang.Target{Local: f}
+		}
+		if f := r.inShard(path.Join(dir, first), spec); f != "" {
 			return lang.Target{Local: f}
 		}
 	}

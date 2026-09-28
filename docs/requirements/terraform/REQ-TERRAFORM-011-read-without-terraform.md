@@ -11,13 +11,12 @@ verification:
 
 ## Statement
 
-The plugin **shall not** run Terraform, OpenTofu or Terragrunt, and does
-not evaluate expressions: a module source, path or version that is not a
-literal (apart from the Terragrunt locals of REQ-TERRAFORM-010) is not
-resolved, `count`/`for_each` and conditionals are not considered, a
+The plugin **shall not** run Terraform, OpenTofu or Terragrunt, and does not
+evaluate expressions: a module source, path or version that is not a literal
+(apart from the Terragrunt locals of REQ-TERRAFORM-010) is not resolved,
+`count`/`for_each` and conditionals are not considered, a
 `find_in_parent_folders` call in a file that other configurations include is
-evaluated from that file's own directory (so usually dropped), the installed
-module versions of `.terraform/modules/modules.json` are not read, a provider's
+evaluated from that file's own directory (so usually dropped), a provider's
 own dependencies are not asked of any registry (a provider depends on none),
 and OSV has no Terraform ecosystem and Trivy no Terraform package type, so no
 vulnerability is reported for a registry module or a provider; a module

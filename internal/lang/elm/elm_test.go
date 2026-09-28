@@ -321,3 +321,43 @@ func TestEcosystems(t *testing.T) {
 		}
 	}
 }
+
+// elm-tooling.json pins the compiler a package project installs with: its
+// ELM_HOME directory is searched first for a ranged dependency. Its other tools
+// are not dependencies. A garbage or missing file, or one pinning no exact
+// version, leaves the default order (0.19.1 first).
+//
+// Verifies: REQ-ELM-005
+func TestElmTooling(t *testing.T) {
+	home := langtest.Write(t, map[string]string{
+		"0.19.0/packages/elm/json/1.1.2/elm.json": `{"type": "package", "name": "elm/json", "exposed-modules": ["Json.Old"]}`,
+		"0.19.1/packages/elm/json/1.1.3/elm.json": `{"type": "package", "name": "elm/json", "exposed-modules": ["Json.New"]}`,
+	})
+	files := map[string]string{
+		"pkg/elm.json": `{"type": "package", "name": "acme/pkg", "elm-version": "0.19.0 <= v < 0.20.0",
+			"exposed-modules": [], "dependencies": {"elm/json": "1.0.0 <= v < 2.0.0"}}`,
+		"elm-tooling.json": `{"tools": {"elm": "0.19.0", "elm-format": "0.8.5", "elm-json": "0.2.13"}}`,
+	}
+	for _, c := range []struct{ tooling, want string }{
+		{files["elm-tooling.json"], "1.1.2"},
+		{"{{ not json", "1.1.3"},
+		{`{"tools": {"elm": "^0.19.0"}}`, "1.1.3"},
+		{`{"tools": ["elm"]}`, "1.1.3"},
+		{"", "1.1.3"}, // missing
+	} {
+		garbage, want := c.tooling, c.want
+		files["elm-tooling.json"] = garbage
+		if garbage == "" {
+			delete(files, "elm-tooling.json")
+		}
+		root := langtest.Write(t, files)
+		r := newResolver(root, langtest.Files(t, root), home)
+		if len(r.projects) != 1 {
+			t.Fatalf("%q: projects %v", garbage, r.projects)
+		}
+		m := r.projects[0].m
+		if got := r.installedVersion(m, m.deps["elm/json"]); got != want {
+			t.Errorf("%q: elm/json %s, want %s", garbage, got, want)
+		}
+	}
+}

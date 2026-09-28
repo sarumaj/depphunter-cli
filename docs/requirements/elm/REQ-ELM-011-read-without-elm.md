@@ -11,11 +11,10 @@ verification:
 
 ## Statement
 
-Elm **shall** be read without running elm or downloading packages: a module
-of a package that is not installed in `ELM_HOME`, not in the curated table
-and not spelled by a listed package's name is dropped, since an Elm module
-name does not say which author published it. `elm-tooling.json` (the
-versions of elm, elm-format and elm-test to install) is not read.
+Elm **shall** be read without running elm or downloading packages: a module of
+a package that is not installed in `ELM_HOME`, not in the curated table and
+not spelled by a listed package's name is dropped, since an Elm module name
+does not say which author published it.
 
 ## Rationale
 

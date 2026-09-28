@@ -1,6 +1,7 @@
 package nim
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -523,5 +524,68 @@ func TestIslands(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// nimble.develop develops foo (and, through the develop file it includes, bar)
+// from directories of the repository: their requirements and modules resolve
+// there. A path outside the repository and a garbage or missing develop file
+// leave the packages as required.
+//
+// Verifies: REQ-NIM-005, REQ-NIM-007
+func TestDevelop(t *testing.T) {
+	files := map[string]string{
+		"app/app.nimble": "requires \"foo >= 1.0\"\nrequires \"https://github.com/acme/nim-bar\"\nrequires \"baz\"\nrequires \"qux\"\n",
+		"app/nimble.develop": `{"version": 1, "includes": ["../shared.develop", "/nowhere/x.develop", "../qux.develop"],
+			"dependencies": ["../foo", "../../outside/baz"]}`,
+		"shared.develop":       `{"version": 1, "dependencies": ["bar"]}`,
+		"app/main.nim":         "import foo, foo/util, bar, baz\n",
+		"foo/foo.nimble":       "srcDir = \"src\"\n",
+		"foo/src/foo.nim":      "proc f*() = discard\n",
+		"foo/src/foo/util.nim": "proc u*() = discard\n",
+		"bar/bar.nimble":       "",
+		"bar/bar.nim":          "proc b*() = discard\n",
+	}
+	baz := lang.Target{Ecosystem: ecoNimble, Package: "baz", Floating: true}
+	root := langtest.Write(t, files)
+	// An absolute path inside the repository develops qux.
+	for p, content := range map[string]string{"qux/qux.nimble": "", "qux/qux.nim": ""} {
+		if err := os.MkdirAll(filepath.Join(root, "qux"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(p)), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	qux, _ := json.Marshal(map[string][]string{"dependencies": {filepath.Join(root, "qux")}})
+	if err := os.WriteFile(filepath.Join(root, "qux.develop"), qux, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, res["app/main.nim"], map[string]lang.Target{
+		"foo":      {Local: "foo/src/foo.nim"},
+		"foo/util": {Local: "foo/src/foo/util.nim"},
+		"bar":      {Local: "bar/bar.nim"},
+		"baz":      baz,
+	})
+	langtest.CheckImports(t, res["app/app.nimble"], map[string]lang.Target{
+		"foo >= 1.0":                      {Local: "foo"},
+		"https://github.com/acme/nim-bar": {Local: "bar"},
+		"baz":                             baz,
+		"qux":                             {Local: "qux"},
+	})
+	for _, garbage := range []string{"not json {", `{"dependencies": 3}`, ""} {
+		files["app/nimble.develop"] = garbage
+		files["shared.develop"] = garbage
+		if garbage == "" {
+			delete(files, "app/nimble.develop")
+		}
+		res := langtest.Analyze(t, Plugin{}, langtest.Write(t, files))
+		langtest.CheckImports(t, res["app/main.nim"], map[string]lang.Target{
+			"foo":      {Ecosystem: ecoNimble, Package: "foo", Version: ">= 1.0", Floating: true},
+			"foo/util": {Ecosystem: ecoNimble, Package: "foo", Version: ">= 1.0", Floating: true},
+			"bar":      {Ecosystem: ecoNimble, Package: "github.com/acme/nim-bar", Floating: true},
+			"baz":      baz,
+		})
 	}
 }

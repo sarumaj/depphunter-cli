@@ -19,6 +19,10 @@ const (
 	kindFile   = "file"   // a resource or an included project file
 )
 
+// kindHx is an import every module has, which the resolver expands into the
+// import.hx files that apply to it, or none.
+const kindHx = "import.hx"
+
 const (
 	frameType  = 1 // the body of a class, interface, enum or abstract
 	frameFunc  = 2 // a function body
@@ -361,6 +365,7 @@ func extractSource(src []byte) *lang.Extraction {
 			}
 		}
 	}
+	ex.Imports = append(ex.Imports, lang.RawImport{Spec: "import.hx", Name: kindHx, Line: 1})
 	ex.Symbols = symbols.List()
 	return ex
 }

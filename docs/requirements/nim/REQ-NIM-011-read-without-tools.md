@@ -12,14 +12,14 @@ verification:
 ## Statement
 
 Nim projects **shall** be read without running the compiler, nimble or
-Atlas: NimScript is not executed (a requirement or search path computed
-from variables is not known), `when` conditions are not evaluated (every
-branch counts), macros and templates are not expanded, a configuration
-applies to the modules of its directory and below (not per compiled
-project), `$home`, `~`, `$nimblepath` and other variables in search paths
-are not known, `nimble.develop` is not read, a generated `nimble.paths`
-missing from the repository names nothing, and nothing is asked of the
-package list.
+Atlas: NimScript is not executed (a requirement or search path computed from
+variables is not known), `when` conditions are not evaluated (every branch
+counts), macros and templates are not expanded, a configuration applies to
+the modules of its directory and below (not per compiled project), `$home`,
+`~`, `$nimblepath` and other variables in search paths are not known, a
+`nimble.develop` path outside the repository names nothing, a generated
+`nimble.paths` missing from the repository names nothing, and nothing is
+asked of the package list.
 
 ## Rationale
 

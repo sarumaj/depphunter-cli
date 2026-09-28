@@ -21,6 +21,14 @@ remote dependency providing that file; a package no Paket file of its root
 knows **shall** be unresolved. `exclude` and `alias` settings are not
 packages.
 
+A group's `references: strict` option needs no reading: it keeps Paket from
+referencing the transitive packages of what `paket.references` names, and the
+namespace rule (REQ-FSHARP-008) already links an `open` only to packages a
+manifest names, never to one only `paket.lock` lists (unless the curated
+namespace table names it, which strict code can open only when it references
+it). The transitive packages are still installed, so `paket.lock`'s
+dependencies stay on the map (REQ-FSHARP-007).
+
 ## Rationale
 
 With Paket a project's packages are named in `paket.references` and

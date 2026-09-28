@@ -15,10 +15,13 @@ The plugin **shall** make each `build-depends` and `setup-depends` entry of a
 `.cabal` file and each `dependencies` entry of `package.yaml` an import of the
 package it names (a package's use of its own library is dropped; another
 package of the repository resolves to its description), each `packages:` entry
-of `cabal.project` and `stack.yaml` an import of that package's description
-(globs are not expanded), each `source-repository-package` of `cabal.project`
-and each `extra-deps` entry of `stack.yaml` an import of the package it
-builds.
+of `cabal.project` and `stack.yaml` an import of that package's description (a
+glob - `*`, `?` and `[...]` within a path segment, `{a,b}` alternatives - one
+import per package of the repository whose directory or `.cabal` file it
+matches, shown as `packages: <glob> (<file>)`), each `import:` of
+`cabal.project` an import of the local project file it names (a URL is
+dropped), each `source-repository-package` of `cabal.project` and each
+`extra-deps` entry of `stack.yaml` an import of the package it builds.
 
 ## Rationale
 
@@ -33,3 +36,7 @@ them.
    `shop-core/shop-core.cabal`.
 2. `stack.yaml`'s `extra-deps: left-pad-hs` goes to the `left-pad` package
    that `stack.yaml.lock` says the repository holds.
+3. `packages: libs/*/` goes to `libs/a/a.cabal` and `libs/b/b.cabal`,
+   `apps/{web,cli}/*.cabal` to `apps/web/web.cabal` and `apps/cli/cli.cabal`
+   (not `apps/other`), `missing/*/` nowhere; `import: cabal.project.common`
+   goes to that file.
