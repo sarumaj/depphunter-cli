@@ -1151,7 +1151,9 @@ const ociAccept = "application/vnd.oci.image.manifest.v1+json," +
 //
 // Implements: REQ-SUP-026
 func (c *Client) ociBase(ctx context.Context, index string, t lang.Target) ([]dep, error) {
-	repo := ociRepository(t.Package)
+	// A mirror serves the image under a repository of its own (registries.conf
+	// rewrites the name); index stands for the pair.
+	index, repo := c.cfg.ociRoute(t.Package, t.Version, index)
 	ref := t.Version
 	if ref == "" {
 		ref = "latest"
@@ -1291,7 +1293,8 @@ func (c *Client) ociGet(ctx context.Context, index, repo, address, accept string
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s: %s", address, resp.Status)
+		// Typed, so that a registry's 404 reads as "not found" (notFound).
+		return nil, &statusError{url: address, status: resp.Status, code: resp.StatusCode}
 	}
 	return readLimited(resp)
 }
@@ -1305,7 +1308,14 @@ func (c *Client) ociGet(ctx context.Context, index, repo, address, accept string
 // are chosen by the realm's own host (credentials.apply), so a redirected realm gets
 // none of the registry's.
 //
-// Implements: REQ-SUP-027
+// When this machine holds an identity token for the registry (auth.IdentityToken),
+// the token is asked for the way Docker asks with one - the OAuth2 refresh-token
+// grant of the registry token specification, a POST of grant_type=refresh_token,
+// service, scope, client_id and refresh_token to the realm - but only when the
+// realm is https and on the registry's own host: a refresh token is a long-lived
+// credential, and a challenge is the registry's word, not the user's.
+//
+// Implements: REQ-SUP-027, REQ-AUTH-030
 func (c *Client) ociToken(ctx context.Context, index, repo, challenge string) (string, error) {
 	scheme, params, ok := strings.Cut(challenge, " ")
 	if !ok || !strings.EqualFold(scheme, "Bearer") {
@@ -1336,9 +1346,21 @@ func (c *Client) ociToken(ctx context.Context, index, repo, challenge string) (s
 	if scope == "" {
 		scope = "repository:" + repo + ":pull"
 	}
-	q.Set("scope", scope)
-	u.RawQuery = q.Encode()
-	body, err := c.get(ctx, u.String())
+	var body []byte
+	registry, _ := url.Parse(index)
+	if refresh := c.identityFor(registry); refresh != "" && u.Scheme == "https" && registry != nil &&
+		strings.EqualFold(u.Host, registry.Host) {
+		form := url.Values{"grant_type": {"refresh_token"}, "client_id": {"depphunter"},
+			"scope": {scope}, "refresh_token": {refresh}}
+		if s := fields["service"]; s != "" {
+			form.Set("service", s)
+		}
+		body, err = c.postForm(ctx, u.String(), form)
+	} else {
+		q.Set("scope", scope)
+		u.RawQuery = q.Encode()
+		body, err = c.get(ctx, u.String())
+	}
 	if err != nil {
 		return "", err
 	}
@@ -1353,6 +1375,18 @@ func (c *Client) ociToken(ctx context.Context, index, repo, challenge string) (s
 		return doc.Token, nil
 	}
 	return doc.AccessToken, nil
+}
+
+// identityFor is the identity token this machine holds for a registry, by its host
+// with the port and then without it, as credentials are.
+func (c *Client) identityFor(registry *url.URL) string {
+	if registry == nil {
+		return ""
+	}
+	if t := c.auth.IdentityToken(registry.Host); t != "" {
+		return t
+	}
+	return c.auth.IdentityToken(registry.Hostname())
 }
 
 // splitChallenge splits a challenge's comma-separated parameters, leaving the commas

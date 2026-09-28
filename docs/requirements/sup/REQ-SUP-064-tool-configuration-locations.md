@@ -49,8 +49,12 @@ tool looks for it, reading the variables from the machine's environment only:
   `CARGO_REGISTRIES_<NAME>_INDEX` defining a registry or overriding its
   index, the name matched as Cargo spells it in a variable (upper case, `-` as
   `_`).
-- Go: `GOPROXY` from the environment, else from the go env file (`GOENV`,
-  else `go/env` in the user configuration directory; none for `GOENV=off`).
+- Go: `GOPROXY` and `GOAUTH` from the environment, else from the go env file
+  (`GOENV`, else `go/env` in the user configuration directory; none for
+  `GOENV=off`).
+- containers: registries.conf and its drop-ins, and the Docker daemon's
+  `daemon.json`
+  ([REQ-SUP-068](REQ-SUP-068-container-registry-mirrors.md)).
 - NuGet: `%APPDATA%\NuGet\NuGet.Config` on Windows; then the machine-wide
   `*.config` files of `NuGet\Config` under `%ProgramFiles(x86)%` (else
   `%ProgramFiles%`) on Windows, elsewhere under

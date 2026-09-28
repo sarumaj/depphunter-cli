@@ -21,7 +21,10 @@ environment:
 - Yarn Berry and Bun: the home `.yarnrc.yml` (named by `YARN_RC_FILENAME`)
   with the `YARN_NPM_*` variables over it, and Bun's global bunfig
   ([REQ-AUTH-024](REQ-AUTH-024-yarn-and-bun-credentials.md)).
-- netrc: `NETRC`; else `~/_netrc` on Windows when it exists; else `~/.netrc`.
+- netrc: `NETRC`; else `~/_netrc` on Windows when it exists; else `~/.netrc`;
+  for Go proxies only when `GOAUTH` (the environment's, else the go env
+  file's) lets the go command send it
+  ([REQ-AUTH-029](REQ-AUTH-029-goauth.md)).
 - containers: `REGISTRY_AUTH_FILE` alone when set; else
   `$XDG_RUNTIME_DIR/containers/auth.json` on Linux
   (`~/.config/containers/auth.json` elsewhere),

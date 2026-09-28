@@ -1195,8 +1195,10 @@ and platform paths:
 | Poetry     | `config.toml` and `auth.toml` in `POETRY_CONFIG_DIR`, else `%APPDATA%\pypoetry` on Windows, `~/Library/Application Support/pypoetry` on macOS, else `$XDG_CONFIG_HOME/pypoetry` (`~/.config/pypoetry`); `POETRY_REPOSITORIES_<NAME>_URL`, `POETRY_HTTP_BASIC_<NAME>_USERNAME`/`_PASSWORD`                                                                                                                                                       |
 | PDM        | `PDM_PYPI_URL`, `PDM_PYPI_USERNAME`, `PDM_PYPI_PASSWORD` over `config.toml` in `PDM_CONFIG_FILE`, else `%LOCALAPPDATA%\pdm\pdm` on Windows, `~/Library/Application Support/pdm` on macOS, else `$XDG_CONFIG_HOME/pdm` (`~/.config/pdm`)                                                                                                                                                                                                         |
 | Cargo      | `CARGO_REGISTRIES_<NAME>_INDEX`, `_TOKEN` and `_CREDENTIAL_PROVIDER` (the name upper-cased, `-` as `_`), `CARGO_REGISTRY_TOKEN` and `_CREDENTIAL_PROVIDER` for crates.io, `CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS`; `config`/`config.toml` and `credentials`/`credentials.toml` in `CARGO_HOME`, else `~/.cargo` (the file without an extension when both exist)                                                                            |
-| Go         | the environment, else the go env file (`GOENV`, else `go/env` in the user configuration directory; `GOENV=off` for none), for `GOPROXY`, `GOPRIVATE`, `GONOPROXY` and `GONOSUMDB`                                                                                                                                                                                                                                                               |
+| Go         | the environment, else the go env file (`GOENV`, else `go/env` in the user configuration directory; `GOENV=off` for none), for `GOPROXY`, `GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GOAUTH` (its `netrc` and `off` entries; `git` and command entries are not run)                                                                                                                                                                              |
 | containers | `REGISTRY_AUTH_FILE` alone when set; else `$XDG_RUNTIME_DIR/containers/auth.json` (Linux; `~/.config/containers/auth.json` elsewhere), `$XDG_CONFIG_HOME/containers/auth.json`, and Docker's `config.json` in `DOCKER_CONFIG`, else `~/.docker`; the first file holding a registry's credential wins, as in containers-auth.json(5)                                                                                                             |
+| registries | `CONTAINERS_REGISTRIES_CONF`, else `$XDG_CONFIG_HOME/containers/registries.conf` (`~/.config/...`) when it exists, else `/etc/containers/registries.conf`; then the `*.conf` of `/etc/containers/registries.conf.d` and the user's `registries.conf.d` (only the user's beside the user's file), by name                                                                                                                                        |
+| dockerd    | `daemon.json`: the rootless daemon's (`$XDG_CONFIG_HOME/docker`, `~/.config/docker`) when it exists, else `/etc/docker`; Docker Desktop's `~/.docker` on macOS and Windows, else `%ProgramData%\docker\config`                                                                                                                                                                                                                                  |
 | netrc      | `NETRC`; else `~/_netrc` on Windows when it exists; else `~/.netrc`                                                                                                                                                                                                                                                                                                                                                                             |
 | NuGet      | `%APPDATA%\NuGet\NuGet.Config` on Windows; elsewhere `~/.nuget/NuGet/NuGet.Config` and `~/.config/NuGet/NuGet.Config`; then the machine-wide `*.config` files of `NuGet\Config` under `%ProgramFiles(x86)%` on Windows, else under `NUGET_COMMON_APPLICATION_DATA`, `/Library/Application Support` (macOS) or `/etc/opt` (Linux)                                                                                                                |
 | Composer   | one home, for repositories and credentials alike: `COMPOSER_HOME`; `%APPDATA%\Composer` on Windows; else the first that exists of `$XDG_CONFIG_HOME/composer` (`~/.config/composer`) and `~/.composer`                                                                                                                                                                                                                                          |
@@ -1250,6 +1252,32 @@ go command also passes over on any failure. `GOPROXY` entries after `direct`
 or `off` are not reached, and `GOPROXY=direct` or `GOPROXY=off` leaves no proxy
 to ask.
 
+A module the go command fetches directly from version control — one matching
+`GONOPROXY` or `GOPRIVATE`, or reached through `direct` — is not asked at all.
+Reading its `go.mod` from the forge's raw-file URL would name a module this
+machine's own configuration declares private, with its version, to a host
+outside that configuration, which is what `GOPRIVATE` is there to prevent.
+Whether a proxy is sent the netrc's credential follows `GOAUTH`: unset or
+listing `netrc`, it is sent; `off`, or a list of only `git <dir>` and command
+entries, and it is not. Those two forms run a program for the credential,
+which depphunter does not do.
+
+A container image is asked where this machine's container tools pull it from.
+The `[[registry]]` of registries.conf whose `prefix` matches the most of the
+image's name (`docker.io/library/nginx` for `nginx`) rewrites it: its
+`[[registry.mirror]]` entries are asked first, in order — those
+`pull-from-mirror` or `mirror-by-digest-only` limit to digests only for a
+digest, to tags only for a tag — and its `location` last, each with the
+matched prefix replaced by its own location. A mirror that fails in any way is
+passed over, as Podman and Docker pass over one. A `blocked = true` registry
+is never asked, and the report says so. A Docker Hub image no `[[registry]]`
+matches is asked of the Docker daemon's `registry-mirrors` first, then of
+Docker Hub. The map attributes the image to its registry either way; the
+report names the mirror that answered. `unqualified-search-registries`,
+`short-name-mode` and short-name aliases are not applied, since the map names
+every Docker Hub image the short way however it was written, and Docker itself
+searches no list. A location is asked over https even when `insecure = true`.
+
 Five kinds of source are **authoritative** and have no fallback: a scoped source
 that covers the package (an npm `@scope:registry`, a Gemfile `source` block, a
 pubspec's `hosted:` server, a Python package pinned to an index by uv's
@@ -1258,7 +1286,8 @@ pubspec's `hosted:` server, a Python package pinned to an index by uv's
 the NuGet feeds `packageSourceMapping` maps the package to, a Cargo alternative
 registry, a private Hex organization (`organization: "acme"` or
 `repo: "hexpm:acme"` in `mix.exs`, `"hexpm:acme"` in `mix.lock`), and the host
-an image or Terraform module names. A package missing
+an image (with the mirrors this machine configures for it, below) or Terraform
+module names. A package missing
 from one of them is not looked for on the public index, which is exactly where a
 dependency-confusion attack would plant it. A Cargo registry of
 `[registries.<name>]` serves only the crates that declare it —
@@ -1343,6 +1372,11 @@ labels, for an image named in a pipeline, a Dockerfile or a Compose file alike.
 No layers are downloaded. A registry requiring a pull token is given the
 opportunity to say so, and the token endpoint it names is followed only over
 HTTPS, or back to the registry's own host.
+An identity token this machine holds for the registry
+(`identitytoken`, as `docker login` stores an Azure Container Registry
+refresh token, or a credential helper's `<token>` answer) is exchanged there
+for the pull token with the OAuth2 refresh-token grant — only at a token
+endpoint on the registry's own host, over HTTPS.
 
 A private PyPI index that serves only pip's Simple API — GitLab, AWS
 CodeArtifact, Azure Artifacts, Google Artifact Registry, devpi, a plain Nexus
@@ -1381,7 +1415,7 @@ written for and to no other.
 | npm's user and global npmrc, `npm_config_//<host>/:<field>` | `_authToken`, `_auth`, and `username` with `_password`, per registry host and path                             |
 | the home `.yarnrc.yml`, `YARN_NPM_AUTH_TOKEN`/`_IDENT`      | Yarn Berry's `npmAuthToken` and `npmAuthIdent`: top level, `npmScopes`, `npmRegistries`                        |
 | Bun's global bunfig                                         | `token`, or `username` and `password`, of `[install] registry` and `[install.scopes]`                          |
-| `~/.netrc` (`NETRC`; `~/_netrc` on Windows)                 | the machine/login/password triples git, curl, Go and pip already read                                          |
+| `~/.netrc` (`NETRC`; `~/_netrc` on Windows)                 | the machine/login/password triples git, curl, Go (unless `GOAUTH` says not) and pip read                       |
 | Maven's `settings.xml` (`~/.m2`, `MAVEN_HOME`)              | each `<server>`, matched to a `<mirror>`, profile `<repository>` or user `deps.edn` repository                 |
 | the user's and machine-wide `NuGet.Config`                  | `<packageSourceCredentials>` (`ClearTextPassword`), matched to its enabled `<packageSources>` entry            |
 | `NuGetPackageSourceCredentials_<source>`                    | `Username=...;Password=...` for a source those files name, over its file entry                                 |
@@ -1392,7 +1426,7 @@ written for and to no other.
 | uv's `UV_INDEX_<NAME>_USERNAME`, `_PASSWORD`                | for the index of that name in `uv.toml`, `UV_INDEX` or `UV_DEFAULT_INDEX`                                      |
 | Poetry's `auth.toml` and `config.toml`                      | `[http-basic.<name>]` for its repository `<name>`; `POETRY_HTTP_BASIC_<NAME>_*` over them                      |
 | PDM's `config.toml`, `PDM_PYPI_USERNAME`/`_PASSWORD`        | `username` and `password` of `[pypi]` and `[pypi.<name>]`, each for its URL                                    |
-| `~/.docker/config.json` (`DOCKER_CONFIG`)                   | stored `auths`, and the helpers named by `credsStore` and `credHelpers`                                        |
+| `~/.docker/config.json` (`DOCKER_CONFIG`)                   | stored `auths` and `identitytoken`s, and the helpers of `credsStore` and `credHelpers`                         |
 | `containers/auth.json`, `REGISTRY_AUTH_FILE`                | the same, for Podman and Skopeo                                                                                |
 | `credentials.toml` in `CARGO_HOME` (`~/.cargo`)             | a token per registry, matched to its index through `config.toml` there (legacy `credentials` and `config` too) |
 | `CARGO_REGISTRIES_<NAME>_TOKEN`, `CARGO_REGISTRY_TOKEN`     | the same token supplied by a pipeline instead, over the files                                                  |
