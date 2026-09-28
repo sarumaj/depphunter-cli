@@ -179,6 +179,9 @@ func TestPnpmKeys(t *testing.T) {
 		{"/lodash@4.17.21", "lodash", "4.17.21"},
 		{"/@scope/pkg@1.2.3", "@scope/pkg", "1.2.3"},
 		{"react-dom@18.3.1(react@18.3.1)", "react-dom", "18.3.1"},
+		// Version 5's peer suffix follows an underscore.
+		{"/react-dom/18.2.0_react@18.2.0", "react-dom", "18.2.0"},
+		{"/@scope/pkg/1.2.3_react@18.2.0", "@scope/pkg", "1.2.3"},
 		// A path that names no version is a name.
 		{"/@scope/pkg", "@scope/pkg", ""},
 	} {

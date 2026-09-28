@@ -1,0 +1,72 @@
+lockfileVersion: '6.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+dependencies:
+  a:
+    specifier: ^1.0.0
+    version: 1.0.0
+  b:
+    specifier: ^1.0.0
+    version: 1.0.0
+  c2:
+    specifier: npm:c@^2.0.0
+    version: /c@2.0.0
+
+packages:
+
+  /a@1.0.0:
+    resolution: {integrity: sha512-aa}
+    dependencies:
+      d: 2.0.0
+      e: 1.0.0(d@2.0.0)
+    dev: false
+
+  /b@1.0.0:
+    resolution: {integrity: sha512-bb}
+    dependencies:
+      d: 1.0.0
+      f: 1.0.0
+      h-alias: /h@1.0.0
+    optionalDependencies:
+      fsevents: 2.3.3
+    dev: false
+
+  /c@2.0.0:
+    resolution: {integrity: sha512-cc}
+    dependencies:
+      d: 1.0.0
+    dev: false
+
+  /d@1.0.0:
+    resolution: {integrity: sha512-d1}
+    dev: false
+
+  /d@2.0.0:
+    resolution: {integrity: sha512-d2}
+    dependencies:
+      e: 1.0.0(d@2.0.0)
+    dev: false
+
+  /e@1.0.0(d@2.0.0):
+    resolution: {integrity: sha512-ee}
+    peerDependencies:
+      d: '*'
+    dev: false
+
+  /f@1.0.0:
+    resolution: {integrity: sha512-ff}
+    dev: false
+
+  /fsevents@2.3.3:
+    resolution: {integrity: sha512-fs}
+    os: [darwin]
+    requiresBuild: true
+    dev: false
+    optional: true
+
+  /h@1.0.0:
+    resolution: {integrity: sha512-hh}
+    dev: false
