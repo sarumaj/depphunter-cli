@@ -27,13 +27,19 @@ import (
 // (credHelpers) or for all of them (credsStore), and the credential has to be asked
 // for. runHelper does that.
 //
-// Implements: REQ-AUTH-005, REQ-AUTH-006
+// An entry may hold an identity token instead (`identitytoken`, as `docker login`
+// stores what a registry such as Azure Container Registry hands out for an Entra
+// login): a refresh token, not a password, filed apart (see IdentityToken). A helper
+// answering with the user name `<token>` hands one back the same way.
+//
+// Implements: REQ-AUTH-005, REQ-AUTH-006, REQ-AUTH-030
 func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, error)) {
 	var doc struct {
 		Auths map[string]struct {
 			Auth     string `json:"auth"`
 			Username string `json:"username"`
 			Password string `json:"password"`
+			Identity string `json:"identitytoken"`
 		} `json:"auths"`
 		CredsStore  string            `json:"credsStore"`
 		CredHelpers map[string]string `json:"credHelpers"`
@@ -52,7 +58,7 @@ func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, err
 	// What this file holds, filed over what an earlier file held only once it is
 	// complete: the files are read from the last to be consulted to the first, and a
 	// helper this file names must run even when a later file stored a credential.
-	got := map[string]string{}
+	got, identity := map[string]string{}, map[string]string{}
 	for registry, entry := range doc.Auths {
 		host := registryHost(registry)
 		if host == "" {
@@ -60,6 +66,8 @@ func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, err
 		}
 		c.registries[host] = true
 		switch {
+		case entry.Identity != "":
+			identity[host] = entry.Identity
 		case entry.Auth != "":
 			if pair, err := base64.StdEncoding.DecodeString(entry.Auth); err == nil && strings.Contains(string(pair), ":") {
 				got[host] = string(pair)
@@ -83,16 +91,46 @@ func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, err
 	}
 	for registry, helper := range helpers {
 		host := registryHost(registry)
-		if host == "" || got[host] != "" {
+		if host == "" || got[host] != "" || identity[host] != "" {
 			continue
 		}
-		if user, secret, ok := runHelper(helper, registry, lookPath); ok {
+		user, secret, ok := runHelper(helper, registry, lookPath)
+		switch {
+		case ok && user == identityUser:
+			identity[host] = secret
+		case ok:
 			got[host] = user + ":" + secret
 		}
 	}
 	for host, pair := range got {
 		c.basic[host] = pair
+		delete(c.identity, host)
 	}
+	for host, token := range identity {
+		if c.identity == nil {
+			c.identity = map[string]string{}
+		}
+		c.identity[host] = token
+	}
+}
+
+// identityUser is the user name under which a credential helper hands back an
+// identity token rather than a password.
+const identityUser = "<token>"
+
+// IdentityToken is the identity token this machine's container configuration holds
+// for a registry host ("" for none): an OAuth2 refresh token, which is sent to
+// nothing but that registry's own token endpoint, over https, to be exchanged for a
+// pull token (internal/index, ociToken). It is never an Authorization header.
+//
+// Implements: REQ-AUTH-030
+func (c *Store) IdentityToken(host string) string {
+	if c == nil {
+		return ""
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.identity[host]
 }
 
 // Registry reports whether this machine's container configuration names a registry
@@ -152,12 +190,8 @@ func runHelper(name, registry string, lookPath func(string) (string, error)) (us
 	if json.Unmarshal(out, &answer) != nil || answer.Secret == "" {
 		return "", "", false
 	}
-	// A refresh token comes back under this user name and is not a password; the
-	// registry takes it as an identity token instead, which is beyond what a link
-	// check or a manifest read needs.
-	if answer.Username == "<token>" {
-		return "", "", false
-	}
+	// A refresh token comes back under the user name identityUser and is not a
+	// password: the caller files it as an identity token.
 	return answer.Username, answer.Secret, true
 }
 

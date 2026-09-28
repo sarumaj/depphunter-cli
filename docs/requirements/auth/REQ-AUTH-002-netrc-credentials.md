@@ -25,3 +25,8 @@ a private repository is most often reached.
 1. A request to a netrc machine carries its Basic credential; a request to
    another host carries none.
 2. With `NETRC` set, `~/.netrc` is not read.
+
+## Notes
+
+Whether a Go module proxy is sent the netrc's credential is `GOAUTH`'s to say
+([REQ-AUTH-029](REQ-AUTH-029-goauth.md)).

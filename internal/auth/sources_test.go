@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -357,4 +358,98 @@ func TestTerraformTokens(t *testing.T) {
 	if c.bearer["only.corp.test"] != "cfg-token" || c.TerraformHost("tf.corp.test") {
 		t.Errorf("TF_CLI_CONFIG_FILE was not read instead of ~/.terraformrc: %v", c.bearer)
 	}
+}
+
+// An identity token (`identitytoken`) is a refresh token, not a password: it is
+// filed apart, never becomes an Authorization header, and a higher file's stored
+// credential for the same registry replaces it. A helper answering with the user
+// name `<token>` hands back an identity token the same way.
+//
+// Verifies: REQ-AUTH-030, REQ-AUTH-005, REQ-AUTH-007
+func TestIdentityTokens(t *testing.T) {
+	home := t.TempDir()
+	pair := base64.StdEncoding.EncodeToString([]byte("robot:secret"))
+	writeFile(t, filepath.Join(home, ".docker", "config.json"), `{"auths":{
+		"acr.azurecr.io":  {"identitytoken":"refresh-acr"},
+		"harbor.corp":     {"identitytoken":"refresh-harbor"},
+		"https://index.docker.io/v1/": {"auth":"`+pair+`","identitytoken":"refresh-hub"}}}`)
+	// Podman's auth.json is consulted first: its stored pair wins for harbor.corp.
+	writeFile(t, filepath.Join(home, ".config", "containers", "auth.json"), `{"auths":{"harbor.corp":{"auth":"`+pair+`"}}}`)
+	c := Read(home, nil)
+	for host, want := range map[string]string{
+		"acr.azurecr.io":       "refresh-acr",
+		"registry-1.docker.io": "refresh-hub",
+		"harbor.corp":          "",
+		"other.corp":           "",
+	} {
+		if got := c.IdentityToken(host); got != want {
+			t.Errorf("%s: %q, want %q", host, got, want)
+		}
+	}
+	if c.Authorizes("https://acr.azurecr.io/v2/") {
+		t.Error("an identity token became an Authorization header")
+	}
+	if !c.Authorizes("https://harbor.corp/v2/") {
+		t.Error("the higher file's stored credential was not kept")
+	}
+	if !c.Registry("acr.azurecr.io") {
+		t.Error("a registry with an identity token is not one this machine knows")
+	}
+	var none *Store
+	if none.IdentityToken("acr.azurecr.io") != "" {
+		t.Error("a nil store has an identity token")
+	}
+
+	if runtime.GOOS == "windows" {
+		t.Skip("the stub credential helper is a shell script")
+	}
+	bin := t.TempDir()
+	writeFile(t, filepath.Join(bin, "docker-credential-acr"), "#!/bin/sh\nread r\necho '{\"Username\":\"<token>\",\"Secret\":\"refresh-helper\"}'\n")
+	if err := os.Chmod(filepath.Join(bin, "docker-credential-acr"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(bin, "docker-credential-pass"), "#!/bin/sh\nread r\necho '{\"Username\":\"u\",\"Secret\":\"p\"}'\n")
+	if err := os.Chmod(filepath.Join(bin, "docker-credential-pass"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h := &Store{bearer: map[string]string{}, basic: map[string]string{}}
+	h.readDockerConfig([]byte(`{"credHelpers":{"helped.azurecr.io":"acr","plain.corp":"pass"}}`), func(name string) (string, error) {
+		return filepath.Join(bin, name), nil
+	})
+	if got := h.IdentityToken("helped.azurecr.io"); got != "refresh-helper" {
+		t.Errorf("helper identity token %q", got)
+	}
+	if _, ok := h.basic["helped.azurecr.io"]; ok {
+		t.Error("a <token> answer became a password")
+	}
+	if h.basic["plain.corp"] != "u:p" || h.IdentityToken("plain.corp") != "" {
+		t.Errorf("plain helper: %q", h.basic["plain.corp"])
+	}
+}
+
+// ApplyGo leaves the netrc's credential out under GOAUTH=off, but not a credential
+// another file filed over it for the same host.
+//
+// Verifies: REQ-AUTH-029
+func TestApplyGoAndGOAUTH(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".netrc"), "machine proxy.corp login u password p\nmachine both.corp login u password p\n")
+	pair := base64.StdEncoding.EncodeToString([]byte("robot:secret"))
+	writeFile(t, filepath.Join(home, ".docker", "config.json"), `{"auths":{"both.corp":{"auth":"`+pair+`"}}}`)
+	for goauth, want := range map[string]bool{"": true, "netrc": true, "off": false, "git /src": false, " netrc ; git /src": true} {
+		c := onMachine(t, home, "linux", map[string]string{"GOAUTH": goauth})
+		req, _ := http.NewRequest(http.MethodGet, "https://proxy.corp/mod/@v/v1.0.0.mod", nil)
+		c.ApplyGo(req)
+		if got := req.Header.Get("Authorization") != ""; got != want {
+			t.Errorf("GOAUTH=%q: sent %v", goauth, got)
+		}
+		req, _ = http.NewRequest(http.MethodGet, "https://both.corp/mod/@v/v1.0.0.mod", nil)
+		c.ApplyGo(req)
+		if got := req.Header.Get("Authorization"); got != "Basic "+pair {
+			t.Errorf("GOAUTH=%q: both.corp got %q", goauth, got)
+		}
+	}
+	var none *Store
+	req, _ := http.NewRequest(http.MethodGet, "https://proxy.corp/", nil)
+	none.ApplyGo(req) // a nil store sends nothing and does not panic
 }

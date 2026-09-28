@@ -342,6 +342,9 @@ type Config struct {
 	// biocRelease is the Bioconductor release the repository's renv.lock was made
 	// with ("" for the current one): the release whose packages it installed.
 	biocRelease string
+	// oci is where this machine's container tools pull images from: registries.conf
+	// and the Docker daemon's mirrors (see ociEndpoints).
+	oci ociConf
 }
 
 func New() *Config {
@@ -545,7 +548,7 @@ func (c *Config) For(eco, pkg string) (index string, known bool) {
 //
 // Implements: REQ-SUP-014, REQ-SUP-016, REQ-SUP-018, REQ-SUP-063
 func (c *Config) ForTarget(t lang.Target) (index string, known bool) {
-	candidates := c.candidates(t.Ecosystem, t.Package, t.Registry)
+	candidates := c.candidatesFor(t)
 	if len(candidates) == 0 {
 		return "", false
 	}
@@ -583,7 +586,9 @@ type candidate struct {
 // the client moves to the next one when an index does not have the package. The
 // rules follow the package managers':
 //
-//   - An OCI image or a Terraform module named with a host is served by that host.
+//   - An OCI image or a Terraform module named with a host is served by that host;
+//     an image by the mirrors this machine's container tools configure for it
+//     first (see ociEndpoints).
 //   - A crate that names a Cargo registry (lang.Target.Registry) is served by that
 //     registry alone; a registry serves no other crate.
 //   - A Hex package of a private organization (lang.Target.Registry
@@ -610,14 +615,7 @@ type candidate struct {
 // Implements: REQ-SUP-014, REQ-SUP-016, REQ-SUP-063
 func (c *Config) candidates(eco, pkg, registry string) []candidate {
 	if eco == OCI {
-		// A container reference carries its registry: "ghcr.io/org/app" is not
-		// "app" from Docker Hub. Nothing needs to be configured to see that; to be
-		// asked, the registry has to be Docker Hub, one this machine's container
-		// configuration names, or one the user vouched for.
-		registry := ociRegistry(pkg)
-		host := Host(registry)
-		return []candidate{{url: registry, primary: true, known: registry == public[OCI] || c.trusted[registry] ||
-			c.trusted[host] || c.credentials.Registry(host)}}
+		return c.ociCandidates(pkg, "")
 	}
 	if eco == TerraformModule {
 		// A module address carries its registry's host when it is not the public
@@ -707,6 +705,15 @@ func (c *Config) candidates(eco, pkg, registry string) []candidate {
 		}
 	}
 	return out
+}
+
+// candidatesFor is candidates for one package at one version: an image's tag or
+// digest decides which mirrors serve it.
+func (c *Config) candidatesFor(t lang.Target) []candidate {
+	if t.Ecosystem == OCI {
+		return c.ociCandidates(t.Package, t.Version)
+	}
+	return c.candidates(t.Ecosystem, t.Package, t.Registry)
 }
 
 // cargoRegistryURL is a Cargo registry's index URL as Cargo.lock and a config file

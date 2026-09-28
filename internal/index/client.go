@@ -390,7 +390,7 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 	var err error
 	switch t.Ecosystem {
 	case Go:
-		deps, err = c.goModule(ctx, index, t)
+		deps, err = c.goModule(context.WithValue(ctx, goRequestKey{}, true), index, t)
 	case NPM:
 		deps, err = c.npmPackage(ctx, index, t)
 	case PyPI:
@@ -594,12 +594,45 @@ func (c *Client) do(ctx context.Context, url, media, bearer string) (*http.Respo
 		return nil, err
 	}
 	req.Header.Set("Accept", media)
-	req.Header.Set("User-Agent", userAgent)
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
+	} else if goRequest, _ := ctx.Value(goRequestKey{}).(bool); goRequest {
+		c.auth.ApplyGo(req)
 	} else {
 		c.auth.Apply(req)
 	}
+	return c.send(ctx, req, url)
+}
+
+// goRequestKey marks the context of a question the go command would ask a module
+// proxy, whose credentials GOAUTH decides (auth.Store.ApplyGo).
+type goRequestKey struct{}
+
+// postForm posts a form and reads the answer, sending nothing of this machine's
+// credentials: what the form holds is the credential (see ociToken).
+//
+// Implements: REQ-AUTH-030
+func (c *Client) postForm(ctx context.Context, address string, form url.Values) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.send(ctx, req, address)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, &statusError{url: address, status: resp.Status, code: resp.StatusCode}
+	}
+	return readLimited(resp)
+}
+
+// send sends one request as depphunter, recording it for the report under address.
+func (c *Client) send(ctx context.Context, req *http.Request, address string) (*http.Response, error) {
+	req.Header.Set("User-Agent", userAgent)
 	made, _ := ctx.Value(requestLogKey{}).(*requestLog)
 	start := time.Now()
 	resp, err := c.http.Do(req)
@@ -610,7 +643,7 @@ func (c *Client) do(ctx context.Context, url, media, bearer string) (*http.Respo
 	case resp != nil:
 		status = resp.Status
 	}
-	made.add(trace.Request{URL: url, Status: status, Millis: time.Since(start).Milliseconds()})
+	made.add(trace.Request{URL: address, Status: status, Millis: time.Since(start).Milliseconds()})
 	return resp, err
 }
 

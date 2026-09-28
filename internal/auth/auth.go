@@ -47,6 +47,17 @@ type Store struct {
 	// organization's credential this way, and so does an npm registry that
 	// lives under a path, as GitLab's per-project registries do.
 	scoped map[string]map[string]secret
+	// identity holds the identity tokens of container registries, by host: the
+	// OAuth2 refresh tokens `docker login` stores as `identitytoken` (and a
+	// helper hands back under the user name `<token>`), which the registry's
+	// token endpoint exchanges for a pull token; see IdentityToken.
+	identity map[string]string
+	// netrc is what the netrc filed in basic, by machine, so that ApplyGo can leave
+	// it out while it is still the credential basic holds.
+	netrc map[string]string
+	// goNoNetrc says GOAUTH keeps the go command from sending the netrc's
+	// credentials to a module proxy; see ApplyGo.
+	goNoNetrc bool
 }
 
 // secret is a credential of scoped: a Bearer token, a Basic "user:password", or
@@ -94,6 +105,7 @@ func readMachine(m userconf.Machine) *Store {
 	if data, err := os.ReadFile(m.Netrc()); err == nil {
 		c.readNetrc(data)
 	}
+	c.goNoNetrc = !m.GoAuthNetrc()
 	// The two an enterprise actually keeps its feeds behind. Both name a credential
 	// by the id of a source declared in the same file, so both have to read the
 	// sources as well to know which host it is for - which is the whole reason they
@@ -381,6 +393,10 @@ func (c *Store) readNetrc(data []byte) {
 	flush := func() {
 		if machine != "" && login != "" {
 			c.basic[machine] = login + ":" + password
+			if c.netrc == nil {
+				c.netrc = map[string]string{}
+			}
+			c.netrc[machine] = login + ":" + password
 		}
 		machine, login, password = "", "", ""
 	}
@@ -411,7 +427,23 @@ func (c *Store) readNetrc(data []byte) {
 // in the clear.
 //
 // Implements: REQ-AUTH-011
-func (c *Store) Apply(req *http.Request) {
+func (c *Store) Apply(req *http.Request) { c.apply(req, true) }
+
+// ApplyGo is Apply for a request the go command would make to a module proxy: the
+// netrc's credential for the host is left out when GOAUTH says the go command does
+// not send it (GOAUTH=off, or a list without "netrc"). A credential another file
+// filed over the netrc's for the same host is sent as usual.
+//
+// Implements: REQ-AUTH-029
+func (c *Store) ApplyGo(req *http.Request) {
+	if c == nil {
+		return
+	}
+	c.apply(req, !c.goNoNetrc)
+}
+
+// apply is Apply, with or without the credentials that came from the netrc.
+func (c *Store) apply(req *http.Request, netrc bool) {
 	if c == nil {
 		return
 	}
@@ -434,6 +466,9 @@ func (c *Store) Apply(req *http.Request) {
 	}
 	for _, host := range [...]string{req.URL.Host, req.URL.Hostname()} {
 		if pair, ok := c.basic[host]; ok {
+			if !netrc && c.netrc[host] == pair {
+				continue
+			}
 			req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(pair)))
 			return
 		}

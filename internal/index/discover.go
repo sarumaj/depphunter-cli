@@ -103,6 +103,9 @@ func (c *Config) machine(m userconf.Machine) {
 	machinePip(m, k)
 	c.machinePython(m, k)
 	parseGoproxy(m.GoEnv("GOPROXY"), k)
+	// Where the container tools pull images from: registries.conf's registries and
+	// mirrors, the Docker daemon's mirrors of Docker Hub.
+	c.oci = readOCIConf(m)
 	// Cargo: the registries the environment defines, before config.toml's, since a
 	// variable overrides the same registry's index there.
 	cargoEnv := m.CargoRegistries()

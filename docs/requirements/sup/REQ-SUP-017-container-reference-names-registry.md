@@ -32,4 +32,6 @@ An image on a registry other than Docker Hub is marked as coming from an index
 nothing here vouches for (see
 [REQ-SUP-018](REQ-SUP-018-repository-only-index-marked.md)) unless this
 machine's container configuration names that registry (`auths` or
-`credHelpers`) or `--trust-index` vouches for it.
+`credHelpers`, or a `[[registry]]` of registries.conf) or `--trust-index` vouches
+for it. Mirrors this machine configures are asked before the registry
+([REQ-SUP-068](REQ-SUP-068-container-registry-mirrors.md)).

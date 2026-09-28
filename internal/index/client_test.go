@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -389,5 +390,72 @@ func TestAPackageInstalledFromElsewhereIsNotAsked(t *testing.T) {
 	rep.Finish()
 	if got := rep.Lookups; len(got) != 1 || got[0].Reason != trace.ReasonInstalled {
 		t.Errorf("reported %+v, want one lookup declined as installed", got)
+	}
+}
+
+// GOAUTH decides whether the go command sends the netrc's credential to a module
+// proxy: unset or a list naming netrc sends it, off or a list without netrc (a
+// "git" or command entry, which depphunter does not run) does not. The go env file
+// says so as well as the environment does.
+//
+// Verifies: REQ-AUTH-029, REQ-AUTH-002
+func TestGOAUTHDecidesWhetherTheNetrcReachesTheProxy(t *testing.T) {
+	const mod = "/example.com/mod/@v/v1.0.0.mod"
+	var mu sync.Mutex
+	var headers []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		headers = append(headers, r.Header.Get("Authorization"))
+		mu.Unlock()
+		if r.Header.Get("Authorization") == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		fmt.Fprint(w, "module example.com/mod\n\nrequire example.com/dep v1.0.0\n")
+	}))
+	t.Cleanup(srv.Close)
+	home := t.TempDir()
+	netrc := filepath.Join(home, ".netrc")
+	if err := os.WriteFile(netrc, []byte("machine 127.0.0.1 login gopher password s3cr3t\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	goenv := filepath.Join(t.TempDir(), "env")
+	if err := os.WriteFile(goenv, []byte("GOAUTH=off\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		vars map[string]string
+		sent bool
+	}{
+		{map[string]string{}, true},
+		{map[string]string{"GOAUTH": "netrc"}, true},
+		{map[string]string{"GOAUTH": "git /src;netrc"}, true},
+		{map[string]string{"GOAUTH": "off"}, false},
+		{map[string]string{"GOAUTH": "git /src"}, false},
+		{map[string]string{"GOAUTH": "my-credential-command --flag"}, false},
+		{map[string]string{"GOENV": goenv}, false},
+	} {
+		tt.vars["GOPROXY"] = srv.URL
+		mu.Lock()
+		headers = nil
+		mu.Unlock()
+		store := auth.Read(home, env(tt.vars))
+		c := NewClient(NewDiscoverer(env(tt.vars), "").Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store, nil)
+		got := c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.0.0"})
+		if tt.sent != (len(got) == 1) {
+			t.Errorf("%v: got %v, want the credential sent: %v", tt.vars, names(got), tt.sent)
+		}
+		mu.Lock()
+		if !tt.sent && (len(headers) != 1 || headers[0] != "") {
+			t.Errorf("%v: headers %q", tt.vars, headers)
+		}
+		mu.Unlock()
+		// Whatever GOAUTH says, it is the go command's: another ecosystem's request to
+		// the same host still carries the netrc credential.
+		req := httptest.NewRequest(http.MethodGet, srv.URL+mod, nil)
+		store.Apply(req)
+		if req.Header.Get("Authorization") == "" {
+			t.Errorf("%v: Apply left the netrc out", tt.vars)
+		}
 	}
 }
