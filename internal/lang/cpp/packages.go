@@ -49,6 +49,8 @@ type packages struct {
 	// flat are the Conan 2 locks that pinned something, for the note that says
 	// they give no edges.
 	flat []string
+	// fetched is the content the build fetches (fetched.go), shallowest first.
+	fetched []Fetched
 }
 
 // normName folds the spellings one library goes by in vcpkg, Conan and its include
@@ -565,10 +567,11 @@ func ReadPackages(all []*scan.File) Packages { return Packages{readPackages(all)
 
 // Library is what a third-party include (<boost/asio.hpp>, <zlib.h>) is attributed
 // to from file: the package a manifest over it declares - tried by the include's
-// candidate names, then by extra names (another spelling of the library) - or else,
-// unresolved, the c-external library named after the include (REQ-CPP-006).
+// candidate names, then by extra names (another spelling of the library) - else
+// content the build fetches under one of those names, or else, unresolved, the
+// c-external library named after the include (REQ-CPP-006).
 //
-// Implements: REQ-CPP-006, REQ-CPP-012, REQ-CMAKE-006
+// Implements: REQ-CPP-006, REQ-CPP-012, REQ-CPP-017, REQ-CMAKE-006
 func (p Packages) Library(file, include string, extra ...string) lang.Target {
 	names := candidates(include)
 	for _, e := range extra {
@@ -578,6 +581,9 @@ func (p Packages) Library(file, include string, extra ...string) lang.Target {
 	}
 	if d := p.p.matchNames(file, names); d != nil {
 		return d.target()
+	}
+	if f := p.p.fetchedFor(file, names); f != nil {
+		return f.Target
 	}
 	return lang.Target{Ecosystem: ecoExternal, Package: library(include), Unresolved: true}
 }

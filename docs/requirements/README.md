@@ -222,8 +222,10 @@ requirements of type `limitation` in their scopes:
   another file.
 - GitHub Actions references from github.com and from GitHub Enterprise are one
   ecosystem.
-- Build arguments, environment variables and Compose `.env` files are not
-  read, so an image reference that depends on one is left as written.
+- Build arguments and environment variables are not read, so an image
+  reference that depends on one is left as written; of Compose's `.env` files
+  only the one beside the Compose file is read, and remote includes are not
+  followed.
 - C and C++ preprocessor conditions other than a literal 0 or 1 are not
   evaluated, so the includes of every platform branch are recorded.
 - vcpkg and Conan manifests are read as text: a `conanfile.py` is not run, the
@@ -262,9 +264,9 @@ requirements of type `limitation` in their scopes:
   expressions are not evaluated, so only literal module sources, paths and
   versions resolve, and no vulnerability database covers Terraform modules or
   providers.
-- Protocol Buffers are read without protoc or buf: protoc's `-I` flags in
-  build scripts are not read (conventional roots stand in for them), and the
-  Buf Schema Registry is not asked about a module's dependencies; no
+- Protocol Buffers are read without protoc or buf: build scripts' `-I` flags
+  are read as text, so a root computed at run time is not known, and the Buf
+  Schema Registry is not asked about a module's dependencies; no
   vulnerability database covers its modules.
 - Shell scripts are read without running them: only paths the file itself
   determines are followed (not loops over globs, `eval` or variables set in
@@ -273,7 +275,7 @@ requirements of type `limitation` in their scopes:
 - CMake files are read without configuring: conditions, loops and function
   calls are not evaluated, values computed at configure time (fetched
   content's source directories, binary directories) are unknown, and sources'
-  includes of fetched content are not attributed to the fetched package.
+  includes of fetched content are matched to it by name.
 - Lua is read without running Lua, LuaRocks or Rojo: `package.path` set at run
   time is not read (modules are found under conventional roots), computed
   requires and instances created at run time are not followed, an undeclared

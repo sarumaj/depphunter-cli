@@ -11,7 +11,8 @@
 // else the c-external library named like X's include directory, so the build file
 // and the sources including <X/...> meet on one node. Content fetched with
 // FetchContent, ExternalProject or CPM.cmake is the cmake-fetch island, named by its
-// repository or download URL; pkg_check_modules() modules the pkg-config island.
+// repository or download URL, which the includes of its headers are attributed to as
+// well (Fetched); pkg_check_modules() modules the pkg-config island.
 //
 // Paths are evaluated from literals, the variables the file sets (resolved against
 // the directories above it in the resolver) and CMake's own variables for the
@@ -66,7 +67,7 @@ func (Plugin) Claims(f *scan.File) bool {
 // Implements: REQ-CMAKE-005, REQ-CMAKE-006, REQ-CMAKE-007, REQ-CMAKE-011
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return append(cpp.PackageEcosystems(),
-		lang.Ecosystem{ID: ecoFetch, Name: "CMake fetched content"},
+		Plugin{}.FetchIsland(),
 		lang.Ecosystem{ID: ecoPkg, Name: "pkg-config modules"},
 		lang.Ecosystem{ID: ecoStd, Name: "CMake modules", Std: true},
 	)
@@ -74,6 +75,17 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 	return newResolver(all), nil
+}
+
+// Fetched is the content the project's CMake files fetch (cpp.FetchReader), for the
+// cpp plugin to attribute the includes of its headers to.
+//
+// Implements: REQ-CPP-017
+func (Plugin) Fetched(all []*scan.File) []cpp.Fetched { return newResolver(all).content }
+
+// FetchIsland is the island of fetched content (cpp.FetchReader).
+func (Plugin) FetchIsland() lang.Ecosystem {
+	return lang.Ecosystem{ID: ecoFetch, Name: "CMake fetched content"}
 }
 
 // Extract depends on the file's name only through its extension: of the claimed

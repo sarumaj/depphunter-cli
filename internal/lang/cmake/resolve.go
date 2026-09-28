@@ -2,6 +2,7 @@ package cmake
 
 import (
 	"cmp"
+	"maps"
 	"os"
 	"path"
 	"regexp"
@@ -42,6 +43,7 @@ type resolver struct {
 	modules []string
 	fetches map[string][]fetchRef // lower-case name -> declarations, shallowest file first
 	pkgs    cpp.Packages
+	content []cpp.Fetched // the fetched packages, for the includes of their headers
 }
 
 // Implements: REQ-CMAKE-003
@@ -99,7 +101,34 @@ func newResolver(all []*scan.File) *resolver {
 	for _, f := range cmake {
 		r.modules = append(r.modules, r.modulePath(f.Path, false)...)
 	}
+	r.content = r.fetchedContent()
+	r.pkgs.Fetch(r.content)
 	return r
+}
+
+// fetchedContent is every package the project's CMake files fetch, under the names
+// its headers may go by: the name it is declared under, its repository's name and
+// owner-repository (nlohmann-json), so that find_package() and the sources' includes
+// land on it as they land on a vcpkg or Conan package. Local content is the
+// project's own files.
+//
+// Implements: REQ-CMAKE-007, REQ-CPP-017
+func (r *resolver) fetchedContent() []cpp.Fetched {
+	var out []cpp.Fetched
+	for _, name := range slices.Sorted(maps.Keys(r.fetches)) {
+		for _, ref := range r.fetches[name] {
+			t := r.fetched(ref.file, ref.imp)
+			if t.Ecosystem != ecoFetch {
+				continue
+			}
+			names := []string{name}
+			if parts := strings.Split(t.Package, "/"); len(parts) == 3 {
+				names = append(names, parts[2], parts[1]+"-"+parts[2])
+			}
+			out = append(out, cpp.Fetched{Dir: path.Dir(ref.file), Names: names, Target: t})
+		}
+	}
+	return out
 }
 
 // builtin is the value of CMake's own variable name in file: the directories of the

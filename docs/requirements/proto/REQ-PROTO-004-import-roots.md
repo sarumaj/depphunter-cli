@@ -16,21 +16,29 @@ roots Buf's configuration declares for the importer - the nearest
 `buf.work.yaml` (its `directories`) or v2 `buf.yaml` (its `modules[].path`, or
 its own directory) above the file, else the nearest v1 `buf.yaml`'s directory
 (or v1beta1 `build.roots`) - or, where no Buf configuration governs the file,
-under the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/`, and
-the importer's directory and each of its ancestors, nearest first. Failing
-that, a `google/protobuf/` path **shall** resolve to the hidden
-`protobuf-std` island, named by its path. After the declared modules of
-REQ-PROTO-005, a file under Buf's configuration tries the conventional roots as
-well, and then any import resolves to the one project file whose path ends in
-the imported path, or the one closest to the importer when that is closer than
-all others.
+under the directories the repository's build scripts pass protoc with `-I`,
+`-I=`, `--proto_path` or `--proto_path=` (a `:`/`;` list too), those of the
+scripts in the importer's directory or above it first, then under the repository
+root, `proto/`, `protos/`, `api/`, `src/main/proto/`, and the importer's
+directory and each of its ancestors, nearest first. A build script is a Makefile
+(`Makefile`, `GNUmakefile`, `*.mk`), a shell or PowerShell script, a justfile, a
+Taskfile or a CMake file mentioning protoc; a variable it sets on a line of its
+own is expanded, `$(CURDIR)`, `$PWD` and `$(pwd)` are the script's directory,
+and a root is kept when it is a directory of the repository read from the
+script's directory, else from the repository root. Failing that, a
+`google/protobuf/` path **shall** resolve to the hidden `protobuf-std` island,
+named by its path. After the declared modules of REQ-PROTO-005, a file under
+Buf's configuration tries the scripts' and the conventional roots as well, and
+then any import resolves to the one project file whose path ends in the imported
+path, or the one closest to the importer when that is closer than all others.
 
 ## Rationale
 
 Buf builds a workspace from the roots its configuration names; protoc is given
-`-I` flags in build scripts the plugin does not read, and these point at the
-repository root, a `proto/` directory, Maven's and Gradle's `src/main/proto` or
-a directory above the importer. The well-known types ship with protoc and buf.
+`-I` flags in build scripts, which point at the repository root, a `proto/`
+directory, Maven's and Gradle's `src/main/proto`, a directory above the importer
+or a vendored copy (`third_party/`), where a same-named file elsewhere makes the
+unique-suffix fallback ambiguous. The well-known types ship with protoc and buf.
 
 ## Acceptance criteria
 
@@ -44,3 +52,8 @@ a directory above the importer. The well-known types ship with protoc and buf.
    resolves to the only project file ending in that path.
 3. `google/protobuf/timestamp.proto` is the `protobuf-std` package
    `google/protobuf/timestamp.proto`.
+4. A Makefile running `protoc -I$(PROTO_DIR) --proto_path=$(THIRD)
+   --proto_path $(CURDIR)/extra` resolves imports under those directories when
+   another directory holds a same-named copy; a script in `services/b` with
+   `-I=../../lib-protos` puts that root first for the files beside it; a binary
+   or broken script adds nothing.

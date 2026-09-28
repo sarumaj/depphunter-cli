@@ -36,6 +36,7 @@ type resolver struct {
 	modules map[string]*config  // directory -> its v1 (or v1beta1) buf.yaml
 	all     []*config           // every buf.yaml, shallowest first
 	locks   map[string]map[string]locked
+	protoc  []protocRoot // the -I directories build scripts give protoc
 }
 
 func depth(p string) int {
@@ -111,6 +112,7 @@ func newResolver(all []*scan.File) *resolver {
 	for _, c := range r.all {
 		c.lock = r.locks[c.dir]
 	}
+	r.protoc = readProtocRoots(all, r.dirs)
 	sort.SliceStable(r.all, func(i, j int) bool { return depth(r.all[i].dir) < depth(r.all[j].dir) })
 	return r
 }
@@ -280,7 +282,7 @@ func (r *resolver) resolveImport(file, name string) lang.Target {
 	sc := r.scopeOf(file)
 	roots := sc.roots
 	if !sc.buf {
-		roots = heuristic(file)
+		roots = append(r.protocRootsFor(file), heuristic(file)...)
 	}
 	if p := r.find(roots, name); p != "" {
 		return lang.Target{Local: p}
@@ -292,7 +294,7 @@ func (r *resolver) resolveImport(file, name string) lang.Target {
 		return d.target()
 	}
 	if sc.buf { // protoc may be pointed elsewhere than Buf is
-		if p := r.find(heuristic(file), name); p != "" {
+		if p := r.find(append(r.protocRootsFor(file), heuristic(file)...), name); p != "" {
 			return lang.Target{Local: p}
 		}
 	}

@@ -24,6 +24,14 @@ const (
 	kindBuild = "build" // a Dockerfile, relative to the Compose file's directory
 )
 
+// Import kinds of a Compose file whose Module is the text as written, interpolated by
+// the resolver with the values of the .env file beside the Compose file.
+const (
+	kindCompose = "compose-image" // a container reference
+	kindInclude = "include"       // a Compose file the top-level include: lists
+	kindExtends = "extends"       // a service of this file extending one of another file
+)
+
 // The two kinds of file, as Class names them.
 const (
 	classDockerfile = "dockerfile"
@@ -33,7 +41,7 @@ const (
 type Plugin struct{}
 
 func (Plugin) Name() string { return "docker" }
-func (Plugin) Version() int { return 1 }
+func (Plugin) Version() int { return 2 }
 
 // Claims takes Dockerfiles under every name scan.Dockerfile knows, and the files
 // Compose reads by default: compose.yaml, docker-compose.yml, their .yml/.yaml
@@ -73,7 +81,7 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
-	return newResolver(all), nil
+	return newResolver(root, all), nil
 }
 
 // Implements: REQ-DOCKER-001

@@ -1939,13 +1939,23 @@ either `.yml` or `.yaml`:
   which case `image:` is only the tag of the result and the service points at
   the Dockerfile inside the repository that builds it, so that file's own base
   images chain on. Images of an inline Dockerfile and `docker-image://`
-  build contexts are included; services become the file's symbols.
+  build contexts are included; services become the file's symbols. A service
+  that `extends:` another takes its `image:` and `build:` (a `build:` from
+  another file keeps that file's directory), and the top-level `include:`
+  (short and long form) and an `extends:` `file:` are edges to those files. An
+  included file not named as a Compose file is read for the including one.
+  Remote includes and files outside the repository are not followed.
 
 Build arguments are expanded from their defaults, so `ARG BASE=node:20` and
-`FROM ${BASE}` name `node:20`, and Compose's `${VAR:-default}` likewise. A
-value only `--build-arg`, the environment or an `.env` file supplies is not in
-the repository and is not guessed: an image whose name depends on one is shown
-as unresolved, and one whose tag depends on one keeps the tag as written.
+`FROM ${BASE}` name `node:20`, and Compose's `${VAR:-default}` likewise.
+Compose values also come from the `.env` file beside the Compose file (the
+included file's own for an included file), read from disk since it is often
+not committed. Its values only complete references: they are never shown, and
+a name that holds a credential (`*PASSWORD*`, `*TOKEN*`, `*SECRET*`, `*_KEY`
+and the like) is not read at all. A value only `--build-arg` or the
+environment supplies is not in the repository and is not guessed: an image
+whose name depends on one is shown as unresolved, under the reference as
+written, and one whose tag depends on one keeps the tag as written.
 
 The images join those of the CI pipelines in one **Container images** island,
 with the same rule that only a digest pins, the same `oci:` private patterns
@@ -2844,10 +2854,15 @@ records. depphunter reads `.proto` files and Buf's `buf.yaml`, `buf.work.yaml`,
   relative to an import root. The roots are those Buf's configuration
   declares — the directories of a `buf.work.yaml`, the module paths of a v2
   `buf.yaml`, a v1 `buf.yaml`'s own directory — and, where no Buf
-  configuration applies, the ones protoc is usually given: the repository
-  root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's
-  directory and its ancestors. Failing those, an import resolves to the only
-  project file whose path ends in it (a copy under `third_party/`).
+  configuration applies, the directories the repository's build scripts give
+  protoc with `-I` or `--proto_path` (Makefiles, shell and PowerShell
+  scripts, justfiles, Taskfiles and CMake files that mention protoc; variables
+  the script sets are expanded, and the scripts nearest the importer come
+  first), then the ones protoc is usually given: the repository root,
+  `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directory
+  and its ancestors. Buf's roots come before the scripts'. Failing those, an
+  import resolves to the only project file whose path ends in it (a copy under
+  `third_party/`).
 - **Well-known types**: `google/protobuf/*.proto` (`timestamp.proto`,
   `descriptor.proto` and the rest that protoc and buf ship) form a hidden
   **Protobuf well-known types** island.
@@ -2868,10 +2883,9 @@ records. depphunter reads `.proto` files and Buf's `buf.yaml`, `buf.work.yaml`,
 
 Messages (nested ones as `Outer.Inner`), enums, services, their rpc methods
 (`Service.Method`), `extend` blocks, oneofs and the package become the file's
-symbols. protoc's `-I` flags in a Makefile or script are not read, and a type
-used from another file needs no edge of its own: protobuf requires importing
-the file that declares it. Only `buf.lock`'s commit, or a commit given as the
-ref, pins a module.
+symbols. A type used from another file needs no edge of its own: protobuf
+requires importing the file that declares it. Only `buf.lock`'s commit, or a
+commit given as the ref, pins a module.
 
 ### Shell scripts
 
@@ -3051,7 +3065,7 @@ The JSON and GraphML exports include the reference edges.
 | Scala                      | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%` with the `scalaVersion` suffix, versions held in a `val`), the Java manifests                                                                                                                                                                                                                                                                                                                                                                 | Maven, Scala and Java standard libraries                                                                             |
 | C#                         | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`, and the packages of `.fsproj` files, Paket and `packages.lock.json` through the NuGet reader shared with F#                                                                                                                                                                                                                                                                                                                              | NuGet, .NET base library                                                                                             |
 | F#                         | `open` and qualified names to the files declaring the namespace, module or type, earlier in the `.fsproj` compile order or in a referenced project; `<Compile>`, `<ProjectReference>`, `<PackageReference>`; `paket.dependencies` / `paket.lock` / `paket.references` (groups, GitHub, git and HTTP files); `#load` and `#r "nuget: ..."` in scripts                                                                                                                                                                                               | NuGet, .NET base library, Paket git, GitHub and HTTP sources                                                         |
-| C / C++ / CUDA / Metal     | `#include` beside the includer, the include paths of `compile_commands.json` (`-I`, `-iquote`, `-isystem`, `/I`), `include/` and `src/`, and a unique project file ending in the included path; libraries by `vcpkg.json`, `conanfile.txt`, `conanfile.py` and `conan.lock`; CUDA (`.cu`, `.cuh`), Metal and OpenCL C kernels read the same way                                                                                                                                                                                                    | vcpkg, Conan, C/C++ external, C and C++ standard libraries, system headers, CUDA Toolkit, OpenCL headers, Apple SDKs |
+| C / C++ / CUDA / Metal     | `#include` beside the includer, the include paths of `compile_commands.json` (`-I`, `-iquote`, `-isystem`, `/I`), `include/` and `src/`, and a unique project file ending in the included path; libraries by `vcpkg.json`, `conanfile.txt`, `conanfile.py` and `conan.lock`, and by the content CMake fetches; CUDA (`.cu`, `.cuh`), Metal and OpenCL C kernels read the same way                                                                                                                                                                  | vcpkg, Conan, C/C++ external, C and C++ standard libraries, system headers, CUDA Toolkit, OpenCL headers, Apple SDKs |
 | CMake                      | `add_subdirectory`, `include` of files and of modules on `CMAKE_MODULE_PATH`, target sources, `configure_file` templates, presets; `find_package` as the includes resolve, FetchContent, ExternalProject, CPM.cmake, `pkg_check_modules`                                                                                                                                                                                                                                                                                                           | vcpkg, Conan, C/C++ external, fetched content, pkg-config, CMake modules                                             |
 | PHP                        | `use` statements (grouped, `function`, `const`) and fully qualified names in code, same-namespace `extends`/`implements`, `require`/`include` of spelled-out paths; project files by what they declare and `composer.json` PSR-4/PSR-0; packages by the autoload prefixes of `composer.lock` or `installed.json`                                                                                                                                                                                                                                   | Packagist, PHP standard library                                                                                      |
 | Ruby                       | `require`/`require_relative`/`load`/`autoload` of spelled-out paths on a guessed load path (`lib`, `test`, `spec`, gemspec require paths, path gems); gems by `Gemfile`, gemspecs and `Gemfile.lock`, whose `gem` lines are imports; Rails constants by Zeitwerk naming                                                                                                                                                                                                                                                                            | RubyGems, Ruby standard library                                                                                      |
@@ -3083,7 +3097,7 @@ The JSON and GraphML exports include the reference edges.
 | Nim                        | `import`, `from`, `include` (`std/[a, b]`, `pkg/x`, every `when` branch) to files beside the importer, under the package's `srcDir` and `nim.cfg`/`config.nims` `--path`s; std modules to the standard library (Nim's own `lib/` in its repository); else the nimble package whose installed files (`nimbledeps/`, Atlas's `deps/`, `nimble.paths`, `~/.nimble`) have the module, else the requirement its first segment names; `.nimble` `requires`, `taskRequires`, `bin`, `nimble.lock` and `atlas.lock` entries                                | Nimble packages, Nim standard library                                                                                |
 | PowerShell                 | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                                                                                                                  | PowerShell Gallery, built-in modules                                                                                 |
 | CI pipelines               | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                                                       | GitHub Actions, GitLab CI, Container images                                                                          |
-| Protocol Buffers           | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                                                                  | Buf Schema Registry, Protobuf well-known types                                                                       |
+| Protocol Buffers           | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the `-I` roots build scripts give protoc, the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                        | Buf Schema Registry, Protobuf well-known types                                                                       |
 | Terraform / OpenTofu       | `module` sources to local directories, registry and remote modules; `required_providers`, `provider` blocks and resource type prefixes to providers, pinned by `.terraform.lock.hcl`; references to what other files of the module declare; `file()`/`templatefile()` paths; Terragrunt `source`, `dependency` and `find_in_parent_folders()`                                                                                                                                                                                                      | Terraform modules, Terraform providers                                                                               |
 | Jsonnet                    | `import`, `importstr`, `importbin` relative to the importer, then the `vendor/` and `lib/` of the jsonnet-bundler projects above it, `JSONNET_PATH` and the importer's ancestors; files jb installed (full path or legacy link) and paths `jsonnetfile.json` names to their dependency (repository + subdir), local sources to their files; `jsonnetfile.json` and `jsonnetfile.lock.json` entries                                                                                                                                                 | jsonnet-bundler packages                                                                                             |
 | CUE                        | `import` of the module's own packages (every file of the package in its directory, by the module path of `cue.mod/module.cue`), CUE's builtin packages, `cue.mod/gen` and `cue.mod/usr` to the Go module `go.mod` requires (or the Go standard library, or the module's own Go package), `cue.mod/pkg` vendored modules, `module.cue` `deps` by module path                                                                                                                                                                                        | CUE modules, CUE standard library, Go modules, Go standard library                                                   |
@@ -3092,7 +3106,7 @@ The JSON and GraphML exports include the reference edges.
 | Rego                       | `import data.a.b` and `data.a.b...` references (also through imported names) to every file of the longest package the path names                                                                                                                                                                                                                                                                                                                                                                                                                   | *(none: policies import only the repository's own)*                                                                  |
 | Shaders (GLSL, HLSL, WGSL) | `#include` as C headers of the project (then parent directories, ignoring case), Unreal virtual paths (`/Engine/`, `/Plugin/Name/`), naga_oil `#import` and `#define_import_path`, WESL `import` (`package::`, `super::`), crates the Cargo manifests declare (Bevy's `bevy_*` through `bevy`)                                                                                                                                                                                                                                                     | Unreal Engine shaders, crates.io                                                                                     |
 | Shell scripts              | `source`/`.` and scripts run by path or interpreter, with `$(dirname "$0")`, `${BASH_SOURCE%/*}`, `SCRIPT_DIR` variables, zsh's `${0:A:h}` and `git rev-parse --show-toplevel` evaluated; direnv `source_env`/`source_up`/`dotenv`, bats `load`; packages installed with pip, npm, pnpm, yarn, `go install`, `cargo install` and `gem install`                                                                                                                                                                                                     | PyPI, npm, Go modules, crates.io, RubyGems                                                                           |
-| Dockerfile / Compose       | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                                                                                                                                                                                                                                                  | Container images                                                                                                     |
+| Dockerfile / Compose       | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository, `${VAR}` from the `.env` file beside it, `include:` and `extends:` of local files                                                                                                                                                                                                                                                                               | Container images                                                                                                     |
 | Markdown                   | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                                                                                                                                                                                                                                                                                                                                                           | *(none: a link is not a package)*                                                                                    |
 
 Python packages that no index has - an in-house package installed from a
@@ -3214,8 +3228,9 @@ run, so a reference built at run time (an f-string) is not seen and a
 conditional one counts whatever the condition. A vcpkg port pins only by an
 override: a `builtin-baseline` fixes versions through the registry's history,
 which the repository does not carry, so a port without a version is then
-neither pinned nor floating, while without a baseline it floats. Everything
-else stays in C/C++ external, without a version.
+neither pinned nor floating, while without a baseline it floats. A header no
+manifest's package claims goes, by the same names, to content the CMake build
+fetches (below). Everything else stays in C/C++ external, without a version.
 
 CMake builds — `CMakeLists.txt`, `*.cmake`, `*.cmake.in` package configuration
 templates and `CMakePresets.json`/`CMakeUserPresets.json` — tie the build to
@@ -3233,20 +3248,26 @@ the file's variables, those the `CMakeLists.txt` files above it set, and
 evaluated, and binary-directory, environment and configure-time values are not
 followed. `find_package(X)` lands where an `#include` of X's headers lands, so
 the build file and the sources meet on one node: a vcpkg or Conan package the
-manifests declare, else the C/C++ external library named after the include
-directory (`ZLIB` is `zlib`, `nlohmann_json` is `nlohmann`, `Eigen3` is
-`Eigen`, each Boost and Qt component on its own: `Qt6 Widgets` is
-`QtWidgets`). Before that fallback come a project of that name in the
-repository, the project's own `FindX.cmake`, and content it fetches under that
-name; CMake's find modules for tools and the platform (`Threads`, `OpenMP`,
-`Python3`, `Git`, `Doxygen`, `CUDAToolkit`) are CMake modules.
+manifests declare, else content the build fetches under the header's name,
+else the C/C++ external library named after the include directory (`ZLIB` is
+`zlib`, `nlohmann_json` is `nlohmann`, `Eigen3` is `Eigen`, each Boost and Qt
+component on its own: `Qt6 Widgets` is `QtWidgets`). Before that fallback come
+a project of that name in the repository, the project's own `FindX.cmake`, and
+content it fetches under that name; CMake's find modules for tools and the
+platform (`Threads`, `OpenMP`, `Python3`, `Git`, `Doxygen`, `CUDAToolkit`) are
+CMake modules.
 `FetchContent_Declare()`, `ExternalProject_Add()` and CPM.cmake's
 `CPMAddPackage()` (`"gh:owner/repo@1.2.3"` or keywords) are packages of the
 **CMake fetched content** island named by repository or download URL
 (`github.com/google/googletest`; a GitHub release asset or archive by its
 repository and ref), and `FetchContent_MakeAvailable(name)` links to the
-declaration. A `GIT_TAG` commit or a `URL_HASH` pins; a tag is shown but can be
-moved, so it neither pins nor floats; a branch or no tag floats.
+declaration. The sources' includes of fetched headers land on it too: an
+include's directory or bare header name (`<doctest/doctest.h>`,
+`<magic_enum.hpp>`, `<nlohmann/json.hpp>`) matched, as for vcpkg and Conan,
+against the name the content is declared under, its repository's name and
+`owner-repository`, the declaration nearest above the source first. A
+`GIT_TAG` commit or a `URL_HASH` pins; a tag is shown but can be moved, so it
+neither pins nor floats; a branch or no tag floats.
 `pkg_check_modules()` modules are the **pkg-config modules** island. Targets,
 functions, macros, options, cache variables, projects and presets become
 symbols.
