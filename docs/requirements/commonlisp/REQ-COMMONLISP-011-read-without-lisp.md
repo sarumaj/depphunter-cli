@@ -17,10 +17,10 @@ ocicl: macros are not expanded (a package defined by a macro other than
 `defsystem`, is not seen), `.asd` code is not evaluated (a component
 class's file type is found only by the one file of the component's name,
 `#.` values are not computed), reader conditionals keep both branches,
-`*features*` are not known, installed dependencies (`.qlot/`, ocicl's
-`systems/`, `~/quicklisp`) are not read (no `--resolve-depth` without
-`--online`), and a package no file of the repository defines is
-attributed by the declared systems' names and a curated table.
+`*features*` are not known, `~/quicklisp` and systems Qlot or ocicl
+installed outside the repository are not read, and a package no file of
+the repository defines is attributed by the declared systems' names and a
+curated table.
 
 ## Rationale
 

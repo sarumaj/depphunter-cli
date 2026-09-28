@@ -222,3 +222,48 @@ func TestTruncated(t *testing.T) {
 	readSource([]byte(deep), false)
 	extractRockspec([]byte("dependencies = " + deep))
 }
+
+// A rock installed in the repository's LuaRocks tree depends on what its
+// rockspec's dependencies name (not Lua, not its test dependencies), each pinned
+// to the newest version the tree holds; luasocket, in the .luarocks tree only,
+// floats there. A rockspec that is not Lua names none, and a rock no tree holds
+// is not answered.
+//
+// Verifies: REQ-LUA-013
+func TestInstalledRocks(t *testing.T) {
+	const rocks = "lua_modules/lib/luarocks/rocks-5.1/"
+	files := map[string]string{
+		"app-1.0-1.rockspec": "package = \"app\"\nversion = \"1.0-1\"\ndependencies = { \"lua-resty-http >= 0.17\" }\n",
+		rocks + "manifest":   "repository = {}\n",
+		rocks + "lua-resty-http/0.17.1-0/lua-resty-http-0.17.1-0.rockspec": "rockspec_format = \"3.0\"\n" +
+			"package = \"lua-resty-http\"\nversion = \"0.17.1-0\"\n" +
+			"dependencies = { \"lua >= 5.1\", \"lua-resty-openssl >= 0.9\", \"luasocket\" }\n" +
+			"test_dependencies = { \"busted\" }\n",
+		rocks + "lua-resty-openssl/0.9.0-1/lua-resty-openssl-0.9.0-1.rockspec":          "package = \"lua-resty-openssl\"\n",
+		rocks + "lua-resty-openssl/0.10.0-1/lua-resty-openssl-0.10.0-1.rockspec":        "package = \"lua-resty-openssl\"\n",
+		".luarocks/lib/luarocks/rocks-5.4/luasocket/3.1.0-1/luasocket-3.1.0-1.rockspec": "dependencies = { \"lua >= 5.1\" }\n",
+	}
+	root := langtest.Write(t, files)
+	r := newResolver(root, langtest.Files(t, root))
+	http := lang.Target{Ecosystem: ecoRocks, Package: "lua-resty-http", Version: "0.17.1-0", Pinned: true}
+	want := []lang.Target{
+		{Ecosystem: ecoRocks, Package: "lua-resty-openssl", Version: "0.10.0-1", Requested: ">= 0.9", Pinned: true},
+		{Ecosystem: ecoRocks, Package: "luasocket", Floating: true},
+	}
+	if got := r.Dependencies(http); !reflect.DeepEqual(got, want) || !r.Installed(http) {
+		t.Errorf("lua-resty-http depends on %+v", got)
+	}
+	if got := r.Dependencies(want[1]); got == nil || len(got) != 0 || !r.Installed(want[1]) {
+		t.Errorf("luasocket depends on %+v", got)
+	}
+	busted := lang.Target{Ecosystem: ecoRocks, Package: "busted"}
+	if got := r.Dependencies(busted); got != nil || r.Installed(busted) {
+		t.Errorf("busted is not installed: %+v", got)
+	}
+
+	files[rocks+"lua-resty-http/0.17.1-0/lua-resty-http-0.17.1-0.rockspec"] = "dependencies = {{{ \x00"
+	root = langtest.Write(t, files)
+	if got := newResolver(root, langtest.Files(t, root)).Dependencies(http); len(got) != 0 {
+		t.Errorf("garbage rockspec: %+v", got)
+	}
+}

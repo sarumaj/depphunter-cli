@@ -266,6 +266,52 @@ func TestDependencies(t *testing.T) {
 	}
 }
 
+// A Soldeer package installed into dependencies/<name>-<version>/ depends on
+// what its own foundry.toml and soldeer.lock name: forge-std, which the
+// project's soldeer.lock pins (to its own version), and solady, which only the
+// package's foundry.toml pins. Unreadable files there say nothing.
+//
+// Verifies: REQ-SOLIDITY-007
+func TestSoldeerInstalled(t *testing.T) {
+	const pkg = "dependencies/@openzeppelin-contracts-5.0.2/"
+	files := map[string]string{
+		"foundry.toml": "[dependencies]\n\"@openzeppelin-contracts\" = \"5.0.2\"\n",
+		"soldeer.lock": "[[dependencies]]\nname = \"@openzeppelin-contracts\"\nversion = \"5.0.2\"\n\n" +
+			"[[dependencies]]\nname = \"forge-std\"\nversion = \"1.9.1\"\n",
+		pkg + "foundry.toml":                                      "[profile.default]\nsrc = \"src\"\n\n[dependencies]\nforge-std = \"1.8.0\"\n",
+		pkg + "soldeer.lock":                                      "[[dependencies]]\nname = \"solady\"\nversion = \"0.0.227\"\n",
+		"dependencies/forge-std-1.9.1/src/Test.sol":               "// no manifest\n",
+		"dependencies/@openzeppelin-contracts-4.9.0/foundry.toml": "[dependencies]\nforge-std = \"1.7.0\"\n",
+	}
+	root := langtest.Write(t, files)
+	r := newResolver(root, langtest.Files(t, root))
+	oz := lang.Target{Ecosystem: ecoSoldeer, Package: "@openzeppelin-contracts", Version: "5.0.2", Pinned: true}
+	want := []lang.Target{
+		{Ecosystem: ecoSoldeer, Package: "forge-std", Version: "1.9.1", Pinned: true},
+		{Ecosystem: ecoSoldeer, Package: "solady", Version: "0.0.227", Pinned: true},
+	}
+	for v, want := range map[string][]lang.Target{
+		"5.0.2": want,
+		"4.9.0": want[:1],
+		"3.0.0": want[:1], // no directory of its version: the first of its name
+	} {
+		oz.Version = v
+		if got := r.Dependencies(oz); !reflect.DeepEqual(got, want) || !r.Installed(oz) {
+			t.Errorf("%s: %+v", v, got)
+		}
+	}
+	oz.Version = "5.0.2"
+	if got := r.Dependencies(want[0]); got != nil {
+		t.Errorf("forge-std ships no manifest: %+v", got)
+	}
+
+	files[pkg+"foundry.toml"], files[pkg+"soldeer.lock"] = "[[[", "\x00"
+	root = langtest.Write(t, files)
+	if got := newResolver(root, langtest.Files(t, root)).Dependencies(oz); got != nil {
+		t.Errorf("garbage: %+v", got)
+	}
+}
+
 // git records the commit of each submodule (a gitlink); it pins the
 // submodule, with the .gitmodules branch as requested.
 //

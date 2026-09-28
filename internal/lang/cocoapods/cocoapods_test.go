@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
 )
 
 // The pinning rule without a lock: one exact version pins and is shown bare, a range
@@ -135,5 +136,42 @@ func TestVendored(t *testing.T) {
 		if (want != "") != ok || got.Package != want {
 			t.Errorf("%s: %+v %v, want %q", local, got, ok, want)
 		}
+	}
+}
+
+// AlamofireImage, checked out under Carthage/Checkouts, depends on what its own
+// Cartfile names (not its Cartfile.private): Alamofire, pinned by the project's
+// Cartfile.resolved, and Kingfisher, which only the checkout's Cartfile.resolved
+// pins. A checkout that is missing or not a Cartfile says nothing.
+//
+// Verifies: REQ-OBJC-011
+func TestCarthageCheckouts(t *testing.T) {
+	files := map[string]string{
+		"App/Cartfile":          `github "Alamofire/AlamofireImage" ~> 4.0` + "\n" + `github "ReactiveX/RxSwift" ~> 6.0` + "\n",
+		"App/Cartfile.resolved": `github "Alamofire/Alamofire" "5.8.1"` + "\n" + `github "Alamofire/AlamofireImage" "4.3.0"` + "\n",
+		"App/Carthage/Checkouts/AlamofireImage/Cartfile": `github "Alamofire/Alamofire" ~> 5.0` + "\n" +
+			`github "onevcat/Kingfisher" ~> 7.0` + "\n",
+		"App/Carthage/Checkouts/AlamofireImage/Cartfile.private": `github "Quick/Nimble"` + "\n",
+		"App/Carthage/Checkouts/AlamofireImage/Cartfile.resolved": `github "Alamofire/Alamofire" "5.6.0"` + "\n" +
+			`github "onevcat/Kingfisher" "7.10.0"` + "\n" + `github "Quick/Nimble" "13.0.0"` + "\n",
+		"App/Carthage/Checkouts/RxSwift/Cartfile": "\x00{{ not a Cartfile",
+	}
+	root := langtest.Write(t, files)
+	x := Read(root, langtest.Files(t, root))
+	image := lang.Target{Ecosystem: Carthage, Package: "github.com/Alamofire/AlamofireImage", Version: "4.3.0", Pinned: true}
+	want := []lang.Target{
+		{Ecosystem: Carthage, Package: "github.com/Alamofire/Alamofire", Version: "5.8.1", Pinned: true},
+		{Ecosystem: Carthage, Package: "github.com/onevcat/Kingfisher", Version: "7.10.0", Requested: "~> 7.0", Pinned: true},
+	}
+	if got := x.Dependencies(image); !reflect.DeepEqual(got, want) || !x.Installed(image) {
+		t.Errorf("AlamofireImage depends on %+v", got)
+	}
+	for _, name := range []string{"github.com/ReactiveX/RxSwift", "github.com/Alamofire/Alamofire"} {
+		if got := x.Dependencies(lang.Target{Ecosystem: Carthage, Package: name}); len(got) != 0 {
+			t.Errorf("%s depends on %+v", name, got)
+		}
+	}
+	if got := Read("", nil).Dependencies(image); got != nil {
+		t.Errorf("no root: %+v", got)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"golang.org/x/mod/modfile"
+	gomodule "golang.org/x/mod/module"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -37,11 +38,12 @@ type resolver struct {
 	order   []*module            // shallowest first
 	pkgs    map[string][]cueFile // directory -> its CUE files with their package names
 	dirs    sync.Map             // repository-relative directory -> exists on disk
+	cache   string               // cue's cache directory, where fetched modules are extracted
 }
 
 // Implements: REQ-CUE-004, REQ-CUE-005, REQ-CUE-006, REQ-CUE-010
-func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{root: root, files: map[string]bool{}, modules: map[string]*module{}, pkgs: map[string][]cueFile{}}
+func newResolver(root string, all []*scan.File, cache string) *resolver {
+	r := &resolver{root: root, files: map[string]bool{}, modules: map[string]*module{}, pkgs: map[string][]cueFile{}, cache: cache}
 	gomods := map[string]*goMod{}
 	for _, f := range all {
 		r.files[f.Path] = true
@@ -303,6 +305,51 @@ func depTarget(d *modDep) lang.Target {
 	}
 	return t
 }
+
+// Dependencies is what a module dependency depends on, from its own module.cue
+// in cue's module cache (mod/extract/<module>@<version>/cue.mod/module.cue, the
+// path escaped as Go's module cache escapes it). A module the repository's
+// module.cue lists too takes the version selected there: like Go's, a module
+// file lists every module of the build at the version the build uses.
+//
+// Implements: REQ-CUE-011
+func (r *resolver) Dependencies(t lang.Target) []lang.Target {
+	if t.Ecosystem != ecoCUE || !t.Pinned || r.cache == "" {
+		return nil
+	}
+	p, err := gomodule.EscapePath(t.Package)
+	if err != nil {
+		return nil
+	}
+	v, err := gomodule.EscapeVersion(t.Version)
+	if err != nil {
+		return nil
+	}
+	src := readFile(filepath.Join(r.cache, "mod", "extract", filepath.FromSlash(p)+"@"+v, "cue.mod", "module.cue"), lang.MaxParseSize)
+	if src == nil {
+		return nil
+	}
+	var out []lang.Target
+	for _, d := range readModule(src).deps {
+		out = append(out, r.selected(d))
+	}
+	return out
+}
+
+// selected is a dependency at the version the repository's modules select for it.
+func (r *resolver) selected(d *modDep) lang.Target {
+	for _, m := range r.order {
+		for _, own := range m.file.deps {
+			if own.path == d.path {
+				return depTarget(own)
+			}
+		}
+	}
+	return depTarget(d)
+}
+
+// Installed says a module's dependencies come from cue's module cache.
+func (r *resolver) Installed(t lang.Target) bool { return t.Ecosystem == ecoCUE }
 
 var forges = map[string]bool{"github.com": true, "gitlab.com": true, "bitbucket.org": true, "codeberg.org": true, "git.sr.ht": true, "cue.dev": true}
 

@@ -626,7 +626,7 @@ func (r *resolver) typeRef(file, name, imported string) lang.Target {
 //
 // Implements: REQ-SWIFT-012
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem == cocoapods.Ecosystem {
+	if t.Ecosystem == cocoapods.Ecosystem || t.Ecosystem == cocoapods.Carthage {
 		return r.pods.Dependencies(t)
 	}
 	if t.Ecosystem != ecoSwiftPM || r.root == "" {
@@ -667,3 +667,6 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	}
 	return nil
 }
+
+// Installed says a Carthage dependency's dependencies come from its checkout.
+func (r *resolver) Installed(t lang.Target) bool { return r.pods.Installed(t) }

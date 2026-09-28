@@ -554,3 +554,59 @@ func TestTruncated(t *testing.T) {
 		}
 	}
 }
+
+// What Qlot installed into .qlot/ answers for a project: dexador's system
+// depends on cffi-grovel (the cffi project), fast-http, quri and, on Windows,
+// flexi-streams, each pinned by the lock's dist; its own secondary system, an
+// implementation module, UIOP and a weak dependency are not dependencies. A git
+// source is found by its repository's name, cl-str by its system str. What
+// ocicl installed into systems/ answers likewise, pinned by ocicl.csv's digest
+// where it lists the system. A tree that is missing or not Lisp says nothing.
+//
+// Verifies: REQ-COMMONLISP-012
+func TestInstalledSystems(t *testing.T) {
+	const software = ".qlot/dists/quicklisp/software/"
+	root := langtest.Write(t, map[string]string{
+		"qlfile": "ql dexador :latest\n",
+		"qlfile.lock": "(\"quicklisp\" .\n (:class qlot/source/dist:source-dist\n  :initargs (:distribution \"https://beta.quicklisp.org/dist/quicklisp.txt\" :%version :latest)\n" +
+			"  :version \"2023-10-21\"))\n",
+		software + "dexador-20231021-git/dexador.asd": "(defsystem \"dexador\"\n :defsystem-depends-on (\"cffi-grovel\")\n" +
+			" :depends-on (\"fast-http\" \"quri\" (:feature :windows \"flexi-streams\") \"dexador/util\" (:require \"sb-bsd-sockets\") \"uiop\")\n" +
+			" :weakly-depends-on (\"cl+ssl\"))\n(defsystem \"dexador/util\" :depends-on (\"babel\"))\n",
+		software + "cl-str-20231021-git/str.asd": "(defsystem \"str\" :depends-on (\"cl-ppcre\"))\n",
+		software + "broken/broken.asd":           "((((( \x00 #+",
+	})
+	r := newResolver(root, langtest.Files(t, root))
+	ql := func(name string) lang.Target {
+		return lang.Target{Ecosystem: ecoQuicklisp, Package: name, Version: "2023-10-21", Pinned: true}
+	}
+	for pkg, want := range map[string][]lang.Target{
+		"dexador":                      {ql("cffi"), ql("fast-http"), ql("quri"), ql("flexi-streams")},
+		"github.com/fukamachi/dexador": {ql("cffi"), ql("fast-http"), ql("quri"), ql("flexi-streams")},
+		"cl-str":                       {ql("cl-ppcre")},
+		"fast-http":                    nil,
+	} {
+		dt := lang.Target{Ecosystem: ecoQuicklisp, Package: pkg}
+		if got := r.Dependencies(dt); !reflect.DeepEqual(got, want) || !r.Installed(dt) {
+			t.Errorf("%s depends on %+v, want %+v", pkg, got, want)
+		}
+	}
+
+	root = langtest.Write(t, map[string]string{
+		"app.asd": "(defsystem \"app\" :depends-on (\"dexador\"))\n",
+		"ocicl.csv": "dexador, ghcr.io/ocicl/dexador@sha256:aaaa, dexador-20240101-abc1234/dexador.asd\n" +
+			"quri, ghcr.io/ocicl/quri@sha256:bbbb, quri-20231001-def5678/quri.asd\n",
+		"systems/dexador-20240101-abc1234/dexador.asd": "(defsystem \"dexador\" :depends-on (\"quri\" \"fast-http\"))\n",
+	})
+	r = newResolver(root, langtest.Files(t, root))
+	want := []lang.Target{
+		{Ecosystem: ecoQuicklisp, Package: "quri", Version: "20231001-def5678", Pinned: true},
+		{Ecosystem: ecoQuicklisp, Package: "fast-http", Floating: true},
+	}
+	if got := r.Dependencies(lang.Target{Ecosystem: ecoQuicklisp, Package: "dexador"}); !reflect.DeepEqual(got, want) {
+		t.Errorf("ocicl: dexador depends on %+v, want %+v", got, want)
+	}
+	if got := newResolver("", langtest.Files(t, root)).Dependencies(want[0]); got != nil {
+		t.Errorf("no root: %+v", got)
+	}
+}

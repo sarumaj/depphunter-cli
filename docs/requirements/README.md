@@ -277,8 +277,8 @@ requirements of type `limitation` in their scopes:
 - Lua is read without running Lua, LuaRocks or Rojo: `package.path` set at run
   time is not read (modules are found under conventional roots), computed
   requires and instances created at run time are not followed, an undeclared
-  rock is named by a curated table and heuristics, `luarocks.lock` has no
-  rock-to-rock edges, and no vulnerability database covers LuaRocks or Wally.
+  rock is named by a curated table and heuristics, and no vulnerability
+  database covers LuaRocks or Wally.
 - Perl is read without running perl: `@INC` changed at run time and computed
   module names are not followed, a distribution without a snapshot is named by
   a curated table and the module's name, `--online` reads dependencies from
@@ -363,16 +363,16 @@ requirements of type `limitation` in their scopes:
   are read (no `--online`, no `--resolve-depth`).
 - Common Lisp is read without running a Lisp or ASDF: macros are not
   expanded, `.asd` code is not evaluated, reader conditionals keep both
-  branches, installed dependencies (`.qlot/`, ocicl's `systems/`) are not
-  read, and a package no file of the repository defines is attributed by
-  the declared systems' names and a curated table.
+  branches, `~/quicklisp` is not read, and a package no file of the
+  repository defines is attributed by the declared systems' names and a
+  curated table.
 - Solidity is read without running solc, forge, Soldeer or Hardhat:
   remappings from the environment or a command line and a Hardhat
   configuration's own settings are not known, Foundry's remapping inference
   is followed for `lib/<dep>/src` and one nested level only, a submodule's
-  commit comes from git's index, and neither a submodule's nor a Soldeer
-  package's own imports or dependencies are read beyond a checked-out
-  submodule's `.gitmodules`.
+  commit comes from git's index, neither a submodule's nor a Soldeer
+  package's own imports are read, and their dependencies only from a
+  checked-out submodule's `.gitmodules` and what Soldeer installed.
 - Nim is read without running the compiler, nimble or Atlas: NimScript is
   not executed, every `when` branch counts, a configuration's search paths
   apply to its directory and below, `nimble.develop` is not read, and
@@ -382,8 +382,8 @@ requirements of type `limitation` in their scopes:
   registry to ask (no `--online`).
 - CUE is read without running `cue`: a package's files in parent
   directories are not linked, build attributes are not evaluated, module
-  dependencies' own dependencies are not read, and the central registry
-  is not asked (no `--online`).
+  dependencies' own dependencies are read only from the local module
+  cache, and the central registry is not asked (no `--online`).
 - Dhall is read without running `dhall`: remote imports are not fetched
   or followed, `env:` imports are dropped, and there is no registry to ask.
 - Puppet is read without compiling a catalog: class names from variables

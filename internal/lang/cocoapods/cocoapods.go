@@ -99,6 +99,7 @@ type project struct {
 
 // Index is what the project's CocoaPods and Carthage manifests say, per directory.
 type Index struct {
+	root     string
 	projects []*project        // shallowest first
 	own      map[string]string // pod name built here (podspec name, module name) -> podspec path
 	dirs     map[string]bool
@@ -111,7 +112,7 @@ type Index struct {
 //
 // Implements: REQ-OBJC-007, REQ-OBJC-008, REQ-OBJC-010, REQ-OBJC-011
 func Read(root string, all []*scan.File) *Index {
-	x := &Index{own: map[string]string{}, dirs: map[string]bool{}, files: map[string]bool{}}
+	x := &Index{root: root, own: map[string]string{}, dirs: map[string]bool{}, files: map[string]bool{}}
 	byDir := map[string]*project{}
 	get := func(dir string) *project {
 		p := byDir[dir]
@@ -425,10 +426,13 @@ func (x *Index) local(p, root string) lang.Target {
 }
 
 // Dependencies implements lang.Transitive from Podfile.lock: what each pod's specs
-// depend on, pinned by the same lock.
+// depend on, pinned by the same lock; and from Carthage's checkouts.
 //
 // Implements: REQ-OBJC-008
 func (x *Index) Dependencies(t lang.Target) []lang.Target {
+	if t.Ecosystem == Carthage {
+		return x.checkedOut(t)
+	}
 	if t.Ecosystem != Ecosystem {
 		return nil
 	}
@@ -447,6 +451,74 @@ func (x *Index) Dependencies(t lang.Target) []lang.Target {
 	}
 	return nil
 }
+
+// checkedOut is what a Carthage dependency checked out into
+// Carthage/Checkouts/<name>/ beside the Cartfile naming it (a binary one has no
+// checkout) depends on: the entries of its own Cartfile (Carthage leaves a
+// dependency's Cartfile.private out), else of its Cartfile.resolved. The
+// project's Cartfile.resolved pins those it lists, as Carthage resolves the whole
+// graph into it; the checkout's pins the rest.
+//
+// Implements: REQ-OBJC-011
+func (x *Index) checkedOut(t lang.Target) []lang.Target {
+	if x.root == "" {
+		return nil
+	}
+	for _, p := range x.projects {
+		c := p.carts[t.Package]
+		if c == nil {
+			c = p.pins[t.Package]
+		}
+		if c == nil {
+			continue
+		}
+		dir := filepath.Join(x.root, filepath.FromSlash(p.dir), "Carthage", "Checkouts",
+			strings.TrimSuffix(path.Base(strings.TrimSuffix(c.source, "/")), ".git"))
+		own := &project{carts: map[string]*cart{}, pins: map[string]*cart{}}
+		read := func(name string, into map[string]*cart) bool {
+			src, err := os.ReadFile(filepath.Join(dir, name))
+			if err != nil || len(src) > lang.MaxParseSize {
+				return false
+			}
+			for _, c := range readCartfile(string(src)) {
+				c := c
+				into[c.name] = &c
+			}
+			return true
+		}
+		resolved, declared := read("Cartfile.resolved", own.pins), read("Cartfile", own.carts)
+		if !resolved && !declared {
+			continue
+		}
+		names := own.carts
+		if !declared {
+			names = own.pins
+		}
+		var out []lang.Target
+		for _, n := range sortedCarts(names) {
+			if _, ok := p.pins[n]; ok {
+				out = append(out, p.cartTarget(n))
+			} else {
+				out = append(out, own.cartTarget(n))
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+func sortedCarts(m map[string]*cart) []string {
+	out := make([]string, 0, len(m))
+	for n := range m {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Installed reports that a Carthage dependency's dependencies come from its
+// checkout.
+func (x *Index) Installed(t lang.Target) bool { return t.Ecosystem == Carthage }
 
 // Module attributes a module or a framework header's directory (<AFNetworking/..>,
 // `@import Firebase;`, Swift's `import Alamofire`) to a pod or a Carthage dependency

@@ -235,6 +235,26 @@ func TestLockGraph(t *testing.T) {
 	}
 }
 
+// The Objective-C and the Swift resolvers both answer for a Carthage dependency
+// from its checkout, and say the answer comes from what is installed.
+//
+// Verifies: REQ-OBJC-011
+func TestCarthageCheckoutDependencies(t *testing.T) {
+	root := langtest.Write(t, map[string]string{
+		"Cartfile":          `github "Alamofire/AlamofireImage" ~> 4.0` + "\n",
+		"Cartfile.resolved": `github "Alamofire/Alamofire" "5.8.1"` + "\n" + `github "Alamofire/AlamofireImage" "4.3.0"` + "\n",
+		"Carthage/Checkouts/AlamofireImage/Cartfile": `github "Alamofire/Alamofire" ~> 5.0` + "\n",
+	})
+	image := lang.Target{Ecosystem: cocoapods.Carthage, Package: "github.com/Alamofire/AlamofireImage"}
+	want := []lang.Target{{Ecosystem: cocoapods.Carthage, Package: "github.com/Alamofire/Alamofire", Version: "5.8.1", Pinned: true}}
+	for _, p := range []lang.Plugin{Plugin{}, swift.Plugin{}} {
+		r, _ := p.Resolver(root, langtest.Files(t, root))
+		if got := r.(lang.Transitive).Dependencies(image); !reflect.DeepEqual(got, want) || !r.(lang.Installed).Installed(image) {
+			t.Errorf("%s: AlamofireImage depends on %+v", p.Name(), got)
+		}
+	}
+}
+
 // A Swift file of an app built with CocoaPods imports its pods by module name.
 //
 // Verifies: REQ-OBJC-012, REQ-OBJC-014

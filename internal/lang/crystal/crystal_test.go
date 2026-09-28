@@ -288,6 +288,40 @@ func TestInstalledDependencies(t *testing.T) {
 	}
 }
 
+// A library commits no shard.lock: lib/.shards.info pins what shards installed,
+// kemal and radix, the dependency only kemal names. A garbage .shards.info pins
+// nothing, and radix floats on kemal's requirement.
+//
+// Verifies: REQ-CRYSTAL-008
+func TestShardsInfo(t *testing.T) {
+	files := map[string]string{
+		"shard.yml":           "name: app\ndependencies:\n  kemal:\n    github: kemalcr/kemal\n    version: ~> 1.4\n",
+		"lib/kemal/shard.yml": "name: kemal\ndependencies:\n  radix:\n    github: luislavena/radix\n    version: ~> 0.4.0\n",
+		"lib/radix/shard.yml": "name: radix\n",
+		"lib/.shards.info": "version: 1.0\nshards:\n  kemal:\n    git: https://github.com/kemalcr/kemal.git\n    version: 1.4.0\n" +
+			"  radix:\n    git: https://github.com/luislavena/radix.git\n    version: 0.4.1\n",
+	}
+	root := langtest.Write(t, files)
+	r := newResolver(root, langtest.Files(t, root))
+	app := r.projects["."]
+	kemal := lang.Target{Ecosystem: ecoShards, Package: "kemal", Version: "1.4.0", Requested: "~> 1.4", Pinned: true}
+	if got := r.shardTarget(app, "kemal"); got != kemal {
+		t.Errorf("kemal: %+v", got)
+	}
+	radix := lang.Target{Ecosystem: ecoShards, Package: "radix", Version: "0.4.1", Pinned: true}
+	if got := r.Dependencies(kemal); !reflect.DeepEqual(got, []lang.Target{radix}) || !r.Installed(kemal) {
+		t.Errorf("kemal depends on %+v", got)
+	}
+
+	files["lib/.shards.info"] = "{{{ not yaml"
+	root = langtest.Write(t, files)
+	r = newResolver(root, langtest.Files(t, root))
+	floating := lang.Target{Ecosystem: ecoShards, Package: "radix", Version: "~> 0.4.0", Floating: true}
+	if got := r.Dependencies(kemal); !reflect.DeepEqual(got, []lang.Target{floating}) {
+		t.Errorf("garbage .shards.info: %+v", got)
+	}
+}
+
 // Every prefix of every fixture file, and long runs of what opens something,
 // are read without a panic and in linear time.
 //
