@@ -155,6 +155,7 @@ func (c *Config) machine(m userconf.Machine) {
 			parseLuaRocksConfig(data, add)
 		}
 	}
+	machineJVM(m, k)
 	// Julia registries installed in the depots (JULIA_DEPOT_PATH, else ~/.julia)
 	// besides General. JULIA_PKG_SERVER is not read: a package server serves
 	// registries as tarballs, not as the files asked for here.
@@ -189,7 +190,6 @@ func (c *Config) machine(m userconf.Machine) {
 		path  string
 		parse func([]byte, sink)
 	}{
-		{filepath.Join(home, ".m2", "settings.xml"), parseMavenSettings},
 		{filepath.Join(home, ".gemrc"), plain(parseGemrc)},
 		{filepath.Join(home, ".Rprofile"), plain(parseRprofile)},
 		{filepath.Join(home, ".config", "cabal", "config"), plain(parseCabalRepositories)},
@@ -343,6 +343,8 @@ func (c *Config) project(files []*scan.File) {
 			parsePom(data, k)
 		case base == "build.gradle", base == "build.gradle.kts", base == "settings.gradle", base == "settings.gradle.kts":
 			parseGradleRepos(data, k)
+		case strings.HasSuffix(base, ".sbt") && path.Base(path.Dir(f.Path)) != "project":
+			parseSbtResolvers(data, k)
 		case base == "deps.edn", base == "bb.edn", base == "shadow-cljs.edn", base == "project.clj", base == "build.boot":
 			c.clojure = true
 			parseClojureRepos(base, data, k)
@@ -816,31 +818,46 @@ func parseClojureRepos(base string, data []byte, k sink) {
 		}
 	}
 	for _, r := range repos {
-		if r == nil {
+		clojureRepos(r, k)
+	}
+}
+
+// clojureRepos records the repositories of one :mvn/repos or :repositories form:
+// {"name" {:url "..."}}, {"name" "url"}, [["name" "url"]] or [["name" {:url "..."}]].
+// Maven Central and Clojars are the public indexes and are not recorded; the others
+// are asked beside them, except one named "central", which tools.deps and
+// Leiningen take in place of Maven Central.
+//
+// Implements: REQ-SUP-056, REQ-SUP-063
+func clojureRepos(r *edn.Node, k sink) {
+	if r == nil {
+		return
+	}
+	var names, values []*edn.Node
+	switch r.Kind {
+	case edn.Map:
+		for i := 1; i < len(r.Kids); i += 2 {
+			names, values = append(names, r.Kids[i-1]), append(values, r.Kids[i])
+		}
+	case edn.Vector, edn.List:
+		for _, e := range r.Kids {
+			if len(e.Kids) == 2 {
+				names, values = append(names, e.Kids[0]), append(values, e.Kids[1])
+			}
+		}
+	}
+	for i, v := range values {
+		u := v
+		if v.Kind == edn.Map {
+			u = v.Get("url")
+		}
+		if u == nil || u.Kind != edn.String || MavenPublic(u.Text) {
 			continue
 		}
-		// {"name" {:url "..."}}, {"name" "url"}, [["name" "url"]], [["name" {:url "..."}]]
-		var values []*edn.Node
-		switch r.Kind {
-		case edn.Map:
-			for i := 1; i < len(r.Kids); i += 2 {
-				values = append(values, r.Kids[i])
-			}
-		case edn.Vector, edn.List:
-			for _, e := range r.Kids {
-				if len(e.Kids) == 2 {
-					values = append(values, e.Kids[1])
-				}
-			}
-		}
-		for _, v := range values {
-			u := v
-			if v.Kind == edn.Map {
-				u = v.Get("url")
-			}
-			if u != nil && u.Kind == edn.String && !MavenPublic(u.Text) {
-				k.extra(Maven, strings.TrimSpace(u.Text))
-			}
+		if n := names[i]; n.Kind == edn.String && n.Text == "central" {
+			k.add(Maven, strings.TrimSpace(u.Text), "")
+		} else {
+			k.extra(Maven, strings.TrimSpace(u.Text))
 		}
 	}
 }
@@ -1127,40 +1144,6 @@ func parseCabalRepositories(data []byte, add func(eco, url, scope string)) {
 				add(Hackage, u, "")
 			}
 		}
-	}
-}
-
-// parseMavenSettings reads the mirrors this machine sends Maven through. A mirror
-// of `*` (or `external:*`) stands in for every repository, Central and those a
-// project declares; a mirror of `central` replaces Central only; a mirror of some
-// other repository serves what that repository holds, beside Central. A mirror
-// that says nothing is taken to mirror everything, as the most common setup does.
-//
-// Implements: REQ-SUP-015, REQ-SUP-063
-func parseMavenSettings(data []byte, k sink) {
-	var doc struct {
-		Mirrors struct {
-			Mirror []struct {
-				URL      string `xml:"url"`
-				MirrorOf string `xml:"mirrorOf"`
-			} `xml:"mirror"`
-		} `xml:"mirrors"`
-	}
-	if xml.Unmarshal(data, &doc) != nil {
-		return
-	}
-	for _, m := range doc.Mirrors.Mirror {
-		kind := Additive
-		of := strings.Split(strings.ReplaceAll(m.MirrorOf, " ", ""), ",")
-		switch {
-		case strings.TrimSpace(m.MirrorOf) == "", slices.Contains(of, "*"), slices.ContainsFunc(of, func(s string) bool {
-			return strings.HasPrefix(s, "external:")
-		}):
-			kind = ReplaceAll
-		case slices.Contains(of, "central"):
-			kind = Replace
-		}
-		k.put(Maven, Source{URL: strings.TrimSpace(m.URL), Kind: kind})
 	}
 }
 

@@ -16,7 +16,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -72,9 +71,7 @@ func readMachine(m userconf.Machine) *Store {
 	// by the id of a source declared in the same file, so both have to read the
 	// sources as well to know which host it is for - which is the whole reason they
 	// are read here rather than fished out of what discover.go already parsed.
-	if data, err := os.ReadFile(filepath.Join(m.Home, ".m2", "settings.xml")); err == nil {
-		c.readMavenSettings(data)
-	}
+	c.readMaven(m)
 	for _, name := range m.NuGetConfigs() {
 		if data, err := os.ReadFile(name); err == nil {
 			c.readNuGetConfig(data)
@@ -85,61 +82,82 @@ func readMachine(m userconf.Machine) *Store {
 }
 
 // readMavenSettings takes the username and password of every <server> whose id names
-// a <mirror> or a <profile>'s <repository>, and files it under that URL's host. It is
-// where a developer's Nexus or Artifactory password lives; without it the company
-// repository answers 401 and half the dependency tree goes quiet.
+// a <mirror> or a <profile>'s <repository> - active or not, as Maven matches a server
+// to any repository by id - or a repository of the Clojure CLI's user deps.edn
+// (repos, by name), and files it under that URL's host. It is where a developer's
+// Nexus or Artifactory password lives; without it the company repository answers
+// 401 and half the dependency tree goes quiet. The files are the user's settings
+// first, then the installation's; the first to define an id is the one used.
+//
+// A repository a project declares (a POM's, a project deps.edn's) is not matched: the
+// repository would then be choosing where the password is sent.
 //
 // Implements: REQ-AUTH-003, REQ-AUTH-010
-func (c *Store) readMavenSettings(data []byte) {
-	var doc struct {
-		Servers struct {
-			Server []struct {
-				ID       string `xml:"id"`
-				Username string `xml:"username"`
-				Password string `xml:"password"`
-			} `xml:"server"`
-		} `xml:"servers"`
-		Mirrors struct {
-			Mirror []struct {
+func (c *Store) readMavenSettings(files [][]byte, repos map[string]string) {
+	type doc struct {
+		Servers []struct {
+			ID       string `xml:"id"`
+			Username string `xml:"username"`
+			Password string `xml:"password"`
+		} `xml:"servers>server"`
+		Mirrors []struct {
+			ID  string `xml:"id"`
+			URL string `xml:"url"`
+		} `xml:"mirrors>mirror"`
+		Profiles []struct {
+			Repositories []struct {
 				ID  string `xml:"id"`
 				URL string `xml:"url"`
-			} `xml:"mirror"`
-		} `xml:"mirrors"`
-		Profiles struct {
-			Profile []struct {
-				Repositories struct {
-					Repository []struct {
-						ID  string `xml:"id"`
-						URL string `xml:"url"`
-					} `xml:"repository"`
-				} `xml:"repositories"`
-			} `xml:"profile"`
-		} `xml:"profiles"`
+			} `xml:"repositories>repository"`
+		} `xml:"profiles>profile"`
 	}
-	if xml.Unmarshal(data, &doc) != nil {
-		return
+	var docs []doc
+	for _, data := range files {
+		var d doc
+		if xml.Unmarshal(data, &d) == nil {
+			docs = append(docs, d)
+		}
 	}
 	urls := map[string]string{}
-	for _, m := range doc.Mirrors.Mirror {
-		urls[m.ID] = m.URL
+	name := func(id, u string) {
+		if _, ok := urls[id]; !ok && id != "" {
+			urls[id] = u
+		}
 	}
-	for _, p := range doc.Profiles.Profile {
-		for _, r := range p.Repositories.Repository {
-			if _, ok := urls[r.ID]; !ok {
-				urls[r.ID] = r.URL
+	for _, d := range docs {
+		for _, m := range d.Mirrors {
+			name(strings.TrimSpace(m.ID), m.URL)
+		}
+	}
+	for _, d := range docs {
+		for _, p := range d.Profiles {
+			for _, r := range p.Repositories {
+				name(strings.TrimSpace(r.ID), r.URL)
 			}
 		}
 	}
-	for _, s := range doc.Servers.Server {
-		user, pass := expand(s.Username), expand(s.Password)
-		if user == "" || pass == "" || mavenEncrypted(pass) {
-			// An encrypted password ({...}) needs the master password from
-			// settings-security.xml to be of any use, and guessing is worse than
-			// going without: a wrong Authorization header is a 401 either way.
-			continue
-		}
-		if host := c.hostOf(urls[s.ID]); host != "" {
-			c.basic[host] = user + ":" + pass
+	for _, id := range slices.Sorted(maps.Keys(repos)) {
+		name(id, repos[id])
+	}
+	done := map[string]bool{}
+	for _, d := range docs {
+		for _, s := range d.Servers {
+			id := strings.TrimSpace(s.ID)
+			user, pass := expand(s.Username), expand(s.Password)
+			if done[id] {
+				continue
+			}
+			done[id] = true
+			if user == "" || pass == "" || mavenEncrypted(pass) {
+				// An encrypted password ({...}) needs the master password from
+				// settings-security.xml to be of any use, and guessing is worse
+				// than going without: a wrong Authorization header is a 401
+				// either way.
+				continue
+			}
+			if host := c.hostOf(urls[id]); host != "" {
+				c.basic[host] = user + ":" + pass
+			}
 		}
 	}
 }

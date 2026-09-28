@@ -32,3 +32,9 @@ guessing an artifact for it is worse than saying nothing.
 
 Until the Java, Kotlin and Scala plugins named Maven packages by artifact
 (REQ-JAVA-012), this applied to all of their packages.
+
+A `group:artifact` package is asked of every Maven repository this machine
+configures (the settings' mirrors and active profiles, Gradle init scripts,
+the Clojure CLI's and Leiningen's user configuration, sbt's repositories
+file, `COURSIER_REPOSITORIES`) before Central, so only the artifact-less names
+remain unanswerable.

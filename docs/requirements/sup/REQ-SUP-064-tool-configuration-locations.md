@@ -40,6 +40,15 @@ tool looks for it, reading the variables from the machine's environment only:
   `%APPDATA%\Composer` on Windows; else the first existing of
   `$XDG_CONFIG_HOME/composer` or `~/.config/composer`, and `~/.composer`), the
   same home its credentials are read from.
+- Maven: `~/.m2/settings.xml`, then `conf/settings.xml` under `MAVEN_HOME`,
+  else `M2_HOME`.
+- Gradle: `init.gradle(.kts)` and `init.d/*.gradle(.kts)` in
+  `GRADLE_USER_HOME`, else `~/.gradle`.
+- Clojure: `deps.edn` in `CLJ_CONFIG`, else `$XDG_CONFIG_HOME/clojure`, else
+  `~/.clojure`; Leiningen's `profiles.clj` in `LEIN_HOME`, else `~/.lein`.
+- sbt: `-Dsbt.repository.config`, else `repositories` in
+  `-Dsbt.global.base`, else `~/.sbt`, those properties (and
+  `-Dsbt.override.build.repos`) taken from `JAVA_OPTS`, then `SBT_OPTS`.
 
 ## Rationale
 
@@ -60,11 +69,14 @@ fixed `$HOME` paths missed the feed the machine actually uses.
 5. The Windows paths (`%APPDATA%`, `%ProgramData%`) are used when the platform
    is Windows, tested without running on Windows.
 6. Tests read no file of the machine running them.
+7. `MAVEN_HOME`'s settings, `GRADLE_USER_HOME`'s init scripts, `CLJ_CONFIG`'s
+   and `$XDG_CONFIG_HOME/clojure`'s `deps.edn`, `LEIN_HOME` and a moved sbt
+   repositories file are read instead of, or beside, the home defaults.
 
 ## Notes
 
 The locations are found in one place, `internal/userconf`, for index discovery
-and the credential store alike. Gradle's `GRADLE_USER_HOME` is not needed yet:
-nothing is read from Gradle's user home. pip's per-interpreter
+and the credential store alike. Gradle's installation-wide `init.d` and
+`-Dgradle.user.home` in `GRADLE_OPTS` are not read. pip's per-interpreter
 `sys.prefix/pip.conf` is not read (the interpreter is not known), nor npm's
 built-in prefix guessed.
