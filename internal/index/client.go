@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -164,6 +165,15 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 		} else if untrusted == "" {
 			untrusted = k.url
 		}
+	}
+	if t.Ecosystem == Hex && t.Registry != "" && len(asked) > 0 && !c.auth.Authorizes(asked[0].url+"/packages/"+url.PathEscape(t.Package)) {
+		// A private organization's package answers only to its key: asked without
+		// one, hex.pm would say "not found", which reads as a package that does not
+		// exist. Say what is missing instead, and ask nobody else.
+		// Implements: REQ-SUP-047
+		l.Index, l.Reason = asked[0].url, trace.ReasonNoKey
+		c.report(l)
+		return nil
 	}
 	if len(asked) == 0 {
 		l.Index, l.Reason = untrusted, trace.ReasonUntrusted
@@ -691,8 +701,14 @@ type dep struct {
 }
 
 // registry is the lang.Target.Registry of a dependency of from.
+//
+// Implements: REQ-SUP-047
 func (d dep) registry(from lang.Target) string {
 	switch {
+	case from.Ecosystem == Hex:
+		// The Hex API does not say which repository a requirement is in; the
+		// registry's rule is the parent's own unless it says otherwise.
+		return from.Registry
 	case from.Ecosystem != Cargo:
 		return ""
 	case d.Registry == "":

@@ -16,8 +16,11 @@ macros (`embeds_one ... do`, generated route helpers) are found only by their
 defined prefix, aliases a package's `__using__` injects are not known, calls
 through variables (`apply(mod, ...)`, `mod.fun()`) are not seen, deps declared
 in `rebar.config.script`, erlang.mk Makefiles or computed in `mix.exs` are not
-read, and `rebar.lock` has no package-to-package edges; private Hex
-organizations and repositories (`organization:`, `repo:`) are not asked.
+read, and `rebar.lock` has no package-to-package edges. A private Hex
+organization's package is asked of the organization
+([REQ-BEAM-013](REQ-BEAM-013-hex-organization-packages.md)); a Hex repository
+with a URL of its own (a mini_repo, a mirror) serves no API and is not asked,
+and a rebar3 dependency's repository is not read.
 
 ## Rationale
 

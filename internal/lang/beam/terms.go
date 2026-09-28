@@ -72,7 +72,9 @@ func (t term) write(b *strings.Builder, erl bool) {
 		}
 		b.WriteString(t.s)
 	case 's':
-		b.WriteString(`"` + t.s + `"`)
+		b.WriteRune('"')
+		b.WriteString(t.s)
+		b.WriteRune('"')
 	case 'n':
 		b.WriteString(t.s)
 	case 'l':
@@ -82,7 +84,8 @@ func (t term) write(b *strings.Builder, erl bool) {
 	case 'm':
 		list("%{", "}")
 	case 'k':
-		b.WriteString(t.s + ": ")
+		b.WriteString(t.s)
+		b.WriteString(": ")
 		t.at(0).write(b, erl)
 	default:
 		b.WriteString("…")

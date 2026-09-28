@@ -420,6 +420,7 @@ func (r *resolver) injectedAlias(used []string, mod string) (string, bool) {
 // foreignUse reports whether a file uses a module of a package, whose __using__
 // may alias names the plugin cannot see.
 func (r *resolver) foreignUse(file string, uses []string) bool {
+	_ = file
 	seen := map[string]bool{}
 	for len(uses) > 0 {
 		u := uses[0]
@@ -645,9 +646,11 @@ func (r *resolver) application(file, app string) lang.Target {
 // hexTarget is a package as the project's lock pins it or its manifests declare it.
 // The lock pins a Hex package at its version (the requirement kept as requested)
 // and a git one at its commit; without it, "== 1.2.3" and a bare version pin, a git
-// ref that is a commit pins, and requirements, branches and tags float.
+// ref that is a commit pins, and requirements, branches and tags float. A package
+// of a private organization (organization: or repo: in mix.exs, its repository in
+// mix.lock) names that repository as its Registry.
 //
-// Implements: REQ-BEAM-010, REQ-BEAM-011
+// Implements: REQ-BEAM-010, REQ-BEAM-011, REQ-BEAM-013
 func (r *resolver) hexTarget(p *project, app string) lang.Target {
 	d := p.declared(app)
 	if l := p.lock[app]; l != nil {
@@ -675,6 +678,7 @@ func (r *resolver) hexTarget(p *project, app string) lang.Target {
 	default:
 		t.Version, t.Pinned = hexPinned(d.req)
 		t.Floating = d.req == ""
+		t.Registry = d.repo
 	}
 	return t
 }
@@ -687,7 +691,7 @@ func lockTarget(l *locked) lang.Target {
 	if pkg == "" {
 		pkg = l.app
 	}
-	return lang.Target{Ecosystem: ecoHex, Package: pkg, Version: l.version, Pinned: true}
+	return lang.Target{Ecosystem: ecoHex, Package: pkg, Version: l.version, Pinned: true, Registry: l.repo}
 }
 
 // Dependencies implements lang.Transitive from mix.lock, whose every Hex package
@@ -733,7 +737,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			pkg = d.app
 		}
 		v, pinned := hexPinned(d.req)
-		out = append(out, lang.Target{Ecosystem: ecoHex, Package: pkg, Version: v, Pinned: pinned})
+		out = append(out, lang.Target{Ecosystem: ecoHex, Package: pkg, Version: v, Pinned: pinned, Registry: d.repo})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Package < out[j].Package })
 	return out

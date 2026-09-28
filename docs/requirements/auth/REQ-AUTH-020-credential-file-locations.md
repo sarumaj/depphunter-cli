@@ -44,6 +44,11 @@ environment:
 - uv, Poetry and PDM: the `uv.toml` files, Poetry's configuration directory
   and PDM's `config.toml` index discovery reads, and the tools' variables
   ([REQ-AUTH-026](REQ-AUTH-026-python-tool-credentials.md)).
+- pub: `pub-tokens.json` in Dart's configuration directory
+  ([REQ-AUTH-027](REQ-AUTH-027-pub-tokens.md)).
+- Hex: `hex.config` in `HEX_HOME`, the XDG directory under `MIX_XDG`, else
+  `~/.hex`, and Hex's variables
+  ([REQ-AUTH-028](REQ-AUTH-028-hex-keys.md)).
 
 ## Rationale
 

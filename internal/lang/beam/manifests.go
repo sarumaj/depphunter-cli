@@ -16,8 +16,11 @@ type dependency struct {
 	refKind  string // ref, tag or branch
 	path     string
 	umbrella bool // in_umbrella: true
-	line     int
-	spec     string
+	// repo is the Hex repository the package is published to, when not hex.pm's
+	// public one: "hexpm:<organization>" for a private organization's.
+	repo string
+	line int
+	spec string
 }
 
 func (d *dependency) hexName() string {
@@ -110,6 +113,12 @@ func mixDep(t term) *dependency {
 			if v, ok := it.opt("in_umbrella"); ok && v.isAtom("true") {
 				d.umbrella = true
 			}
+			if v, ok := it.opt("repo"); ok {
+				d.repo = hexRepo(v.text())
+			}
+			if v, ok := it.opt("organization"); ok && v.text() != "" {
+				d.repo = "hexpm:" + v.text()
+			}
 			for _, k := range []string{"ref", "tag", "branch"} {
 				if v, ok := it.opt(k); ok && v.text() != "" {
 					d.ref, d.refKind = v.text(), k
@@ -157,19 +166,33 @@ type locked struct {
 	version string
 	git     string
 	ref     string
+	repo    string      // mix.lock only: the Hex repository, "" for hex.pm's
 	deps    []lockedDep // mix.lock only
 	level   int         // rebar.lock only: 0 for a direct dependency
 }
 
 type lockedDep struct {
-	app, pkg, req string
-	optional      bool
+	app, pkg, req, repo string
+	optional            bool
+}
+
+// hexRepo is a Hex repository name as a lang.Target.Registry: "" for hex.pm's
+// public repository, which is every package's unless one is named.
+//
+// Implements: REQ-BEAM-013
+func hexRepo(name string) string {
+	if name = strings.TrimSpace(name); name == "hexpm" {
+		return ""
+	}
+	return name
 }
 
 // readMixLock reads mix.lock: "app": {:hex, :pkg, "1.2.3", hash, managers, deps,
-// "hexpm", hash} or {:git, url, sha, opts}.
+// "hexpm", hash} or {:git, url, sha, opts}. The repository ("hexpm:acme" for a
+// private organization's package) is kept, for the package and for each of its
+// requirements (their repo: option).
 //
-// Implements: REQ-BEAM-010
+// Implements: REQ-BEAM-010, REQ-BEAM-013
 func readMixLock(src []byte) map[string]*locked {
 	p := &termParser{tokens: lexElixir(src)}
 	m := p.value()
@@ -182,12 +205,15 @@ func readMixLock(src []byte) map[string]*locked {
 		l := &locked{app: e.s}
 		switch {
 		case v.at(0).isAtom("hex"):
-			l.pkg, l.version = v.at(1).text(), v.at(2).text()
+			l.pkg, l.version, l.repo = v.at(1).text(), v.at(2).text(), hexRepo(v.at(6).text())
 			for _, d := range v.at(5).items {
 				opts := d.at(2)
 				ld := lockedDep{app: d.at(0).text(), req: d.at(1).text()}
 				if h, ok := opts.opt("hex"); ok {
 					ld.pkg = h.text()
+				}
+				if r, ok := opts.opt("repo"); ok {
+					ld.repo = hexRepo(r.text())
 				}
 				if o, ok := opts.opt("optional"); ok && o.isAtom("true") {
 					ld.optional = true
@@ -314,9 +340,10 @@ func rebarDep(t term) *dependency {
 		case it.kind == 't' && (it.at(0).isAtom("git") || it.at(0).isAtom("git_subdir") || it.at(0).isAtom("hg")):
 			d.git = it.at(1).text()
 			ref := it.at(2)
-			if ref.kind == 't' {
+			switch ref.kind {
+			case 't':
 				d.refKind, d.ref = ref.at(0).text(), ref.at(1).text()
-			} else if ref.kind == 's' {
+			case 's':
 				d.refKind, d.ref = "branch", ref.s
 			}
 			if d.req == ".*" || d.req == "" {

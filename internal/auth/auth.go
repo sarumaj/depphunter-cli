@@ -440,6 +440,18 @@ func (c *Store) Apply(req *http.Request) {
 	}
 }
 
+// Authorizes reports whether Apply would send a credential with a request for raw.
+//
+// Implements: REQ-SUP-047
+func (c *Store) Authorizes(raw string) bool {
+	req, err := http.NewRequest(http.MethodGet, raw, nil)
+	if err != nil {
+		return false
+	}
+	c.Apply(req)
+	return req.Header.Get("Authorization") != ""
+}
+
 // scopedSecret is the credential of the longest prefix of path among a host's
 // scoped ones, as npm takes the registry key with the longest matching path.
 func scopedSecret(prefixes map[string]secret, path string) (s secret, ok bool) {

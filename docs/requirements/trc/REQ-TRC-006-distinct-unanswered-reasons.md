@@ -16,8 +16,9 @@ applies, each as a distinct reason: no lock file covers it and the run is
 offline; its index is named only by the repository; it is private and its index
 is the public one; a proxy requires a version it was not given; the ecosystem's
 index cannot be asked; the ecosystem has no index depphunter asks; the package
-was installed from outside any index; or a request was made and failed (404, 401
-or worse).
+was installed from outside any index; it belongs to a private Hex organization
+this machine holds no key for; or a request was made and failed (404, 401 or
+worse).
 
 ## Rationale
 

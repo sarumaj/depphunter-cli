@@ -16,7 +16,9 @@ are generated but not committed are not seen, `part of` by library name is not
 resolved, a variable declaration list is named by its first variable,
 unnamed extensions and their members are not symbols, and `pubspec.lock`,
 which records no edges between packages, answers no `--resolve-depth` walk; the
-pub.dev API does, with `--online`.
+pub.dev API does, with `--online`, and so does a private pub server this
+machine holds a `dart pub token add` token for
+([REQ-AUTH-027](../auth/REQ-AUTH-027-pub-tokens.md)).
 
 ## Rationale
 
