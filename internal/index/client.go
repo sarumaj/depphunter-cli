@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -610,40 +611,54 @@ func (c *Client) npmPackage(ctx context.Context, index string, t lang.Target) ([
 	return out, nil
 }
 
-// pypiDistribution reads requires-dist from the JSON API. A simple index (PEP 503)
-// serves file listings and no metadata, so this asks the host that has both.
+// pypiDistribution reads requires-dist from the JSON API. An index that has no JSON
+// API - it answers 404, or something that is not JSON - is read through the Simple
+// API instead (pypiSimple); PyPI itself has the JSON API, and is not asked twice.
 //
-// Implements: REQ-SUP-023
+// Implements: REQ-SUP-023, REQ-SUP-067
 func (c *Client) pypiDistribution(ctx context.Context, index string, t lang.Target) ([]dep, error) {
 	host := strings.TrimSuffix(strings.TrimSuffix(index, "/simple"), "/simple/")
 	url := fmt.Sprintf("%s/pypi/%s/json", host, t.Package)
 	if lang.Pinned(t.Version) {
 		url = fmt.Sprintf("%s/pypi/%s/%s/json", host, t.Package, t.Version)
 	}
-	body, err := c.get(ctx, url)
-	if err != nil {
-		return nil, err
-	}
 	var doc struct {
 		Info struct {
 			RequiresDist []string `json:"requires_dist"`
 		} `json:"info"`
 	}
-	if err := json.Unmarshal(body, &doc); err != nil {
+	body, err := c.get(ctx, url)
+	if err == nil {
+		err = json.Unmarshal(body, &doc)
+	}
+	var syntax *json.SyntaxError
+	if (notFound(err) || errors.As(err, &syntax)) && !c.cfg.Public(PyPI, index) {
+		return c.pypiSimple(ctx, index, t)
+	}
+	if err != nil {
 		return nil, err
 	}
+	return requiresDist(doc.Info.RequiresDist), nil
+}
+
+// extraMarker is a requirement installed only when an extra is asked for.
+var extraMarker = regexp.MustCompile(`\bextra\s*==`)
+
+// requiresDist turns Requires-Dist entries into dependencies. "certifi
+// (>=2017.4.17)" is one; anything guarded by an extra is installed only when that
+// extra is asked for, and is left out. Other environment markers are kept: the
+// platform the map is drawn for is not known.
+func requiresDist(reqs []string) []dep {
 	var out []dep
-	for _, req := range doc.Info.RequiresDist {
-		// "certifi (>=2017.4.17)" is a dependency; anything guarded by an extra is
-		// installed only when that extra is asked for.
-		if strings.Contains(req, "extra ==") {
+	for _, req := range reqs {
+		if extraMarker.MatchString(req) {
 			continue
 		}
 		if name := requirementName(req); name != "" {
 			out = append(out, dep{Name: name, Version: requirementConstraint(req, name)})
 		}
 	}
-	return out, nil
+	return out
 }
 
 // requirementConstraint is what a requirement asks for, without its name, markers or

@@ -1254,7 +1254,7 @@ ecosystems whose graph is held outside the repository:
 |------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
 | Go                     | `<proxy>/<module>/@v/<version>.mod`                                                                                                                                                                                       | its direct (non-`// indirect`) `require` entries                                                                 |
 | npm                    | `<registry>/<package>/<version>`, or `/latest` when unpinned                                                                                                                                                              | its `dependencies`                                                                                               |
-| PyPI                   | `<host>/pypi/<name>/<version>/json`, or `/pypi/<name>/json` when unpinned                                                                                                                                                 | `requires_dist`, excluding extras                                                                                |
+| PyPI                   | `<host>/pypi/<name>/<version>/json`, or `/pypi/<name>/json` when unpinned; elsewhere, if that is 404, the Simple API page `<index>/<name>/` and a file's PEP 658 `<file>.metadata`                                        | `requires_dist` (`Requires-Dist`), excluding extras                                                              |
 | crates.io              | `<index>/<se>/<rd>/<name>`, sparse index                                                                                                                                                                                  | its normal `deps`, excluding optional ones                                                                       |
 | NuGet                  | `<feed>/<id>/<version>/<id>.nuspec`                                                                                                                                                                                       | `<dependencies>`, both flat and by group                                                                         |
 | OCI                    | the manifest, then its config blob                                                                                                                                                                                        | the **base image** it was built on                                                                               |
@@ -1287,6 +1287,19 @@ labels, for an image named in a pipeline, a Dockerfile or a Compose file alike.
 No layers are downloaded. A registry requiring a pull token is given the
 opportunity to say so, and the token endpoint it names is followed only over
 HTTPS, or back to the registry's own host.
+
+A private PyPI index that serves only pip's Simple API — GitLab, AWS
+CodeArtifact, Azure Artifacts, Google Artifact Registry, devpi, a plain Nexus
+or Artifactory repository — answers 404 at the JSON API, so its project page is
+read instead (PEP 691 JSON, or PEP 503 HTML), with the release taken from the
+file names: the pinned version, or the newest that is neither yanked nor a
+pre-release. Its dependencies are the `Requires-Dist` of the metadata file the
+index keeps beside a wheel or source archive (PEP 658), checked against the
+page's hash. A release whose files advertise no metadata gets no answer, and
+the report says so: archives are not downloaded. File URLs are taken relative
+to the page, and each request carries the credential this machine holds for
+its own URL — the index's for a file below the index's path, none for a file
+on a host or path it has none for.
 
 The PowerShell Gallery is not queried. Every Maven package on the map names its
 artifact (`com.google.guava:guava`, `cheshire:cheshire`), so its POM is read,
@@ -1389,8 +1402,9 @@ upper-cased, anything but a letter or digit as `_`), Poetry the
 `[http-basic.<name>]` of its `auth.toml` or `config.toml` and
 `POETRY_HTTP_BASIC_<NAME>_*`, PDM the `username` and `password` beside each
 `[pypi.<name>]` url. For an index this machine's own configuration names, the
-credential goes to that index's path — its URL without `/simple`, so the JSON
-API below it is covered — over netrc's. For an index of that name only the
+credential goes to that index's path — its URL without `/simple` (devpi's
+`/+simple`), so the JSON API, the files and their metadata below it are
+covered — over netrc's. For an index of that name only the
 repository defines, and for a `$NAME` or `${NAME}` user name or password in a
 repository `Pipfile` or PDM source URL, the secret is lent as for Yarn and
 Bun: only to an index vouched for with `--trust-index` or on the host of one

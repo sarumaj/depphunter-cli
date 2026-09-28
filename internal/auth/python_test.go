@@ -90,3 +90,27 @@ func TestLendIndex(t *testing.T) {
 	var nilStore *Store
 	nilStore.LendIndex("https://x.corp/simple", "a", "b")
 }
+
+// A Python index credential also serves the files and PEP 658 metadata the index
+// keeps below the same path (devpi's /+simple is its simple suffix), and nothing
+// outside it: a file on another path or host gets what is filed for that one.
+//
+// Verifies: REQ-AUTH-026, REQ-SUP-067
+func TestPythonCredentialCoversTheIndexFiles(t *testing.T) {
+	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
+	c.LendIndex("https://gitlab.corp/api/v4/projects/7/packages/pypi/simple", "__token__", "tok")
+	c.LendIndex("https://devpi.corp/team/prod/+simple/", "dev", "pi")
+	c.LendIndex("https://nexus.corp/repository/pypi-internal/simple/", "nx", "pw")
+	for u, want := range map[string]string{
+		"https://gitlab.corp/api/v4/projects/7/packages/pypi/simple/lib/":                                  basicHeader("__token__:tok"),
+		"https://gitlab.corp/api/v4/projects/7/packages/pypi/files/0a1b/lib-1.0-py3-none-any.whl.metadata": basicHeader("__token__:tok"),
+		"https://devpi.corp/team/prod/+f/0a1/b2c/lib-1.0-py3-none-any.whl.metadata":                        basicHeader("dev:pi"),
+		"https://devpi.corp/team/other/+f/0a1/b2c/lib-1.0-py3-none-any.whl.metadata":                       "",
+		"https://nexus.corp/repository/pypi-internal/packages/lib/1.0/lib-1.0.tar.gz.metadata":             basicHeader("nx:pw"),
+		"https://files.nexus.corp/repository/pypi-internal/packages/lib-1.0.tar.gz.metadata":               "",
+	} {
+		if got := authorization(t, c, u); got != want {
+			t.Errorf("%s: %q, want %q", u, got, want)
+		}
+	}
+}
