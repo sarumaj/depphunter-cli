@@ -24,9 +24,10 @@ index. Maven
 repositories that Clojure manifests declare (`:mvn/repos`, `:repositories`,
 shadow-cljs's `:maven`) **shall** be recorded as the repository's, except
 Maven Central and Clojars, as **shall** those a `pom.xml` (`<repositories>`)
-and a Gradle build or settings script (`maven { url … }`, `maven("…")`,
-outside `pluginManagement` and `buildscript`) declare; each is asked beside
-Central
+a Gradle build or settings script (`maven { url … }`, `maven("…")`,
+outside `pluginManagement` and `buildscript`) and an sbt build's `resolvers`
+declare; each is asked beside Central, except a Clojure repository named
+`"central"`, which replaces it as tools.deps and Leiningen do
 ([REQ-SUP-063](REQ-SUP-063-additive-sources-fall-back-to-the-public-index.md)).
 
 ## Rationale
@@ -50,6 +51,9 @@ after Central without being configured to.
    a `pluginManagement` repository are not.
 4. A POM that declares `encoding="ISO-8859-1"` (or Latin-1, Windows-1252) is
    read like a UTF-8 one.
+5. The POM of an artifact only an active settings profile's repository holds
+   is read from it with its server's credential, and Central answers for the
+   rest.
 
 ## Notes
 

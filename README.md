@@ -1094,8 +1094,12 @@ Poetry and uv sources in `pyproject.toml`; `NuGet.config` and the `source`
 lines of `paket.dependencies` and feeds of `paket.lock` (nuget.org itself and
 directories aside); a POM's `<repositories>` and the `maven`
 repositories of Gradle build and settings scripts (not those of
-`pluginManagement` or `buildscript`), other than Maven Central; the mirrors in
-`~/.m2/settings.xml`; `.cargo/config.toml`; the `composer` repositories of
+`pluginManagement` or `buildscript`), and the `resolvers` of an sbt build,
+other than Maven Central; the mirrors of Maven's `settings.xml` and the
+repositories of its active profiles; the repositories of Gradle's init
+scripts, of the Clojure CLI's user `deps.edn`, of Leiningen's `:user` profile
+and of `~/.sbt/repositories`, and `COURSIER_REPOSITORIES`;
+`.cargo/config.toml`; the `composer` repositories of
 `composer.json` and of Composer's own `config.json`; a `Gemfile`'s `source`
 lines (a `source ... do` block serves only its gems), `Gemfile.lock`'s
 remotes, `~/.gemrc` and Bundler's rubygems.org mirror; a `pubspec.yaml`'s
@@ -1138,6 +1142,11 @@ and platform paths:
 | NuGet      | `%APPDATA%\NuGet\NuGet.Config` on Windows; elsewhere `~/.nuget/NuGet/NuGet.Config` and `~/.config/NuGet/NuGet.Config`                                                                                                                                                                                                                                                                                                                           |
 | Composer   | one home, for repositories and credentials alike: `COMPOSER_HOME`; `%APPDATA%\Composer` on Windows; else the first that exists of `$XDG_CONFIG_HOME/composer` (`~/.config/composer`) and `~/.composer`                                                                                                                                                                                                                                          |
 | Bundler    | `BUNDLE_USER_CONFIG`; else `config` in `BUNDLE_USER_HOME`; else `~/.bundle/config`                                                                                                                                                                                                                                                                                                                                                              |
+| Maven      | `~/.m2/settings.xml`, then `conf/settings.xml` under `MAVEN_HOME`, else `M2_HOME` (the user's file wins); `-s` and `MAVEN_ARGS` are not followed                                                                                                                                                                                                                                                                                                |
+| Gradle     | the init scripts of `GRADLE_USER_HOME`, else `~/.gradle`: `init.gradle(.kts)`, then `init.d/*.gradle(.kts)` by name; `gradle.properties` there for credentials                                                                                                                                                                                                                                                                                  |
+| sbt        | `-Dsbt.repository.config`, else `repositories` in `-Dsbt.global.base`, else `~/.sbt`, those properties and `-Dsbt.override.build.repos` read from `JAVA_OPTS`, then `SBT_OPTS`; credentials in `SBT_CREDENTIALS`, `~/.sbt/.credentials`, `~/.ivy2/.credentials`                                                                                                                                                                                 |
+| Coursier   | `COURSIER_REPOSITORIES`; `COURSIER_CREDENTIALS` (inline, or a file); else `credentials.properties` in `COURSIER_CONFIG_DIR`, `%APPDATA%\Coursier\config` on Windows, `~/Library/Application Support/Coursier` on macOS, else `$XDG_CONFIG_HOME/coursier` (`~/.config/coursier`)                                                                                                                                                                 |
+| Clojure    | `deps.edn` in `CLJ_CONFIG`, else `$XDG_CONFIG_HOME/clojure` when that is set, else `~/.clojure`; Leiningen's `profiles.clj` in `LEIN_HOME`, else `~/.lein`                                                                                                                                                                                                                                                                                      |
 
 Nothing is read from the repository through these variables' defaults; they
 only say where this machine's own files are.
@@ -1155,15 +1164,15 @@ Package managers differ in how a configured index relates to the public one,
 and depphunter follows each of them. A source either **replaces** the public
 default or is asked **beside** it:
 
-| Ecosystem                     | replaces the public default                                                                                                             | asked beside it                                                                                                                                                                 |
-|-------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| PyPI                          | `index-url`, `PIP_INDEX_URL`, `-i`; a Poetry source that is primary; a uv index with `default = true`                                   | `extra-index-url`, `PIP_EXTRA_INDEX_URL`; a supplemental Poetry source; any other uv index                                                                                      |
-| Maven                         | a `settings.xml` mirror of `central`; a mirror of `*` or `external:*` (or one without `mirrorOf`), which stands in for every repository | a POM's `<repositories>`, Gradle's `maven { url … }`, Clojure's `:mvn/repos` and `:repositories`, a mirror of any other repository; Clojars after Central for a Clojure project |
-| Composer                      | nothing: `"packagist.org": false` switches Packagist off                                                                                | every `composer` repository                                                                                                                                                     |
-| NuGet                         | nothing: a `<clear/>` switches nuget.org off unless the same file names it again                                                        | every feed                                                                                                                                                                      |
-| Go                            | `GOPROXY`: its proxies are asked in order, and proxy.golang.org only if it is on the list                                               | —                                                                                                                                                                               |
-| crates.io                     | `[source.crates-io] replace-with` (followed to the end of the chain)                                                                    | —                                                                                                                                                                               |
-| npm and every other ecosystem | the first unscoped source found (npm's `registry`)                                                                                      | —                                                                                                                                                                               |
+| Ecosystem                     | replaces the public default                                                                                                                                                                                                                                                                                                | asked beside it                                                                                                                                                                                                                                                                                                                  |
+|-------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| PyPI                          | `index-url`, `PIP_INDEX_URL`, `-i`; a Poetry source that is primary; a uv index with `default = true`                                                                                                                                                                                                                      | `extra-index-url`, `PIP_EXTRA_INDEX_URL`; a supplemental Poetry source; any other uv index                                                                                                                                                                                                                                       |
+| Maven                         | a `settings.xml` mirror of `central`; a mirror of `*` or `external:*` (or one without `mirrorOf`), which stands in for every repository; a settings profile or Clojure repository with the id `central`; `COURSIER_REPOSITORIES` and, under `-Dsbt.override.build.repos=true`, `~/.sbt/repositories`, lists asked in order | a POM's `<repositories>`, Gradle's `maven { url … }` (a build's or an init script's), sbt's `resolvers`, Clojure's `:mvn/repos` and `:repositories` (a project's or the user's), an active settings profile's repositories, `~/.sbt/repositories`, a mirror of any other repository; Clojars after Central for a Clojure project |
+| Composer                      | nothing: `"packagist.org": false` switches Packagist off                                                                                                                                                                                                                                                                   | every `composer` repository                                                                                                                                                                                                                                                                                                      |
+| NuGet                         | nothing: a `<clear/>` switches nuget.org off unless the same file names it again                                                                                                                                                                                                                                           | every feed                                                                                                                                                                                                                                                                                                                       |
+| Go                            | `GOPROXY`: its proxies are asked in order, and proxy.golang.org only if it is on the list                                                                                                                                                                                                                                  | —                                                                                                                                                                                                                                                                                                                                |
+| crates.io                     | `[source.crates-io] replace-with` (followed to the end of the chain)                                                                                                                                                                                                                                                       | —                                                                                                                                                                                                                                                                                                                                |
+| npm and every other ecosystem | the first unscoped source found (npm's `registry`)                                                                                                                                                                                                                                                                         | —                                                                                                                                                                                                                                                                                                                                |
 
 A package is asked of the sources beside the public default first, in the
 order they were found (this machine's, then the repository's), and of the
@@ -1255,24 +1264,27 @@ already configured for it. Credentials are taken from the user's own files and
 environment — never from the repository — and each is sent to the host it was
 written for and to no other.
 
-| Source                                                        | Holds                                                                                                             |
-|---------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|
-| npm's user and global npmrc, `npm_config_//<host>/:<field>`   | `_authToken`, `_auth`, and `username` with `_password`, per registry                                              |
-| `~/.netrc` (`NETRC`; `~/_netrc` on Windows)                   | the machine/login/password triples git, curl, Go and pip already read                                             |
-| `~/.m2/settings.xml`                                          | each `<server>`, matched to the `<mirror>` or profile `<repository>` in the same file                             |
-| the user's `NuGet.Config` (`%APPDATA%\NuGet` on Windows)      | `<packageSourceCredentials>` (`ClearTextPassword`), matched to its `<packageSources>` entry                       |
-| `~/.docker/config.json` (`DOCKER_CONFIG`)                     | stored `auths`, and the helpers named by `credsStore` and `credHelpers`                                           |
-| `containers/auth.json`, `REGISTRY_AUTH_FILE`                  | the same, for Podman and Skopeo                                                                                   |
-| `credentials.toml` in `CARGO_HOME` (`~/.cargo`)               | a token per registry, matched to its index through `config.toml` there (legacy `credentials` and `config` too)    |
-| `CARGO_REGISTRIES_<NAME>_TOKEN`, `CARGO_REGISTRY_TOKEN`       | the same token supplied by a pipeline instead                                                                     |
-| `~/.terraformrc`, `~/.tofurc`, `TF_CLI_CONFIG_FILE`           | Terraform's and OpenTofu's `credentials "<host>"` tokens; a `host` block names a registry without one             |
-| `~/.terraform.d/credentials.tfrc.json`                        | the tokens `terraform login` stores (OpenTofu's under `~/.config/opentofu`)                                       |
-| `TF_TOKEN_<host>`                                             | a token supplied by a pipeline, for HCP Terraform and the hosts named above                                       |
-| `auth.json` in Composer's home                                | `http-basic`, `bearer`, `gitlab-token`, `gitlab-oauth`, `github-oauth`, per host                                  |
-| `COMPOSER_AUTH`                                               | the same keys supplied by a pipeline, merged host by host over `auth.json`                                        |
-| `~/.bundle/config`                                            | Bundler's `BUNDLE_<HOST>` credentials (`user:password`, or a token), per host or source URL                       |
-| `BUNDLE_<HOST>`                                               | the same credential supplied by a pipeline, over the file's                                                       |
-| the index URL itself                                          | `https://user:password@host/simple`, as a private pip or Cargo mirror is set                                      |
+| Source                                                      | Holds                                                                                                          |
+|-------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
+| npm's user and global npmrc, `npm_config_//<host>/:<field>` | `_authToken`, `_auth`, and `username` with `_password`, per registry                                           |
+| `~/.netrc` (`NETRC`; `~/_netrc` on Windows)                 | the machine/login/password triples git, curl, Go and pip already read                                          |
+| Maven's `settings.xml` (`~/.m2`, `MAVEN_HOME`)              | each `<server>`, matched to a `<mirror>`, profile `<repository>` or user `deps.edn` repository                 |
+| the user's `NuGet.Config` (`%APPDATA%\NuGet` on Windows)    | `<packageSourceCredentials>` (`ClearTextPassword`), matched to its `<packageSources>` entry                    |
+| `~/.docker/config.json` (`DOCKER_CONFIG`)                   | stored `auths`, and the helpers named by `credsStore` and `credHelpers`                                        |
+| `containers/auth.json`, `REGISTRY_AUTH_FILE`                | the same, for Podman and Skopeo                                                                                |
+| `credentials.toml` in `CARGO_HOME` (`~/.cargo`)             | a token per registry, matched to its index through `config.toml` there (legacy `credentials` and `config` too) |
+| `CARGO_REGISTRIES_<NAME>_TOKEN`, `CARGO_REGISTRY_TOKEN`     | the same token supplied by a pipeline instead                                                                  |
+| `~/.terraformrc`, `~/.tofurc`, `TF_CLI_CONFIG_FILE`         | Terraform's and OpenTofu's `credentials "<host>"` tokens; a `host` block names a registry without one          |
+| `~/.terraform.d/credentials.tfrc.json`                      | the tokens `terraform login` stores (OpenTofu's under `~/.config/opentofu`)                                    |
+| `TF_TOKEN_<host>`                                           | a token supplied by a pipeline, for HCP Terraform and the hosts named above                                    |
+| `auth.json` in Composer's home                              | `http-basic`, `bearer`, `gitlab-token`, `gitlab-oauth`, `github-oauth`, per host                               |
+| `COMPOSER_AUTH`                                             | the same keys supplied by a pipeline, merged host by host over `auth.json`                                     |
+| `~/.bundle/config`                                          | Bundler's `BUNDLE_<HOST>` credentials (`user:password`, or a token), per host or source URL                    |
+| `BUNDLE_<HOST>`                                             | the same credential supplied by a pipeline, over the file's                                                    |
+| `~/.sbt/.credentials`, `SBT_CREDENTIALS`                    | sbt's `host`, `user` and `password`, whatever the `realm`; `~/.ivy2/.credentials` too                          |
+| Coursier's `credentials.properties`, `COURSIER_CREDENTIALS` | `<name>.host`, `.username` and `.password`; inline `host(realm) user:password` lines                           |
+| `gradle.properties` in `GRADLE_USER_HOME`                   | `<name>Username` and `<name>Password` for an init script's `maven { name = "<name>" … }`                       |
+| the index URL itself                                        | `https://user:password@host/simple`, as a private pip or Cargo mirror is set                                   |
 
 Between them these cover Nexus, Artifactory, Azure Artifacts, ProGet, GitHub
 Packages, Harbor, GHCR, a private crate registry, a private Terraform
@@ -1321,6 +1333,25 @@ host key wins over it. The value goes out as Basic credentials, both halves
 URL-unescaped as Bundler does; a bare token is the user name with an empty
 password. The application's `.bundle/config`, beside the `Gemfile` or wherever
 `BUNDLE_APP_CONFIG` points, belongs to the repository and is never read.
+
+The JVM build tools share the Maven ecosystem. Maven's settings contribute the
+repositories of the profiles `<activeProfiles>` lists, or, when it lists none,
+of those with `<activeByDefault>true</activeByDefault>`; a profile activated by
+a property, the OS, the JDK or a file is not read, since that depends on the
+build, and `<pluginRepositories>` serve Maven's plugins. A `<server>` goes to
+the host of the mirror or repository with its id, in either settings file or
+in the Clojure CLI's user `deps.edn`, which tools.deps matches by repository
+name. `~/.sbt/repositories` is asked beside Central unless
+`-Dsbt.override.build.repos=true` is in `SBT_OPTS` or `JAVA_OPTS`: then its
+list is all that is asked, in order (a project's `.sbtopts` is the repository's
+and is not read). `COURSIER_REPOSITORIES` replaces Coursier's defaults in the
+same way; `ivy:` and local entries are skipped. A replacement one tool
+configures applies to every Maven package. Gradle's `PasswordCredentials`
+convention is followed for the init scripts in its user home only: a
+repository a project's build script declares is not given a credential, since
+the repository would then choose where it is sent. Leiningen's
+`credentials.clj.gpg` is not decrypted, and Maven's `settings-security.xml` is
+not used to decrypt a `{...}` password.
 
 Most container registries no longer store a credential in `config.json`; they
 name a helper instead, and depphunter runs it as `docker login` does —

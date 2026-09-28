@@ -13,7 +13,7 @@ func TestMavenServerCredentialsFindTheirHost(t *testing.T) {
 	// cSpell: words COQLCE
 	t.Setenv("NEXUS_PASSWORD", "from-the-environment")
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
-	c.readMavenSettings([]byte(`<?xml version="1.0"?>
+	c.readMavenSettings([][]byte{[]byte(`<?xml version="1.0"?>
 <settings>
   <servers>
     <server><id>nexus</id><username>build</username><password>${env.NEXUS_PASSWORD}</password></server>
@@ -32,7 +32,7 @@ func TestMavenServerCredentialsFindTheirHost(t *testing.T) {
       <repository><id>internal</id><url>https://artifactory.corp/artifactory/libs</url></repository>
     </repositories></profile>
   </profiles>
-</settings>`))
+</settings>`)}, nil)
 
 	// A mirror and a profile repository both name a host a server can belong to.
 	if got := c.basic["nexus.corp"]; got != "build:from-the-environment" {
@@ -144,10 +144,10 @@ func TestNoCredentialsInTheClear(t *testing.T) {
 	}
 
 	// A company feed this machine's own configuration names over http keeps working.
-	c.readMavenSettings([]byte(`<settings>
+	c.readMavenSettings([][]byte{[]byte(`<settings>
   <servers><server><id>old</id><username>u</username><password>p</password></server></servers>
   <mirrors><mirror><id>old</id><url>http://legacy.corp/maven</url></mirror></mirrors>
-</settings>`))
+</settings>`)}, nil)
 	legacy, _ := http.NewRequest(http.MethodGet, "http://legacy.corp/maven/x.pom", nil)
 	c.Apply(legacy)
 	if legacy.Header.Get("Authorization") == "" {

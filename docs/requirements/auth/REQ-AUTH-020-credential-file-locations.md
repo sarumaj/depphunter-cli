@@ -31,6 +31,11 @@ environment:
   `CARGO_REGISTRIES_<NAME>_INDEX` defines.
 - NuGet: `%APPDATA%\NuGet\NuGet.Config` on Windows.
 - Composer: the same single home index discovery reads.
+- Maven: `~/.m2/settings.xml`, then `conf/settings.xml` under `MAVEN_HOME`,
+  else `M2_HOME`; the Clojure CLI's `deps.edn` in `CLJ_CONFIG`, else
+  `$XDG_CONFIG_HOME/clojure`, else `~/.clojure`, for its repository names.
+- sbt, Coursier and Gradle: the files of
+  [REQ-AUTH-021](REQ-AUTH-021-jvm-build-tool-credentials.md).
 
 ## Rationale
 
