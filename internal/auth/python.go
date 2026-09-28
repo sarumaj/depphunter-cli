@@ -79,12 +79,15 @@ func (c *Store) LendIndex(index, user, password string) {
 }
 
 // pythonPrefix is the path a Python index's credential serves: the index's path
-// without its /simple suffix, where the JSON API (<prefix>/pypi/<name>/json) and
-// the simple pages both live - GitLab's /api/v4/projects/<id>/packages/pypi/,
-// Azure Artifacts' /<org>/_packaging/<feed>/pypi/ - and "" (the whole host) for an
-// index at the host's root.
+// without its /simple suffix (devpi's /+simple), where the JSON API
+// (<prefix>/pypi/<name>/json), the simple pages and, on most indexes, the files
+// and their PEP 658 metadata all live - GitLab's /api/v4/projects/<id>/packages/pypi/,
+// Nexus's /repository/<name>/, devpi's /<user>/<index>/ - and "" (the whole host)
+// for an index at the host's root. A file served from another path or host gets
+// whatever is filed for that one.
 func pythonPrefix(p string) string {
 	p = strings.TrimRight(p, "/")
 	p = strings.TrimSuffix(p, "/simple")
+	p = strings.TrimSuffix(p, "/+simple")
 	return pathPrefix(p)
 }

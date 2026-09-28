@@ -16,7 +16,9 @@ The index client **shall** read a Python distribution's dependencies from the
 
 ## Rationale
 
-A simple index (PEP 503) serves file listings and no metadata.
+The JSON API answers with the whole of a release's metadata in one request.
+An index that serves only the Simple API is read as
+[REQ-SUP-067](REQ-SUP-067-pypi-simple-api-fallback.md) says.
 
 ## Acceptance criteria
 
