@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -60,6 +61,99 @@ func TestCargoDependenciesFromSparseIndex(t *testing.T) {
 	got = names(c.Dependencies(lang.Target{Ecosystem: Cargo, Package: "serde"}))
 	if len(got) != 1 || got[0] != "new" {
 		t.Errorf("got %v, want the newest version's dependency", got)
+	}
+}
+
+// A sparse registry whose config.json says auth-required answers only with the
+// token in the Authorization header exactly as Cargo sends it - bare, or with the
+// scheme the token was written with - and each registry of a shared host gets its
+// own token. crates.io's token goes to none of them, not even to the registry that
+// replaces crates.io.
+//
+// Verifies: REQ-AUTH-008, REQ-SUP-024
+func TestCargoSparseRegistryRequiringAuth(t *testing.T) {
+	var mu sync.Mutex
+	var asked []string
+	want := map[string]string{"/raw/index/": "raw-token", "/jfrog/index/": "Bearer jfrog-token", "/mirror/": ""}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		asked = append(asked, r.URL.Path+" "+r.Header.Get("Authorization"))
+		mu.Unlock()
+		for prefix, token := range want {
+			if !strings.HasPrefix(r.URL.Path, prefix) {
+				continue
+			}
+			if token != "" && r.Header.Get("Authorization") != token {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			switch strings.TrimPrefix(r.URL.Path, prefix) {
+			case "config.json":
+				fmt.Fprintf(w, `{"dl":"%s%sapi/v1/crates","auth-required":%v}`, "http://"+r.Host, prefix, token != "")
+			case "bi/ll/billing":
+				fmt.Fprint(w, `{"name":"billing","vers":"1.0.0","deps":[{"name":"ledger","req":"^1","kind":"normal"}]}`+"\n")
+			case "se/rd/serde":
+				fmt.Fprint(w, `{"name":"serde","vers":"1.0.0","deps":[]}`+"\n")
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+	home := t.TempDir()
+	cargo := filepath.Join(home, ".cargo")
+	if err := os.MkdirAll(cargo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := fmt.Sprintf(`[registries]
+raw = { index = "sparse+%[1]s/raw/index/" }
+jfrog = { index = "sparse+%[1]s/jfrog/index/" }
+mirror = { index = "sparse+%[1]s/mirror/" }
+
+[source.crates-io]
+replace-with = "mirror"
+`, srv.URL)
+	credentials := `[registry]
+token = "cio-token"
+
+[registries.raw]
+token = "raw-token"
+
+[registries.jfrog]
+token = "Bearer jfrog-token"
+`
+	for name, body := range map[string]string{"config.toml": config, "credentials.toml": credentials} {
+		if err := os.WriteFile(filepath.Join(cargo, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := Discover(nil, env(nil), home)
+	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, env(nil)), nil)
+	for _, reg := range []string{"raw", "jfrog"} {
+		if got := names(c.Dependencies(lang.Target{Ecosystem: Cargo, Package: "billing", Version: "1.0.0", Registry: reg})); !slices.Equal(got, []string{"ledger"}) {
+			t.Errorf("%s: billing answered %v", reg, got)
+		}
+	}
+	if got := names(c.Dependencies(lang.Target{Ecosystem: Cargo, Package: "serde", Version: "1.0.0"})); len(got) != 0 {
+		t.Errorf("serde from the mirror: %v", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for _, line := range asked {
+		path, got, _ := strings.Cut(line, " ")
+		for prefix, token := range want {
+			if strings.HasPrefix(path, prefix) && got != token {
+				t.Errorf("%s was sent %q, want %q", path, got, token)
+			}
+		}
+		if strings.Contains(got, "cio-token") {
+			t.Errorf("crates.io's token was sent to %s", path)
+		}
+	}
+	if !slices.Contains(asked, "/mirror/se/rd/serde ") {
+		t.Errorf("the mirror was not asked: %v", asked)
 	}
 }
 

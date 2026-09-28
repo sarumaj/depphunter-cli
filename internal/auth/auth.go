@@ -49,14 +49,19 @@ type Store struct {
 	scoped map[string]map[string]secret
 }
 
-// secret is a credential of scoped: a Bearer token, or a Basic "user:password".
+// secret is a credential of scoped: a Bearer token, a Basic "user:password", or
+// (verbatim) the whole Authorization header value, as Cargo sends its tokens.
 type secret struct {
-	bearer bool
-	value  string
+	bearer   bool
+	verbatim bool
+	value    string
 }
 
 // header is the Authorization header that sends it.
 func (s secret) header() string {
+	if s.verbatim {
+		return s.value
+	}
 	if s.bearer {
 		return "Bearer " + s.value
 	}

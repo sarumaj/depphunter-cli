@@ -36,7 +36,7 @@ func TestCargoHomeAndEnvironmentRegistries(t *testing.T) {
 		"crates.corp": "corp-token", "env.corp": "env-token", "new.corp": "moved-token",
 		"home.corp": "", "old.corp": "",
 	} {
-		if got := c.bearer[host]; got != want {
+		if got := authorization(t, c, "https://"+host+"/index/1/a"); got != want {
 			t.Errorf("%s: %q, want %q", host, got, want)
 		}
 	}
