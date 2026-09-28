@@ -3,12 +3,13 @@ package auth
 import (
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/sarumaj/depphunter-cli/internal/userconf"
 )
 
 // ---------------------------------------------------------------- Bundler
@@ -24,20 +25,6 @@ import (
 // BUNDLE_APP_CONFIG names) is not read: it belongs to the repository, and a
 // repository that could supply a credential could also choose where it is sent
 // (REQ-AUTH-012). Read is given the home directory only.
-
-// BundlerConfig is the user's Bundler config file, as Bundler finds it:
-// BUNDLE_USER_CONFIG, else config in BUNDLE_USER_HOME, else ~/.bundle/config.
-//
-// Implements: REQ-AUTH-018, REQ-SUP-015
-func BundlerConfig(home string, env func(string) string) string {
-	if f := env("BUNDLE_USER_CONFIG"); f != "" {
-		return f
-	}
-	if dir := env("BUNDLE_USER_HOME"); dir != "" {
-		return filepath.Join(dir, "config")
-	}
-	return filepath.Join(home, ".bundle", "config")
-}
 
 // environ lists the process environment. The names of Bundler's variables cannot be
 // derived from anything else, so they are listed from here; their values are still
@@ -73,9 +60,10 @@ func bundlerSetting(host string) bool {
 // filed under host:port, which Apply tries before the host alone.
 //
 // Implements: REQ-AUTH-018, REQ-AUTH-019, REQ-AUTH-011
-func (c *Store) readBundler(home string, env func(string) string) {
+func (c *Store) readBundler(m userconf.Machine) {
+	env := m.Env
 	settings := map[string]string{}
-	if data, err := os.ReadFile(BundlerConfig(home, env)); err == nil {
+	if data, err := os.ReadFile(m.BundlerConfig()); err == nil {
 		var doc map[string]any
 		if yaml.Unmarshal(data, &doc) == nil {
 			for k, v := range doc {

@@ -12,7 +12,8 @@ verification:
 ## Statement
 
 The system **shall** read `<packageSourceCredentials>` of the user's NuGet
-configuration (`~/.nuget/NuGet/NuGet.Config` and `~/.config/NuGet/NuGet.Config`)
+configuration (`%APPDATA%\NuGet\NuGet.Config` on Windows; elsewhere
+`~/.nuget/NuGet/NuGet.Config` and `~/.config/NuGet/NuGet.Config`)
 and file each `Username` and `ClearTextPassword` under the host of the
 `<packageSources>` entry it names, a space in the key being written `_x0020_`.
 

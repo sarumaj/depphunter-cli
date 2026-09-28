@@ -109,7 +109,7 @@ token = "crates-io-token"
 
 [registries.corp]
 token = "corp-token"
-`), config)
+`), cargoIndexes(config, nil))
 	if got := c.bearer["crates.corp"]; got != "corp-token" {
 		t.Errorf("crates.corp: %q - the registry's name was not matched to its index", got)
 	}
@@ -127,7 +127,7 @@ token = "corp-token"
 			return "other-token"
 		}
 		return ""
-	}, config)
+	}, cargoIndexes(config, nil))
 	if got := env.bearer["other.corp"]; got != "other-token" {
 		t.Errorf("other.corp: %q", got)
 	}

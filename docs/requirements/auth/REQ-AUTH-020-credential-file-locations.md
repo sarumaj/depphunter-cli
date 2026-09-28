@@ -1,0 +1,50 @@
+---
+id: REQ-AUTH-020
+title: Credential file locations
+scope: auth
+type: functional
+priority: must
+status: implemented
+verification:
+  - unit
+---
+
+## Statement
+
+The system **shall** read credentials from the files each tool itself reads,
+found through the tool's variables and platform paths in the machine's
+environment:
+
+- npm: the global npmrc, then the user's (`npm_config_userconfig`, else
+  `~/.npmrc`), then `npm_config_//<host>/:<field>` variables in any case, each
+  key replacing the same key before it.
+- netrc: `NETRC`; else `~/_netrc` on Windows when it exists; else `~/.netrc`.
+- containers: `REGISTRY_AUTH_FILE` alone when set; else
+  `$XDG_RUNTIME_DIR/containers/auth.json` on Linux
+  (`~/.config/containers/auth.json` elsewhere),
+  `$XDG_CONFIG_HOME/containers/auth.json` (`~/.config/containers/auth.json`),
+  then `config.json` in `DOCKER_CONFIG`, else `~/.docker`; the first file
+  holding a registry's credential being the one used, as
+  containers-auth.json(5) orders them.
+- Cargo: `credentials` (else `credentials.toml`) and `config` (else
+  `config.toml`) in `CARGO_HOME`, else `~/.cargo`, and the registries
+  `CARGO_REGISTRIES_<NAME>_INDEX` defines.
+- NuGet: `%APPDATA%\NuGet\NuGet.Config` on Windows.
+- Composer: the same single home index discovery reads.
+
+## Rationale
+
+A credential kept where the tool looks for it - a CI job's `NETRC`, a
+`DOCKER_CONFIG` directory, Podman's runtime `auth.json` - is the one the tool
+sends; reading only the `$HOME` defaults left those registries answering 401.
+
+## Acceptance criteria
+
+1. `NETRC` replaces `~/.netrc`; on Windows `~/_netrc` is preferred.
+2. `$XDG_RUNTIME_DIR/containers/auth.json` wins over `DOCKER_CONFIG`'s
+   `config.json` for the same registry; `REGISTRY_AUTH_FILE` is read alone.
+3. `npm_config_//a.corp/:_authToken` replaces the user's npmrc key, which
+   replaces the global npmrc's.
+4. A token for a registry `CARGO_REGISTRIES_<NAME>_INDEX` defines is sent to
+   that index's host; `CARGO_HOME`'s files replace `~/.cargo`'s.
+5. Nothing under the repository is read (REQ-AUTH-012).

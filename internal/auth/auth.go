@@ -10,14 +10,18 @@ package auth
 import (
 	"encoding/base64"
 	"encoding/xml"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+
+	"github.com/sarumaj/depphunter-cli/internal/userconf"
 )
 
 // Store is what this machine holds, by host.
@@ -45,37 +49,38 @@ type Store struct {
 //
 // Implements: REQ-AUTH-014
 func Read(home string, env func(string) string) *Store {
+	m := userconf.New(home, env)
+	m.Environ = environ
+	return readMachine(m)
+}
+
+// readMachine is Read for a given machine, whose platform a test may choose. Every
+// file is found through m, the way the tool that writes it finds it
+// (internal/userconf).
+//
+// Implements: REQ-AUTH-020
+func readMachine(m userconf.Machine) *Store {
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
-	if env == nil {
-		env = func(string) string { return "" }
-	}
-	if home == "" {
+	if m.Home == "" {
 		return c
 	}
-	if data, err := os.ReadFile(filepath.Join(home, ".npmrc")); err == nil {
-		c.readNpmrc(data)
-	}
-	for _, name := range []string{".netrc", "_netrc"} {
-		if data, err := os.ReadFile(filepath.Join(home, name)); err == nil {
-			c.readNetrc(data)
-		}
+	c.readNpm(m)
+	if data, err := os.ReadFile(m.Netrc()); err == nil {
+		c.readNetrc(data)
 	}
 	// The two an enterprise actually keeps its feeds behind. Both name a credential
 	// by the id of a source declared in the same file, so both have to read the
 	// sources as well to know which host it is for - which is the whole reason they
 	// are read here rather than fished out of what discover.go already parsed.
-	if data, err := os.ReadFile(filepath.Join(home, ".m2", "settings.xml")); err == nil {
+	if data, err := os.ReadFile(filepath.Join(m.Home, ".m2", "settings.xml")); err == nil {
 		c.readMavenSettings(data)
 	}
-	for _, name := range []string{
-		filepath.Join(home, ".nuget", "NuGet", "NuGet.Config"),
-		filepath.Join(home, ".config", "NuGet", "NuGet.Config"),
-	} {
+	for _, name := range m.NuGetConfigs() {
 		if data, err := os.ReadFile(name); err == nil {
 			c.readNuGetConfig(data)
 		}
 	}
-	c.readMachineSources(home, env, exec.LookPath)
+	c.readMachineSources(m, exec.LookPath)
 	return c
 }
 
@@ -250,20 +255,58 @@ func (c *Store) notePlain(u *url.URL) {
 	c.plain[u.Hostname()] = true
 }
 
-// readNpmrc reads the per-registry credentials of an npm configuration, which is
-// "//registry.example/:<field>=<value>" for each of the four fields npm accepts:
-// a bearer token, a base64 "user:password", or the two halves of that pair written
-// separately, the password itself base64.
+// readNpm reads the per-registry credentials npm itself would use: those of the
+// global npmrc, then the user's, then the environment's npm_config_//host/:field
+// variables, each key replacing the same key of the one before.
 //
-// Implements: REQ-AUTH-001
-func (c *Store) readNpmrc(data []byte) {
-	user, password := map[string]string{}, map[string]string{}
-	for _, line := range strings.Split(string(data), "\n") {
-		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
-		if !ok || !strings.HasPrefix(key, "//") {
+// Implements: REQ-AUTH-001, REQ-AUTH-020
+func (c *Store) readNpm(m userconf.Machine) {
+	keys := map[string]string{}
+	for _, name := range []string{m.NpmGlobalConfig(), m.NpmUserConfig()} {
+		if name == "" {
 			continue
 		}
-		key = strings.TrimSpace(key)
+		if data, err := os.ReadFile(name); err == nil {
+			for k, v := range npmKeys(data) {
+				keys[k] = v
+			}
+		}
+	}
+	for k, v := range m.NpmEnv() {
+		if strings.HasPrefix(k, "//") {
+			keys[k] = v
+		}
+	}
+	c.applyNpm(keys)
+}
+
+// readNpmrc reads the per-registry credentials of one npm configuration.
+//
+// Implements: REQ-AUTH-001
+func (c *Store) readNpmrc(data []byte) { c.applyNpm(npmKeys(data)) }
+
+// npmKeys are the "//registry.example/:<field>=<value>" lines of an npm
+// configuration, by key.
+func npmKeys(data []byte) map[string]string {
+	out := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if key = strings.TrimSpace(key); ok && strings.HasPrefix(key, "//") {
+			out[key] = value
+		}
+	}
+	return out
+}
+
+// applyNpm files the credentials of npm's per-registry keys, for each of the four
+// fields npm accepts: a bearer token, a base64 "user:password", or the two halves of
+// that pair written separately, the password itself base64.
+//
+// Implements: REQ-AUTH-001
+func (c *Store) applyNpm(keys map[string]string) {
+	user, password := map[string]string{}, map[string]string{}
+	for _, key := range slices.Sorted(maps.Keys(keys)) {
+		value := keys[key]
 		field := key[strings.LastIndex(key, ":")+1:]
 		hostPath := strings.TrimSuffix(strings.TrimPrefix(key, "//"), ":"+field)
 		host, _, _ := strings.Cut(hostPath, "/")

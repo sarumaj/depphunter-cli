@@ -11,10 +11,12 @@ verification:
 
 ## Statement
 
-The system **shall** read Cargo tokens from `~/.cargo/credentials.toml` (or
-`credentials`) and from `CARGO_REGISTRIES_<NAME>_TOKEN` and
-`CARGO_REGISTRY_TOKEN`, and **shall** file a named registry's token under the
-host of the index `~/.cargo/config.toml` declares for that name, and the default
+The system **shall** read Cargo tokens from `credentials` (or
+`credentials.toml`) in `CARGO_HOME` (else `~/.cargo`) and from
+`CARGO_REGISTRIES_<NAME>_TOKEN` and `CARGO_REGISTRY_TOKEN`, and **shall** file
+a named registry's token under the host of the index declared for that name -
+by `CARGO_REGISTRIES_<NAME>_INDEX`, else by `config.toml` beside the
+credentials, names compared upper-cased with `-` as `_` - and the default
 registry's under crates.io.
 
 ## Rationale

@@ -16,12 +16,12 @@ import (
 	"github.com/BurntSushi/toml"
 	"gopkg.in/yaml.v3"
 
-	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/edn"
 	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
 	"github.com/sarumaj/depphunter-cli/internal/lang/nuget"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/userconf"
 )
 
 // Discover reads index configuration from this machine first and the repository
@@ -35,16 +35,16 @@ func Discover(files []*scan.File, env func(string) string, home string) *Config 
 // exists before that, so a client can be built against it up front and still see what
 // the scan later finds.
 type Discoverer struct {
-	cfg  *Config
-	env  func(string) string
-	home string
+	cfg *Config
+	// m is whose configuration is read, and where each tool keeps it.
+	m userconf.Machine
 	// read says the machine's configuration has been read: it is this user's, it
 	// does not change with the repository, and --watch discovers on every analysis.
 	read bool
 }
 
 func NewDiscoverer(env func(string) string, home string) *Discoverer {
-	return &Discoverer{cfg: New(), env: env, home: home}
+	return &Discoverer{cfg: New(), m: userconf.New(home, env)}
 }
 
 // Config is the configuration this discoverer fills.
@@ -57,7 +57,7 @@ func (d *Discoverer) Config() *Config { return d.cfg }
 // Implements: REQ-SUP-015, REQ-SUP-016
 func (d *Discoverer) Discover(files []*scan.File) *Config {
 	if !d.read {
-		d.cfg.machine(d.env, d.home)
+		d.cfg.machine(d.m)
 		d.read = true
 	}
 	d.cfg.forgetProject()
@@ -66,10 +66,12 @@ func (d *Discoverer) Discover(files []*scan.File) *Config {
 }
 
 // machine reads the configuration of whoever is running depphunter: environment first,
-// then the files their package managers read.
+// then the files their package managers read, each found where that package manager
+// finds it (internal/userconf).
 //
-// Implements: REQ-SUP-015
-func (c *Config) machine(env func(string) string, home string) {
+// Implements: REQ-SUP-015, REQ-SUP-064
+func (c *Config) machine(m userconf.Machine) {
+	env, home := m.Env, m.Home
 	k := sink{
 		put: func(eco string, s Source) {
 			s.Trusted, s.Origin = true, OriginMachine
@@ -78,22 +80,44 @@ func (c *Config) machine(env func(string) string, home string) {
 		off: func(eco string) { c.SwitchOff(eco, OriginMachine) },
 	}
 	add := k.add
-
-	add(NPM, env("NPM_CONFIG_REGISTRY"), "")
-	add(PyPI, env("PIP_INDEX_URL"), "")
-	for _, u := range strings.Fields(env("PIP_EXTRA_INDEX_URL")) {
-		k.extra(PyPI, u)
-	}
-	parseGoproxy(env("GOPROXY"), k)
-	// Composer's global configuration lives in COMPOSER_HOME, whose default depends on
-	// the platform; both usual places are read below.
-	if dir := env("COMPOSER_HOME"); dir != "" {
-		if data, err := os.ReadFile(filepath.Join(dir, "config.json")); err == nil {
-			parseComposer(data, k)
+	read := func(name string, parse func([]byte, sink)) {
+		if name == "" {
+			return
+		}
+		if data, err := os.ReadFile(name); err == nil {
+			parse(data, k)
 		}
 	}
-	// Bundler's mirror of rubygems.org, from the environment.
+
+	// npm: the environment's settings, then the user's npmrc, then the global one.
+	npmEnv := m.NpmEnv()
+	add(NPM, npmEnv["registry"], "")
+	for _, key := range slices.Sorted(maps.Keys(npmEnv)) {
+		if scope, ok := strings.CutSuffix(key, ":registry"); ok && strings.HasPrefix(scope, "@") {
+			add(NPM, npmEnv[key], scope)
+		}
+	}
+	read(m.NpmUserConfig(), plain(parseNpmrc))
+	read(m.NpmGlobalConfig(), plain(parseNpmrc))
+	machinePip(m, k)
+	parseGoproxy(m.GoEnv("GOPROXY"), k)
+	// Cargo: the registries the environment defines, before config.toml's, since a
+	// variable overrides the same registry's index there.
+	cargoEnv := m.CargoRegistries()
+	for _, name := range slices.Sorted(maps.Keys(cargoEnv)) {
+		k.put(Cargo, Source{URL: cargoEnv[name], Registry: strings.ToLower(name), Kind: Additive})
+	}
+	read(m.CargoFile("config"), func(data []byte, k sink) { cargoConfig(data, k, cargoEnv) })
+	// Composer's global configuration, in the one home Composer takes.
+	read(join(m.ComposerHome(), "config.json"), parseComposer)
+	for _, name := range m.NuGetConfigs() {
+		// The places the dotnet CLI keeps the user's NuGet.Config, the same the
+		// credentials are read from, so a feed with a password is also a feed.
+		read(name, parseNuGetConfig)
+	}
+	// Bundler's mirror of rubygems.org, from the environment and the user's config.
 	add(RubyGems, env("BUNDLE_MIRROR__RUBYGEMS__ORG"), "")
+	read(m.BundlerConfig(), plain(parseBundleConfig))
 	// The server dart pub and flutter pub get install from instead of pub.dev.
 	add(Pub, env("PUB_HOSTED_URL"), "")
 	// The Hex API Mix and rebar3 talk to instead of hex.pm's. HEX_MIRROR is not read:
@@ -165,27 +189,61 @@ func (c *Config) machine(env func(string) string, home string) {
 		path  string
 		parse func([]byte, sink)
 	}{
-		{filepath.Join(home, ".npmrc"), plain(parseNpmrc)},
-		{filepath.Join(home, ".config", "pip", "pip.conf"), parsePipConf},
-		{filepath.Join(home, ".pip", "pip.conf"), parsePipConf},
-		{filepath.Join(home, ".cargo", "config.toml"), parseCargoConfig},
 		{filepath.Join(home, ".m2", "settings.xml"), parseMavenSettings},
-		// Both places the dotnet CLI keeps the user's NuGet.Config, the same two the
-		// credentials are read from, so a feed with a password is also a feed.
-		{filepath.Join(home, ".nuget", "NuGet", "NuGet.Config"), parseNuGetConfig},
-		{filepath.Join(home, ".config", "NuGet", "NuGet.Config"), parseNuGetConfig},
-		{filepath.Join(home, ".config", "composer", "config.json"), parseComposer},
-		{filepath.Join(home, ".composer", "config.json"), parseComposer},
 		{filepath.Join(home, ".gemrc"), plain(parseGemrc)},
-		{auth.BundlerConfig(home, env), plain(parseBundleConfig)},
 		{filepath.Join(home, ".Rprofile"), plain(parseRprofile)},
 		{filepath.Join(home, ".config", "cabal", "config"), plain(parseCabalRepositories)},
 		{filepath.Join(home, ".bazelrc"), plain(parseBazelrc)},
 		{filepath.Join(home, ".cabal", "config"), plain(parseCabalRepositories)},
 	} {
-		if data, err := os.ReadFile(f.path); err == nil {
-			f.parse(data, k)
+		read(f.path, f.parse)
+	}
+}
+
+// join is filepath.Join, or "" when dir is: nothing is read under a directory that
+// is not there.
+func join(dir, name string) string {
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, name)
+}
+
+// machinePip reads pip's configuration as pip layers it: its configuration files in
+// the order it loads them, each setting of a later file replacing the same setting of
+// an earlier one, then PIP_INDEX_URL and PIP_EXTRA_INDEX_URL over them all. Only the
+// last extra-index-url is kept, as in pip: the setting is replaced, not added to.
+//
+// Implements: REQ-SUP-015, REQ-SUP-064
+func machinePip(m userconf.Machine, k sink) {
+	var index string
+	var extra []string
+	files, ok := m.PipConfigFiles()
+	for _, name := range files {
+		if !ok || name == "" {
+			break
 		}
+		data, err := os.ReadFile(name)
+		if err != nil {
+			continue
+		}
+		s := pipSettings(data)
+		if s.hasIndex {
+			index = s.index
+		}
+		if s.hasExtra {
+			extra = s.extra
+		}
+	}
+	if v := m.Env("PIP_INDEX_URL"); v != "" {
+		index = v
+	}
+	if v := m.Env("PIP_EXTRA_INDEX_URL"); v != "" {
+		extra = strings.Fields(v)
+	}
+	k.add(PyPI, index, "")
+	for _, u := range extra {
+		k.extra(PyPI, u)
 	}
 }
 
@@ -370,13 +428,29 @@ func parseYarnrc(data []byte, add func(eco, url, scope string)) {
 //
 // Implements: REQ-SUP-015, REQ-SUP-063
 func parsePipConf(data []byte, k sink) {
+	s := pipSettings(data)
+	k.add(PyPI, s.index, "")
+	for _, u := range s.extra {
+		k.extra(PyPI, u)
+	}
+}
+
+// pipConf is what one pip configuration file sets.
+type pipConf struct {
+	index              string
+	extra              []string
+	hasIndex, hasExtra bool
+}
+
+// pipSettings reads index-url and extra-index-url (on the line, or on the indented
+// lines that continue it) out of a pip configuration file.
+func pipSettings(data []byte) pipConf {
+	var s pipConf
 	extra := false
 	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if extra && trimmed != "" && (line[0] == ' ' || line[0] == '\t') && !strings.Contains(trimmed, "=") {
-			for _, u := range strings.Fields(trimmed) {
-				k.extra(PyPI, u)
-			}
+			s.extra = append(s.extra, strings.Fields(trimmed)...)
 			continue
 		}
 		extra = false
@@ -386,14 +460,13 @@ func parsePipConf(data []byte, k sink) {
 		}
 		switch strings.TrimSpace(key) {
 		case "index-url", "index_url":
-			k.add(PyPI, strings.TrimSpace(value), "")
+			s.index, s.hasIndex = strings.TrimSpace(value), true
 		case "extra-index-url", "extra_index_url":
-			extra = true
-			for _, u := range strings.Fields(value) {
-				k.extra(PyPI, u)
-			}
+			extra, s.hasExtra = true, true
+			s.extra = strings.Fields(value)
 		}
 	}
+	return s
 }
 
 // parseRequirements reads the index options a requirements file may carry:
@@ -524,7 +597,12 @@ func parsePyproject(data []byte, k sink) {
 // for them. A [source] no chain reaches serves nothing.
 //
 // Implements: REQ-SUP-015, REQ-SUP-063
-func parseCargoConfig(data []byte, k sink) {
+func parseCargoConfig(data []byte, k sink) { cargoConfig(data, k, nil) }
+
+// cargoConfig is parseCargoConfig with the registries the environment defines
+// (userconf.Machine.CargoRegistries), whose index replaces config.toml's. Those were
+// recorded already; what a replace-with chain ends at is taken from them too.
+func cargoConfig(data []byte, k sink, env map[string]string) {
 	var doc struct {
 		Source map[string]struct {
 			Registry    string
@@ -545,10 +623,15 @@ func parseCargoConfig(data []byte, k sink) {
 	}
 	if s, ok := doc.Source[name]; ok && name != "crates-io" {
 		k.add(Cargo, s.Registry, "")
+	} else if u, ok := env[userconf.CargoRegistryName(name)]; ok && name != "crates-io" {
+		k.add(Cargo, u, "")
 	} else if r, ok := doc.Registries[name]; ok {
 		k.add(Cargo, r.Index, "")
 	}
 	for _, key := range slices.Sorted(maps.Keys(doc.Registries)) {
+		if _, ok := env[userconf.CargoRegistryName(key)]; ok {
+			continue
+		}
 		k.put(Cargo, Source{URL: doc.Registries[key].Index, Registry: key, Kind: Additive})
 	}
 }

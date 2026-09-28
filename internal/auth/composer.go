@@ -5,8 +5,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/userconf"
 )
 
 // ---------------------------------------------------------------- Composer
@@ -27,37 +28,12 @@ import (
 // exchanges for a token at bitbucket.org before each run.
 var composerKinds = []string{"github-oauth", "gitlab-oauth", "gitlab-token", "http-basic", "bearer"}
 
-// composerHome is the directory Composer takes for its home: COMPOSER_HOME when set,
-// else on Windows %APPDATA%\Composer, else the XDG one ($XDG_CONFIG_HOME/composer,
-// ~/.config/composer) or ~/.composer, whichever exists first.
-func composerHome(home string, env func(string) string) string {
-	if dir := env("COMPOSER_HOME"); dir != "" {
-		return dir
-	}
-	if runtime.GOOS == "windows" {
-		if dir := env("APPDATA"); dir != "" {
-			return filepath.Join(dir, "Composer")
-		}
-	}
-	var dirs []string
-	if xdg := env("XDG_CONFIG_HOME"); xdg != "" {
-		dirs = append(dirs, filepath.Join(xdg, "composer"))
-	}
-	dirs = append(dirs, filepath.Join(home, ".config", "composer"), filepath.Join(home, ".composer"))
-	for _, dir := range dirs {
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
-			return dir
-		}
-	}
-	return ""
-}
-
 // readComposer merges config.json's "config", auth.json and COMPOSER_AUTH, host by
 // host within each kind and each over the one before, as Composer does, and files
 // what results under its hosts.
 //
 // Implements: REQ-AUTH-016, REQ-AUTH-017
-func (c *Store) readComposer(home string, env func(string) string) {
+func (c *Store) readComposer(m userconf.Machine) {
 	merged := map[string]map[string]json.RawMessage{}
 	merge := func(doc map[string]json.RawMessage) {
 		for _, kind := range composerKinds {
@@ -73,7 +49,7 @@ func (c *Store) readComposer(home string, env func(string) string) {
 			}
 		}
 	}
-	if dir := composerHome(home, env); dir != "" {
+	if dir := m.ComposerHome(); dir != "" {
 		if data, err := os.ReadFile(filepath.Join(dir, "config.json")); err == nil {
 			var doc struct {
 				Config       map[string]json.RawMessage `json:"config"`
@@ -91,7 +67,7 @@ func (c *Store) readComposer(home string, env func(string) string) {
 			}
 		}
 	}
-	if v := env("COMPOSER_AUTH"); v != "" {
+	if v := m.Env("COMPOSER_AUTH"); v != "" {
 		var doc map[string]json.RawMessage
 		if json.Unmarshal([]byte(v), &doc) == nil {
 			merge(doc)

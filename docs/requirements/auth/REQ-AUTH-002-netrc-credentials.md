@@ -11,8 +11,9 @@ verification:
 
 ## Statement
 
-The system **shall** read the machine, login and password entries of the user's
-`~/.netrc` or `~/_netrc` and file each under its machine.
+The system **shall** read the machine, login and password entries of the
+netrc file the go command reads - `NETRC`; else on Windows `~/_netrc` when it
+exists; else `~/.netrc` - and file each under its machine.
 
 ## Rationale
 
@@ -23,3 +24,4 @@ a private repository is most often reached.
 
 1. A request to a netrc machine carries its Basic credential; a request to
    another host carries none.
+2. With `NETRC` set, `~/.netrc` is not read.
