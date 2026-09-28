@@ -307,6 +307,57 @@ func TestPackagesCarryTheirIndex(t *testing.T) {
 	}
 }
 
+// locatingRegistry answers nothing, but says where it found each package, as the
+// index client does after walking an additive source.
+type locatingRegistry map[string][2]string
+
+func (r locatingRegistry) Dependencies(lang.Target) []lang.Target { return nil }
+
+func (r locatingRegistry) Located(eco, pkg string) (string, bool, bool) {
+	l, ok := r[pkg]
+	return l[0], l[1] == "known", ok
+}
+
+// A package attributed to its ecosystem's primary index before anything is asked
+// is moved to where the registry actually found it - or, found nowhere this machine
+// may ask, to the repository's index, marked.
+//
+// Verifies: REQ-SUP-018, REQ-SUP-063
+func TestPackagesMoveToWhereTheyWereFound(t *testing.T) {
+	root := t.TempDir()
+	writeProject(t, root, map[string]string{"a.fake": "public\nextra\nmissing\n"})
+	p := fakePlugin{targets: map[string]lang.Target{
+		"public":  {Ecosystem: "fake-eco", Package: "public"},
+		"extra":   {Ecosystem: "fake-eco", Package: "public-extra"},
+		"missing": {Ecosystem: "fake-eco", Package: "public-missing"},
+	}}
+	g, _, err := Run(context.Background(), root, Options{
+		Plugins:      []lang.Plugin{p},
+		ResolveDepth: 1,
+		Indexes:      func([]*scan.File) Indexes { return fakeIndexes{index: "https://public.example"} },
+		Registry: locatingRegistry{
+			"public-extra":   {"https://extra.corp", "known"},
+			"public-missing": {"https://repo-only.example", ""},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"public": "https://public.example", "public-extra": "https://extra.corp", "public-missing": "https://repo-only.example ?"}
+	for _, n := range g.Nodes {
+		if n.Kind != graph.KindPackage {
+			continue
+		}
+		got := n.Index
+		if n.IndexUnknown {
+			got += " ?"
+		}
+		if got != want[n.Name] {
+			t.Errorf("%s: %q, want %q", n.Name, got, want[n.Name])
+		}
+	}
+}
+
 // Verifies: REQ-SUP-037, REQ-MOD-011
 func TestPackagesAreMarkedAsTheOrganizationsOwn(t *testing.T) {
 	root := t.TempDir()

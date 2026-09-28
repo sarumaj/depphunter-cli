@@ -33,3 +33,6 @@ request.
    once for several lookups.
 3. With Packagist as the index the client asks `/p2/<name>.json` for the
    lower-case name directly.
+4. Metadata that does not list the package is "not found", and the next
+   repository (Packagist, unless switched off) is asked
+   ([REQ-SUP-063](REQ-SUP-063-additive-sources-fall-back-to-the-public-index.md)).

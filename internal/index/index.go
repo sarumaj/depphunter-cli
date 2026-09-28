@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/auth"
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
@@ -231,12 +232,47 @@ const (
 	OriginImage   = "image reference" // an image reference carries its own registry
 )
 
+// Kind is how a source relates to the ecosystem's public default: whether the
+// package manager asks it instead of the default or beside it.
+type Kind uint8
+
+const (
+	// Replace serves every package instead of the public default: npm's
+	// `registry`, pip's `index-url`, a Cargo `replace-with`, a Maven mirror of
+	// Central. The first one found is the one used. It is the zero value.
+	Replace Kind = iota
+	// ReplaceAll is a Replace that also stands in for every additive source: a
+	// Maven mirror of `*`, through which the repositories a POM declares are
+	// fetched as well.
+	ReplaceAll
+	// Additive serves packages beside the public default (or the Replace source):
+	// pip's `extra-index-url`, the repositories of a POM, a Gradle build or a
+	// Clojure manifest, a Composer repository, a NuGet feed. The package manager
+	// asks it too, so a package it lacks is still found on the default.
+	Additive
+	// Listed is an entry of an ordered list that replaces the public default
+	// entry by entry: GOPROXY. Every entry is asked in turn, and nothing that is
+	// not on the list.
+	Listed
+)
+
 // Source is one index, and what it serves.
 type Source struct {
 	URL string
 	// Scope limits the source to the packages it names: an npm scope ("@acme"), a
 	// Maven groupId prefix, or a distribution name. Empty serves everything.
 	Scope string
+	// Kind says whether an unscoped source replaces the public default or is asked
+	// beside it (see For). A scoped source serves its packages alone whatever it
+	// says.
+	Kind Kind
+	// Registry names a Cargo alternative registry (`[registries.<name>]`): the
+	// source serves only the crates that declare it, by that name in Cargo.toml or
+	// by its index URL in Cargo.lock (lang.Target.Registry), and nothing else.
+	Registry string
+	// OnError moves on to the next Listed source when this one fails in any way,
+	// not only when it does not have the package: GOPROXY's "|" separator.
+	OnError bool
 	// Trusted marks a source this machine's own configuration named. A source the
 	// repository declares is not trusted: it says where a package came from, and
 	// nothing is ever fetched from it.
@@ -263,9 +299,37 @@ type Config struct {
 	// or Cargo mirror is usually configured with - and is what the URL is stripped
 	// of before it is recorded. nil strips it and keeps nothing.
 	credentials *auth.Store
+	// off holds the ecosystems whose public default is switched off, and by whom
+	// (an Origin): Composer's `"packagist.org": false`, NuGet's `<clear/>`, a
+	// GOPROXY that is set. Only the sources named are asked then.
+	off map[string]string
+	// private reports a package the organization owns (internal/scope). Such a
+	// package is attributed to the source that would serve it rather than to a
+	// public index it is never named to.
+	private func(eco, pkg string) bool
 }
 
-func New() *Config { return &Config{sources: map[string][]Source{}, trusted: map[string]bool{}} }
+func New() *Config {
+	return &Config{sources: map[string][]Source{}, trusted: map[string]bool{}, off: map[string]string{}}
+}
+
+// Private tells the configuration which packages are the organization's own (see
+// For). nil makes every package public.
+func (c *Config) Private(match func(eco, pkg string) bool) { c.private = match }
+
+// SwitchOff records that the public default of an ecosystem is not used: only the
+// sources named are. origin is where that was said, so that under --watch what the
+// repository said is forgotten with its sources.
+//
+// Implements: REQ-SUP-063
+func (c *Config) SwitchOff(eco, origin string) {
+	if c.off == nil {
+		c.off = map[string]string{}
+	}
+	if _, done := c.off[eco]; !done {
+		c.off[eco] = origin
+	}
+}
 
 // Credentials is where a credential written into an index URL is filed. It is set
 // before anything is discovered, since a URL is stripped as it arrives.
@@ -284,12 +348,12 @@ func (c *Config) Trust(urls []string) {
 }
 
 // Public reports whether an index is the ecosystem's own public one - registry.npmjs.org,
-// proxy.golang.org, Docker Hub. It is what decides whether naming a package to it
-// would tell the world that the package exists.
+// proxy.golang.org, Docker Hub, and Clojars beside Maven Central. It is what decides
+// whether naming a package to it would tell the world that the package exists.
 //
 // Implements: REQ-SUP-038
 func (c *Config) Public(eco, index string) bool {
-	return index != "" && index == public[eco]
+	return index != "" && (index == public[eco] || eco == Maven && index == clojarsURL)
 }
 
 // Add records a source for an ecosystem. Sources added first are preferred, which is
@@ -311,7 +375,7 @@ func (c *Config) Add(eco string, s Source) {
 	}
 	s.URL = c.credentials.FromURL(s.URL, s.Trusted)
 	for _, have := range c.sources[eco] {
-		if have.URL == s.URL && have.Scope == s.Scope {
+		if have.URL == s.URL && have.Scope == s.Scope && have.Registry == s.Registry {
 			return
 		}
 	}
@@ -321,6 +385,11 @@ func (c *Config) Add(eco string, s Source) {
 // forgetProject drops what the repository declared, before it is read again.
 func (c *Config) forgetProject() {
 	c.clojure = false
+	for eco, origin := range c.off {
+		if origin == OriginProject {
+			delete(c.off, eco)
+		}
+	}
 	for eco, sources := range c.sources {
 		c.sources[eco] = slices.DeleteFunc(sources, func(s Source) bool { return s.Origin == OriginProject })
 	}
@@ -352,7 +421,7 @@ func (c *Config) Report() []trace.Source {
 				Origin: c.origin(s), Trusted: c.fetchable(eco, s),
 			})
 		}
-		if url := public[eco]; url != "" && !c.has(eco, url) {
+		if url := public[eco]; url != "" && !c.has(eco, url) && c.off[eco] == "" {
 			out = append(out, trace.Source{Ecosystem: eco, URL: url, Origin: OriginPublic, Trusted: true})
 		}
 		if eco == Maven && c.clojure && !c.has(eco, Clojars) {
@@ -398,12 +467,85 @@ func (c *Config) fetchable(eco string, s Source) bool {
 	return s.Trusted || s.URL == public[eco] || c.trusted[s.URL]
 }
 
-// For reports which index serves a package, and whether anything here vouches for it:
-// a public default or a source this machine's configuration names is known, a source
-// only the repository asks for is not.
+// For reports which index a package is attributed to, and whether anything here
+// vouches for it: a public default or a source this machine's configuration names is
+// known, a source only the repository asks for is not. It is ForTarget for a package
+// that names no registry of its own.
 //
 // Implements: REQ-SUP-014, REQ-SUP-016, REQ-SUP-018, REQ-SUP-026
 func (c *Config) For(eco, pkg string) (index string, known bool) {
+	return c.ForTarget(lang.Target{Ecosystem: eco, Package: pkg})
+}
+
+// ForTarget reports which index the map attributes a package to before anything is
+// asked: the first candidate (see candidates) that serves the package as a matter of
+// configuration - its scoped source or Cargo registry, the source that replaces the
+// public default, or the public default itself. An additive source is not: it serves
+// only what it holds, which cannot be known offline, and a repository's extra index
+// would otherwise mark every public package. The client, which does ask, reports
+// where a package was actually found (Client.Located).
+//
+// A package the organization owns is attributed to the first candidate that is not a
+// public index, since it is never named to one: an additive private index is then
+// where it comes from.
+//
+// Implements: REQ-SUP-014, REQ-SUP-016, REQ-SUP-018, REQ-SUP-063
+func (c *Config) ForTarget(t lang.Target) (index string, known bool) {
+	candidates := c.candidates(t.Ecosystem, t.Package, t.Registry)
+	if len(candidates) == 0 {
+		return "", false
+	}
+	if c.private != nil && c.private(t.Ecosystem, t.Package) {
+		for _, k := range candidates {
+			if !c.Public(t.Ecosystem, k.url) {
+				return k.url, k.known
+			}
+		}
+	}
+	for _, k := range candidates {
+		if k.primary {
+			return k.url, k.known
+		}
+	}
+	return candidates[0].url, candidates[0].known // only additive sources: the default is off
+}
+
+// candidate is one index a package may be asked of.
+type candidate struct {
+	url   string
+	known bool // something here allows fetching from it (see fetchable)
+	// primary marks the index that serves the package by configuration rather
+	// than by holding it: a scoped source, a replacement, the public default.
+	primary bool
+	// onError moves on to the next candidate after any failure, not only after
+	// "not found" (GOPROXY's "|").
+	onError bool
+}
+
+// candidates lists the indexes a package is asked of, in the order they are asked;
+// the client moves to the next one when an index does not have the package. The
+// rules follow the package managers':
+//
+//   - An OCI image or a Terraform module named with a host is served by that host.
+//   - A crate that names a Cargo registry (lang.Target.Registry) is served by that
+//     registry alone; a registry serves no other crate.
+//   - A scoped source that covers the package (an npm scope, a gem's source block, a
+//     pubspec's hosted server) serves it alone. It is authoritative: a package
+//     missing from it is not looked for on the public index, which is what a
+//     dependency-confusion attack would plant it on.
+//   - Otherwise the additive sources come first, in the order found (the machine's,
+//     then the repository's), and the primary index last: the first Replace source,
+//     every Listed one in order, or the public default (with Clojars after Maven
+//     Central for a Clojure project) unless it is switched off. A ReplaceAll source
+//     leaves the additive ones out. Asking the organization's own index first is
+//     what Maven and Composer do, and it keeps the name of a package that index has
+//     from being sent to the public one at all.
+//
+// A source the repository names is listed like any other, with known false: the
+// client does not ask it, but reports it when nothing it could ask had the package.
+//
+// Implements: REQ-SUP-014, REQ-SUP-016, REQ-SUP-063
+func (c *Config) candidates(eco, pkg, registry string) []candidate {
 	if eco == OCI {
 		// A container reference carries its registry: "ghcr.io/org/app" is not
 		// "app" from Docker Hub. Nothing needs to be configured to see that; to be
@@ -411,8 +553,8 @@ func (c *Config) For(eco, pkg string) (index string, known bool) {
 		// configuration names, or one the user vouched for.
 		registry := ociRegistry(pkg)
 		host := Host(registry)
-		return registry, registry == public[OCI] || c.trusted[registry] || c.trusted[host] ||
-			c.credentials.Registry(host)
+		return []candidate{{url: registry, primary: true, known: registry == public[OCI] || c.trusted[registry] ||
+			c.trusted[host] || c.credentials.Registry(host)}}
 	}
 	if eco == TerraformModule {
 		// A module address carries its registry's host when it is not the public
@@ -420,30 +562,84 @@ func (c *Config) For(eco, pkg string) (index string, known bool) {
 		// when this machine's Terraform configuration names it.
 		if host := terraformHost(pkg); host != "" {
 			registry := "https://" + host
-			return registry, c.trusted[registry] || c.trusted[host] || c.credentials.TerraformHost(host)
+			return []candidate{{url: registry, primary: true,
+				known: c.trusted[registry] || c.trusted[host] || c.credentials.TerraformHost(host)}}
 		}
 	}
-	scoped, plain := Source{}, Source{}
+	one := func(s Source) []candidate {
+		return []candidate{{url: s.URL, primary: true, known: c.fetchable(eco, s)}}
+	}
+	if eco == Cargo && registry != "" {
+		// A crate from a named registry, by name (Cargo.toml) or by index URL
+		// (Cargo.lock). An index URL nothing here configures is still where the
+		// crate comes from, and is known only if the user vouched for it.
+		want := cargoRegistryURL(registry)
+		for _, s := range c.sources[eco] {
+			if s.Registry != "" && (s.Registry == registry || cargoRegistryURL(s.URL) == want) {
+				return one(s)
+			}
+		}
+		if strings.Contains(registry, "://") {
+			return one(Source{URL: want})
+		}
+		return nil // a registry no configuration defines: Cargo itself would fail
+	}
 	for _, s := range c.sources[eco] {
-		switch {
-		case s.Scope != "" && matches(eco, s.Scope, pkg):
-			if scoped.URL == "" {
-				scoped = s
+		if s.Scope != "" && s.Registry == "" && matches(eco, s.Scope, pkg) {
+			return one(s)
+		}
+	}
+	var additive, primary []candidate
+	var chosen *Source
+	for i, s := range c.sources[eco] {
+		if s.Scope != "" || s.Registry != "" {
+			continue
+		}
+		k := candidate{url: s.URL, known: c.fetchable(eco, s), onError: s.OnError}
+		switch s.Kind {
+		case Additive:
+			additive = append(additive, k)
+		case Listed:
+			if chosen == nil || chosen.Kind == Listed {
+				k.primary = true
+				primary = append(primary, k)
+				chosen = &c.sources[eco][i]
 			}
-		case s.Scope == "":
-			if plain.URL == "" {
-				plain = s
+		default:
+			if chosen == nil {
+				k.primary = true
+				primary = append(primary, k)
+				chosen = &c.sources[eco][i]
 			}
 		}
 	}
-	best := scoped
-	if best.URL == "" {
-		best = plain
+	if chosen == nil && c.off[eco] == "" && public[eco] != "" {
+		primary = append(primary, candidate{url: public[eco], known: true, primary: true})
 	}
-	if best.URL == "" {
-		return public[eco], public[eco] != ""
+	if eco == Maven && c.clojure && (chosen == nil || chosen.Kind != ReplaceAll) && c.off[eco] == "" {
+		// Clojure's tools search Clojars after Maven Central (or its mirror)
+		// without being told to.
+		primary = append(primary, candidate{url: clojarsURL, known: true})
 	}
-	return best.URL, c.fetchable(eco, best)
+	if chosen != nil && chosen.Kind == ReplaceAll {
+		additive = nil
+	}
+	out := make([]candidate, 0, len(additive)+len(primary))
+	seen := map[string]bool{}
+	for _, k := range append(additive, primary...) {
+		if !seen[k.url] {
+			seen[k.url] = true
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// cargoRegistryURL is a Cargo registry's index URL as Cargo.lock and a config file
+// compare: without the protocol prefix ("registry+", "sparse+") and trailing slash.
+func cargoRegistryURL(u string) string {
+	u = strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(u), "registry+"), "sparse+")
+	return strings.TrimRight(u, "/")
 }
 
 // matches reports whether a scope covers a package name. npm scopes are exact, Maven

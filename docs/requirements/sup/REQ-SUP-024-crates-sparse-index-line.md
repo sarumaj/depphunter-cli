@@ -25,4 +25,6 @@ index from a host of its own.
 1. The sparse path of a crate is derived from its lower-cased name.
 2. The configured crates.io URL is turned into `index.crates.io`, and a
    `sparse+` URL is used as given.
-3. Against a stub index the client returns the crate's dependencies.
+3. Against a stub index the client returns the crate's dependencies, each
+   carrying the registry the index line names for it (none for the crate's
+   own registry or crates.io's).

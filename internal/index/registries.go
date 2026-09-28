@@ -73,6 +73,10 @@ func (c *Client) cargoSparse(ctx context.Context, index string, t lang.Target) (
 			Req      string `json:"req"`
 			Kind     string `json:"kind"`
 			Optional bool   `json:"optional"`
+			// Registry is the index of a dependency published elsewhere than
+			// the crate itself (a crate of an alternative registry depending
+			// on crates.io).
+			Registry string `json:"registry"`
 		} `json:"deps"`
 		Yanked bool `json:"yanked"`
 	}
@@ -99,9 +103,22 @@ func (c *Client) cargoSparse(ctx context.Context, index string, t lang.Target) (
 		if d.Kind != "" && d.Kind != "normal" || d.Optional {
 			continue
 		}
-		out = append(out, dep{Name: d.Name, Version: d.Req})
+		out = append(out, dep{Name: d.Name, Version: d.Req, Registry: cargoDepRegistry(d.Registry)})
 	}
 	return out, nil
+}
+
+// cargoDepRegistry is what a sparse index line says about where a dependency is
+// published, as dep.Registry keeps it.
+func cargoDepRegistry(index string) string {
+	switch u := cargoRegistryURL(index); u {
+	case "":
+		return ""
+	case "https://github.com/rust-lang/crates.io-index", "https://index.crates.io":
+		return cratesIO
+	default:
+		return u
+	}
 }
 
 // sparsePath is where a sparse index keeps a crate: one directory per name length up
@@ -134,8 +151,11 @@ func (c *Client) nugetPackage(ctx context.Context, index string, t lang.Target) 
 	}
 	id := strings.ToLower(t.Package)
 	version, err := c.nugetVersion(ctx, base, id, t.Version)
-	if err != nil || version == "" {
+	if err != nil {
 		return nil, err
+	}
+	if version == "" {
+		return nil, errAbsent
 	}
 	body, err := c.accept(ctx, fmt.Sprintf("%s/%s/%s/%s.nuspec", base, id, version, id), "application/xml, */*")
 	if err != nil {
@@ -283,7 +303,7 @@ func (c *Client) composerPackage(ctx context.Context, index string, t lang.Targe
 	}
 	versions := expandComposer(doc.Packages[name])
 	if len(versions) == 0 {
-		return nil, nil
+		return nil, errAbsent
 	}
 	chosen := versions[0] // the newest: what an unpinned requirement installs today
 	want := strings.TrimPrefix(strings.TrimSpace(t.Version), "v")
@@ -1856,31 +1876,19 @@ var mavenProperty = regexp.MustCompile(`\$\{([^}]+)\}`)
 // maven-metadata.xml names. The POM's dependencies in the compile and runtime scopes
 // that are not optional are the answer, with those its parent POMs declare (read up
 // to four levels), versions filled from dependencyManagement and properties along
-// that chain; a version still unknown is left empty. When the index is Maven Central
-// and the repository has a Clojure manifest, Clojars is asked after it, as Clojure's
-// tools do.
+// that chain; a version still unknown is left empty. A parent is read from the
+// repository its child was (Clojars, after Maven Central for a Clojure project, is
+// one of the indexes Config.candidates lists).
 //
 // Implements: REQ-SUP-056, REQ-JAVA-010
 func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target) ([]dep, error) {
 	group, artifact, _ := strings.Cut(t.Package, ":")
-	repos := []string{index}
-	if index == public[Maven] && c.cfg.clojure {
-		repos = append(repos, clojarsURL)
-	}
-	fetch := func(g, a, file string) ([]byte, string, error) {
-		var last error
-		for _, r := range repos {
-			body, err := c.accept(ctx, fmt.Sprintf("%s/%s/%s/%s", r, strings.ReplaceAll(g, ".", "/"), a, file), "application/xml")
-			if err == nil {
-				return body, r, nil
-			}
-			last = err
-		}
-		return nil, "", last
+	fetch := func(g, a, file string) ([]byte, error) {
+		return c.accept(ctx, fmt.Sprintf("%s/%s/%s/%s", index, strings.ReplaceAll(g, ".", "/"), a, file), "application/xml")
 	}
 	version := t.Version
 	if !lang.PinnedMaven(version) {
-		body, _, err := fetch(group, artifact, "maven-metadata.xml")
+		body, err := fetch(group, artifact, "maven-metadata.xml")
 		if err != nil {
 			return nil, err
 		}
@@ -1908,14 +1916,13 @@ func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target)
 	var deps []mavenDep
 	g, a, v := group, artifact, version
 	for level := 0; level < 5 && a != ""; level++ {
-		body, repo, err := fetch(g, a, fmt.Sprintf("%s/%s-%s.pom", v, a, v))
+		body, err := fetch(g, a, fmt.Sprintf("%s/%s-%s.pom", v, a, v))
 		if err != nil {
 			if level == 0 {
 				return nil, err
 			}
 			break // a parent nobody serves: what the child says is still the answer
 		}
-		repos = []string{repo} // a parent lives where its child does
 		var pom mavenPOM
 		if err := lang.UnmarshalXML(body, &pom); err != nil {
 			if level == 0 {

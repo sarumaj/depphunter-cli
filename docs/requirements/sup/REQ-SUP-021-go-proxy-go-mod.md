@@ -23,3 +23,8 @@ A module proxy serves a module's own go.mod on its own.
 
 1. Against a stub proxy the client requests `<module>/@v/<version>.mod` and
    returns its requirements with their versions, pinned.
+
+## Notes
+
+The proxies of a `GOPROXY` list are asked in turn as the go command does
+([REQ-SUP-063](REQ-SUP-063-additive-sources-fall-back-to-the-public-index.md)).

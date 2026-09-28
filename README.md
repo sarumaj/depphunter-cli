@@ -1088,9 +1088,9 @@ tree following one would not terminate.
 Every external package records the index it comes from. depphunter reads both
 the index configuration present on this machine and the configuration the
 repository carries — `.npmrc`, including `@scope:registry`; `.yarnrc.yml`;
-`pip.conf` and a requirements file's `--index-url`; Poetry and uv sources in
-`pyproject.toml`; `NuGet.config` and the `source` lines of
-`paket.dependencies` and feeds of `paket.lock` (nuget.org itself and
+`pip.conf` and a requirements file's `--index-url` and `--extra-index-url`;
+Poetry and uv sources in `pyproject.toml`; `NuGet.config` and the `source`
+lines of `paket.dependencies` and feeds of `paket.lock` (nuget.org itself and
 directories aside); a POM's `<repositories>` and the `maven`
 repositories of Gradle build and settings scripts (not those of
 `pluginManagement` or `buildscript`), other than Maven Central; the mirrors in
@@ -1125,6 +1125,51 @@ and marked **⚠ index**, because a repository directing a package manager at an
 index that nothing here configures is the form a dependency-confusion attack
 takes. No request is ever made to such an index, unless it is vouched for with
 [`--trust-index`](#vouching-for-an-internal-index).
+
+#### Which index is asked
+
+Package managers differ in how a configured index relates to the public one,
+and depphunter follows each of them. A source either **replaces** the public
+default or is asked **beside** it:
+
+| Ecosystem                     | replaces the public default                                                                                                             | asked beside it                                                                                                                                                                 |
+|-------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| PyPI                          | `index-url`, `PIP_INDEX_URL`, `-i`; a Poetry source that is primary; a uv index with `default = true`                                   | `extra-index-url`, `PIP_EXTRA_INDEX_URL`; a supplemental Poetry source; any other uv index                                                                                      |
+| Maven                         | a `settings.xml` mirror of `central`; a mirror of `*` or `external:*` (or one without `mirrorOf`), which stands in for every repository | a POM's `<repositories>`, Gradle's `maven { url … }`, Clojure's `:mvn/repos` and `:repositories`, a mirror of any other repository; Clojars after Central for a Clojure project |
+| Composer                      | nothing: `"packagist.org": false` switches Packagist off                                                                                | every `composer` repository                                                                                                                                                     |
+| NuGet                         | nothing: a `<clear/>` switches nuget.org off unless the same file names it again                                                        | every feed                                                                                                                                                                      |
+| Go                            | `GOPROXY`: its proxies are asked in order, and proxy.golang.org only if it is on the list                                               | —                                                                                                                                                                               |
+| crates.io                     | `[source.crates-io] replace-with` (followed to the end of the chain)                                                                    | —                                                                                                                                                                               |
+| npm and every other ecosystem | the first unscoped source found (npm's `registry`)                                                                                      | —                                                                                                                                                                               |
+
+A package is asked of the sources beside the public default first, in the
+order they were found (this machine's, then the repository's), and of the
+public default, or what replaces it, last. The next index is asked only when
+one says it **does not have** the package: a 404 or 410, or an answer that does
+not list it. An index that fails in any other way — unreachable, 401, 500 —
+ends the question, since the next index's package of that name may not be the
+same package; the one exception is a `GOPROXY` entry followed by `|`, which the
+go command also passes over on any failure. `GOPROXY` entries after `direct`
+or `off` are not reached, and `GOPROXY=direct` or `GOPROXY=off` leaves no proxy
+to ask.
+
+Three kinds of source are **authoritative** and have no fallback: a scoped
+source that covers the package (an npm `@scope:registry`, a Gemfile `source`
+block, a pubspec's `hosted:` server, a package pinned to an explicit Poetry or
+uv index), a Cargo alternative registry, and the host an image or Terraform
+module names. A package missing from one of them is not looked for on the
+public index, which is exactly where a dependency-confusion attack would plant
+it. A Cargo registry of `[registries.<name>]` serves only the crates that
+declare it — `registry = "<name>"` in `Cargo.toml`, or its index as
+`Cargo.lock`'s `source` — and every other crate stays with crates.io.
+
+A source asked beside the public default does not decide where a package is
+drawn from until something is asked: a repository's `--extra-index-url` no
+longer marks every PyPI package **⚠ index**. The repository's index is still
+never queried unless vouched for; the package is asked of the indexes this
+machine may query, and only one that none of them has is attributed to the
+repository's index and marked. With `--online` the map moves each package to
+the index that actually answered.
 
 `--online` permits depphunter to query the trusted indexes for dependencies the
 repository does not record, which is how `--resolve-depth` reaches the
@@ -1173,7 +1218,8 @@ artifact (`com.google.guava:guava`, `cheshire:cheshire`), so its POM is read,
 whichever plugin placed it there; only a Bazel hub target that no artifact
 list names is not asked about. Clojars, where Clojure's libraries are
 published, is asked after Maven Central whenever the repository has a Clojure
-manifest, as Leiningen and tools.deps do without being told to.
+manifest, as Leiningen and tools.deps do without being told to (not when a
+mirror of `*` stands in for both).
 
 Lock files take precedence: an index is queried only where the repository is
 silent, and an entire level of the walk is queried at once rather than one
@@ -1272,7 +1318,11 @@ A package matched in this way is drawn with a **private** label, is never named
 to that ecosystem's public index, and is never sent to the vulnerability
 database. It is still queried against an index *this machine* configures, since
 an internal registry already knows of it, so a private registry continues to
-answer for what its packages depend on. `private` may also be set in a
+answer for what its packages depend on — whether it replaces the public index
+or is asked beside it (an extra pip index, a NuGet feed). A private package that
+such an index does not have is not looked for on the public one, and one whose
+only other source is the repository's own index is drawn from that index,
+marked. `private` may also be set in a
 repository's own `.depphunter.yaml`; the only effect available to it is to make
 depphunter disclose less, and the repository is the authority on which of its
 dependencies are internal. A Python package installed from a directory, an

@@ -16,14 +16,18 @@ named `group:artifact` depends on from its POM: the version pinned, else the
 release its `maven-metadata.xml` names; the dependencies of the compile and
 runtime scopes that are not optional, with those its parent POMs declare
 (up to four levels), versions filled from `dependencyManagement` and
-properties along that chain. When the index is Maven Central and the
-repository has a Clojure manifest, Clojars (`https://repo.clojars.org`)
-**shall** be asked after Central, and reported as a public index. Maven
+properties along that chain, each parent from the repository its child came
+from. When the repository has a Clojure manifest, Clojars
+(`https://repo.clojars.org`) **shall** be asked after Maven Central or the
+mirror that replaces it (not after a mirror of `*`), and reported as a public
+index. Maven
 repositories that Clojure manifests declare (`:mvn/repos`, `:repositories`,
 shadow-cljs's `:maven`) **shall** be recorded as the repository's, except
 Maven Central and Clojars, as **shall** those a `pom.xml` (`<repositories>`)
 and a Gradle build or settings script (`maven { url … }`, `maven("…")`,
-outside `pluginManagement` and `buildscript`) declare.
+outside `pluginManagement` and `buildscript`) declare; each is asked beside
+Central
+([REQ-SUP-063](REQ-SUP-063-additive-sources-fall-back-to-the-public-index.md)).
 
 ## Rationale
 
