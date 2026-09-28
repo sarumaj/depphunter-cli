@@ -42,7 +42,8 @@ const (
 // Haxe one) nor Alire crates (nor an Ada one) nor Racket packages (nor a
 // Racket one) nor Quicklisp projects (nor a Common Lisp one) nor Soldeer
 // packages and git submodules (no Solidity ecosystem; the npm packages of
-// Hardhat projects are asked about as npm).
+// Hardhat projects are asked about as npm) nor nimble packages (no Nim
+// ecosystem).
 //
 // Implements: REQ-FND-010
 var osvEcosystems = map[string]string{

@@ -372,3 +372,17 @@ func TestSolidityPatternsKeepToTheirEcosystems(t *testing.T) {
 		t.Error("a git-submodule-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// Nimble packages are named by their names, or by their repositories when a
+// requirement names a URL; a pattern scoped to nimble keeps to it.
+//
+// Verifies: REQ-SUP-035
+func TestNimblePatternsKeepToTheirEcosystem(t *testing.T) {
+	p := New([]string{"nimble:acme_*", "nimble:git.acme.dev/*"})
+	if !p.Match("nimble", "acme_vault") || p.Match("shards", "acme_vault") || p.Match("nimble", "chronos") {
+		t.Error("a nimble-scoped pattern did not keep to its ecosystem")
+	}
+	if !p.Match("nimble", "git.acme.dev/vault") || p.Match("nimble", "github.com/status-im/nim-chronos") {
+		t.Error("a nimble-scoped repository pattern did not match")
+	}
+}

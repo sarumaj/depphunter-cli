@@ -57,6 +57,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/kotlin"
 	"github.com/sarumaj/depphunter-cli/internal/lang/lua"
 	"github.com/sarumaj/depphunter-cli/internal/lang/markdown"
+	"github.com/sarumaj/depphunter-cli/internal/lang/nim"
 	"github.com/sarumaj/depphunter-cli/internal/lang/nix"
 	"github.com/sarumaj/depphunter-cli/internal/lang/objc"
 	"github.com/sarumaj/depphunter-cli/internal/lang/ocaml"
@@ -187,7 +188,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		Scan: scan.Options{Exclude: cfg.Exclude, MaxFileSize: cfg.MaxFileSize},
 		Plugins: []lang.Plugin{
 			golang.Plugin{}, javascript.Plugin{}, python.Plugin{Interpreter: cfg.Python, Getenv: os.Getenv}, rust.Plugin{}, java.Plugin{},
-			kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, fsharp.Plugin{}, cpp.Plugin{}, cmake.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, objc.Plugin{}, dart.Plugin{}, beam.Plugin{}, r.Plugin{}, haskell.Plugin{}, lua.Plugin{}, perl.Plugin{}, ocaml.Plugin{}, julia.Plugin{}, zig.Plugin{}, clojure.Plugin{}, bazel.Plugin{}, nix.Plugin{}, gleam.Plugin{}, elm.Plugin{}, purescript.Plugin{}, crystal.Plugin{}, dlang.Plugin{}, fortran.Plugin{}, haxe.Plugin{}, ada.Plugin{}, racket.Plugin{}, commonlisp.Plugin{}, solidity.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, terraform.Plugin{}, proto.Plugin{}, shell.Plugin{}, markdown.Plugin{},
+			kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, fsharp.Plugin{}, cpp.Plugin{}, cmake.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, objc.Plugin{}, dart.Plugin{}, beam.Plugin{}, r.Plugin{}, haskell.Plugin{}, lua.Plugin{}, perl.Plugin{}, ocaml.Plugin{}, julia.Plugin{}, zig.Plugin{}, clojure.Plugin{}, bazel.Plugin{}, nix.Plugin{}, gleam.Plugin{}, elm.Plugin{}, purescript.Plugin{}, crystal.Plugin{}, dlang.Plugin{}, fortran.Plugin{}, haxe.Plugin{}, ada.Plugin{}, racket.Plugin{}, commonlisp.Plugin{}, solidity.Plugin{}, nim.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, terraform.Plugin{}, proto.Plugin{}, shell.Plugin{}, markdown.Plugin{},
 		},
 		Cache:        c,
 		ResolveDepth: cfg.ResolveDepth,

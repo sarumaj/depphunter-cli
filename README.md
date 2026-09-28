@@ -206,6 +206,7 @@ code. The page served is identical in both cases.
   [Racket and raco](#racket-and-raco) ·
   [Common Lisp and Quicklisp](#common-lisp-and-quicklisp) ·
   [Solidity, Foundry and Hardhat](#solidity-foundry-and-hardhat) ·
+  [Nim and nimble](#nim-and-nimble) ·
   [Interface definitions](#interface-definitions) ·
   [Shell scripts](#shell-scripts) ·
   [Documentation](#documentation) ·
@@ -826,8 +827,9 @@ CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig, Bazel modules and repositories
 install are asked about as such), Nix flake inputs, nixpkgs packages, Elm
 packages, PureScript packages, Crystal shards, the GitHub, git and HTTP
 dependencies Paket fetches, dub packages, fpm packages, haxelib libraries,
-Alire crates, Racket packages, Quicklisp projects, Soldeer packages or git
-submodules (a Hardhat project's npm packages are asked about as npm).
+Alire crates, Racket packages, Quicklisp projects, Soldeer packages, git
+submodules (a Hardhat project's npm packages are asked about as npm) or
+nimble packages.
 Floating packages are not queried, since they resolve to a different version
 on the next installation. Answers are cached for six hours. `--no-vulns`
 disables all of this.
@@ -949,6 +951,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Racket packages     | a git source's `#<commit>`, a `#:checksum` (raco keeps no lock file)                                                                                         | a `#:version` (a minimum), no version, a git branch; a version tag is shown, neither                                               |
 | Quicklisp           | `qlfile.lock`, a dist version (`ql x 2023-10-21`, `ql :all`, the lock's dist for every project), a git `:ref` commit, an `ocicl.csv` digest                  | `:latest`, a git `:branch` or no ref, `(:version x "1.2")` (a minimum), a project without a qlfile; a git `:tag` is shown, neither |
 | Soldeer             | `soldeer.lock`, an exact `"5.0.2"` in `foundry.toml`, a git `rev` commit                                                                                     | a version requirement (`^1.0.0`), a git `branch` or no ref; a git `tag` is shown, neither                                          |
+| Nimble packages     | `nimble.lock`, `atlas.lock`, `== 1.2.3` or a bare `1.2.3` (exact in nimble), a `#<commit>`                                                                   | a range (`>=`, `^=`, `~=`, `&`), no version, `#head` or a branch; a `#tag` is shown, neither                                       |
 | Git submodules      | the commit git records for the submodule (its gitlink)                                                                                                       | no recorded commit (a `.gitmodules` `branch` is shown as the version)                                                              |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
@@ -1000,6 +1003,8 @@ and the analysis remains offline.
 | `haxelib.json` of installed haxelibs      | an installed library's `dependencies`              |
 | `alire.lock` (Alire)                      | each release's `depends-on`, at the chosen version |
 | `alire.toml` of crates Alire fetched      | a fetched crate's `depends-on`                     |
+| `nimble.lock` (nimble)                    | each package's `dependencies`                      |
+| `.nimble` of installed nimble packages    | an installed package's `requires`                  |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -1051,7 +1056,9 @@ packages nor the package catalog are read). Quicklisp projects need
 installed into `.qlot/` is not read. A git submodule of a Foundry project
 depends on the submodules of its own `.gitmodules` when it is checked out;
 Soldeer packages are not followed (`soldeer.lock` is flat, and Soldeer's
-registry is not asked). A Terraform provider depends on nothing.
+registry is not asked), nor are nimble packages no `nimble.lock` records
+and nothing installed (`atlas.lock` is flat, and the package list has no
+dependencies to ask). A Terraform provider depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1240,7 +1247,7 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:`, `bazel-repo:`, `nix:`,
 `nixpkgs:`, `elm:`, `purescript:`, `shards:`, `paket:`, `dub:`, `fpm:`,
 `fortran-external:`, `haxelib:`, `alire:`, `raco:`, `quicklisp:`,
-`soldeer:` or `git-submodule:` — restricts it to that ecosystem.
+`soldeer:`, `git-submodule:` or `nimble:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -2050,6 +2057,52 @@ functions and constants are the symbols; imports in comments, NatSpec,
 strings and `assembly` blocks are not read. OSV has no Solidity ecosystem,
 so Soldeer packages and git submodules are not checked for advisories.
 
+### Nim and nimble
+
+Nim packages come from git repositories through nimble (or Atlas); the
+**Nimble packages** island names each package as `requires` does
+(`chronos`, `jester`), or, for a requirement written as a URL, by its
+repository (`github.com/status-im/nim-chronos`). depphunter reads `.nim`
+modules, NimScript (`config.nims`, `*.nims`), `.nimble` files,
+`nimble.lock`, `atlas.lock` and `nim.cfg` without running the compiler,
+nimble or Atlas; what nimble installed into `nimbledeps/`, what Atlas cloned
+into `deps/` beside a `.nimble` file and the compiler's `nimcache/` are not
+read as source:
+
+- **Imports**: `import`, `from ... import` and `include` in every form
+  (`import a, b/c`, `std/[os, strutils]`, `pkg/x`, `"x.nim"`, `as`,
+  `except`), in every `when` branch, resolve as the compiler finds a
+  module: `./x` and `../x` beside the importing file; another path beside
+  it, then under the package's `srcDir`, then under the `--path`s of the
+  `nim.cfg` and `config.nims` files of its directory and those above it;
+  `std/x` and the standard library's own module names (`os`, `tables`,
+  `asyncdispatch`) are a hidden **Nim standard library** island (in Nim's
+  own repository, the files of its `lib/`). Other names, and every
+  `pkg/x`, are the nimble package whose installed files have the module
+  (`nimbledeps/pkgs2/`, Atlas's checkouts, `nimble.paths`, the nimble
+  directory `~/.nimble` or `NIMBLE_DIR` for the packages the manifests
+  name: sdl2_nim ships `sdl2`), else the requirement their first segment
+  names (`nim-widgets` is `widgets`), else an unresolved package of that
+  name.
+- **Manifests**: every `requires` and `taskRequires` of a `.nimble` file
+  (also in `when` branches, `feature` blocks and tasks) is an import of its
+  package, and every `bin` an edge to its main module; `nim` itself is the
+  compiler and is left out. `nimble.lock` (with its tasks' packages) and
+  `atlas.lock` pin (the requirement shown as requested); without them
+  `== 1.2.3`, a bare `1.2.3` and a `#<commit>` pin, a `#tag` is shown,
+  neither pinned nor floating, and a range, `#head`, a branch or no version
+  float. A package from a git server other than GitHub, GitLab, Bitbucket,
+  Codeberg or sourcehut carries its URL as its origin. `--resolve-depth`
+  follows `nimble.lock`'s `dependencies` and installed packages' `.nimble`
+  files.
+
+Top-level routines (`proc`, `func`, `method`, `iterator`, `converter`,
+`template`, `macro`), types (objects as classes, concepts as interfaces,
+enums), constants and variables are the symbols; imports in comments,
+strings and routine bodies are not read. OSV has no Nim ecosystem, so
+nimble packages are not checked for advisories, and the official package
+list has no versions or dependencies to ask for `--online`.
+
 ### Interface definitions
 
 Protocol Buffers definitions are shared between services and languages, and
@@ -2233,6 +2286,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Racket                  | `racket -l racket-langserver`                                                                |
 | Common Lisp             | `cl-lsp`                                                                                     |
 | Solidity                | `nomicfoundation-solidity-language-server --stdio` or `solidity-ls --stdio`                  |
+| Nim                     | `nimlangserver` or `nimlsp`                                                                  |
 | Fortran                 | `fortls`                                                                                     |
 
 The servers run in the background once the map is displayed — gopls requires
@@ -2240,9 +2294,9 @@ approximately 7 s for this repository — within the budget set by
 `--lsp-timeout`; results are cached until the map's files, symbols or imports
 change, or a different set of language servers is installed. Servers that index
 slowly, rust-analyzer, jdtls, metals, clangd and the PHP, Ruby, Swift, Elixir,
-Erlang, Haskell, Julia, Clojure and F# servers in particular, may answer before
-indexing has finished, so a first run can report fewer references than a later
-one. The legend's **Imports / References** switch then determines what the
+Erlang, Haskell, Julia, Clojure, F# and Nim servers in particular, may answer
+before indexing has finished, so a first run can report fewer references than
+a later one. The legend's **Imports / References** switch then determines what the
 selection arcs and the side panel show: for a function, what it uses and what
 uses it.
 The JSON and GraphML exports include the reference edges.
@@ -2289,6 +2343,7 @@ The JSON and GraphML exports include the reference edges.
 | Racket                  | `#lang`, `require` in every form (`only-in`, `for-syntax`, `submod`, `lib`, `file`, `planet`, `multi-in`), `require/typed`, `include`, `load`, Scribble's `@(require ...)` and `include-section`; relative paths to files, collection paths to the repository's collections (packages' `info.rkt`, multi-collection packages, `collects/`), else the base collections, a curated table or the `info.rkt` `deps` they spell; `info.rkt` `deps` and `build-deps`                                                                                     | Racket packages, Racket base collections                                   |
 | Common Lisp             | `.asd` `defsystem` components (modules and `:pathname`) and `:depends-on` (local `.asd`, secondary and package-inferred systems, the implementation, else the Quicklisp project), `defpackage` `:use`/`:import-from`/`:local-nicknames`, `in-package` and `pkg:sym` to the file defining the package or the declared system it belongs to, `ql:quickload`, `asdf:load-system`, `require`, `load`; `qlfile`, `qlfile.lock` and `ocicl.csv` entries                                                                                                  | Quicklisp projects, Common Lisp built-ins                                  |
 | Solidity                | `import` in every form to files by relative path, the remappings of `foundry.toml` and `remappings.txt` (with contexts) and those Foundry and Soldeer infer, npm packages a `package.json` declares, else the project's root; libraries under `lib/` (git submodules by `.gitmodules`, pinned by the recorded commit) and `dependencies/` (Soldeer, pinned by `soldeer.lock`); `foundry.toml` remappings and dependencies, `remappings.txt`, `soldeer.lock` and `.gitmodules` entries                                                              | Soldeer packages, Git submodules, npm                                      |
+| Nim                     | `import`, `from`, `include` (`std/[a, b]`, `pkg/x`, every `when` branch) to files beside the importer, under the package's `srcDir` and `nim.cfg`/`config.nims` `--path`s; std modules to the standard library (Nim's own `lib/` in its repository); else the nimble package whose installed files (`nimbledeps/`, Atlas's `deps/`, `nimble.paths`, `~/.nimble`) have the module, else the requirement its first segment names; `.nimble` `requires`, `taskRequires`, `bin`, `nimble.lock` and `atlas.lock` entries                                | Nimble packages, Nim standard library                                      |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                                                                                                                  | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                                                       | GitHub Actions, GitLab CI, Container images                                |
 | Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                                                                  | Buf Schema Registry, Protobuf well-known types                             |
@@ -2851,6 +2906,11 @@ Solidity is read by a small scanner: the tree-sitter grammar parsed every
 file measured correctly but took 7 to 28 ms per file on average. See
 [Solidity, Foundry and Hardhat](#solidity-foundry-and-hardhat).
 
+Nim, NimScript and `.nimble` files are read by a small lexer and an
+indentation-based scanner: the vendored tree-sitter Nim grammar is licensed
+under the MPL-2.0 and is left out of this build. See
+[Nim and nimble](#nim-and-nimble).
+
 Protocol Buffers definitions are read by a small scanner: the tree-sitter
 grammar took 2.4 to 3 ms per file and failed on every file using editions.
 See [Interface definitions](#interface-definitions).
@@ -2879,7 +2939,8 @@ Starlark files, Nix expressions, Gleam, Elm and PureScript modules, spago's
 Dhall files, Crystal, F# and Paket's files, D and `dub.sdl`, Fortran, Haxe
 and its build files, Ada and GNAT project files, Racket, Scribble and
 `info.rkt`, Common Lisp and its Qlot and ocicl files, Solidity and
-Foundry's `remappings.txt` and `.gitmodules`, Dockerfiles, the
+Foundry's `remappings.txt` and `.gitmodules`, Nim, NimScript, `.nimble`
+files and `nim.cfg`, Dockerfiles, the
 markup of Vue, Svelte and Astro components, R Markdown chunks and C preprocessor
 directives small built-in scanners — so the binary continues to cross-compile
 without a C toolchain.
