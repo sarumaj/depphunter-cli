@@ -55,6 +55,7 @@ const (
 	ReasonUnsupported = "this ecosystem's index cannot be asked (an import names no artifact)"
 	ReasonNoIndex     = "depphunter asks no index for this ecosystem"
 	ReasonInstalled   = "installed from outside any index, so no index is asked about it"
+	ReasonNoKey       = "a private Hex organization's package is asked only with a key this machine holds for it"
 )
 
 // Installed stands in for the index in the report's table of what resolved from

@@ -129,9 +129,10 @@ func (c *Config) machine(m userconf.Machine) {
 	read(m.BundlerConfig(), plain(parseBundleConfig))
 	// The server dart pub and flutter pub get install from instead of pub.dev.
 	add(Pub, env("PUB_HOSTED_URL"), "")
-	// The Hex API Mix and rebar3 talk to instead of hex.pm's. HEX_MIRROR is not read:
-	// a mirror serves the repository's signed protobuf files, not this API.
-	add(Hex, env("HEX_API_URL"), "")
+	// The Hex API Mix and rebar3 talk to instead of hex.pm's (HEX_API_URL, HEX_API,
+	// hex.config's api_url). HEX_MIRROR is not read: a mirror serves the
+	// repository's signed protobuf files, not this API.
+	add(Hex, m.HexAPIURL(), "")
 	// The repositories renv restores from instead of those renv.lock records, and the
 	// R profile R reads first, which is where options(repos = ...) usually lives.
 	for _, u := range strings.FieldsFunc(env("RENV_CONFIG_REPOS_OVERRIDE"), func(r rune) bool { return r == ';' || r == ',' }) {

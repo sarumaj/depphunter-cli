@@ -1111,7 +1111,8 @@ and of `~/.sbt/repositories`, and `COURSIER_REPOSITORIES`;
 lines (a `source ... do` block serves only its gems), `Gemfile.lock`'s
 remotes, `~/.gemrc` and Bundler's rubygems.org mirror; a `pubspec.yaml`'s
 `hosted:` servers, the servers `pubspec.lock` resolved from and
-`PUB_HOSTED_URL`; `HEX_API_URL`; the repositories of `renv.lock` other than
+`PUB_HOSTED_URL`; `HEX_API_URL`, `HEX_API` or the `api_url` of Hex's
+`hex.config`; the repositories of `renv.lock` other than
 CRAN and Posit Package Manager (each serving the packages recorded from it),
 `options(repos = ...)` in `.Rprofile` and `~/.Rprofile`, and
 `RENV_CONFIG_REPOS_OVERRIDE`; the `repository` stanzas of `cabal.project` and
@@ -1159,6 +1160,8 @@ and platform paths:
 | sbt        | `-Dsbt.repository.config`, else `repositories` in `-Dsbt.global.base`, else `~/.sbt`, those properties and `-Dsbt.override.build.repos` read from `JAVA_OPTS`, then `SBT_OPTS`; credentials in `SBT_CREDENTIALS`, `~/.sbt/.credentials`, `~/.ivy2/.credentials`                                                                                                                                                                                 |
 | Coursier   | `COURSIER_REPOSITORIES`; `COURSIER_CREDENTIALS` (inline, or a file); else `credentials.properties` in `COURSIER_CONFIG_DIR`, `%APPDATA%\Coursier\config` on Windows, `~/Library/Application Support/Coursier` on macOS, else `$XDG_CONFIG_HOME/coursier` (`~/.config/coursier`)                                                                                                                                                                 |
 | Clojure    | `deps.edn` in `CLJ_CONFIG`, else `$XDG_CONFIG_HOME/clojure` when that is set, else `~/.clojure`; Leiningen's `profiles.clj` in `LEIN_HOME`, else `~/.lein`                                                                                                                                                                                                                                                                                      |
+| Dart       | `pub-tokens.json` in `%APPDATA%\dart` on Windows, `~/Library/Application Support/dart` on macOS, else `$XDG_CONFIG_HOME/dart` (`~/.config/dart`)                                                                                                                                                                                                                                                                                                |
+| Hex        | `HEX_API_URL`, `HEX_API`, `HEX_API_KEY`, `HEX_REPOS_KEY`; `hex.config` in `HEX_HOME`, else `$XDG_CONFIG_HOME/hex` (`~/.config/hex`) under `MIX_XDG=1`, else `~/.hex`                                                                                                                                                                                                                                                                            |
 
 Nothing is read from the repository through these variables' defaults; they
 only say where this machine's own files are.
@@ -1197,13 +1200,15 @@ go command also passes over on any failure. `GOPROXY` entries after `direct`
 or `off` are not reached, and `GOPROXY=direct` or `GOPROXY=off` leaves no proxy
 to ask.
 
-Four kinds of source are **authoritative** and have no fallback: a scoped source
+Five kinds of source are **authoritative** and have no fallback: a scoped source
 that covers the package (an npm `@scope:registry`, a Gemfile `source` block, a
 pubspec's `hosted:` server, a Python package pinned to an index by uv's
 `[tool.uv.sources]`, Poetry's `source =`, Pipenv's `index =` or PDM's
 `include_packages`),
 the NuGet feeds `packageSourceMapping` maps the package to, a Cargo alternative
-registry, and the host an image or Terraform module names. A package missing
+registry, a private Hex organization (`organization: "acme"` or
+`repo: "hexpm:acme"` in `mix.exs`, `"hexpm:acme"` in `mix.lock`), and the host
+an image or Terraform module names. A package missing
 from one of them is not looked for on the public index, which is exactly where a
 dependency-confusion attack would plant it. A Cargo registry of
 `[registries.<name>]` serves only the crates that declare it —
@@ -1261,7 +1266,7 @@ ecosystems whose graph is held outside the repository:
 | Composer               | `<repository>/p2/<vendor>/<name>.json` (`metadata-url` elsewhere)                                                                                                                                                         | the version's `require`, excluding the platform                                                                  |
 | RubyGems               | `<server>/info/<name>`, the compact index Bundler reads                                                                                                                                                                   | the version's runtime dependencies                                                                               |
 | pub                    | `<server>/api/packages/<name>`, the package API pub reads                                                                                                                                                                 | the version's (or latest's) `dependencies`                                                                       |
-| Hex                    | `<api>/packages/<name>`, then `/releases/<version>` (or latest stable)                                                                                                                                                    | its requirements, excluding optional ones                                                                        |
+| Hex                    | `<api>/packages/<name>`, then `/releases/<version>` (or latest stable); `<api>/repos/<org>/packages/<name>` for a private organization's package                                                                          | its requirements, excluding optional ones                                                                        |
 | CRAN                   | crandb's `/<name>/<version>` (or current); `src/contrib/PACKAGES` elsewhere                                                                                                                                               | `Depends`, `Imports` and `LinkingTo`, without R's base packages                                                  |
 | Hackage                | `<server>/package/<name>/preferred`, then `/package/<name>-<version>/<name>.cabal` (or newest)                                                                                                                            | its libraries' `build-depends`, without GHC's own packages                                                       |
 | Terraform modules      | `<modules.v1>/<namespace>/<name>/<provider>/versions` (service discovery off the public registry)                                                                                                                         | the providers and registry modules of the version asked for, or the newest its constraint allows                 |
@@ -1351,12 +1356,15 @@ written for and to no other.
 | `~/.sbt/.credentials`, `SBT_CREDENTIALS`                    | sbt's `host`, `user` and `password`, whatever the `realm`; `~/.ivy2/.credentials` too                          |
 | Coursier's `credentials.properties`, `COURSIER_CREDENTIALS` | `<name>.host`, `.username` and `.password`; inline `host(realm) user:password` lines                           |
 | `gradle.properties` in `GRADLE_USER_HOME`                   | `<name>Username` and `<name>Password` for an init script's `maven { name = "<name>" … }`                       |
+| `pub-tokens.json` in Dart's configuration directory         | `dart pub token add` tokens (or the variable an `env` entry names), per hosted URL                             |
+| `HEX_API_KEY`, `hex.config` (`HEX_HOME`, `~/.hex`)          | the Hex user key, `api_key` or OAuth token; each `hexpm:<org>` `auth_key`; `HEX_REPOS_KEY`                     |
 | the index URL itself                                        | `https://user:password@host/simple`, as a private pip or Cargo mirror is set                                   |
 
 Between them these cover Nexus, Artifactory, Azure Artifacts, ProGet, GitHub
 Packages, Harbor, GHCR, a private crate registry, a private Terraform
-registry, Private Packagist, Satis, Repman and GitLab's Composer registry, and
-Gemfury and the commercial gem servers Bundler is pointed at.
+registry, Private Packagist, Satis, Repman and GitLab's Composer registry,
+Gemfury and the commercial gem servers Bundler is pointed at, private pub
+servers, and Hex organizations.
 
 Each file is looked for where its tool looks for it; see
 [Configuration locations](#configuration-locations).
@@ -1372,6 +1380,33 @@ registry replacing it. A registry whose `credential-provider` (or, without
 one, `registry.global-credential-providers`) leaves out `cargo:token` keeps
 its credential in a keychain or a program, which depphunter does not run: its
 plaintext token is skipped.
+
+A pub token is the one `dart pub token add` stored in `pub-tokens.json`, in
+Dart's configuration directory: the entry's `token`, or the variable its `env`
+names, as a pipeline sets it. It is sent as a Bearer token to the URLs under
+the hosted URL it was added for, as pub sends it — the whole host for a server
+at its root, only its path for one under a path — and nowhere else.
+
+A private Hex organization's package is asked of the organization's part of
+the Hex API, `<api>/repos/<org>/packages/<name>`, and never of hex.pm's public
+packages, where a package of the same name would be someone else's. The key
+sent there is Hex's own: `HEX_API_KEY`, else the `api_key` of `hex.config`,
+else the OAuth token `mix hex.user auth` stored while it has not expired — a
+user's, which reaches every organization the user belongs to; without one,
+the `auth_key` `mix hex.organization auth <org> --key KEY` stored for
+`hexpm:<org>`, for that organization alone, and `HEX_REPOS_KEY` for the
+others. A key goes out as the whole `Authorization` header and a token as a
+Bearer token, only under `<api>/repos/`; public packages are asked without
+either. Without a key for the organization nothing is asked, and the
+resolution report says the key is missing. An organization key generated
+without `--key` carries only the `repository:<org>` permission, which hex.pm's
+API refuses: use a user key, or one generated with `--permission api:read`.
+The requirements of an organization's package are asked of the organization
+too, since the API does not say which repository each is in; `mix.lock`,
+which does, answers first. A repository with a URL of its own (a mini_repo,
+`HEX_MIRROR`) serves Hex's protobuf registry, not the API, and is not asked;
+neither is a rebar3 dependency's repository read, nor the encrypted keys of
+older Hex versions.
 
 In `~/.npmrc`, `settings.xml` and `NuGet.Config`, a value that is exactly
 `${NAME}`, `${env.NAME}` or `%NAME%` is read from the environment, so a password

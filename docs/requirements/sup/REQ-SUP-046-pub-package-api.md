@@ -15,7 +15,9 @@ The index client **shall** read a pub package's dependencies from its
 server's package API (`<index>/api/packages/<name>`, `https://pub.dev` unless
 configured otherwise, `Accept: application/vnd.pub.v2+json`): the pubspec of
 the version asked for, or else the latest, its `dependencies` with their
-constraints, without `dev_dependencies` and SDK packages.
+constraints, without `dev_dependencies` and SDK packages. A private server
+is asked with the token `dart pub token add` stored for it
+([REQ-AUTH-027](../auth/REQ-AUTH-027-pub-tokens.md)).
 
 ## Rationale
 

@@ -548,6 +548,9 @@ type candidate struct {
 //   - An OCI image or a Terraform module named with a host is served by that host.
 //   - A crate that names a Cargo registry (lang.Target.Registry) is served by that
 //     registry alone; a registry serves no other crate.
+//   - A Hex package of a private organization (lang.Target.Registry
+//     "hexpm:<organization>") is served by that organization's part of the Hex
+//     API alone.
 //   - A NuGet package a packageSourceMapping pattern covers is served by the
 //     sources mapped to its most specific pattern alone (possibly none).
 //   - A scoped source that covers the package (an npm scope, a gem's source block, a
@@ -605,6 +608,9 @@ func (c *Config) candidates(eco, pkg, registry string) []candidate {
 			return one(Source{URL: want})
 		}
 		return nil // a registry no configuration defines: Cargo itself would fail
+	}
+	if eco == Hex && registry != "" {
+		return c.hexOrganization(registry)
 	}
 	if eco == NuGet {
 		// packageSourceMapping: a package a pattern covers is asked of the
@@ -722,4 +728,28 @@ func Host(index string) string {
 		return index
 	}
 	return u.Host
+}
+
+// hexOrganization is the one candidate for a package of a private Hex organization
+// (registry "hexpm:<organization>"): <api>/repos/<organization> of the Hex API this
+// machine uses - HEX_API_URL's or hex.pm's - as Mix asks it. It never falls back to
+// the public packages: a private package's name is exactly the one a
+// dependency-confusion attack publishes there. Any other repository name is one of
+// Hex's protobuf repositories (a mini_repo, a mirror), which serves no API: no
+// candidate.
+//
+// Implements: REQ-SUP-047
+func (c *Config) hexOrganization(registry string) []candidate {
+	org, ok := strings.CutPrefix(registry, "hexpm:")
+	if !ok || !auth.HexOrganization(org) {
+		return nil
+	}
+	api := Source{URL: public[Hex]}
+	for _, s := range c.sources[Hex] {
+		if s.Scope == "" && s.Registry == "" && s.Kind != Additive {
+			api = s
+			break
+		}
+	}
+	return []candidate{{url: strings.TrimRight(api.URL, "/") + "/repos/" + org, primary: true, known: c.fetchable(Hex, api)}}
 }

@@ -69,6 +69,12 @@ tool looks for it, reading the variables from the machine's environment only:
 - sbt: `-Dsbt.repository.config`, else `repositories` in
   `-Dsbt.global.base`, else `~/.sbt`, those properties (and
   `-Dsbt.override.build.repos`) taken from `JAVA_OPTS`, then `SBT_OPTS`.
+- Dart: `pub-tokens.json` in `%APPDATA%\dart` on Windows,
+  `~/Library/Application Support/dart` on macOS, else
+  `$XDG_CONFIG_HOME/dart` (`~/.config/dart`).
+- Hex: `HEX_API_URL`, then `HEX_API`, then the `api_url` of `hex.config` in
+  `HEX_HOME`, else `$XDG_CONFIG_HOME/hex` (`~/.config/hex`) under `MIX_XDG=1`
+  or `true`, else `~/.hex`.
 
 ## Rationale
 
@@ -99,6 +105,9 @@ fixed `$HOME` paths missed the feed the machine actually uses.
    file, `POETRY_CONFIG_DIR` and `PDM_CONFIG_FILE` are honoured, and the
    Windows and macOS directories used on those platforms (falling through to
    the XDG ones on a Windows without its variables).
+10. Dart's configuration directory and Hex's home follow `XDG_CONFIG_HOME`,
+    `MIX_XDG`, `HEX_HOME` and the platform, and `HEX_API_URL` wins over
+    `HEX_API`, which wins over `hex.config`.
 
 ## Notes
 
