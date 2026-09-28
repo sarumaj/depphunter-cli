@@ -199,6 +199,7 @@ code. The page served is identical in both cases.
   [CI pipelines](#ci-pipelines) ·
   [Infrastructure as code](#infrastructure-as-code) ·
   [Jsonnet and CUE](#jsonnet-and-cue) ·
+  [Dhall, Puppet and Rego](#dhall-puppet-and-rego) ·
   [Nix](#nix) · [Gleam](#gleam) · [Elm](#elm) · [PureScript](#purescript) ·
   [Crystal](#crystal) · [F# and Paket](#f-and-paket) · [D and dub](#d-and-dub) ·
   [Fortran and fpm](#fortran-and-fpm) ·
@@ -830,8 +831,9 @@ packages, PureScript packages, Crystal shards, the GitHub, git and HTTP
 dependencies Paket fetches, dub packages, fpm packages, haxelib libraries,
 Alire crates, Racket packages, Quicklisp projects, Soldeer packages, git
 submodules (a Hardhat project's npm packages are asked about as npm),
-nimble packages, jsonnet-bundler packages or CUE modules (the Go modules CUE
-definitions were generated from are asked about as Go).
+nimble packages, jsonnet-bundler packages, CUE modules (the Go modules CUE
+definitions were generated from are asked about as Go), Dhall packages or
+Puppet modules.
 Floating packages are not queried, since they resolve to a different version
 on the next installation. Answers are cached for six hours. `--no-vulns`
 disables all of this.
@@ -931,6 +933,8 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Terraform providers | `.terraform.lock.hcl` (the root module's, for the modules it calls), a single exact constraint                                                               | `~>`, `>=` and other constraints, no constraint                                                                                    |
 | jsonnet-bundler     | `jsonnetfile.lock.json` (a nested project without a lock: the lock that installs it), a commit as `version`                                                  | a branch (`main`, `master`) or no `version`; a tag (`v1.2.3`) is shown, neither                                                    |
 | CUE modules         | the exact `v` of a `cue.mod/module.cue` dependency (the modules system selects versions as Go does)                                                          | a dependency without `v`                                                                                                           |
+| Dhall packages      | a `sha256:` integrity check on the import (Dhall refuses other content)                                                                                      | a URL naming no version, or a branch; a version or commit in the URL is shown, neither                                             |
+| Puppet modules      | a Puppetfile's exact version, a git `:commit` (or a hash as `:ref`), a fixture's exact `ref`                                                                 | `:latest`, no version, a `:branch`, a `metadata.json` range; a `:tag` is shown, neither                                            |
 | Buf Schema Registry | `buf.lock`, a commit ref (`:0123…`), a plugin's exact version                                                                                                | a label, tag or branch ref, no ref, a plugin without a version                                                                     |
 | CMake FetchContent  | a `GIT_TAG` commit, a `URL_HASH`, an archive of a commit                                                                                                     | a branch `GIT_TAG` (`main`, `origin/…`), no `GIT_TAG`, a download without a hash                                                   |
 | CocoaPods           | `Podfile.lock` (a git pod by its checkout commit), a bare `'1.2.3'`, `'= 1.2.3'`, a `:commit`                                                                | `~>`, `>=` and other ranges, no version, a `:branch`, a git pod without a reference                                                |
@@ -1010,6 +1014,7 @@ and the analysis remains offline.
 | `nimble.lock` (nimble)                    | each package's `dependencies`                      |
 | `.nimble` of installed nimble packages    | an installed package's `requires`                  |
 | `jsonnetfile.json` in jb's `vendor/`      | an installed package's `dependencies`              |
+| `metadata.json` in r10k's `modules/`      | an installed Puppet module's `dependencies`        |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -1064,7 +1069,9 @@ Soldeer packages are not followed (`soldeer.lock` is flat, and Soldeer's
 registry is not asked), nor are nimble packages no `nimble.lock` records
 and nothing installed (`atlas.lock` is flat, and the package list has no
 dependencies to ask), nor CUE modules (their own `module.cue` lives in the
-module cache, which is not read). A Terraform provider depends on nothing.
+module cache, which is not read), nor remote Dhall imports (they are not
+fetched), nor Puppet modules r10k has not installed (the Forge is not
+asked). A Terraform provider depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1253,8 +1260,8 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:`, `bazel-repo:`, `nix:`,
 `nixpkgs:`, `elm:`, `purescript:`, `shards:`, `paket:`, `dub:`, `fpm:`,
 `fortran-external:`, `haxelib:`, `alire:`, `raco:`, `quicklisp:`,
-`soldeer:`, `git-submodule:`, `nimble:`, `jsonnet-bundler:` or `cue:` —
-restricts it to that ecosystem.
+`soldeer:`, `git-submodule:`, `nimble:`, `jsonnet-bundler:`, `cue:`,
+`dhall:` or `puppet-forge:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1535,6 +1542,70 @@ top-level definitions (`#Name`) and fields are the symbols.
 OSV has no Jsonnet or CUE ecosystem, jsonnet-bundler has no registry, and
 CUE's central registry is an OCI registry that `--online` does not read, so
 neither kind of package is asked about.
+
+### Dhall, Puppet and Rego
+
+Three more configuration languages: Dhall programs import files and URLs,
+Puppet manifests name classes of modules from the Forge, and Rego policies
+import each other's packages.
+
+**Dhall** (`.dhall`): every import is an edge — a relative path to its file
+(`as Text`, `as Location` and `as Bytes` too, and every branch of an
+alternative `a ? b`), a URL to a package of the **Dhall packages** island.
+The Prelude is `github.com/dhall-lang/dhall-lang/Prelude`, whether it comes
+from `prelude.dhall-lang.org` or dhall-lang's repository; a file GitHub,
+GitLab or jsDelivr serve raw belongs to its repository, with the reference
+as its version; any other URL is named by its host and its path up to a
+version segment (`example.com/dhall` for `.../dhall/v1.2.0/util.dhall`) or
+its directory. A `sha256:` hash pins the import, since Dhall refuses
+content that does not match it; without one a URL naming no version or a
+branch floats. Absolute and home-relative paths and `env:` imports name
+nothing in the repository and are dropped. The bindings of a file's
+leading `let` chain and the fields of the record it returns are its
+symbols. spago's `spago.dhall`, `packages.dhall` and `test.dhall` stay with
+the PureScript plugin, which reads them with the same Dhall reader.
+
+**Puppet** (`.pp`, `Puppetfile`, a module's `metadata.json` and
+`.fixtures.yml`): `include`, `require`, `contain`, `class { 'x': }`,
+`inherits`, `Class['x']`, declarations, references and collectors of
+defined and custom types, namespaced function calls, namespaced data
+types (`Stdlib::Port`), `template()`, `epp()`, `file()` and
+`puppet:///modules/` sources name a module by their first segment.
+
+- A module of the repository (`site-modules/`, `site/`, `dist/`, or the
+  repository itself, named by its `metadata.json`) links to the file
+  Puppet's autoloader reads: `profile::web` to
+  `site-modules/profile/manifests/web.pp`, a function to `functions/` or
+  `lib/puppet/functions/`, a type alias to `types/`, a template to
+  `templates/`.
+- Another module is what the module's own `metadata.json` and
+  `.fixtures.yml`, else the Puppetfiles above the file, declare: a Forge
+  module by its slug (`puppetlabs-stdlib`), a git module by its repository.
+  A module r10k installed into `modules/` beside the Puppetfile is named by
+  its installed `metadata.json`, and `--resolve-depth` follows that
+  file's `dependencies`; `modules/` and `spec/fixtures/modules` are not
+  read as source.
+- Puppet's own resource types (`file`, `package`, `service`, `exec`, ...),
+  data types and functions are no dependency; stdlib's unnamespaced
+  functions (`merge()`, `pick()`) and well-known types (`file_line`) are
+  stdlib's. Comments, strings, heredocs and regular expressions are not
+  read, and a Free Pascal `.pp` unit yields nothing.
+
+Classes, defined types, nodes, functions, type aliases and Bolt plans are
+the symbols.
+
+**Rego** (`.rego`): `import data.a.b` links to every file declaring
+package `a.b` — or, for `data.a.b.rule`, the longest package the path
+starts with — and so do references to `data.a.b...` in rules, directly or
+through an imported name, unless an import already links that package.
+`import input`, `import rego.v1` and `import future.keywords` are built
+in; data no policy declares (JSON documents, bundles) is dropped, since
+OPA has no package manager. The package, rules and functions are the
+symbols.
+
+OSV has no Dhall or Puppet Forge ecosystem and Dhall has no registry.
+The Puppet Forge's API was not reachable when this was written, so
+`--online` asks nothing about Puppet modules either.
 
 ### Nix
 
@@ -2328,6 +2399,9 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Terraform / OpenTofu    | `terraform-ls serve` or `tofu-ls serve`                                                      |
 | Jsonnet                 | `jsonnet-language-server`                                                                    |
 | CUE                     | `cue lsp`                                                                                    |
+| Dhall                   | `dhall-lsp-server`                                                                           |
+| Puppet                  | `puppet-languageserver --stdio`                                                              |
+| Rego                    | `regal language-server`                                                                      |
 | Protocol Buffers        | `buf lsp serve`, `bufls serve` or `protols`                                                  |
 | Shell (sh, Bash, bats)  | `bash-language-server start`                                                                 |
 | CMake                   | `neocmakelsp --stdio` or `cmake-language-server`                                             |
@@ -2414,6 +2488,9 @@ The JSON and GraphML exports include the reference edges.
 | Terraform / OpenTofu    | `module` sources to local directories, registry and remote modules; `required_providers`, `provider` blocks and resource type prefixes to providers, pinned by `.terraform.lock.hcl`; references to what other files of the module declare; `file()`/`templatefile()` paths; Terragrunt `source`, `dependency` and `find_in_parent_folders()`                                                                                                                                                                                                      | Terraform modules, Terraform providers                                     |
 | Jsonnet                 | `import`, `importstr`, `importbin` relative to the importer, then the `vendor/` and `lib/` of the jsonnet-bundler projects above it, `JSONNET_PATH` and the importer's ancestors; files jb installed (full path or legacy link) and paths `jsonnetfile.json` names to their dependency (repository + subdir), local sources to their files; `jsonnetfile.json` and `jsonnetfile.lock.json` entries                                                                                                                                                 | jsonnet-bundler packages                                                   |
 | CUE                     | `import` of the module's own packages (every file of the package in its directory, by the module path of `cue.mod/module.cue`), CUE's builtin packages, `cue.mod/gen` and `cue.mod/usr` to the Go module `go.mod` requires (or the Go standard library, or the module's own Go package), `cue.mod/pkg` vendored modules, `module.cue` `deps` by module path                                                                                                                                                                                        | CUE modules, CUE standard library, Go modules, Go standard library         |
+| Dhall                   | imports: relative paths to their files (`as Text`, `as Location`, every `?` branch), URLs to the Prelude, the repository GitHub, GitLab or jsDelivr serve, else host and path up to the version, pinned by `sha256:`; absolute, home and `env:` imports dropped                                                                                                                                                                                                                                                                                    | Dhall packages                                                             |
+| Puppet                  | `include`/`require`/`contain`, `class { }`, `inherits`, `Class[]`, defined and custom types, `x::y()`, `X::Y` types, `template()`, `epp()`, `file()`, `puppet:///modules/` to the autoloader's file of a repository module, else the module `metadata.json`, `.fixtures.yml` or the Puppetfile declares (Forge slug or git repository), else r10k's installed `modules/`; Puppetfile, `metadata.json` and `.fixtures.yml` entries                                                                                                                  | Puppet modules                                                             |
+| Rego                    | `import data.a.b` and `data.a.b...` references (also through imported names) to every file of the longest package the path names                                                                                                                                                                                                                                                                                                                                                                                                                   | *(none: policies import only the repository's own)*                        |
 | Shell scripts           | `source`/`.` and scripts run by path or interpreter, with `$(dirname "$0")`, `${BASH_SOURCE%/*}`, `SCRIPT_DIR` variables, zsh's `${0:A:h}` and `git rev-parse --show-toplevel` evaluated; direnv `source_env`/`source_up`/`dotenv`, bats `load`; packages installed with pip, npm, pnpm, yarn, `go install`, `cargo install` and `gem install`                                                                                                                                                                                                     | PyPI, npm, Go modules, crates.io, RubyGems                                 |
 | Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                                                                                                                                                                                                                                                  | Container images                                                           |
 | Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                                                                                                                                                                                                                                                                                                                                                           | *(none: a link is not a package)*                                          |
@@ -2920,6 +2997,13 @@ all but about 1 % (Jsonnet) and 2 % (CUE) of the files measured correctly,
 at 2 to 4 ms per file, while imports and top-level declarations need only
 tokens. See [Jsonnet and CUE](#jsonnet-and-cue).
 
+Dhall, Puppet and Rego are read by small scanners too (Dhall by the reader
+spago's files already used): the tree-sitter grammars took 2.5 (Dhall), 9
+(Puppet) and 4.7 (Rego) ms per file and left errors in 104 of 154 Puppet
+files and 282 of 431 Rego files measured (the Rego grammar predates `if`
+and `contains`), while the scanners take 0.02 to 0.1 ms per file. See
+[Dhall, Puppet and Rego](#dhall-puppet-and-rego).
+
 Nix expressions are read by a small lexer and parser: the tree-sitter grammar
 parsed almost every file measured correctly but took 1.9 ms per file, and 12 s
 for nixpkgs' `python-packages.nix` alone. See [Nix](#nix).
@@ -3011,7 +3095,7 @@ Dhall files, Crystal, F# and Paket's files, D and `dub.sdl`, Fortran, Haxe
 and its build files, Ada and GNAT project files, Racket, Scribble and
 `info.rkt`, Common Lisp and its Qlot and ocicl files, Solidity and
 Foundry's `remappings.txt` and `.gitmodules`, Nim, NimScript, `.nimble`
-files and `nim.cfg`, Jsonnet, CUE, Dockerfiles, the
+files and `nim.cfg`, Jsonnet, CUE, Dhall, Puppet, Rego, Dockerfiles, the
 markup of Vue, Svelte and Astro components, R Markdown chunks and C preprocessor
 directives small built-in scanners — so the binary continues to cross-compile
 without a C toolchain.

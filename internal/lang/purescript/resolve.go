@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/dhall"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -45,10 +46,10 @@ type resolver struct {
 	owner    map[string]*project // a module file's project
 	test     map[string]bool     // a module file read by a project's test globs
 	modules  map[string][]string // module name -> files declaring it, sorted
-	// dhall memoizes evaluated Dhall files; nil while one is being evaluated (an
+	// evaluated memoizes Dhall files; nil while one is being evaluated (an
 	// import cycle).
-	dhall     map[string]*dval
-	setWS     map[*dval]*workspace
+	evaluated map[string]*dhall.Value
+	setWS     map[*dhall.Value]*workspace
 	setFile   map[string]*workspace // a packages.dhall's workspace
 	installed sync.Map              // dir -> *installedIndex
 }
@@ -57,7 +58,7 @@ type resolver struct {
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{root: root, files: map[string]bool{}, dirs: map[string]bool{}, byFile: map[string]*project{},
 		wsByDir: map[string]*workspace{}, owner: map[string]*project{}, test: map[string]bool{},
-		modules: map[string][]string{}, dhall: map[string]*dval{}, setWS: map[*dval]*workspace{}, setFile: map[string]*workspace{}}
+		modules: map[string][]string{}, evaluated: map[string]*dhall.Value{}, setWS: map[*dhall.Value]*workspace{}, setFile: map[string]*workspace{}}
 	var sources []*scan.File
 	for _, f := range all {
 		r.files[f.Path] = true
@@ -212,18 +213,18 @@ func (r *resolver) readDhall(all []*scan.File) {
 		}
 		dir := path.Dir(p)
 		pr := &project{file: p, dir: dir, kind: classDhall, deps: map[string]dependency{}}
-		if n := v.field("name"); n.kind == dText {
-			pr.name = n.text
+		if n := v.Field("name"); n.Kind == dhall.KindText {
+			pr.name = n.Text
 		}
-		for _, t := range v.field("dependencies").texts() {
-			if _, ok := pr.deps[t.text]; !ok {
-				pr.deps[t.text] = dependency{name: t.text, line: t.line}
+		for _, t := range v.Field("dependencies").Texts() {
+			if _, ok := pr.deps[t.Text]; !ok {
+				pr.deps[t.Text] = dependency{name: t.Text, line: t.Line}
 			}
 		}
-		for _, t := range v.field("sources").texts() {
-			pr.globs = append(pr.globs, r.globBase(dir, t.text))
+		for _, t := range v.Field("sources").Texts() {
+			pr.globs = append(pr.globs, r.globBase(dir, t.Text))
 		}
-		pr.ws = r.dhallWorkspace(v.field("packages"), dir)
+		pr.ws = r.dhallWorkspace(v.Field("packages"), dir)
 		r.projects = append(r.projects, pr)
 		r.byFile[p] = pr
 	}
@@ -231,32 +232,32 @@ func (r *resolver) readDhall(all []*scan.File) {
 
 // loadDhall evaluates a Dhall file of the repository, following its imports of
 // other local files (a cycle, or a file that is not there, stays an import).
-func (r *resolver) loadDhall(file string) *dval {
-	if v, ok := r.dhall[file]; ok {
+func (r *resolver) loadDhall(file string) *dhall.Value {
+	if v, ok := r.evaluated[file]; ok {
 		return v // nil while in progress: a cycle
 	}
-	if !r.files[file] || len(r.dhall) > 1000 {
+	if !r.files[file] || len(r.evaluated) > 1000 {
 		return nil
 	}
 	src, err := os.ReadFile(filepath.Join(r.root, filepath.FromSlash(file)))
 	if err != nil || len(src) > lang.MaxParseSize {
 		return nil
 	}
-	r.dhall[file] = nil
-	v := evalDhall(src, path.Dir(file), r.loadDhall)
-	r.dhall[file] = v
+	r.evaluated[file] = nil
+	v := dhall.Eval(src, path.Dir(file), r.loadDhall)
+	r.evaluated[file] = v
 	return v
 }
 
 // dhallWorkspace is the workspace of a package set value: its name and the
 // packages it adds or overrides. One set evaluated once is one workspace.
-func (r *resolver) dhallWorkspace(set *dval, dir string) *workspace {
-	if ws := r.setWS[set]; ws != nil && set != unknown {
+func (r *resolver) dhallWorkspace(set *dhall.Value, dir string) *workspace {
+	if ws := r.setWS[set]; ws != nil && set != dhall.Unknown {
 		return ws
 	}
 	ws := &workspace{dir: dir, set: setName(set), extra: map[string]*extraPackage{}, locals: map[string]string{}}
 	setDir := dir
-	for f, v := range r.dhall {
+	for f, v := range r.evaluated {
 		if v == set && path.Base(f) == "packages.dhall" {
 			setDir = path.Dir(f)
 		}
@@ -264,7 +265,7 @@ func (r *resolver) dhallWorkspace(set *dval, dir string) *workspace {
 	for _, e := range dhallExtras(set, setDir) {
 		ws.extra[e.name] = e
 	}
-	if set != unknown {
+	if set != dhall.Unknown {
 		r.setWS[set] = ws
 	}
 	return ws

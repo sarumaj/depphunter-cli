@@ -1,0 +1,16 @@
+forge 'https://forge.puppet.com'
+moduledir 'modules'
+
+# mod 'commented/out', '1.0.0'
+mod 'puppetlabs-stdlib', '9.4.1'
+mod 'puppetlabs/concat', :latest
+mod 'puppetlabs-inifile'
+mod 'apache',
+  :git => 'https://github.com/puppetlabs/puppetlabs-apache.git',
+  :tag => 'v12.0.0'
+mod 'ntp',
+  git:    'https://github.com/puppetlabs/puppetlabs-ntp',
+  commit: '0123456789abcdef0123456789abcdef01234567'
+mod 'firewall', :git => 'https://github.com/puppetlabs/puppetlabs-firewall', :branch => 'main'
+mod 'mysql', :git => 'git@github.com:puppetlabs/puppetlabs-mysql.git', :ref => 'abc1234'
+mod 'localmod', :local => true

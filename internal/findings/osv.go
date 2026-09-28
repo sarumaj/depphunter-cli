@@ -44,7 +44,9 @@ const (
 // packages and git submodules (no Solidity ecosystem; the npm packages of
 // Hardhat projects are asked about as npm) nor nimble packages (no Nim
 // ecosystem) nor jsonnet-bundler packages and CUE modules (neither has an
-// ecosystem; Go packages CUE was generated from are asked about as Go).
+// ecosystem; Go packages CUE was generated from are asked about as Go) nor
+// Dhall packages and Puppet modules (OSV has neither a Dhall nor a Puppet
+// Forge ecosystem).
 //
 // Implements: REQ-FND-010
 var osvEcosystems = map[string]string{

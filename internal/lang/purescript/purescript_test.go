@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/dhall"
 	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
@@ -180,9 +181,9 @@ func TestDhall(t *testing.T) {
 	files := map[string]string{
 		"base.dhall": `let x = "a" in { list = [ x, "b" ] : List Text, name = "base" }`,
 	}
-	load := func(f string) *dval {
+	load := func(f string) *dhall.Value {
 		if src, ok := files[f]; ok {
-			return evalDhall([]byte(src), ".", nil)
+			return dhall.Eval([]byte(src), ".", nil)
 		}
 		return nil
 	}
@@ -200,20 +201,20 @@ func TestDhall(t *testing.T) {
       multi ${"line"}
       '' `: nil,
 	} {
-		v := evalDhall([]byte(src), ".", load)
-		if v.kind == dRecord {
-			v = v.field("list")
+		v := dhall.Eval([]byte(src), ".", load)
+		if v.Kind == dhall.KindRecord {
+			v = v.Field("list")
 		}
 		var got []string
-		for _, e := range v.texts() {
-			got = append(got, e.text)
+		for _, e := range v.Texts() {
+			got = append(got, e.Text)
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: %v, want %v", src, got, want)
 		}
 	}
 	// Older package sets build their records with mkPackage.
-	v := evalDhall([]byte(`let mkPackage = https://example.com/mkPackage.dhall sha256:00
+	v := dhall.Eval([]byte(`let mkPackage = https://example.com/mkPackage.dhall sha256:00
 let upstream = https://github.com/purescript/package-sets/releases/download/psc-0.13.8-20200822/packages.dhall
 in upstream // { foo = mkPackage [ "prelude" ] "https://github.com/acme/foo.git" "v1.0.0" }
   with bar.version = "v2.0.0"`), ".", nil)
@@ -372,7 +373,7 @@ func TestTruncated(t *testing.T) {
 				t.Fatal(err)
 			}
 			extractSource(src[:i])
-			evalDhall(src[:i], ".", nil)
+			dhall.Eval(src[:i], ".", nil)
 		}
 	}
 	for _, unit := range []string{"{-", "-}", "{", "(", "[", "\"", "\"\"\"", "'", "\\", "--", "import ", "import A.",
@@ -384,7 +385,7 @@ func TestTruncated(t *testing.T) {
 		src := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
 		start := time.Now()
 		extractSource(src)
-		evalDhall(src, ".", nil)
+		dhall.Eval(src, ".", nil)
 		if d := time.Since(start); d > 5*time.Second {
 			t.Errorf("%q x %d: %v", unit, len(src)/len(unit), d)
 		}

@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/dhall"
 )
 
 // dependency is one package a manifest lists: its name, the range it asks for
@@ -122,7 +123,7 @@ func readSpagoYAML(src []byte) *spagoYAML {
 		if v := yamlGet(set, "registry"); v != nil && v.Value != "" {
 			out.set = "registry " + v.Value
 		} else if v := yamlGet(set, "url"); v != nil && v.Value != "" {
-			out.set = setName(&dval{kind: dImport, loc: v.Value})
+			out.set = setName(&dhall.Value{Kind: dhall.KindImport, Loc: v.Value})
 		}
 	}
 	if extra := yamlGet(ws, "extraPackages"); extra != nil && extra.Kind == yaml.MappingNode {
@@ -265,41 +266,41 @@ func readBower(src []byte) *bowerManifest {
 
 // dhallConfig is a spago.dhall configuration: a record with dependencies and
 // sources (and the package set under packages).
-func dhallConfig(v *dval) bool {
-	return v.kind == dRecord && (v.fields["dependencies"] != nil || v.fields["sources"] != nil)
+func dhallConfig(v *dhall.Value) bool {
+	return v.Kind == dhall.KindRecord && (v.Fields["dependencies"] != nil || v.Fields["sources"] != nil)
 }
 
 // dhallExtras are the packages a package set record adds or overrides:
 // { name = { dependencies, repo, version } }, or mkPackage's record.
-func dhallExtras(set *dval, dir string) []*extraPackage {
-	if set == nil || set.kind != dRecord {
+func dhallExtras(set *dhall.Value, dir string) []*extraPackage {
+	if set == nil || set.Kind != dhall.KindRecord {
 		return nil
 	}
 	var out []*extraPackage
-	for _, k := range set.keys {
-		v := set.fields[k]
-		if v.kind != dRecord {
+	for _, k := range set.Keys {
+		v := set.Fields[k]
+		if v.Kind != dhall.KindRecord {
 			continue
 		}
-		e := &extraPackage{name: k, dir: dir, line: v.line}
-		if deps := v.field("dependencies"); deps.kind == dList {
+		e := &extraPackage{name: k, dir: dir, line: v.Line}
+		if deps := v.Field("dependencies"); deps.Kind == dhall.KindList {
 			e.hasDeps = true
-			for _, t := range deps.texts() {
-				e.dependencies = append(e.dependencies, t.text)
+			for _, t := range deps.Texts() {
+				e.dependencies = append(e.dependencies, t.Text)
 			}
 		}
-		if repo := v.field("repo"); repo.kind == dText {
-			e.line = repo.line
-			if strings.Contains(repo.text, "://") || strings.HasPrefix(repo.text, "git@") {
-				e.git = repo.text
-			} else if repo.text != "" {
-				e.path, e.localAsRepo = repo.text, true
+		if repo := v.Field("repo"); repo.Kind == dhall.KindText {
+			e.line = repo.Line
+			if strings.Contains(repo.Text, "://") || strings.HasPrefix(repo.Text, "git@") {
+				e.git = repo.Text
+			} else if repo.Text != "" {
+				e.path, e.localAsRepo = repo.Text, true
 			}
 		}
-		if ver := v.field("version"); ver.kind == dText {
-			e.version = ver.text
+		if ver := v.Field("version"); ver.Kind == dhall.KindText {
+			e.version = ver.Text
 			if e.line == 0 {
-				e.line = ver.line
+				e.line = ver.Line
 			}
 		}
 		out = append(out, e)
@@ -361,7 +362,7 @@ func extractLock(src []byte) *lang.Extraction {
 // Implements: REQ-PURESCRIPT-005
 func extractDhall(src []byte, set bool) *lang.Extraction {
 	ex := &lang.Extraction{}
-	v := evalDhall(src, ".", nil)
+	v := dhall.Eval(src, ".", nil)
 	if set {
 		for _, e := range dhallExtras(v, ".") {
 			ex.Imports = append(ex.Imports, lang.RawImport{Spec: e.name, Module: e.name, Name: kindExtra, Line: e.line})
@@ -372,14 +373,14 @@ func extractDhall(src []byte, set bool) *lang.Extraction {
 		return ex
 	}
 	seen := map[string]bool{}
-	for _, t := range v.field("dependencies").texts() {
-		if t.text != "" && !seen[t.text] {
-			seen[t.text] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: t.text, Module: t.text, Name: kindDep, Line: t.line})
+	for _, t := range v.Field("dependencies").Texts() {
+		if t.Text != "" && !seen[t.Text] {
+			seen[t.Text] = true
+			ex.Imports = append(ex.Imports, lang.RawImport{Spec: t.Text, Module: t.Text, Name: kindDep, Line: t.Line})
 		}
 	}
-	if n := v.field("name"); n.kind == dText && n.text != "" {
-		ex.Symbols = []lang.Symbol{{Name: n.text, Kind: "package", Line: n.line}}
+	if n := v.Field("name"); n.Kind == dhall.KindText && n.Text != "" {
+		ex.Symbols = []lang.Symbol{{Name: n.Text, Kind: "package", Line: n.Line}}
 	}
 	return ex
 }

@@ -37,10 +37,12 @@ libraries Foundry and Soldeer installed, forge's build output), and
 `deps` directory beside a `.nimble` file, an `atlas.config` or an
 `atlas.workspace`, or holding an `atlas.config` (the packages Atlas
 cloned), and `pkg`, `gen` and `usr` directories beside a `module.cue`
-(CUE's vendored modules and generated definitions in `cue.mod`); an
-`output`, `lib`, `packages`, `alire`, `systems`, `dependencies`, `out`,
-`cache`, `artifacts`, `typechain-types`, `deps`, `pkg`, `gen` or `usr`
-directory elsewhere is kept.
+(CUE's vendored modules and generated definitions in `cue.mod`), and a
+`modules` directory beside a `Puppetfile` or two levels below a
+`.fixtures.yml` (the Puppet modules r10k and the spec helper installed);
+an `output`, `lib`, `packages`, `alire`, `systems`, `dependencies`, `out`,
+`cache`, `artifacts`, `typechain-types`, `deps`, `pkg`, `gen`, `usr` or
+`modules` directory elsewhere is kept.
 
 ## Rationale
 
@@ -83,9 +85,11 @@ caches and build output.
    beside `nim/shop.nimble` and `atl/deps/sat/sat.nim` in a `deps` holding
    an `atlas.config`, `cue/cue.mod/gen/k8s.io/api/core/v1/types_go_gen.cue`
    and `cue/cue.mod/pkg/github.com/a/b/b.cue` beside
-   `cue/cue.mod/module.cue`, while `report/output/summary.md`,
+   `cue/cue.mod/module.cue`, `ctl/modules/stdlib/manifests/init.pp` beside
+   `ctl/Puppetfile` and `pup/spec/fixtures/modules/stdlib/manifests/init.pp`
+   below `pup/.fixtures.yml`, while `report/output/summary.md`,
    `tools/lib/helper.cr`, `web/packages/app.fs`, `docs/alire/intro.md`,
    `game/systems/physics.lisp`, `site/cache/page.html`,
-   `site/artifacts/report.md`, `make/deps/app.d` and `web/pkg/api/api.go`
-   do.
+   `site/artifacts/report.md`, `make/deps/app.d`, `web/pkg/api/api.go` and
+   `web/modules/app.js` do.
 2. An unreadable subdirectory is skipped without failing the scan.

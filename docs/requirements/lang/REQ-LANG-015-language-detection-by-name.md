@@ -46,7 +46,8 @@ and Soldeer's `soldeer.lock` (Soldeer), Nim's `.nim`, `.nims`, `.nimble`
 and `nim.cfg` (Nim), nimble's `nimble.lock` (Nimble) and Atlas's
 `atlas.lock` (Atlas), Jsonnet's `.jsonnet` and `.libsonnet`,
 jsonnet-bundler's `jsonnetfile.json` and `jsonnetfile.lock.json`
-(jsonnet-bundler), CUE's `.cue`,
+(jsonnet-bundler), CUE's `.cue`, Puppet's `.pp` and `Puppetfile`,
+Rego's `.rego`,
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
@@ -157,3 +158,5 @@ Objective-C from MATLAB, Mercury and C.
 18. `main.jsonnet` and `lib/k.libsonnet` are Jsonnet, `jsonnetfile.json`
     and `jsonnetfile.lock.json` are jsonnet-bundler, and `schema/a.cue` is
     CUE.
+19. `manifests/site.pp` and `Puppetfile` are Puppet, `policy/deny.rego` is
+    Rego and `types/Deployment.dhall` is Dhall.

@@ -60,7 +60,10 @@ files), the Nomic Foundation Solidity server or solidity-ls
 --stdio`, first installed; `.sol` files), nimlangserver or nimlsp
 (`nimlangserver` or `nimlsp`, first installed; `.nim`, `.nims` and
 `.nimble` files), jsonnet-language-server (`jsonnet-language-server`;
-`.jsonnet` and `.libsonnet` files) and CUE's own server (`cue lsp`; `.cue`
+`.jsonnet` and `.libsonnet` files), CUE's own server (`cue lsp`; `.cue`
+files), dhall-lsp-server (`dhall-lsp-server`; `.dhall` files), Puppet
+Editor Services (`puppet-languageserver --stdio`; `.pp` files) and Regal's
+server (`regal language-server`; `.rego`
 files), skipping a server that is not installed.
 
 ## Rationale

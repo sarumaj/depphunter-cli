@@ -167,6 +167,12 @@ var Servers = []Server{
 	{Name: "jsonnet", Open: true, Exts: map[string]string{".jsonnet": "jsonnet", ".libsonnet": "jsonnet"},
 		Commands: [][]string{{"jsonnet-language-server"}}},
 	{Name: "cue", Open: true, Exts: map[string]string{".cue": "cue"}, Commands: [][]string{{"cue", "lsp"}}},
+	// dhall-lsp-server (from dhall-haskell), Puppet Editor Services'
+	// puppet-languageserver and Regal's language server (Styra's Rego linter,
+	// on OPA's parser) answer references for their languages.
+	{Name: "dhall", Open: true, Exts: map[string]string{".dhall": "dhall"}, Commands: [][]string{{"dhall-lsp-server"}}},
+	{Name: "puppet", Open: true, Exts: map[string]string{".pp": "puppet"}, Commands: [][]string{{"puppet-languageserver", "--stdio"}}},
+	{Name: "rego", Open: true, Exts: map[string]string{".rego": "rego"}, Commands: [][]string{{"regal", "language-server"}}},
 	{Name: "fortran", Open: true, Exts: map[string]string{".f90": "fortran", ".f95": "fortran", ".f03": "fortran", ".f08": "fortran", ".f18": "fortran", ".f": "fortran", ".for": "fortran", ".ftn": "fortran", ".f77": "fortran", ".fpp": "fortran"}, Commands: [][]string{{"fortls"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.
