@@ -91,3 +91,32 @@ func TestOpamAndAlireLocations(t *testing.T) {
 		t.Error("no home, no paths")
 	}
 }
+
+// JULIA_DEPOT_PATH lists the depots, `;`-separated on Windows and
+// `:`-separated elsewhere; an empty entry is the default depot, `~` the home
+// directory, and a depot named twice is listed once. Unset, the default depot
+// ~/.julia is the only one.
+//
+// Verifies: REQ-SUP-055
+func TestJuliaDepots(t *testing.T) {
+	home := t.TempDir()
+	user := filepath.Join(home, ".julia")
+	for _, tc := range []struct {
+		goos, value string
+		want        []string
+	}{
+		{"linux", "", []string{user}},
+		{"linux", "/a:/b", []string{"/a", "/b"}},
+		{"linux", ":/a", []string{user, "/a"}},
+		{"darwin", "/a::/b:", []string{"/a", user, "/b"}},
+		{"linux", "~/depot:/a:/a", []string{filepath.Join(home, "depot"), "/a"}},
+		{"windows", `C:\depot;;D:\other`, []string{`C:\depot`, user, `D:\other`}},
+		{"windows", `C:\depot`, []string{`C:\depot`}},
+		{"linux", "/a;/b", []string{"/a;/b"}},
+	} {
+		m := machine(t, home, tc.goos, map[string]string{"JULIA_DEPOT_PATH": tc.value})
+		if got := m.JuliaDepots(); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s %q: got %v, want %v", tc.goos, tc.value, got, tc.want)
+		}
+	}
+}

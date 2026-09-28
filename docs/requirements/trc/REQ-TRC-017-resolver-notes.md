@@ -16,7 +16,7 @@ knows about the run that no single question shows. Each note **shall** name
 the plugin (the walk's, when the index client gives it), the project file it
 is about when there is one, a code (`lock-unread`, `lock-flat`,
 `lock-ignored`, `no-key`, `forbidden`, `unmapped`, `no-release`,
-`no-copy`) and a sentence. A note
+`no-copy`, `helper-not-run`) and a sentence. A note
 given more than once **shall** be kept once, and the notes **shall** be listed
 in the same order in every run (by plugin, file, code, sentence). A
 resolver's notes **shall** be recorded whether or not the walk ran.
@@ -44,9 +44,12 @@ JSON (`notes`). At least these **shall** be noted:
 - a CPAN release MetaCPAN does not describe: a pinned version it has no
   release of, or a mirror's distribution
   ([REQ-SUP-053](../sup/REQ-SUP-053-metacpan-releases.md));
-- an opam repository or Alire index only git serves, with no copy on this
-  machine ([REQ-SUP-054](../sup/REQ-SUP-054-opam-repository-files.md),
-  [REQ-SUP-061](../sup/REQ-SUP-061-alire-community-index.md)).
+- an opam repository, Alire index or Julia registry only git serves, with no
+  copy on this machine ([REQ-SUP-054](../sup/REQ-SUP-054-opam-repository-files.md),
+  [REQ-SUP-061](../sup/REQ-SUP-061-alire-community-index.md),
+  [REQ-SUP-055](../sup/REQ-SUP-055-julia-registry-files.md));
+- a Bazel registry a `.bazelrc` names a credential helper for, which is not
+  run ([REQ-BAZEL-011](../bazel/REQ-BAZEL-011-read-without-bazel.md)).
 
 ## Rationale
 

@@ -105,6 +105,9 @@ const (
 	// NoteNoCopy is a repository of package descriptions that is read only from a
 	// copy on this machine's disk, and has none.
 	NoteNoCopy = "no-copy"
+	// NoteHelperNotRun is a credential helper the configuration names for an
+	// index that was asked: helpers are programs, and are not run.
+	NoteHelperNotRun = "helper-not-run"
 )
 
 // Note is something a resolver or the index client knows about the run that no

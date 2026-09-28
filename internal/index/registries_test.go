@@ -1123,8 +1123,9 @@ depopts: ["base-threads" "base-unix" "conf-libev"]
 // A Julia registry serves each package's files: Versions.toml picks the version (the
 // pinned one, else the newest the compat range admits, never a yanked one), and the
 // sections of Deps.toml and Compat.toml whose range keys hold for it are the answer.
-// Standard libraries are julia-std, julia itself is left out, and a registry other
-// than General says where its packages are in its Registry.toml.
+// Standard libraries are julia-std, julia itself is left out, a dependency carries
+// its UUID, and a registry other than General says where its packages are in its
+// Registry.toml.
 //
 // Verifies: REQ-SUP-055
 func TestJuliaDependencies(t *testing.T) {
@@ -1188,8 +1189,8 @@ PrecompileTools = "1.2.1"
 	want := []lang.Target{
 		{Ecosystem: "julia-std", Package: "Dates"},
 		{Ecosystem: "julia-std", Package: "Mmap"},
-		{Ecosystem: Julia, Package: "Parsers", Version: "1 - 2, 3"},
-		{Ecosystem: Julia, Package: "PrecompileTools", Version: "1.2.1", Pinned: true},
+		{Ecosystem: Julia, Package: "Parsers", Version: "1 - 2, 3", Registry: "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"},
+		{Ecosystem: Julia, Package: "PrecompileTools", Version: "1.2.1", Pinned: true, Registry: "aea7be01-6a6a-4083-8856-8a6e6704d82a"},
 	}
 	if got := c.Dependencies(lang.Target{Ecosystem: Julia, Package: "JSON", Version: "0.21.4", Pinned: true}); !reflect.DeepEqual(got, want) {
 		t.Errorf("0.21.4: got %+v, want %+v", got, want)
@@ -1204,7 +1205,7 @@ PrecompileTools = "1.2.1"
 	if want := []lang.Target{
 		{Ecosystem: "julia-std", Package: "Dates"},
 		{Ecosystem: "julia-std", Package: "Mmap"},
-		{Ecosystem: Julia, Package: "Parsers", Version: "0.0.0 - 1"},
+		{Ecosystem: Julia, Package: "Parsers", Version: "0.0.0 - 1", Registry: "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"},
 	}; !reflect.DeepEqual(got, want) {
 		t.Errorf("0.21.3: got %+v, want %+v", got, want)
 	}
@@ -1217,7 +1218,9 @@ PrecompileTools = "1.2.1"
 }
 
 // A registry installed in a Julia depot, other than General, serves the packages it
-// lists from its GitHub repository's files; the others stay with General.
+// lists - from its GitHub repository's files when there is no copy, and from its
+// repository's URL (standing for the copy) when it is hosted elsewhere; the others
+// stay with General.
 //
 // Verifies: REQ-SUP-055
 func TestJuliaRegistryDiscovery(t *testing.T) {
@@ -1230,6 +1233,8 @@ repo = "https://github.com/JuliaRegistries/General.git"
 `,
 		"Corp": `name = "Corp"
 repo = "git@gitlab.corp.test:acme/registry.git"
+[packages]
+22222222-2222-2222-2222-222222222222 = { name = "CorpLedger", path = "C/CorpLedger" }
 `,
 		"Acme": `name = "Acme"
 repo = "https://github.com/acme/AcmeRegistry.git"
@@ -1247,6 +1252,9 @@ repo = "https://github.com/acme/AcmeRegistry.git"
 	}
 	if idx, _ := cfg.For(Julia, "JSON"); idx != "https://raw.githubusercontent.com/JuliaRegistries/General/master" {
 		t.Errorf("JSON: %s", idx)
+	}
+	if idx, known := cfg.For(Julia, "CorpLedger"); idx != "ssh://gitlab.corp.test/acme/registry.git" || !known {
+		t.Errorf("CorpLedger: %s (known %v)", idx, known)
 	}
 	// JULIA_DEPOT_PATH replaces the default depot.
 	other := t.TempDir()

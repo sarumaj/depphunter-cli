@@ -297,9 +297,13 @@ type Source struct {
 	Origin string
 	// Local is a copy of the index on this machine's disk, read in its place:
 	// the directory or archive opam keeps of a repository it fetched, the
-	// checkout Alire keeps of an index. Only this machine's configuration
-	// names one.
+	// checkout Alire keeps of an index, a registry in a Julia depot. Only this
+	// machine's configuration names one.
 	Local string
+	// uuid is the UUID of the Julia package a scoped source serves: Pkg looks a
+	// package up in every registry by its UUID, and two registries may list
+	// different packages under one name.
+	uuid string
 	// nugetKey is the key of a NuGet.Config package source: such sources are
 	// recomputed from the merged configuration on every discovery (applyNuGet).
 	nugetKey string
@@ -347,6 +351,9 @@ type Config struct {
 	// biocRelease is the Bioconductor release the repository's renv.lock was made
 	// with ("" for the current one): the release whose packages it installed.
 	biocRelease string
+	// bazelHelpers are the scopes of the credential helpers the .bazelrc files
+	// name, which are not run (see bazelHelperFor).
+	bazelHelpers []bazelHelper
 	// oci is where this machine's container tools pull images from: registries.conf
 	// and the Docker daemon's mirrors (see ociEndpoints).
 	oci ociConf
@@ -451,6 +458,7 @@ func (c *Config) Add(eco string, s Source) {
 // forgetProject drops what the repository declared, before it is read again.
 func (c *Config) forgetProject() {
 	c.clojure, c.biocRelease, c.cpanArchives = false, "", nil
+	c.bazelHelpers = slices.DeleteFunc(c.bazelHelpers, func(h bazelHelper) bool { return h.project })
 	for eco, origin := range c.off {
 		if origin == OriginProject {
 			delete(c.off, eco)
@@ -606,6 +614,9 @@ type candidate struct {
 //     in its order (see hexRepositories).
 //   - A NuGet package a packageSourceMapping pattern covers is served by the
 //     sources mapped to its most specific pattern alone (possibly none).
+//   - A Julia package (lang.Target.Registry its UUID) is served by the registries
+//     installed on this machine that list it under that UUID, in the order found;
+//     one no such registry lists, by General (see juliaScoped).
 //   - A scoped source that covers the package (an npm scope, a gem's source block, a
 //     pubspec's hosted server) serves it alone. It is authoritative: a package
 //     missing from it is not looked for on the public index, which is what a
@@ -665,8 +676,13 @@ func (c *Config) candidates(eco, pkg, registry string) []candidate {
 			return c.nugetRouted(keys)
 		}
 	}
+	if eco == Julia {
+		if ks := c.juliaScoped(pkg, registry); len(ks) > 0 {
+			return ks
+		}
+	}
 	for _, s := range c.sources[eco] {
-		if s.Scope != "" && s.Registry == "" && matches(eco, s.Scope, pkg) {
+		if eco != Julia && s.Scope != "" && s.Registry == "" && matches(eco, s.Scope, pkg) {
 			return one(s)
 		}
 	}

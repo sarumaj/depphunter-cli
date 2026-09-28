@@ -293,8 +293,8 @@ requirements of type `limitation` in their scopes:
 - Julia is read without running Julia: includes of computed paths,
   `LOAD_PATH` changes and `@eval`-generated modules are not followed,
   `import A.b` is read as a module path, a version is not resolved without a
-  manifest, and registries other than General are known only when installed
-  in a depot and hosted on GitHub.
+  manifest, registries other than General are known only when installed in a
+  depot (read from that copy), and a Pkg server is not asked.
 - Zig is read without running the compiler or the build: import names wired
   in loops, by helpers of other packages or to generated modules are dropped,
   there is no Zig registry for `--online`, and no vulnerability database
@@ -307,8 +307,9 @@ requirements of type `limitation` in their scopes:
 - Bazel is read without running Bazel: macros are not expanded, computed
   labels and URLs are not evaluated, module extensions other than the Maven,
   pip, Go, npm and crates hubs are not run, a version minimal version
-  selection raised is known only from `MODULE.bazel.lock`, and no
-  vulnerability database covers Bazel modules or WORKSPACE downloads.
+  selection raised is known only from `MODULE.bazel.lock`, credential
+  helpers a `.bazelrc` names are not run, and no vulnerability database
+  covers Bazel modules or WORKSPACE downloads.
 - Nix is read without evaluating it: computed paths, imports of computed
   values, overlays and module options are not followed, nixpkgs packages are
   known only by name and only in package lists, and there is no Nix registry,

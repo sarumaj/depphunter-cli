@@ -177,28 +177,7 @@ func (c *Config) machine(m userconf.Machine) {
 	machineCPAN(m, k)
 	machineOpam(m, k)
 	machineAlire(m, k)
-	// Julia registries installed in the depots (JULIA_DEPOT_PATH, else ~/.julia)
-	// besides General. JULIA_PKG_SERVER is not read: a package server serves
-	// registries as tarballs, not as the files asked for here.
-	depots := []string{}
-	for _, d := range filepath.SplitList(env("JULIA_DEPOT_PATH")) {
-		if d == "" {
-			d = filepath.Join(home, ".julia")
-		}
-		depots = append(depots, d)
-	}
-	if len(depots) == 0 && home != "" {
-		depots = []string{filepath.Join(home, ".julia")}
-	}
-	for _, d := range depots {
-		files, _ := filepath.Glob(filepath.Join(d, "registries", "*", "Registry.toml"))
-		sort.Strings(files)
-		for _, f := range files {
-			if data, err := os.ReadFile(f); err == nil {
-				parseJuliaRegistry(data, add)
-			}
-		}
-	}
+	machineJulia(m, k)
 	if home == "" {
 		return
 	}
@@ -219,7 +198,7 @@ func (c *Config) machine(m userconf.Machine) {
 		read(f.path, f.parse)
 	}
 	// Bazel's user rc and what it imports; %workspace% means no workspace here.
-	readBazelrc(filepath.Join(home, ".bazelrc"), "", "", add, map[string]bool{})
+	readBazelrc(filepath.Join(home, ".bazelrc"), "", "", add, c.bazelHelper(false), map[string]bool{})
 }
 
 // join is filepath.Join, or "" when dir is: nothing is read under a directory that
@@ -408,7 +387,7 @@ func (c *Config) project(files []*scan.File) {
 			parsePodfileLock(data, add)
 		case base == ".bazelrc" || strings.HasSuffix(base, ".bazelrc"):
 			root := strings.TrimSuffix(f.Abs, filepath.FromSlash(f.Path))
-			readBazelrc(f.Abs, bazelWorkspace(root, filepath.Dir(f.Abs)), root, add, map[string]bool{})
+			readBazelrc(f.Abs, bazelWorkspace(root, filepath.Dir(f.Abs)), root, add, c.bazelHelper(true), map[string]bool{})
 		case base == "dub.settings.json":
 			parseDubSettings(data, k)
 		case base == "qlfile":
@@ -1108,44 +1087,16 @@ func parseLuaRocksConfig(data []byte, add func(eco, url, scope string)) {
 	}
 }
 
-// parseJuliaRegistry reads an installed Julia registry's Registry.toml: a registry
-// other than General whose repository is on GitHub serves its files at
-// raw.githubusercontent.com, and serves the packages it lists (each a scoped
-// source, since Pkg looks a package up in every registry by its UUID).
-//
-// Implements: REQ-SUP-055
-func parseJuliaRegistry(data []byte, add func(eco, url, scope string)) {
-	var reg juliaRegistry
-	if _, err := toml.Decode(string(data), &reg); err != nil || reg.Name == "General" {
-		return
-	}
-	u, err := url.Parse(strings.TrimSpace(reg.Repo))
-	if err != nil || !strings.EqualFold(u.Hostname(), "github.com") {
-		return
-	}
-	repo := strings.TrimSuffix(strings.Trim(u.Path, "/"), ".git")
-	if strings.Count(repo, "/") != 1 {
-		return
-	}
-	base := "https://raw.githubusercontent.com/" + repo + "/HEAD"
-	names := make([]string, 0, len(reg.Packages))
-	for _, p := range reg.Packages {
-		names = append(names, p.Name)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		add(Julia, base, n)
-	}
-}
-
 // parseBazelrc reads the registries a .bazelrc names (--registry=URL, in any
 // command's section, in order). The Bazel Central Registry itself is the public
 // index, and a file:// registry cannot be asked over the network: neither is added.
 // The file an import or try-import line names is handed to include, where the line
-// stands, so that its registries come in Bazel's order.
+// stands, so that its registries come in Bazel's order. The scope of each
+// --credential_helper (`[<scope>=]<helper>`, "" for every host) is handed to
+// helper: helpers are programs, and are not run (REQ-BAZEL-011).
 //
-// Implements: REQ-SUP-057
-func parseBazelrc(data []byte, add func(eco, url, scope string), include func(string)) {
+// Implements: REQ-SUP-057, REQ-BAZEL-011
+func parseBazelrc(data []byte, add func(eco, url, scope string), helper func(string), include func(string)) {
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
@@ -1168,11 +1119,15 @@ func parseBazelrc(data []byte, add func(eco, url, scope string), include func(st
 			if strings.HasPrefix(f, "#") {
 				break
 			}
-			u, ok := strings.CutPrefix(f, "--registry=")
-			if !ok && f == "--registry" && i+1 < len(fields) {
-				u, ok = fields[i+1], true
+			if h, ok := bazelFlag(fields, i, "--credential_helper"); ok && helper != nil {
+				if scope, _, scoped := strings.Cut(h, "="); scoped {
+					helper(strings.ToLower(scope))
+				} else {
+					helper("")
+				}
 			}
-			if u = strings.Trim(u, `"'`); ok && strings.HasPrefix(u, "http") && !BazelCentral(u) {
+			u, ok := bazelFlag(fields, i, "--registry")
+			if ok && strings.HasPrefix(u, "http") && !BazelCentral(u) {
 				add(Bazel, u, "")
 			}
 		}
@@ -1189,7 +1144,7 @@ func parseBazelrc(data []byte, add func(eco, url, scope string), include func(st
 // which Bazel fails on) or read already is passed over.
 //
 // Implements: REQ-SUP-057
-func readBazelrc(name, workspace, within string, add func(eco, url, scope string), seen map[string]bool) {
+func readBazelrc(name, workspace, within string, add func(eco, url, scope string), helper func(string), seen map[string]bool) {
 	name = filepath.Clean(name)
 	if seen[name] || len(seen) > 64 {
 		return
@@ -1199,7 +1154,7 @@ func readBazelrc(name, workspace, within string, add func(eco, url, scope string
 	if err != nil {
 		return
 	}
-	parseBazelrc(data, add, func(p string) {
+	parseBazelrc(data, add, helper, func(p string) {
 		if strings.Contains(p, "%workspace%") {
 			if workspace == "" {
 				return
@@ -1219,8 +1174,61 @@ func readBazelrc(name, workspace, within string, add func(eco, url, scope string
 		if rel, err := filepath.Rel(within, filepath.Clean(p)); within != "" && (err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
 			return
 		}
-		readBazelrc(p, workspace, within, add, seen)
+		readBazelrc(p, workspace, within, add, helper, seen)
 	})
+}
+
+// bazelFlag is the value of a .bazelrc flag at fields[i], `--flag=value` or
+// `--flag value`, unquoted.
+func bazelFlag(fields []string, i int, flag string) (string, bool) {
+	v, ok := strings.CutPrefix(fields[i], flag+"=")
+	if !ok && fields[i] == flag && i+1 < len(fields) {
+		v, ok = fields[i+1], true
+	}
+	return strings.Trim(v, `"'`), ok
+}
+
+// bazelHelper is a credential helper a .bazelrc names: its scope, "" for every
+// host, a domain, or `*.<domain>` for the domain and every host below it.
+type bazelHelper struct {
+	scope   string
+	project bool
+}
+
+// bazelHelper records the credential helpers of a .bazelrc, the repository's or
+// this machine's.
+func (c *Config) bazelHelper(project bool) func(string) {
+	return func(scope string) {
+		h := bazelHelper{scope, project}
+		if !slices.Contains(c.bazelHelpers, h) {
+			c.bazelHelpers = append(c.bazelHelpers, h)
+		}
+	}
+}
+
+// bazelHelperFor is the scope of a credential helper a .bazelrc names for a
+// host, the most specific first, as Bazel picks one; ok is false when none
+// covers it.
+//
+// Implements: REQ-BAZEL-011
+func (c *Config) bazelHelperFor(host string) (scope string, ok bool) {
+	host = strings.ToLower(host)
+	best := -1
+	for _, h := range c.bazelHelpers {
+		rank := -1
+		switch domain, wild := strings.CutPrefix(h.scope, "*."); {
+		case h.scope == "":
+			rank = 0
+		case !wild && h.scope == host:
+			rank = 1 << 20
+		case wild && (host == domain || strings.HasSuffix(host, "."+domain)):
+			rank = len(domain)
+		}
+		if rank > best {
+			best, scope = rank, h.scope
+		}
+	}
+	return scope, best >= 0
 }
 
 // bazelWorkspace is the Bazel workspace a repository's .bazelrc belongs to: the

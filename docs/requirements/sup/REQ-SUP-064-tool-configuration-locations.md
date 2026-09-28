@@ -93,6 +93,9 @@ tool looks for it, reading the variables from the machine's environment only:
 - Alire: its settings, `ALIRE_SETTINGS_DIR` (Alire 1: `ALR_CONFIG`), else
   `%USERPROFILE%\.config\alire` on Windows, else `$XDG_CONFIG_HOME/alire`
   (`~/.config/alire`) ([REQ-SUP-061](REQ-SUP-061-alire-community-index.md)).
+- Julia: the depots of `JULIA_DEPOT_PATH` (`;`-separated on Windows, else
+  `:`-separated; an empty entry the default depot, `~` the home directory),
+  else `~/.julia` ([REQ-SUP-055](REQ-SUP-055-julia-registry-files.md)).
 
 ## Rationale
 
@@ -135,6 +138,8 @@ fixed `$HOME` paths missed the feed the machine actually uses.
 13. opam's root follows `OPAMROOT` and `%LOCALAPPDATA%` on Windows; Alire's
     settings follow `ALIRE_SETTINGS_DIR`, `ALR_CONFIG`, `XDG_CONFIG_HOME` and
     the Windows home.
+14. Julia's depots follow `JULIA_DEPOT_PATH` with the platform's separator,
+    an empty entry being `~/.julia`, each listed once.
 
 ## Notes
 
