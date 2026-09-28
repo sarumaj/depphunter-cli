@@ -42,6 +42,8 @@ var (
 	hxnodejs   = lang.Target{Ecosystem: ecoHaxelib, Package: "hxnodejs", Floating: true}
 )
 
+var importHx = lang.Target{Local: "src/import.hx"}
+
 // analyze runs the plugin over the fixture with nothing installed outside it.
 func analyze(t *testing.T) map[string]*lang.FileResult {
 	t.Setenv("HAXELIB_PATH", t.TempDir())
@@ -81,9 +83,11 @@ func TestImports(t *testing.T) {
 		"haxe.crypto.Md5":                        std("haxe.crypto"), // qualified names in code
 		"flixel.FlxG":                            {},                 // in code, not declared here
 		"flash.display.Sprite":                   std("flash.display"),
+		"import.hx (src/import.hx)":              importHx, // what it imports applies here
 	})
 	langtest.CheckImports(t, res["src/shop/model/Cart.hx"], map[string]lang.Target{
-		"shop.util.Money": {Local: "src/shop/util/Money.hx"},
+		"shop.util.Money":           {Local: "src/shop/util/Money.hx"},
+		"import.hx (src/import.hx)": importHx,
 	})
 	langtest.CheckImports(t, res["src/import.hx"], map[string]lang.Target{
 		"shop.util.Strings": {Local: "src/shop/util/Strings.hx"},
@@ -105,7 +109,8 @@ func TestImports(t *testing.T) {
 		"motion.Actuate":        {Ecosystem: ecoHaxelib, Package: "actuate", Floating: true},                // declared in the included shared.xml
 	})
 	langtest.CheckImports(t, res["src/shop/macros/Build.hx"], map[string]lang.Target{
-		"haxe.macro.Context": std("haxe.macro"),
+		"haxe.macro.Context":        std("haxe.macro"),
+		"import.hx (src/import.hx)": importHx, // src/ is its class path
 	})
 }
 
@@ -245,7 +250,7 @@ import real.Three;
 	for _, im := range ex.Imports {
 		got = append(got, im.Name+" "+im.Module)
 	}
-	want := []string{"import real.One", "import real.Three", "ref real.pkg.Two"}
+	want := []string{"import real.One", "import real.Three", "ref real.pkg.Two", "import.hx "}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("imports %q, want %q", got, want)
 	}
@@ -458,4 +463,38 @@ func TestIslands(t *testing.T) {
 			}
 		}
 	}
+}
+
+// An import.hx applies to the modules of its directory and below, up to the
+// class path the module's package starts in: not the one above src/, and for a
+// module whose directory does not spell its package, only its own directory's.
+// A garbage import.hx is still the file that applies.
+//
+// Verifies: REQ-HAXE-004
+func TestImportHx(t *testing.T) {
+	t.Setenv("HAXELIB_PATH", t.TempDir())
+	t.Setenv("HAXE_LIBCACHE", t.TempDir())
+	root := langtest.Write(t, map[string]string{
+		"import.hx":         "import haxe.Json;\n",
+		"src/import.hx":     "using StringTools;\n",
+		"src/a/import.hx":   "import a.b.C;\n",
+		"src/a/b/import.hx": "import {{{ ;;; #if \"\n",
+		"src/a/b/C.hx":      "package a.b;\nclass C {}\n",
+		"odd/import.hx":     "import haxe.ds.StringMap;\n",
+		"odd/D.hx":          "package x.y;\nclass D {}\n",
+		"lone/E.hx":         "class E {}\n",
+	})
+	res := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, res["src/a/b/C.hx"], map[string]lang.Target{
+		"import.hx (src/a/b/import.hx)": {Local: "src/a/b/import.hx"},
+		"import.hx (src/a/import.hx)":   {Local: "src/a/import.hx"},
+		"import.hx (src/import.hx)":     {Local: "src/import.hx"},
+	})
+	langtest.CheckImports(t, res["odd/D.hx"], map[string]lang.Target{
+		"import.hx (odd/import.hx)": {Local: "odd/import.hx"},
+	})
+	langtest.CheckImports(t, res["lone/E.hx"], map[string]lang.Target{})
+	langtest.CheckImports(t, res["src/a/import.hx"], map[string]lang.Target{
+		"a.b.C": {Local: "src/a/b/C.hx"},
+	})
 }

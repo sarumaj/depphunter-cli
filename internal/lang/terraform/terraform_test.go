@@ -278,3 +278,90 @@ func TestClaimsAndClasses(t *testing.T) {
 		t.Error("files read differently share a cache key")
 	}
 }
+
+// .terraform/modules/modules.json records what `terraform init` installed: a
+// registry call its constraint leaves open is pinned at the installed version
+// (in a called local module too, through its caller's file), and the installed
+// module's own calls, through its local modules, are its dependencies. A garbage
+// or missing file changes nothing.
+//
+// Verifies: REQ-TERRAFORM-008, REQ-TERRAFORM-009
+func TestInstalledModules(t *testing.T) {
+	files := map[string]string{
+		"main.tf": `module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "~> 5.0"
+}
+module "net" {
+  source = "./modules/net"
+}
+module "label" {
+  source = "cloudposse/label/null"
+}
+module "exact" {
+  source  = "terraform-aws-modules/iam/aws"
+  version = "5.2.0"
+}
+`,
+		"modules/net/main.tf": `module "sg" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = ">= 4"
+}
+`,
+		".terraform/modules/modules.json": `{"Modules": [
+  {"Key": "", "Source": "", "Dir": "."},
+  {"Key": "exact", "Source": "registry.terraform.io/terraform-aws-modules/iam/aws", "Version": "5.3.0", "Dir": ".terraform/modules/exact"},
+  {"Key": "label", "Source": "registry.terraform.io/cloudposse/label/null", "Version": "0.25.0", "Dir": ".terraform/modules/label"},
+  {"Key": "net", "Source": "./modules/net", "Dir": "modules/net"},
+  {"Key": "net.sg", "Source": "registry.terraform.io/terraform-aws-modules/security-group/aws", "Version": "4.17.2", "Dir": ".terraform/modules/net.sg"},
+  {"Key": "vpc", "Source": "registry.terraform.io/terraform-aws-modules/vpc/aws", "Version": "5.1.2", "Dir": ".terraform/modules/vpc"},
+  {"Key": "vpc.git", "Source": "git::https://github.com/acme/tf-dns.git?ref=0123456789abcdef0123456789abcdef01234567", "Dir": ".terraform/modules/vpc.git"},
+  {"Key": "vpc.inner", "Source": "./modules/inner", "Dir": ".terraform/modules/vpc/modules/inner"},
+  {"Key": "vpc.inner.label", "Source": "registry.terraform.io/cloudposse/label/null", "Version": "0.25.0", "Dir": ".terraform/modules/vpc.inner.label"},
+  {"Key": "vpc.inner.label.deep", "Source": "registry.terraform.io/acme/deep/null", "Version": "1.0.0", "Dir": ".terraform/modules/deep"}
+]}`,
+	}
+	vpc := lang.Target{Ecosystem: ecoModule, Package: "terraform-aws-modules/vpc/aws", Version: "5.1.2", Requested: "~> 5.0", Pinned: true}
+	label := lang.Target{Ecosystem: ecoModule, Package: "cloudposse/label/null", Version: "0.25.0", Pinned: true}
+	exact := lang.Target{Ecosystem: ecoModule, Package: "terraform-aws-modules/iam/aws", Version: "5.2.0", Pinned: true}
+	sg := lang.Target{Ecosystem: ecoModule, Package: "terraform-aws-modules/security-group/aws", Version: "4.17.2", Requested: ">= 4", Pinned: true}
+	root := langtest.Write(t, files)
+	res := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, res["main.tf"], map[string]lang.Target{
+		`module "vpc"`:   vpc,
+		`module "net"`:   {Local: "modules/net"},
+		`module "label"`: label,
+		`module "exact"`: exact, // the configuration's exact version stands
+	})
+	langtest.CheckImports(t, res["modules/net/main.tf"], map[string]lang.Target{`module "sg"`: sg})
+	r := newResolver(root, langtest.Files(t, root))
+	dns := lang.Target{Ecosystem: ecoModule, Package: "github.com/acme/tf-dns", Version: "0123456789abcdef0123456789abcdef01234567",
+		Pinned: true, Origin: "git::https://github.com/acme/tf-dns.git"}
+	if got, want := r.Dependencies(vpc), []lang.Target{dns, label}; !reflect.DeepEqual(got, want) || !r.Installed(vpc) {
+		t.Errorf("vpc depends on %+v, want %+v", got, want)
+	}
+	if got := r.Dependencies(label); got != nil || !r.Installed(label) {
+		t.Errorf("label depends on %+v", got)
+	}
+	other := lang.Target{Ecosystem: ecoModule, Package: "terraform-aws-modules/vpc/aws", Version: "4.0.0"}
+	if got := r.Dependencies(other); got != nil || r.Installed(other) || r.Installed(lang.Target{Ecosystem: ecoProvider, Package: "hashicorp/aws"}) {
+		t.Errorf("another version: %+v", got)
+	}
+
+	for _, garbage := range []string{"{{ not json", `{"Modules": "x"}`, ""} {
+		files[".terraform/modules/modules.json"] = garbage
+		if garbage == "" {
+			delete(files, ".terraform/modules/modules.json")
+		}
+		root := langtest.Write(t, files)
+		langtest.CheckImports(t, langtest.Analyze(t, Plugin{}, root)["main.tf"], map[string]lang.Target{
+			`module "vpc"`:   {Ecosystem: ecoModule, Package: "terraform-aws-modules/vpc/aws", Version: "~> 5.0"},
+			`module "net"`:   {Local: "modules/net"},
+			`module "label"`: {Ecosystem: ecoModule, Package: "cloudposse/label/null", Floating: true},
+			`module "exact"`: exact,
+		})
+		if r := newResolver(root, langtest.Files(t, root)); r.Dependencies(vpc) != nil || r.Installed(vpc) {
+			t.Errorf("%q: installed", garbage)
+		}
+	}
+}

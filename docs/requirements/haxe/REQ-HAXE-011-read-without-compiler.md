@@ -12,14 +12,14 @@ verification:
 ## Statement
 
 Haxe **shall** be read without running the compiler, haxelib or lix: every
-`#if` branch counts, macros are not run (types they generate are unknown),
-a qualified name is linked only to a module file (a type declared in another
-module of its package, `flixel.group.FlxTypedGroup`, is dropped), types of
-the importing module's own package used without an import and what
-`import.hx` imports for its directory are not linked, a module of a library
-that is not installed is attributed by the declared names and a curated
-table, Lime project conditions are not evaluated, and lib.haxe.org is not
-asked (no `--online`: it offers Haxe remoting, not a JSON API).
+`#if` branch counts, macros are not run (types they generate are unknown), a
+qualified name is linked only to a module file (a type declared in another
+module of its package, `flixel.group.FlxTypedGroup`, is dropped), types of the
+importing module's own package used without an import are not linked (what an
+`import.hx` imports is linked from that file, REQ-HAXE-004), a module of a
+library that is not installed is attributed by the declared names and a
+curated table, Lime project conditions are not evaluated, and lib.haxe.org is
+not asked (no `--online`: it offers Haxe remoting, not a JSON API).
 
 ## Rationale
 

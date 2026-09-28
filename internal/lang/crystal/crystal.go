@@ -112,7 +112,7 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
-	return newResolver(root, all), nil
+	return newResolver(root, all, os.Getenv), nil
 }
 
 // Implements: REQ-CRYSTAL-002, REQ-CRYSTAL-003, REQ-CRYSTAL-005

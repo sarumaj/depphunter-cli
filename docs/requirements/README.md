@@ -320,15 +320,15 @@ requirements of type `limitation` in their scopes:
   blocks are not read, and an Elixir module named in `@external` is dropped.
 - Elm is read without running elm: a module of a package that is not
   installed in ELM_HOME, not in the curated module table and not spelled by
-  a listed package's name is dropped, and `elm-tooling.json` is not read.
+  a listed package's name is dropped.
 - PureScript is read without running spago: a module of a package that is
   not installed in `.spago/`, not in the curated table and not spelled by a
   listed package's name is dropped, a package set's versions are not known
   offline, and Dhall beyond records, lists and merges is not evaluated.
-- Crystal is read without running the compiler or shards: methods and
-  requires a macro writes are not read, only the first branch of a macro
-  `{% if %}` decides the nesting after it, `CRYSTAL_PATH` is not read and
-  `@[Link]` libraries are not mapped.
+- Crystal is read without running the compiler or shards: methods and requires
+  a macro writes are not read, only the first branch of a macro `{% if %}`
+  decides the nesting after it, `CRYSTAL_PATH` directories outside the
+  repository are not read and `@[Link]` libraries are not mapped.
 - F# is read without type checking or MSBuild evaluation: unqualified names
   an `open` or an `[<AutoOpen>]` module brings in are not linked, MSBuild
   conditions are ignored, an F# `open` of a C# project's namespace is not
@@ -344,10 +344,10 @@ requirements of type `limitation` in their scopes:
   fetched is attributed by a curated table or the declared name it spells,
   and fpm's registry is not asked (no `--online`).
 - Haxe is read without running the compiler, haxelib or lix: every `#if`
-  branch counts, macros are not run, a qualified name links only to a
-  module's file, same-package types used without an import and `import.hx`
-  are not linked, a library that is not installed is attributed by declared
-  names and a curated table, and lib.haxe.org is not asked (no `--online`).
+  branch counts, macros are not run, a qualified name links only to a module's
+  file, same-package types used without an import are not linked, a library
+  that is not installed is attributed by declared names and a curated table,
+  and lib.haxe.org is not asked (no `--online`).
 - Ada is read without running GNAT, GPRbuild or alr: only the first branch
   of a gnatprep `#if` is read, project files are not evaluated (every case
   alternative counts), units generated at build time are dropped or
@@ -373,10 +373,10 @@ requirements of type `limitation` in their scopes:
   commit comes from git's index, neither a submodule's nor a Soldeer
   package's own imports are read, and their dependencies only from a
   checked-out submodule's `.gitmodules` and what Soldeer installed.
-- Nim is read without running the compiler, nimble or Atlas: NimScript is
-  not executed, every `when` branch counts, a configuration's search paths
-  apply to its directory and below, `nimble.develop` is not read, and
-  nothing is asked of the package list (no `--online`).
+- Nim is read without running the compiler, nimble or Atlas: NimScript is not
+  executed, every `when` branch counts, a configuration's search paths apply
+  to its directory and below, a `nimble.develop` path outside the repository
+  names nothing, and nothing is asked of the package list (no `--online`).
 - Jsonnet is read without evaluating it or running jb: Tanka's and a
   tool's `-J` library paths are not known, and jsonnet-bundler has no
   registry to ask (no `--online`).

@@ -17,6 +17,7 @@ type moduleDir struct {
 	providers map[string]*required
 	calls     []string // directories of the local modules it calls
 	lock      map[string]lockEntry
+	installed []installedModule // .terraform/modules/modules.json, sorted by key
 }
 
 // required is what a module says about one provider local name, across its files.
@@ -37,10 +38,11 @@ func dirOf(p string) string { return path.Dir(p) }
 
 // newResolver reads every configuration file of the repository once more (the
 // scanner is fast) to learn what each module declares and which providers it
-// requires, and every lock file for the versions it pins.
+// requires, every lock file for the versions it pins, and what `terraform
+// init` installed for each module.
 //
 // Implements: REQ-TERRAFORM-005, REQ-TERRAFORM-007, REQ-TERRAFORM-008
-func newResolver(all []*scan.File) *resolver {
+func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, modules: map[string]*moduleDir{}, callers: map[string][]string{},
 		tg: map[string]*tgConfig{}}
 	var configs []*scan.File
@@ -109,6 +111,9 @@ func newResolver(all []*scan.File) *resolver {
 			}
 		}
 	}
+	for d, m := range r.modules {
+		m.installed = readInstalled(root, d)
+	}
 	return r
 }
 
@@ -144,7 +149,7 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	kind, arg, _ := strings.Cut(imp.Name, "|")
 	switch kind {
 	case kindModule:
-		return r.moduleTarget(dir, imp.Module, arg)
+		return r.installedPin(dir, callName(imp.Spec), r.moduleTarget(dir, imp.Module, arg))
 	case kindTGSource:
 		src := r.expandIncludes(file, imp.Module)
 		if strings.Contains(src, "${") {
@@ -325,16 +330,28 @@ func (r *resolver) provider(dir, local string) lang.Target {
 // module's own lock file, else one of a module calling it, directly or not (a root
 // module locks the providers of every module it calls). A lock file in a directory
 // above is not taken: that module need not call this one.
-func (r *resolver) lockFor(dir, src string) (lockEntry, bool) {
+func (r *resolver) lockFor(dir, src string) (e lockEntry, ok bool) {
+	r.callersOf(dir, func(d string) bool {
+		if m := r.modules[d]; m != nil && m.lock != nil {
+			if x, found := m.lock[src]; found && x.version != "" {
+				e, ok = x, true
+			}
+		}
+		return ok
+	})
+	return e, ok
+}
+
+// callersOf visits dir, then the modules calling it, directly or not, breadth
+// first, until visit reports it is done.
+func (r *resolver) callersOf(dir string, visit func(string) bool) {
 	seen := map[string]bool{dir: true}
 	queue := []string{dir}
 	for len(queue) > 0 {
 		d := queue[0]
 		queue = queue[1:]
-		if m := r.modules[d]; m != nil && m.lock != nil {
-			if e, ok := m.lock[src]; ok && e.version != "" {
-				return e, true
-			}
+		if visit(d) {
+			return
 		}
 		callers := append([]string(nil), r.callers[d]...)
 		sort.Strings(callers)
@@ -345,5 +362,4 @@ func (r *resolver) lockFor(dir, src string) (lockEntry, bool) {
 			}
 		}
 	}
-	return lockEntry{}, false
 }

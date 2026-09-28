@@ -299,6 +299,9 @@ const (
 	kindExtra  = "extra"  // stack.yaml extra-deps
 )
 
+// kindInclude is a cabal.project `import:` of another project file.
+const kindInclude = "include"
+
 // extractCabal turns a package description's build-depends into imports of the
 // packages they name (once per entry as written) and its components into symbols.
 //
@@ -353,12 +356,13 @@ type srp struct {
 // cabalProject is what cabal.project (and cabal.project.freeze) say.
 type cabalProject struct {
 	members     []cline // packages: and optional-packages: entries
+	imports     []cline // import: other project files (a path or a URL)
 	repos       []srp
 	constraints map[string]string // package -> the version ==x pins it to, else the range
 }
 
 // readCabalProject reads cabal.project or its freeze file: packages, the
-// source-repository-package stanzas and the constraints (any.aeson ==2.2.1.0),
+// project files it imports, the source-repository-package stanzas and the constraints (any.aeson ==2.2.1.0),
 // conditional blocks included. Setup-dependency constraints (setup.Cabal) and flag or
 // "installed" constraints are left out.
 //
@@ -371,8 +375,14 @@ func readCabalProject(src []byte) *cabalProject {
 			switch {
 			case n.key == "packages" || n.key == "optional-packages":
 				for _, l := range n.value {
-					for _, f := range fields(l.text) {
+					for _, f := range globFields(l.text) {
 						p.members = append(p.members, cline{text: strings.Trim(f, `'`), line: l.line})
+					}
+				}
+			case n.key == "import":
+				for _, l := range n.value {
+					for _, f := range fields(l.text) {
+						p.imports = append(p.imports, cline{text: f, line: l.line})
 					}
 				}
 			case n.key == "constraints":
@@ -444,8 +454,8 @@ func repoName(location, subdir string) string {
 	return path.Base(loc)
 }
 
-// extractCabalProject turns cabal.project's packages and source-repository-package
-// stanzas into imports.
+// extractCabalProject turns cabal.project's packages, imports of other project
+// files and source-repository-package stanzas into imports.
 //
 // Implements: REQ-HASKELL-005
 func extractCabalProject(src []byte) *lang.Extraction {
@@ -457,6 +467,13 @@ func extractCabalProject(src []byte) *lang.Extraction {
 		if !seen[spec] {
 			seen[spec] = true
 			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: m.text, Name: kindMember, Line: m.line})
+		}
+	}
+	for _, m := range p.imports {
+		spec := "import: " + m.text
+		if !seen[spec] {
+			seen[spec] = true
+			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: m.text, Name: kindInclude, Line: m.line})
 		}
 	}
 	for _, r := range p.repos {

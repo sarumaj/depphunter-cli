@@ -30,7 +30,7 @@ const (
 type Plugin struct{}
 
 func (Plugin) Name() string { return "haskell" }
-func (Plugin) Version() int { return 1 }
+func (Plugin) Version() int { return 2 }
 
 // Claims takes Haskell sources (.hs, .lhs, .hs-boot, .hsc), package descriptions
 // (*.cabal, package.yaml) and project files (cabal.project, stack.yaml), except what

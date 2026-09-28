@@ -33,6 +33,7 @@ type resolver struct {
 	dirs      map[string]bool
 	mods      map[string][]string // module (a.b.C) -> files declaring it
 	pkgs      map[string][]string // package (a.b) -> its modules' files
+	pkgOf     map[string]string   // module file -> the package it declares
 	firsts    map[string]bool     // first segments of the repository's packages
 	manifests map[string]*manifest
 	byDir     map[string][]*manifest // directory -> manifests in it
@@ -48,7 +49,7 @@ type resolver struct {
 // Implements: REQ-HAXE-004, REQ-HAXE-005, REQ-HAXE-006, REQ-HAXE-007, REQ-HAXE-008
 func newResolver(root string, all []*scan.File, getenv func(string) string) *resolver {
 	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{".": true}, mods: map[string][]string{},
-		pkgs: map[string][]string{}, firsts: map[string]bool{}, manifests: map[string]*manifest{},
+		pkgs: map[string][]string{}, pkgOf: map[string]string{}, firsts: map[string]bool{}, manifests: map[string]*manifest{},
 		byDir: map[string][]*manifest{}, own: map[string]string{}, lix: map[string]*lixScope{},
 		lixFile: map[string]*lixLib{}, installed: map[string]*installed{}, limeFiles: map[string]bool{}}
 	var sources, projects []*scan.File
@@ -191,6 +192,7 @@ func (r *resolver) index(sources []*scan.File) {
 		}
 		r.mods[mod] = append(r.mods[mod], f.Path)
 		r.pkgs[pkgs[i]] = append(r.pkgs[pkgs[i]], f.Path)
+		r.pkgOf[f.Path] = pkgs[i]
 	}
 	for _, m := range []map[string][]string{r.mods, r.pkgs} {
 		for _, list := range m {
@@ -547,10 +549,14 @@ func public(url string) bool {
 }
 
 // Expand turns `import a.b.*` of a package of the repository into one import
-// per module of the package, in path order and capped.
+// per module of the package, in path order and capped, and a module's import.hx
+// import into the import.hx files that apply to it.
 //
 // Implements: REQ-HAXE-004
 func (r *resolver) Expand(file string, imp lang.RawImport) ([]lang.Import, bool) {
+	if imp.Name == kindHx {
+		return r.importHx(file, imp), true
+	}
 	if (imp.Name != kindImport && imp.Name != kindUsing) || !strings.HasSuffix(imp.Module, ".*") {
 		return nil, false
 	}
@@ -589,6 +595,39 @@ func (r *resolver) Expand(file string, imp lang.RawImport) ([]lang.Import, bool)
 }
 
 const maxExpand = 100
+
+// importHx lists the import.hx files whose imports and usings the compiler
+// applies to a module: one in the module's directory or a directory above it
+// up to its class path (the directory its package starts in), nearest first.
+// A module whose directory does not spell its package takes its own
+// directory's only; import.hx itself takes none.
+//
+// Implements: REQ-HAXE-004
+func (r *resolver) importHx(file string, imp lang.RawImport) []lang.Import {
+	if path.Base(file) == "import.hx" {
+		return nil
+	}
+	dir := path.Dir(file)
+	root := dir
+	if pkg := r.pkgOf[file]; pkg != "" {
+		sub := strings.ReplaceAll(pkg, ".", "/")
+		switch {
+		case dir == sub:
+			root = "."
+		case strings.HasSuffix(dir, "/"+sub):
+			root = strings.TrimSuffix(dir, "/"+sub)
+		}
+	}
+	var out []lang.Import
+	for d := dir; ; d = path.Dir(d) {
+		if f := path.Join(d, "import.hx"); r.files[f] {
+			out = append(out, lang.Import{Spec: imp.Spec + " (" + f + ")", Line: imp.Line, Target: lang.Target{Local: f}})
+		}
+		if d == root || d == "." {
+			return out
+		}
+	}
+}
 
 // Dependencies lists what a library depends on: the -lib lines of its lix pin,
 // else the haxelib.json of the version installed.

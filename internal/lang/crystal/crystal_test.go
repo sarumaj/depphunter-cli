@@ -37,6 +37,14 @@ var (
 
 func std(name string) lang.Target { return lang.Target{Ecosystem: ecoStd, Package: name} }
 
+// The machine's CRYSTAL_PATH must not change what the fixtures resolve to.
+func TestMain(m *testing.M) {
+	os.Unsetenv("CRYSTAL_PATH")
+	os.Exit(m.Run())
+}
+
+func noEnv(string) string { return "" }
+
 // Verifies: REQ-CRYSTAL-002, REQ-CRYSTAL-004, REQ-CRYSTAL-006, REQ-CRYSTAL-007, REQ-CRYSTAL-011
 func TestRequires(t *testing.T) {
 	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
@@ -274,7 +282,7 @@ func TestClaims(t *testing.T) {
 
 // Verifies: REQ-CRYSTAL-008
 func TestInstalledDependencies(t *testing.T) {
-	r := newResolver("testdata/repo", langtest.Files(t, "testdata/repo"))
+	r := newResolver("testdata/repo", langtest.Files(t, "testdata/repo"), noEnv)
 	got := r.Dependencies(kemal)
 	want := []lang.Target{exception, radix} // ameba is a development dependency
 	if !reflect.DeepEqual(got, want) {
@@ -302,7 +310,7 @@ func TestShardsInfo(t *testing.T) {
 			"  radix:\n    git: https://github.com/luislavena/radix.git\n    version: 0.4.1\n",
 	}
 	root := langtest.Write(t, files)
-	r := newResolver(root, langtest.Files(t, root))
+	r := newResolver(root, langtest.Files(t, root), noEnv)
 	app := r.projects["."]
 	kemal := lang.Target{Ecosystem: ecoShards, Package: "kemal", Version: "1.4.0", Requested: "~> 1.4", Pinned: true}
 	if got := r.shardTarget(app, "kemal"); got != kemal {
@@ -315,7 +323,7 @@ func TestShardsInfo(t *testing.T) {
 
 	files["lib/.shards.info"] = "{{{ not yaml"
 	root = langtest.Write(t, files)
-	r = newResolver(root, langtest.Files(t, root))
+	r = newResolver(root, langtest.Files(t, root), noEnv)
 	floating := lang.Target{Ecosystem: ecoShards, Package: "radix", Version: "~> 0.4.0", Floating: true}
 	if got := r.Dependencies(kemal); !reflect.DeepEqual(got, []lang.Target{floating}) {
 		t.Errorf("garbage .shards.info: %+v", got)
@@ -374,5 +382,46 @@ func TestIslands(t *testing.T) {
 				t.Errorf("%s: %s -> %s", f, im.Spec, e)
 			}
 		}
+	}
+}
+
+// CRYSTAL_PATH adds directories of the repository to look requires up in:
+// deps_local/ (relative) and extra/ (absolute), by the compiler's rules for a
+// shard. Entries outside the repository, `$ORIGIN` ones and garbage add
+// nothing.
+//
+// Verifies: REQ-CRYSTAL-004
+func TestCrystalPath(t *testing.T) {
+	root := langtest.Write(t, map[string]string{
+		"shard.yml":                     "name: app\n",
+		"src/app.cr":                    "require \"vendorlib\"\nrequire \"tool/helper\"\nrequire \"extra\"\nrequire \"json\"\nrequire \"orphan\"\n",
+		"deps_local/vendorlib.cr":       "module VendorLib; end\n",
+		"deps_local/tool/src/helper.cr": "module Helper; end\n",
+		"extra/extra/src/extra.cr":      "module Extra; end\n",
+		"deps2/orphan.cr":               "module Orphan; end\n",
+	})
+	abs, _ := filepath.Abs(filepath.Join(root, "extra"))
+	sep := string(os.PathListSeparator)
+	for _, c := range []struct {
+		env  string
+		want map[string]lang.Target
+	}{
+		{"lib" + sep + "deps_local" + sep + abs + sep + "/usr/share/crystal/src" + sep + "$ORIGIN/../deps2", map[string]lang.Target{
+			"vendorlib":   {Local: "deps_local/vendorlib.cr"},
+			"tool/helper": {Local: "deps_local/tool/src/helper.cr"},
+			"extra":       {Local: "extra/extra/src/extra.cr"},
+			"json":        std("json"),
+			"orphan":      {Ecosystem: ecoShards, Package: "orphan", Unresolved: true},
+		}},
+		{"  " + sep + sep + "../elsewhere" + sep + "src/app.cr", map[string]lang.Target{
+			"vendorlib":   {Ecosystem: ecoShards, Package: "vendorlib", Unresolved: true},
+			"tool/helper": {Ecosystem: ecoShards, Package: "tool", Unresolved: true},
+			"extra":       {Ecosystem: ecoShards, Package: "extra", Unresolved: true},
+			"json":        std("json"),
+			"orphan":      {Ecosystem: ecoShards, Package: "orphan", Unresolved: true},
+		}},
+	} {
+		t.Setenv("CRYSTAL_PATH", c.env)
+		langtest.CheckImports(t, langtest.Analyze(t, Plugin{}, root)["src/app.cr"], c.want)
 	}
 }

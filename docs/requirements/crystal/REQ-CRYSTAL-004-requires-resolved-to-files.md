@@ -22,7 +22,12 @@ first segment is the shard's own name (`shop/cart` is `src/shop/cart.cr`,
 the project's `src/` (Crystal's own standard library requiring itself), and
 `require "c/x"` in Crystal's repository to its `src/lib_c/<target>/c/x.cr`
 (x86_64-linux-gnu first). A path dependency's files resolve to the file in
-its directory. A require of no file is dropped.
+its directory. The `CRYSTAL_PATH` environment variable (the platform's path
+list) **shall** add its directories of the repository - relative to the
+repository's root, or absolute inside it - to look a require by name up in,
+after the project's `src/`, by the rules for a shard in `lib/` (`x.cr`,
+`x/x.cr`, then the shard directory `x/`); entries elsewhere and `$ORIGIN`
+entries add nothing. A require of no file is dropped.
 
 ## Rationale
 
@@ -38,3 +43,8 @@ templates require the shard by name.
 2. `shop/version` and, from `spec/`, `shop/cart` are the shard's own files;
    `widgets/button` is `libs/widgets/src/widgets/button.cr` of a path
    dependency.
+3. With `CRYSTAL_PATH` listing `lib`, `deps_local`, the absolute path of
+   `extra`, a directory outside the repository and a `$ORIGIN` entry,
+   `vendorlib`, `tool/helper` and `extra` resolve to files under
+   `deps_local/` and `extra/`; with a garbage value they are unresolved
+   shards.

@@ -43,7 +43,7 @@ const (
 type Plugin struct{}
 
 func (Plugin) Name() string { return "haxe" }
-func (Plugin) Version() int { return 1 }
+func (Plugin) Version() int { return 2 }
 
 // Claims takes Haxe modules, .hxml files, haxelib.json and Lime/OpenFL project
 // files - a project.xml only when its content says so - except what lies in a

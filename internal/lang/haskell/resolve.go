@@ -143,8 +143,9 @@ func (r *resolver) addPkg(p *cabalPkg) {
 	}
 }
 
-// readProject reads what pins a project's packages: cabal.project with its
-// constraints and source-repository-package stanzas, cabal.project.freeze, the
+// readProject reads what pins a project's packages: cabal.project and the local
+// project files it imports, with their packages, constraints and
+// source-repository-package stanzas, cabal.project.freeze, the
 // build plan cabal wrote to dist-newstyle/cache/plan.json, stack.yaml and
 // stack.yaml.lock. The freeze file, the plan and the lock are often git-ignored, so
 // they are read from disk too.
@@ -162,16 +163,17 @@ func (r *resolver) readProject(dir string, read func(string) ([]byte, bool)) *pr
 			pin(name, c)
 		}
 	}
-	if src, ok := read(path.Join(dir, "cabal.project")); ok {
-		cp := readCabalProject(src)
+	for i, cp := range projectFiles(path.Join(dir, "cabal.project"), read) {
 		for name, c := range cp.constraints {
 			pin(name, c)
 		}
 		for _, s := range cp.repos {
-			p.repos[s.name] = s
+			if _, dup := p.repos[s.name]; !dup || i == 0 {
+				p.repos[s.name] = s
+			}
 		}
 		for _, m := range cp.members {
-			p.members = append(p.members, path.Join(dir, strings.TrimSuffix(m.text, "/")))
+			p.members = append(p.members, r.memberDirs(dir, m.text)...)
 		}
 	}
 	if src, ok := read(path.Join(dir, "dist-newstyle", "cache", "plan.json")); ok {
@@ -380,6 +382,8 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 		return r.pkgTarget(file, own, imp.Module, true)
 	case imp.Name == kindMember:
 		return r.member(file, imp.Module)
+	case imp.Name == kindInclude:
+		return r.include(file, imp.Module)
 	case imp.Name == kindRepo:
 		if p := r.projectOf(file); p != nil {
 			if s, ok := p.repos[imp.Module]; ok {
@@ -430,7 +434,8 @@ func originTarget(name, location, ref string) lang.Target {
 }
 
 // member resolves an entry of cabal.project's or stack.yaml's packages: a package
-// directory or .cabal file to its package description. Globs are not expanded.
+// directory or .cabal file to its package description. Globs are expanded by
+// Expand.
 func (r *resolver) member(file, entry string) lang.Target {
 	if strings.ContainsAny(entry, "*?[{") || strings.Contains(entry, "://") {
 		return lang.Target{}

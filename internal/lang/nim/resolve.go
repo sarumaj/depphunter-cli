@@ -21,6 +21,7 @@ type project struct {
 	atlas   []*locked // atlas.lock
 	pkgs    []*installed
 	srcRoot string
+	develop map[string]*project // nimble.develop: folded package name -> the repository's package
 }
 
 type resolver struct {
@@ -45,8 +46,8 @@ func readFile(abs string) []byte {
 }
 
 // newResolver reads the .nimble files and, beside them, nimble.lock,
-// atlas.lock, nimble's plain requires file, nimble.paths and what nimble and
-// Atlas installed; the search paths of nim.cfg and NimScript configurations;
+// atlas.lock, nimble's plain requires file, nimble.paths, nimble.develop and
+// what nimble and Atlas installed; the search paths of nim.cfg and NimScript configurations;
 // and the packages of the nimble directory (NIMBLE_DIR, else ~/.nimble) the
 // manifests name.
 //
@@ -114,6 +115,9 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 		}
 		return r.order[i].dir < r.order[j].dir
 	})
+	for _, p := range r.order {
+		p.develop = r.readDevelop(p.dir, onDisk)
+	}
 	for d := range r.dirs {
 		if path.Base(d) == "lib" && r.files[d+"/system.nim"] && r.dirs[d+"/pure"] {
 			r.stdRoots = append(r.stdRoots, d)
@@ -402,14 +406,27 @@ func (r *resolver) stdFile(module string, explicit bool) string {
 	return ""
 }
 
-// pkgModule resolves a module of a nimble package: the installed package that
-// has the module (authoritative), else the requirement or locked package its
+// pkgModule resolves a module of a nimble package: the repository's package
+// nimble.develop develops, the installed package that has the module
+// (authoritative), else the requirement or locked package its
 // first segment names, else an unresolved package of that name.
 //
 // Implements: REQ-NIM-007
 func (r *resolver) pkgModule(file, module string) lang.Target {
 	first, _, _ := strings.Cut(module, "/")
 	scope := r.scope(file)
+	// A package the project develops from a directory of the repository wins
+	// over what is installed.
+	for _, p := range scope {
+		if q := p.developed(first); q != nil {
+			for _, d := range []string{q.srcRoot, q.dir} {
+				if f := r.probe(d, module); f != "" {
+					return lang.Target{Local: f}
+				}
+			}
+			return lang.Target{Local: q.dir}
+		}
+	}
 	for _, p := range scope {
 		for _, ip := range p.pkgs {
 			if ip.modules[module] {
@@ -520,13 +537,17 @@ func (r *resolver) node(p *project, name string) (node string, d *dep, l, al *lo
 	return "", nil, nil, nil, false
 }
 
-// target is a package as project p requires and locks it: nimble.lock, else
-// atlas.lock, pins it, with the requirement as requested; else the
+// target is a package as project p requires and locks it: the directory of
+// the repository's package when nimble.develop develops it; else nimble.lock,
+// else atlas.lock, pins it, with the requirement as requested; else the
 // requirement's own pin rule; a package p does not know is unresolved unless
 // it is installed.
 //
 // Implements: REQ-NIM-006
 func (r *resolver) target(p *project, name string) lang.Target {
+	if q := p.developed(name); q != nil {
+		return lang.Target{Local: q.dir}
+	}
 	node, d, l, al, ok := r.node(p, name)
 	if !ok {
 		for _, ip := range p.pkgs {

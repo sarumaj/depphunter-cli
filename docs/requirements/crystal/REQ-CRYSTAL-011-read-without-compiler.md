@@ -13,9 +13,9 @@ verification:
 
 Crystal **shall** be read without running the compiler or shards: methods a
 macro defines (`def {{name.id}}`, `getter` of a macro argument) are not
-symbols, a require computed by a macro is not read, only the first branch
-of a macro `{% if %}` decides the nesting after it, the `CRYSTAL_PATH`
-environment variable is not read, `@[Link("ssl")]` library annotations are
+symbols, a require computed by a macro is not read, only the first branch of
+a macro `{% if %}` decides the nesting after it, a `CRYSTAL_PATH` directory
+outside the repository is not read, `@[Link("ssl")]` library annotations are
 not mapped to system libraries, and a shard is named by its `shard.yml` key,
 not its repository.
 

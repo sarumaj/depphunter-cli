@@ -16,9 +16,9 @@ imports and declarations of every CPP branch are read, Template Haskell and
 quasi-quoted code is not expanded, the layout rule is not applied (top-level
 declarations are those starting a line in the leftmost column), a module no
 project file declares is attributed to a package by a curated table and name
-heuristics, cabal globs in `packages:` are not expanded, conditionals of
-package descriptions are all taken, a Stackage snapshot is not fetched (its
-packages' versions are unknown offline), and Trivy has no Haskell package type.
+heuristics, conditionals of package descriptions are all taken, a Stackage
+snapshot is not fetched (its packages' versions are unknown offline), and
+Trivy has no Haskell package type.
 
 ## Rationale
 

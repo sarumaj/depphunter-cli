@@ -966,7 +966,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Hex                 | `mix.lock`, `rebar.lock`, Gleam's `manifest.toml`, a bare `1.2.3`, `== 1.2.3`, a git `ref` commit                                                                                                                                     | `~>`, `>=`, `or` and `and` requirements, a git branch or tag                                                                                              |
 | CRAN, Bioconductor  | `renv.lock`, `packrat.lock` (a GitHub package by its commit), `(== 1.2.3)`                                                                                                                                                            | `(>= 1.2)`, no version, a `Remotes` branch or tag                                                                                                         |
 | Hackage             | cabal's `plan.json`, `cabal.project.freeze`, `stack.yaml.lock`, `extra-deps`, `==1.2.3`, a repository commit                                                                                                                          | `^>=` and other ranges, no version, a repository tag or branch                                                                                            |
-| Terraform modules   | a registry `version` of `1.2.3` or `= 1.2.3`, a git `ref` commit                                                                                                                                                                      | `~>` and other ranges, no version, a git tag or branch, no ref, an archive                                                                                |
+| Terraform modules   | a registry `version` of `1.2.3` or `= 1.2.3`, the version `terraform init` installed (`.terraform/modules/modules.json`), a git `ref` commit                                                                                          | `~>` and other ranges, no version, a git tag or branch, no ref, an archive                                                                                |
 | Terraform providers | `.terraform.lock.hcl` (the root module's, for the modules it calls), a single exact constraint                                                                                                                                        | `~>`, `>=` and other constraints, no constraint                                                                                                           |
 | jsonnet-bundler     | `jsonnetfile.lock.json` (a nested project without a lock: the lock that installs it), a commit as `version`                                                                                                                           | a branch (`main`, `master`) or no `version`; a tag (`v1.2.3`) is shown, neither                                                                           |
 | CUE modules         | the exact `v` of a `cue.mod/module.cue` dependency (the modules system selects versions as Go does)                                                                                                                                   | a dependency without `v`                                                                                                                                  |
@@ -1060,6 +1060,7 @@ machine's package cache); nothing is fetched, and the analysis remains offline.
 | `metadata.json` in r10k's `modules/`       | an installed Puppet module's `dependencies`        |
 | `.asd` in `.qlot/`, ocicl's `systems/`     | an installed system's `:depends-on`                |
 | `dependencies/<name>-<version>/` (Soldeer) | an installed package's `[dependencies]`            |
+| `.terraform/modules/modules.json`          | an installed module's own module calls             |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -1081,49 +1082,49 @@ graph, and answer offline), container images, a Composer, Bundler, Mix or R
 project that commits no lock, pub, whose `pubspec.lock` is a flat list, rebar3,
 whose `rebar.lock` records only a depth, and a Haskell project without cabal's
 build plan on disk (`cabal.project.freeze` and `stack.yaml.lock` list versions
-only), Terraform registry modules, pods no `Podfile.lock` records, rocks no
-LuaRocks tree of the repository holds (`luarocks.lock` is a flat list), CPAN
-distributions no `cpanfile.snapshot` records, opam packages no `dune.lock/`
-records (an `*.opam.locked` is a flat list) and Julia packages no
-`Manifest.toml` records, Gleam packages no `manifest.toml` records, Elm packages
-the compiler has not installed in `ELM_HOME` (an application's `elm.json` lists
-indirect packages flat), PureScript packages no `spago.lock` records and spago
-has not installed into `.spago/` (a `spago.dhall` project's package set is
-remote), dub packages dub has not fetched onto this machine
-(`dub.selections.json` is a flat list), Alire crates no `alire.lock` records and
-Alire has not fetched, Maven artifacts of Java, Kotlin, Scala and Clojure builds
-(Maven, Gradle without its lock files, sbt, tools.deps and Leiningen), and Bazel
-modules (a lock file since Bazel 7.2 records versions only) — require
-`--online`, described below; the PowerShell Gallery, vcpkg, Conan 2 (whose lock
-is a flat list), Bioconductor packages no lock records, Swift packages that
-SwiftPM has not checked out under `.build` (`Package.resolved` is flat as well)
-and Terraform modules fetched from git or an archive are not resolved beyond the
-first level at present, and neither are Buf Schema Registry modules: `buf.lock`
-is a flat list, and the registry's API is not a package index depphunter asks.
-Content a CMake build fetches is not resolved beyond the first level either, nor
-are Carthage dependencies not checked out into `Carthage/Checkouts/`
-(`Cartfile.resolved` is flat), Wally packages no `wally.lock` records and Zig
-packages Zig has not fetched into `zig-pkg/` or its global cache (there is no
-Zig registry for `--online` to ask), nor Bazel's WORKSPACE repositories, nor niv
-and npins sources (their `sources.json` is flat), nor Crystal shards shards has
-not installed into `lib/` (`shard.lock` is flat, and shards are git repositories
-with no index to ask), nor the GitHub, git and HTTP files Paket fetches, nor fpm
-packages fpm has not fetched into `build/dependencies/` (fpm keeps no lock file,
-and its registry has no dependency API), nor haxelib libraries that neither lix
-pins nor haxelib installed (lib.haxe.org offers no JSON API to ask), nor Racket
-packages (raco keeps no lock file, and neither installed packages nor the
-package catalog are read). Quicklisp projects that neither Qlot installed into
-`.qlot/` nor ocicl into `systems/` need `--online` too: `qlfile.lock` and
-`ocicl.csv` are flat lists. A git submodule of a Foundry project depends on the
-submodules of its own `.gitmodules` when it is checked out; Soldeer packages are
-followed only where Soldeer installed them into `dependencies/` (`soldeer.lock`
-is flat, and Soldeer's registry is not asked), nor are nimble packages no
-`nimble.lock` records and nothing installed (`atlas.lock` is flat, and the
-package list has no dependencies to ask), nor CUE modules missing from cue's
-module cache on this machine (`$CUE_CACHE_DIR`, else `cue` in the user's cache
-directory), nor remote Dhall imports (they are not fetched), nor Puppet modules
-r10k has not installed (the Forge is not asked). A Terraform provider depends on
-nothing.
+only), Terraform registry modules `terraform init` has not installed, pods no
+`Podfile.lock` records, rocks no LuaRocks tree of the repository holds
+(`luarocks.lock` is a flat list), CPAN distributions no `cpanfile.snapshot`
+records, opam packages no `dune.lock/` records (an `*.opam.locked` is a flat
+list) and Julia packages no `Manifest.toml` records, Gleam packages no
+`manifest.toml` records, Elm packages the compiler has not installed in
+`ELM_HOME` (an application's `elm.json` lists indirect packages flat),
+PureScript packages no `spago.lock` records and spago has not installed into
+`.spago/` (a `spago.dhall` project's package set is remote), dub packages dub
+has not fetched onto this machine (`dub.selections.json` is a flat list), Alire
+crates no `alire.lock` records and Alire has not fetched, Maven artifacts of
+Java, Kotlin, Scala and Clojure builds (Maven, Gradle without its lock files,
+sbt, tools.deps and Leiningen), and Bazel modules (a lock file since Bazel 7.2
+records versions only) — require `--online`, described below; the PowerShell
+Gallery, vcpkg, Conan 2 (whose lock is a flat list), Bioconductor packages no
+lock records, Swift packages that SwiftPM has not checked out under `.build`
+(`Package.resolved` is flat as well) and Terraform modules fetched from git or
+an archive are not resolved beyond the first level at present, and neither are
+Buf Schema Registry modules: `buf.lock` is a flat list, and the registry's API
+is not a package index depphunter asks. Content a CMake build fetches is not
+resolved beyond the first level either, nor are Carthage dependencies not
+checked out into `Carthage/Checkouts/` (`Cartfile.resolved` is flat), Wally
+packages no `wally.lock` records and Zig packages Zig has not fetched into
+`zig-pkg/` or its global cache (there is no Zig registry for `--online` to ask),
+nor Bazel's WORKSPACE repositories, nor niv and npins sources (their
+`sources.json` is flat), nor Crystal shards shards has not installed into `lib/`
+(`shard.lock` is flat, and shards are git repositories with no index to ask),
+nor the GitHub, git and HTTP files Paket fetches, nor fpm packages fpm has not
+fetched into `build/dependencies/` (fpm keeps no lock file, and its registry has
+no dependency API), nor haxelib libraries that neither lix pins nor haxelib
+installed (lib.haxe.org offers no JSON API to ask), nor Racket packages (raco
+keeps no lock file, and neither installed packages nor the package catalog are
+read). Quicklisp projects that neither Qlot installed into `.qlot/` nor ocicl
+into `systems/` need `--online` too: `qlfile.lock` and `ocicl.csv` are flat
+lists. A git submodule of a Foundry project depends on the submodules of its own
+`.gitmodules` when it is checked out; Soldeer packages are followed only where
+Soldeer installed them into `dependencies/` (`soldeer.lock` is flat, and
+Soldeer's registry is not asked), nor are nimble packages no `nimble.lock`
+records and nothing installed (`atlas.lock` is flat, and the package list has no
+dependencies to ask), nor CUE modules missing from cue's module cache on this
+machine (`$CUE_CACHE_DIR`, else `cue` in the user's cache directory), nor remote
+Dhall imports (they are not fetched), nor Puppet modules r10k has not installed
+(the Forge is not asked). A Terraform provider depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1982,8 +1983,11 @@ in a package manifest. depphunter reads `.tf` and `.tofu` files (and their
 
 Resources, data sources, modules, variables, outputs, locals and provider
 configurations become the file's symbols. Only a commit pins a git module; a
-registry module is pinned by an exact `version`. Nothing is evaluated, so a
-source or version computed from variables is not followed.
+registry module is pinned by an exact `version`, else by the version
+`terraform init` installed for the call (`.terraform/modules/modules.json`,
+read from disk), whose entries `--resolve-depth` also follows to the
+installed module's own calls. Nothing is evaluated, so a source or version
+computed from variables is not followed.
 
 ### Jsonnet and CUE
 
@@ -2281,7 +2285,10 @@ packages declare ranges; the **Elm packages** island names them
   dependencies alike — is an import of it, and each source directory an edge
   to that directory. An application's exact versions pin; a package's ranges
   (`1.0.0 <= v < 2.0.0`) float. `--resolve-depth` follows the `elm.json` of
-  packages installed in `ELM_HOME`, and `--online` asks package.elm-lang.org.
+  packages installed in `ELM_HOME`, and `--online` asks
+  package.elm-lang.org. For a package, the compiler `elm-tooling.json` pins
+  decides which `ELM_HOME` directory is looked in first; the other tools it
+  pins (elm-format, elm-json, elm-test-rs) are programs, not dependencies.
 
 Functions and values, types and type aliases, the constructors of custom types
 (`Msg.Clicked`), ports and `infix` operators are the symbols. OSV has no Elm
@@ -2340,18 +2347,20 @@ depphunter reads `.cr` files, `shard.yml`, `shard.lock` and
 `shard.yml`, where shards installs, is not read as source (a `lib/`
 directory elsewhere is), and neither is the compiler's `.crystal/` cache:
 
-- **Requires**: `require "./x"` and `require "../x"` are edges to `x.cr`
-  (or `x/x.cr`) relative to the file; `require "./dir/*"` to each `.cr`
-  file of `dir` and `require "./dir/**"` to each below it. A require by
-  name is looked up the way the compiler's `CRYSTAL_PATH` does: a shard
-  installed in `lib/` (the directory is the shard), then the project's own
-  files (a shard requiring itself by name, as its specs and `bin/`
-  templates do; Crystal's standard library requiring itself from `src/`),
-  then a shard the manifests name, then the standard library by its first
-  segment (`json`, `http/client`, `digest/sha256`: a hidden **Crystal
-  standard library** island), then a declared shard spelled with `-`/`_`
-  or a `crystal-` prefix (`sqlite3` is `crystal-sqlite3`). Other names are
-  unresolved shards named by their first segment.
+- **Requires**: `require "./x"` and `require "../x"` are edges to `x.cr` (or
+  `x/x.cr`) relative to the file; `require "./dir/*"` to each `.cr` file of
+  `dir` and `require "./dir/**"` to each below it. A require by name is
+  looked up the way the compiler's `CRYSTAL_PATH` does: a shard installed in
+  `lib/` (the directory is the shard), then the project's own files (a shard
+  requiring itself by name, as its specs and `bin/` templates do; Crystal's
+  standard library requiring itself from `src/`), then the directories of
+  the repository `CRYSTAL_PATH` lists (relative to the repository's root, or
+  absolute inside it), by the same rules as `lib/`, then a shard the
+  manifests name, then the standard library by its first segment (`json`,
+  `http/client`, `digest/sha256`: a hidden **Crystal standard library**
+  island), then a declared shard spelled with `-`/`_` or a `crystal-` prefix
+  (`sqlite3` is `crystal-sqlite3`). Other names are unresolved shards named
+  by their first segment.
 - **Manifests**: every dependency and development dependency of a
   `shard.yml` (`github:`, `gitlab:`, `bitbucket:`, `codeberg:`, `git:`,
   `path:`) is an import of it, and every target's `main:` file an edge; a
@@ -2540,15 +2549,17 @@ haxelib repository (`.haxelib/`) is not read as source:
   qualified type names in code (`haxe.Json.parse(...)`) are edges to the
   module's file, found by the package every module of the repository
   declares, whatever the class paths; `import a.b.*` is an edge to every
-  module of the package. The standard library (`haxe`, `sys`, `js`,
-  `flash`, `cpp`, `hl`, the other targets' packages and top-level types such
-  as `StringTools` and `Lambda`) is a hidden **Haxe standard library**
-  island. Another module goes to the library haxelib or lix installed that
-  has it, else to the declared library its package spells (`tink.core` is
+  module of the package. The standard library (`haxe`, `sys`, `js`, `flash`,
+  `cpp`, `hl`, the other targets' packages and top-level types such as
+  `StringTools` and `Lambda`) is a hidden **Haxe standard library** island.
+  Another module goes to the library haxelib or lix installed that has it,
+  else to the declared library its package spells (`tink.core` is
   `tink_core`), a curated table's library (`hxd` is heaps, `js.node`
   hxnodejs, `haxe.ui` haxeui-core), else to an unresolved library; nothing
   in comments, strings, interpolations or regular expressions is read, and
-  every `#if` branch counts.
+  every `#if` branch counts. Each module has an edge to the `import.hx`
+  files the compiler applies to it: in its directory and those above, up to
+  its class path.
 - **Build files**: `.hxml` files' `-lib` (`-L`, `--library`), `-cp`,
   `-main`, root modules, `-resource`, included `.hxml` files and the classes
   `--macro` calls name, over all `--next` sections; `haxelib.json`'s
@@ -2787,19 +2798,19 @@ read as source:
 
 - **Imports**: `import`, `from ... import` and `include` in every form
   (`import a, b/c`, `std/[os, strutils]`, `pkg/x`, `"x.nim"`, `as`,
-  `except`), in every `when` branch, resolve as the compiler finds a
-  module: `./x` and `../x` beside the importing file; another path beside
-  it, then under the package's `srcDir`, then under the `--path`s of the
-  `nim.cfg` and `config.nims` files of its directory and those above it;
-  `std/x` and the standard library's own module names (`os`, `tables`,
-  `asyncdispatch`) are a hidden **Nim standard library** island (in Nim's
-  own repository, the files of its `lib/`). Other names, and every
-  `pkg/x`, are the nimble package whose installed files have the module
+  `except`), in every `when` branch, resolve as the compiler finds a module:
+  `./x` and `../x` beside the importing file; another path beside it, then
+  under the package's `srcDir`, then under the `--path`s of the `nim.cfg`
+  and `config.nims` files of its directory and those above it; `std/x` and
+  the standard library's own module names (`os`, `tables`, `asyncdispatch`)
+  are a hidden **Nim standard library** island (in Nim's own repository, the
+  files of its `lib/`). Other names, and every `pkg/x`, are the package of
+  the repository `nimble.develop` (or a develop file it includes) develops
+  in place, else the nimble package whose installed files have the module
   (`nimbledeps/pkgs2/`, Atlas's checkouts, `nimble.paths`, the nimble
-  directory `~/.nimble` or `NIMBLE_DIR` for the packages the manifests
-  name: sdl2_nim ships `sdl2`), else the requirement their first segment
-  names (`nim-widgets` is `widgets`), else an unresolved package of that
-  name.
+  directory `~/.nimble` or `NIMBLE_DIR` for the packages the manifests name:
+  sdl2_nim ships `sdl2`), else the requirement their first segment names
+  (`nim-widgets` is `widgets`), else an unresolved package of that name.
 - **Manifests**: every `requires` and `taskRequires` of a `.nimble` file
   (also in `when` branches, `feature` blocks and tasks) is an import of its
   package, and every `bin` an edge to its main module; `nim` itself is the
@@ -2808,9 +2819,10 @@ read as source:
   `== 1.2.3`, a bare `1.2.3` and a `#<commit>` pin, a `#tag` is shown,
   neither pinned nor floating, and a range, `#head`, a branch or no version
   float. A package from a git server other than GitHub, GitLab, Bitbucket,
-  Codeberg or sourcehut carries its URL as its origin. `--resolve-depth`
-  follows `nimble.lock`'s `dependencies` and installed packages' `.nimble`
-  files.
+  Codeberg or sourcehut carries its URL as its origin, and one
+  `nimble.develop` develops from a directory of the repository is an edge to
+  that directory. `--resolve-depth` follows `nimble.lock`'s `dependencies`
+  and installed packages' `.nimble` files.
 
 Top-level routines (`proc`, `func`, `method`, `iterator`, `converter`,
 `template`, `macro`), types (objects as classes, concepts as interfaces,
@@ -3407,8 +3419,11 @@ by matching the module's name against the packages `build-depends` declares
 floats, and a package a Stackage snapshot fixes shows the snapshot's name, as
 its version is not known offline. `build-depends`, hpack dependencies,
 `cabal.project` and `stack.yaml` packages and extra-deps are imports of what
-they name. Haskell is read by a small lexer; the tree-sitter grammar was
-several times slower and lost 18% of the files measured to CPP and extensions.
+they name (a `packages:` glob such as `libs/*/` of every package it matches),
+and the local project files `cabal.project` imports (`import:`) add their
+packages and constraints. Haskell is read by a small lexer; the tree-sitter
+grammar was several times slower and lost 18% of the files measured to CPP and
+extensions.
 
 Lua, LuaJIT, Luau (Roblox's, in `.luau` and `.lua` files) and Teal files are
 read for their `require` calls, `dofile` and `loadfile`. A module resolves to

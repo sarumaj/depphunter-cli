@@ -4,6 +4,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -68,6 +69,13 @@ func newResolver(root string, all []*scan.File, home string) *resolver {
 			continue
 		}
 		dir := path.Dir(f.Path)
+		if _, exact := parseVersion(m.elmVersion); !exact {
+			// A package allows a range of compilers: the one elm-tooling
+			// installs decides which ELM_HOME directory holds its packages.
+			if v := toolingElm(root, dir); v != "" {
+				m.elmVersion = v
+			}
+		}
 		p := &project{dir: dir, m: m, tests: path.Join(dir, "tests"), modules: map[string]string{}}
 		dirs := m.srcDirs
 		if m.kind == "package" {
@@ -388,8 +396,8 @@ func (r *resolver) installedVersion(m *manifest, d *dependency) string {
 func elmVersions(m *manifest) []string {
 	out := []string{"0.19.1", "0.19.0"}
 	if m != nil {
-		if _, ok := parseVersion(m.elmVersion); ok && m.elmVersion != out[0] && m.elmVersion != out[1] {
-			out = append([]string{m.elmVersion}, out...)
+		if _, ok := parseVersion(m.elmVersion); ok {
+			out = append([]string{m.elmVersion}, slices.DeleteFunc(out, func(v string) bool { return v == m.elmVersion })...)
 		}
 	}
 	return out
