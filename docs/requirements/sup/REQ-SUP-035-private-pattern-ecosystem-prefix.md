@@ -47,8 +47,10 @@ inputs and pinned sources) and `nixpkgs` (nixpkgs packages), Elm's
 Haxe's `haxelib`, Alire's `alire`, Racket's `raco` (catalog, git and
 PLaneT packages), Common Lisp's `quicklisp` (Quicklisp projects and
 Qlot's git sources), Solidity's `soldeer` (Soldeer packages) and
-`git-submodule` (git submodules, named by repository), and Nim's `nimble`
-(nimble packages, a URL requirement named by its repository).
+`git-submodule` (git submodules, named by repository), Nim's `nimble`
+(nimble packages, a URL requirement named by its repository), Jsonnet's
+`jsonnet-bundler` (jb dependencies, named by repository and
+subdirectory), and CUE's `cue` (CUE modules).
 
 A Clojure dependency is a Maven package named `group:artifact`; a `maven:`
 (or unscoped) pattern matches it by its group (`maven:com.acme.*` matches

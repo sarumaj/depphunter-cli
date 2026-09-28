@@ -1,0 +1,3 @@
+package lib
+
+#Thing: string

@@ -144,6 +144,8 @@ The server **shall** ...
 | `commonlisp` | The Common Lisp plugin: sources, ASDF systems, packages, Qlot's qlfile and lock, and ocicl.csv.         |
 | `solidity`   | The Solidity plugin: imports, remappings, git submodules, Soldeer packages and Hardhat's npm packages.  |
 | `nim`        | The Nim plugin: modules, NimScript, .nimble files, nimble.lock, atlas.lock and installed packages.      |
+| `jsonnet`    | The Jsonnet plugin: imports, the library path, jsonnet-bundler's manifest, lock and vendor/.            |
+| `cue`        | The CUE plugin: packages, cue.mod/module.cue dependencies, generated and vendored trees in cue.mod.     |
 | `terraform`  | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                    |
 | `proto`      | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.            |
 | `shell`      | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                     |
@@ -369,6 +371,13 @@ requirements of type `limitation` in their scopes:
   not executed, every `when` branch counts, a configuration's search paths
   apply to its directory and below, `nimble.develop` is not read, and
   nothing is asked of the package list (no `--online`).
+- Jsonnet is read without evaluating it or running jb: Tanka's and a
+  tool's `-J` library paths are not known, and jsonnet-bundler has no
+  registry to ask (no `--online`).
+- CUE is read without running `cue`: a package's files in parent
+  directories are not linked, build attributes are not evaluated, module
+  dependencies' own dependencies are not read, and the central registry
+  is not asked (no `--online`).
 - Bun's binary `bun.lockb` is not read: without a `bun.lock` or a `yarn.lock`
   beside it, a Bun project's npm packages keep their declared ranges.
 - pip's keyring is not consulted for credentials.

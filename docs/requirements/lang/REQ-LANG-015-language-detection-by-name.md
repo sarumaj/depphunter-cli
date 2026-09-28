@@ -44,7 +44,9 @@ Qlot's `qlfile` and `qlfile.lock` (Qlot) and ocicl's `ocicl.csv` (ocicl),
 Solidity's `.sol`, Foundry's `foundry.toml` and `remappings.txt` (Foundry)
 and Soldeer's `soldeer.lock` (Soldeer), Nim's `.nim`, `.nims`, `.nimble`
 and `nim.cfg` (Nim), nimble's `nimble.lock` (Nimble) and Atlas's
-`atlas.lock` (Atlas),
+`atlas.lock` (Atlas), Jsonnet's `.jsonnet` and `.libsonnet`,
+jsonnet-bundler's `jsonnetfile.json` and `jsonnetfile.lock.json`
+(jsonnet-bundler), CUE's `.cue`,
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
@@ -152,3 +154,6 @@ Objective-C from MATLAB, Mercury and C.
     are Foundry and `soldeer.lock` is Soldeer.
 17. `src/shop.nim`, `config.nims`, `shop.nimble` and `nim.cfg` are Nim,
     `nimble.lock` is Nimble and `atlas.lock` is Atlas.
+18. `main.jsonnet` and `lib/k.libsonnet` are Jsonnet, `jsonnetfile.json`
+    and `jsonnetfile.lock.json` are jsonnet-bundler, and `schema/a.cue` is
+    CUE.

@@ -165,7 +165,8 @@ func walkFiles(ctx context.Context, root string) ([]string, error) {
 // beside a foundry.toml, and Hardhat's artifacts/, cache/ and
 // typechain-types/ beside a hardhat.config.*, and the packages Atlas clones
 // into deps/ beside a .nimble file or an Atlas configuration (a marker with
-// a wildcard is a glob).
+// a wildcard is a glob), and CUE's dependency trees pkg/, gen/ and usr/ in a
+// cue.mod directory (beside its module.cue).
 // Elsewhere an output/, lib/ or packages/ directory may well be source.
 var generatedBeside = map[string][]string{
 	"output": {"spago.yaml", "spago.dhall"},
@@ -191,6 +192,11 @@ var generatedBeside = map[string][]string{
 	// Atlas clones a Nim project's dependencies into deps/ (its atlas.config
 	// in the project or in deps/).
 	"deps": {"*.nimble", "atlas.config", "atlas.workspace", "deps/atlas.config"},
+	// CUE vendors modules into cue.mod/pkg, `cue get go` generates into
+	// cue.mod/gen, and cue.mod/usr holds what augments them.
+	"pkg": {"module.cue"},
+	"gen": {"module.cue"},
+	"usr": {"module.cue"},
 }
 
 // besideManifest reports whether the directory name in dir is such a directory.

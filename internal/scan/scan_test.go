@@ -82,8 +82,10 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 // foundry.toml what Foundry and Soldeer installed and forge built, and
 // artifacts/, cache/ and typechain-types/ beside a hardhat.config.* what
 // Hardhat compiled, and deps/ beside a .nimble file or with Atlas's
-// atlas.config what Atlas cloned; another output/, lib/, packages/, alire/,
-// systems/, cache/, artifacts/ or deps/ directory is kept.
+// atlas.config what Atlas cloned, and pkg/, gen/ and usr/ beside a CUE
+// module.cue what CUE vendored and generated; another output/, lib/,
+// packages/, alire/, systems/, cache/, artifacts/, deps/ or pkg/ directory
+// is kept.
 //
 // Verifies: REQ-LANG-018
 func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
@@ -125,6 +127,11 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 		"atl/deps/atlas.config":                                 "{\"deps\": \"deps\"}\n",
 		"atl/deps/sat/sat.nim":                                  "proc solve*() = discard\n",
 		"make/deps/app.d":                                       "app.o: app.c\n",
+		"cue/cue.mod/module.cue":                                "module: \"example.com/x\"\n",
+		"cue/cue.mod/gen/k8s.io/api/core/v1/types_go_gen.cue":   "package v1\n",
+		"cue/cue.mod/pkg/github.com/a/b/b.cue":                  "package b\n",
+		"cue/cue.mod/usr/k8s.io/api/core/v1/custom.cue":         "package v1\n",
+		"web/pkg/api/api.go":                                    "package api\n",
 	} {
 		abs := filepath.Join(root, p)
 		os.MkdirAll(filepath.Dir(abs), 0o755)
@@ -138,9 +145,9 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 	for _, f := range got {
 		paths = append(paths, f.Path)
 	}
-	want := []string{"app/spago.yaml", "app/src/Main.purs", "cl/ocicl.csv", "crate/alire.toml", "docs/alire/intro.md", "fs/paket.dependencies",
+	want := []string{"app/spago.yaml", "app/src/Main.purs", "cl/ocicl.csv", "crate/alire.toml", "cue/cue.mod/module.cue", "docs/alire/intro.md", "fs/paket.dependencies",
 		"game/systems/physics.lisp", "hh/hardhat.config.ts", "legacy/spago.dhall", "make/deps/app.d", "nim/shop.nimble", "report/output/summary.md", "shop/shard.yml",
-		"site/artifacts/report.md", "site/cache/page.html", "sol/foundry.toml", "sol/src/Counter.sol", "tools/lib/helper.cr", "web/packages/app.fs"}
+		"site/artifacts/report.md", "site/cache/page.html", "sol/foundry.toml", "sol/src/Counter.sol", "tools/lib/helper.cr", "web/packages/app.fs", "web/pkg/api/api.go"}
 	if !reflect.DeepEqual(paths, want) {
 		t.Errorf("got %v, want %v", paths, want)
 	}

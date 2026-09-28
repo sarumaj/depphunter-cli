@@ -1,0 +1,3 @@
+{
+  labels(name):: { app: name },
+}

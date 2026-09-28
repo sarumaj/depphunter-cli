@@ -198,6 +198,7 @@ code. The page served is identical in both cases.
   [The resolution report](#the-resolution-report) ·
   [CI pipelines](#ci-pipelines) ·
   [Infrastructure as code](#infrastructure-as-code) ·
+  [Jsonnet and CUE](#jsonnet-and-cue) ·
   [Nix](#nix) · [Gleam](#gleam) · [Elm](#elm) · [PureScript](#purescript) ·
   [Crystal](#crystal) · [F# and Paket](#f-and-paket) · [D and dub](#d-and-dub) ·
   [Fortran and fpm](#fortran-and-fpm) ·
@@ -828,8 +829,9 @@ install are asked about as such), Nix flake inputs, nixpkgs packages, Elm
 packages, PureScript packages, Crystal shards, the GitHub, git and HTTP
 dependencies Paket fetches, dub packages, fpm packages, haxelib libraries,
 Alire crates, Racket packages, Quicklisp projects, Soldeer packages, git
-submodules (a Hardhat project's npm packages are asked about as npm) or
-nimble packages.
+submodules (a Hardhat project's npm packages are asked about as npm),
+nimble packages, jsonnet-bundler packages or CUE modules (the Go modules CUE
+definitions were generated from are asked about as Go).
 Floating packages are not queried, since they resolve to a different version
 on the next installation. Answers are cached for six hours. `--no-vulns`
 disables all of this.
@@ -927,6 +929,8 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Hackage             | cabal's `plan.json`, `cabal.project.freeze`, `stack.yaml.lock`, `extra-deps`, `==1.2.3`, a repository commit                                                 | `^>=` and other ranges, no version, a repository tag or branch                                                                     |
 | Terraform modules   | a registry `version` of `1.2.3` or `= 1.2.3`, a git `ref` commit                                                                                             | `~>` and other ranges, no version, a git tag or branch, no ref, an archive                                                         |
 | Terraform providers | `.terraform.lock.hcl` (the root module's, for the modules it calls), a single exact constraint                                                               | `~>`, `>=` and other constraints, no constraint                                                                                    |
+| jsonnet-bundler     | `jsonnetfile.lock.json` (a nested project without a lock: the lock that installs it), a commit as `version`                                                  | a branch (`main`, `master`) or no `version`; a tag (`v1.2.3`) is shown, neither                                                    |
+| CUE modules         | the exact `v` of a `cue.mod/module.cue` dependency (the modules system selects versions as Go does)                                                          | a dependency without `v`                                                                                                           |
 | Buf Schema Registry | `buf.lock`, a commit ref (`:0123…`), a plugin's exact version                                                                                                | a label, tag or branch ref, no ref, a plugin without a version                                                                     |
 | CMake FetchContent  | a `GIT_TAG` commit, a `URL_HASH`, an archive of a commit                                                                                                     | a branch `GIT_TAG` (`main`, `origin/…`), no `GIT_TAG`, a download without a hash                                                   |
 | CocoaPods           | `Podfile.lock` (a git pod by its checkout commit), a bare `'1.2.3'`, `'= 1.2.3'`, a `:commit`                                                                | `~>`, `>=` and other ranges, no version, a `:branch`, a git pod without a reference                                                |
@@ -1005,6 +1009,7 @@ and the analysis remains offline.
 | `alire.toml` of crates Alire fetched      | a fetched crate's `depends-on`                     |
 | `nimble.lock` (nimble)                    | each package's `dependencies`                      |
 | `.nimble` of installed nimble packages    | an installed package's `requires`                  |
+| `jsonnetfile.json` in jb's `vendor/`      | an installed package's `dependencies`              |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -1058,7 +1063,8 @@ depends on the submodules of its own `.gitmodules` when it is checked out;
 Soldeer packages are not followed (`soldeer.lock` is flat, and Soldeer's
 registry is not asked), nor are nimble packages no `nimble.lock` records
 and nothing installed (`atlas.lock` is flat, and the package list has no
-dependencies to ask). A Terraform provider depends on nothing.
+dependencies to ask), nor CUE modules (their own `module.cue` lives in the
+module cache, which is not read). A Terraform provider depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1247,7 +1253,8 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:`, `bazel-repo:`, `nix:`,
 `nixpkgs:`, `elm:`, `purescript:`, `shards:`, `paket:`, `dub:`, `fpm:`,
 `fortran-external:`, `haxelib:`, `alire:`, `raco:`, `quicklisp:`,
-`soldeer:`, `git-submodule:` or `nimble:` — restricts it to that ecosystem.
+`soldeer:`, `git-submodule:`, `nimble:`, `jsonnet-bundler:` or `cue:` —
+restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1473,6 +1480,61 @@ Resources, data sources, modules, variables, outputs, locals and provider
 configurations become the file's symbols. Only a commit pins a git module; a
 registry module is pinned by an exact `version`. Nothing is evaluated, so a
 source or version computed from variables is not followed.
+
+### Jsonnet and CUE
+
+Jsonnet and CUE generate the configuration that Kubernetes, Grafana and
+Prometheus then run, and their libraries come from git repositories and
+module registries that no other manifest lists.
+
+**Jsonnet** libraries are installed by jsonnet-bundler (`jb`) into
+`vendor/`; the **jsonnet-bundler packages** island names each dependency by
+its repository and subdirectory
+(`github.com/grafana/jsonnet-libs/ksonnet-util`). depphunter reads
+`.jsonnet` and `.libsonnet` files, `jsonnetfile.json` and
+`jsonnetfile.lock.json`; what `jb install` wrote into `vendor/` beside a
+`jsonnetfile.json` is not read as source:
+
+- **Imports**: `import`, `importstr` and `importbin` resolve as jsonnet
+  finds the file: relative to the importing file, then in the `vendor/` and
+  `lib/` directories of the jsonnet-bundler projects above it (nearest
+  first), then `JSONNET_PATH`, then under the importer's ancestors (a tool
+  run with `-J` at a parent directory). A file found in `vendor/` belongs
+  to the dependency that installed it, by its full path
+  (`github.com/org/repo/subdir/...`) or its legacy link (`vendor/<name>`:
+  the `name` field, else the subdirectory's last element); with nothing
+  installed, `jsonnetfile.json` names the package the same way, and a
+  local source leads to its files.
+- **Manifests**: every dependency of `jsonnetfile.json` and entry of
+  `jsonnetfile.lock.json` is an import of its package. The lock pins (the
+  declared version shown as requested); without it a commit pins, a tag is
+  shown, neither pinned nor floating, and a branch floats. A nested project
+  without a lock (kube-prometheus's library) is pinned by the lock that
+  installs it. `--resolve-depth` follows the `jsonnetfile.json` of
+  installed packages.
+
+The file's leading `local`s and the fields of the object it returns are
+the symbols; imports in comments, strings and `|||` text blocks are not
+read.
+
+**CUE** packages are directories of a module (`cue.mod/module.cue`). The
+**CUE modules** island holds the dependencies `module.cue` declares
+(`deps: "github.com/x/y@v0": v: "v0.3.1"`, named without the major
+version and pinned by `v`, since the modules system selects exact
+versions), the modules vendored the old way into `cue.mod/pkg`, and what
+`cue get` generated from other sources; CUE's builtin packages (`strings`,
+`encoding/json`, `tool/exec`) form a hidden **CUE standard library**. An
+import of the module's own path links to every file of that package in its
+directory. What `cue get go` generated into `cue.mod/gen` (and
+`cue.mod/usr` augments) is linked to the **Go module** `go.mod` requires
+for it — the same node the Go plugin draws — to the Go standard library,
+or to the module's own Go package directory. Files under `cue.mod/pkg`,
+`cue.mod/gen` and `cue.mod/usr` are not read as source. The package clause,
+top-level definitions (`#Name`) and fields are the symbols.
+
+OSV has no Jsonnet or CUE ecosystem, jsonnet-bundler has no registry, and
+CUE's central registry is an OCI registry that `--online` does not read, so
+neither kind of package is asked about.
 
 ### Nix
 
@@ -2264,6 +2326,8 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | R                       | `R --slave -e languageserver::run()`                                                         |
 | Haskell                 | `haskell-language-server-wrapper` or `haskell-language-server`                               |
 | Terraform / OpenTofu    | `terraform-ls serve` or `tofu-ls serve`                                                      |
+| Jsonnet                 | `jsonnet-language-server`                                                                    |
+| CUE                     | `cue lsp`                                                                                    |
 | Protocol Buffers        | `buf lsp serve`, `bufls serve` or `protols`                                                  |
 | Shell (sh, Bash, bats)  | `bash-language-server start`                                                                 |
 | CMake                   | `neocmakelsp --stdio` or `cmake-language-server`                                             |
@@ -2348,6 +2412,8 @@ The JSON and GraphML exports include the reference edges.
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                                                       | GitHub Actions, GitLab CI, Container images                                |
 | Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                                                                  | Buf Schema Registry, Protobuf well-known types                             |
 | Terraform / OpenTofu    | `module` sources to local directories, registry and remote modules; `required_providers`, `provider` blocks and resource type prefixes to providers, pinned by `.terraform.lock.hcl`; references to what other files of the module declare; `file()`/`templatefile()` paths; Terragrunt `source`, `dependency` and `find_in_parent_folders()`                                                                                                                                                                                                      | Terraform modules, Terraform providers                                     |
+| Jsonnet                 | `import`, `importstr`, `importbin` relative to the importer, then the `vendor/` and `lib/` of the jsonnet-bundler projects above it, `JSONNET_PATH` and the importer's ancestors; files jb installed (full path or legacy link) and paths `jsonnetfile.json` names to their dependency (repository + subdir), local sources to their files; `jsonnetfile.json` and `jsonnetfile.lock.json` entries                                                                                                                                                 | jsonnet-bundler packages                                                   |
+| CUE                     | `import` of the module's own packages (every file of the package in its directory, by the module path of `cue.mod/module.cue`), CUE's builtin packages, `cue.mod/gen` and `cue.mod/usr` to the Go module `go.mod` requires (or the Go standard library, or the module's own Go package), `cue.mod/pkg` vendored modules, `module.cue` `deps` by module path                                                                                                                                                                                        | CUE modules, CUE standard library, Go modules, Go standard library         |
 | Shell scripts           | `source`/`.` and scripts run by path or interpreter, with `$(dirname "$0")`, `${BASH_SOURCE%/*}`, `SCRIPT_DIR` variables, zsh's `${0:A:h}` and `git rev-parse --show-toplevel` evaluated; direnv `source_env`/`source_up`/`dotenv`, bats `load`; packages installed with pip, npm, pnpm, yarn, `go install`, `cargo install` and `gem install`                                                                                                                                                                                                     | PyPI, npm, Go modules, crates.io, RubyGems                                 |
 | Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                                                                                                                                                                                                                                                  | Container images                                                           |
 | Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                                                                                                                                                                                                                                                                                                                                                           | *(none: a link is not a package)*                                          |
@@ -2849,6 +2915,11 @@ Terragrunt configurations are read by a small HCL scanner: the tree-sitter
 grammar parsed every file measured correctly but was about twenty times
 slower. See [Infrastructure as code](#infrastructure-as-code).
 
+Jsonnet and CUE are read by small lexers: the tree-sitter grammars parsed
+all but about 1 % (Jsonnet) and 2 % (CUE) of the files measured correctly,
+at 2 to 4 ms per file, while imports and top-level declarations need only
+tokens. See [Jsonnet and CUE](#jsonnet-and-cue).
+
 Nix expressions are read by a small lexer and parser: the tree-sitter grammar
 parsed almost every file measured correctly but took 1.9 ms per file, and 12 s
 for nixpkgs' `python-packages.nix` alone. See [Nix](#nix).
@@ -2940,7 +3011,7 @@ Dhall files, Crystal, F# and Paket's files, D and `dub.sdl`, Fortran, Haxe
 and its build files, Ada and GNAT project files, Racket, Scribble and
 `info.rkt`, Common Lisp and its Qlot and ocicl files, Solidity and
 Foundry's `remappings.txt` and `.gitmodules`, Nim, NimScript, `.nimble`
-files and `nim.cfg`, Dockerfiles, the
+files and `nim.cfg`, Jsonnet, CUE, Dockerfiles, the
 markup of Vue, Svelte and Astro components, R Markdown chunks and C preprocessor
 directives small built-in scanners — so the binary continues to cross-compile
 without a C toolchain.

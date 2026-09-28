@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "dependencies": [
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/jsonnet-libs.git",
+          "subdir": "ksonnet-util"
+        }
+      },
+      "version": "master"
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/jsonnet-libs/k8s-libsonnet",
+          "subdir": "1.29"
+        }
+      },
+      "version": "main",
+      "name": "k8s"
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/prometheus/node_exporter",
+          "subdir": "docs/node-mixin"
+        }
+      },
+      "version": "v1.8.0"
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "git@git.acme.internal:ops/libs.git",
+          "subdir": ""
+        }
+      },
+      "version": "0123456789abcdef0123456789abcdef01234567"
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/acme/branchy"
+        }
+      },
+      "version": "main"
+    },
+    {
+      "source": {
+        "local": {
+          "directory": "libs/shared"
+        }
+      },
+      "version": ""
+    }
+  ],
+  "legacyImports": true
+}

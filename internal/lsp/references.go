@@ -162,6 +162,11 @@ var Servers = []Server{
 	// first answer may take a while.
 	{Name: "nim", Open: true, Exts: map[string]string{".nim": "nim", ".nims": "nim", ".nimble": "nim"},
 		Commands: [][]string{{"nimlangserver"}, {"nimlsp"}}},
+	// jsonnet-language-server (Grafana's) answers references for Jsonnet and
+	// libsonnet files; `cue lsp` is CUE's own server, part of the cue command.
+	{Name: "jsonnet", Open: true, Exts: map[string]string{".jsonnet": "jsonnet", ".libsonnet": "jsonnet"},
+		Commands: [][]string{{"jsonnet-language-server"}}},
+	{Name: "cue", Open: true, Exts: map[string]string{".cue": "cue"}, Commands: [][]string{{"cue", "lsp"}}},
 	{Name: "fortran", Open: true, Exts: map[string]string{".f90": "fortran", ".f95": "fortran", ".f03": "fortran", ".f08": "fortran", ".f18": "fortran", ".f": "fortran", ".for": "fortran", ".ftn": "fortran", ".f77": "fortran", ".fpp": "fortran"}, Commands: [][]string{{"fortls"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.

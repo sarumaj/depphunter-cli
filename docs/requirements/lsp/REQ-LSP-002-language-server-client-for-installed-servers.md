@@ -57,9 +57,11 @@ racket-langserver (`racket -l racket-langserver`; `.rkt`, `.rktl` and
 `.scrbl` files), cl-lsp (`cl-lsp`; `.lisp`, `.lsp`, `.cl` and `.asd`
 files), the Nomic Foundation Solidity server or solidity-ls
 (`nomicfoundation-solidity-language-server --stdio` or `solidity-ls
---stdio`, first installed; `.sol` files) and nimlangserver or nimlsp
+--stdio`, first installed; `.sol` files), nimlangserver or nimlsp
 (`nimlangserver` or `nimlsp`, first installed; `.nim`, `.nims` and
-`.nimble` files), skipping a server that is not installed.
+`.nimble` files), jsonnet-language-server (`jsonnet-language-server`;
+`.jsonnet` and `.libsonnet` files) and CUE's own server (`cue lsp`; `.cue`
+files), skipping a server that is not installed.
 
 ## Rationale
 
