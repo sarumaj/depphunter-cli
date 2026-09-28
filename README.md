@@ -980,9 +980,9 @@ and the analysis remains offline.
 
 | Lock file                                  | gives                                              |
 |--------------------------------------------|----------------------------------------------------|
-| `package-lock.json`, `npm-shrinkwrap.json` | every installed package and what it requires       |
-| `pnpm-lock.yaml` (v5-v9)                   | `packages:` and, since v9, `snapshots:`            |
-| `yarn.lock` (classic)                      | each entry's resolved version and `dependencies`   |
+| `package-lock.json`, `npm-shrinkwrap.json` | each copy's requirements, found up its path        |
+| `pnpm-lock.yaml` (v5-v9)                   | `packages:` or, in v9, `snapshots:`                |
+| `yarn.lock` (classic and Berry)            | each entry's `dependencies`, by descriptor         |
 | `bun.lock` (Bun 1.2)                       | each package's `dependencies`, nested ones first   |
 | `Cargo.lock`                               | `dependencies` per crate                           |
 | `uv.lock`, `poetry.lock`, `pdm.lock`       | each distribution's own requirements               |
@@ -1023,6 +1023,12 @@ the repository imports them. Edges between packages are of kind `depends`, as
 distinct from the `import` edges that originate at a file, so that the count of
 files importing a package remains exactly that. Two versions of one package
 remain a single building, so an edge between packages is an edge between names.
+For npm, a package reached this way takes the version of the copy its dependent
+loads: `node_modules/a/node_modules/b` before the hoisted `node_modules/b`, the
+`yarn.lock` entry whose descriptors hold the dependent's range, the version
+`pnpm-lock.yaml` names. A dependency under an alias (`npm:real@^1`) is the real
+package; workspace, `portal:`, `link:` and `file:` dependencies are the
+project's own and add no package.
 
 A Python package that no lock file gives edges for (`Pipfile.lock` records none)
 falls back to the installed environment (see [Languages](#languages)).

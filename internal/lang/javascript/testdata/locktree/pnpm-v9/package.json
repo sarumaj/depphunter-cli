@@ -1,0 +1,13 @@
+{
+  "name": "root",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "a": "^1.0.0",
+    "b": "^1.0.0",
+    "c2": "npm:c@^2.0.0",
+    "ws-lib": "workspace:^"
+  }
+}

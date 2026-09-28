@@ -537,11 +537,13 @@ type pnpmLock struct {
 	// The dependency edges. v5 to v8 keep them under "packages", v9 moved them to
 	// "snapshots"; both key entries by name and version.
 	Packages map[string]struct {
-		Name, Version string
-		Dependencies  map[string]string `yaml:"dependencies"`
+		Name, Version        string
+		Dependencies         map[string]string `yaml:"dependencies"`
+		OptionalDependencies map[string]string `yaml:"optionalDependencies"`
 	} `yaml:"packages"`
 	Snapshots map[string]struct {
-		Dependencies map[string]string `yaml:"dependencies"`
+		Dependencies         map[string]string `yaml:"dependencies"`
+		OptionalDependencies map[string]string `yaml:"optionalDependencies"`
 	} `yaml:"snapshots"`
 }
 
@@ -555,16 +557,7 @@ func (lock *pnpmLock) versions() map[string]map[string]string {
 		m := map[string]string{}
 		for _, d := range []map[string]any{sec.OptionalDependencies, sec.DevDependencies, sec.Dependencies} {
 			for name, v := range d {
-				var version string
-				switch v := v.(type) {
-				case string:
-					version = v
-				case map[string]any:
-					version, _ = v["version"].(string)
-				}
-				// "1.2.3(react@18.2.0)" carries peer-dependency context; "link:../x" is local.
-				version, _, _ = strings.Cut(version, "(")
-				if version != "" && !strings.HasPrefix(version, "link:") {
+				if version := pnpmVersion(pnpmRef(v)); version != "" {
 					m[name] = version
 				}
 			}
@@ -580,19 +573,61 @@ func (lock *pnpmLock) versions() map[string]map[string]string {
 	return out
 }
 
+// pnpmRef reads a dependency's reference: v5 writes it as the value, v6 on as
+// the "version" of a {specifier, version} map.
+func pnpmRef(v any) string {
+	switch v := v.(type) {
+	case string:
+		return v
+	case map[string]any:
+		s, _ := v["version"].(string)
+		return s
+	}
+	return ""
+}
+
+// pnpmVersion is the version a dependency reference installs: "1.2.3(react@18.2.0)"
+// and v5's "1.2.3_react@18.2.0" carry peer-dependency context, an alias names the
+// real package ("c@2.0.0", "/c@2.0.0", v5 "/c/2.0.0"), and "link:../x" is local.
+func pnpmVersion(ref string) string {
+	ref, _, _ = strings.Cut(ref, "(")
+	switch {
+	case ref == "" || strings.HasPrefix(ref, "link:"):
+		return ""
+	case startsWithDigit(ref):
+		ref, _, _ = strings.Cut(ref, "_")
+	default:
+		if _, v := pnpmKey(ref); startsWithDigit(v) {
+			return v
+		}
+	}
+	return ref
+}
+
 // packageLock is package-lock.json (or npm-shrinkwrap.json), v1 through v3.
 type packageLock struct {
 	// v2 and v3 list every installed path under "packages".
-	Packages map[string]struct {
-		Version              string
-		Dependencies         map[string]string
-		OptionalDependencies map[string]string
-	}
+	Packages map[string]lockPath
 	// v1 nests them under "dependencies", with "requires" for the edges.
-	Dependencies map[string]struct {
-		Version  string
-		Requires map[string]string
-	}
+	Dependencies map[string]*lockV1
+}
+
+// lockPath is one install path of package-lock.json v2/v3: "node_modules/a",
+// "node_modules/a/node_modules/b", or a workspace directory.
+type lockPath struct {
+	Name                 string // the real package's, where the path is an alias
+	Version              string
+	Link                 bool // a symlink to a workspace (or file:) directory
+	Dependencies         map[string]string
+	OptionalDependencies map[string]string
+}
+
+// lockV1 is one package-lock.json v1 dependency, and those installed inside it.
+type lockV1 struct {
+	Version      string
+	Optional     bool
+	Requires     map[string]string
+	Dependencies map[string]*lockV1
 }
 
 // versions returns the top-level package versions.
@@ -601,7 +636,15 @@ type packageLock struct {
 func (lock *packageLock) versions() map[string]string {
 	out := map[string]string{}
 	for k, v := range lock.Dependencies {
+		if v == nil {
+			continue
+		}
 		out[k] = v.Version
+		if real, ok := strings.CutPrefix(v.Version, "npm:"); ok { // an alias, "npm:real@1.2.3"
+			if _, version := splitIdent(real); version != "" {
+				out[k] = version
+			}
+		}
 	}
 	for k, v := range lock.Packages {
 		name, ok := strings.CutPrefix(k, "node_modules/")

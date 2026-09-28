@@ -1,0 +1,94 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      a:
+        specifier: ^1.0.0
+        version: 1.0.0
+      b:
+        specifier: ^1.0.0
+        version: 1.0.0
+      c2:
+        specifier: npm:c@^2.0.0
+        version: c@2.0.0
+      ws-lib:
+        specifier: workspace:^
+        version: link:packages/ws
+
+  packages/ws:
+    dependencies:
+      e:
+        specifier: ^1.0.0
+        version: 1.0.0(d@2.0.0)
+
+packages:
+
+  a@1.0.0:
+    resolution: {integrity: sha512-aa}
+
+  b@1.0.0:
+    resolution: {integrity: sha512-bb}
+
+  c@2.0.0:
+    resolution: {integrity: sha512-cc}
+
+  d@1.0.0:
+    resolution: {integrity: sha512-d1}
+
+  d@2.0.0:
+    resolution: {integrity: sha512-d2}
+
+  e@1.0.0:
+    resolution: {integrity: sha512-ee}
+    peerDependencies:
+      d: '*'
+
+  f@1.0.0:
+    resolution: {integrity: sha512-ff}
+
+  fsevents@2.3.3:
+    resolution: {integrity: sha512-fs}
+    os: [darwin]
+
+  h@1.0.0:
+    resolution: {integrity: sha512-hh}
+
+snapshots:
+
+  a@1.0.0:
+    dependencies:
+      d: 2.0.0
+      e: 1.0.0(d@2.0.0)
+
+  b@1.0.0:
+    dependencies:
+      d: 1.0.0
+      f: 1.0.0
+      h-alias: h@1.0.0
+    optionalDependencies:
+      fsevents: 2.3.3
+
+  c@2.0.0:
+    dependencies:
+      d: 1.0.0
+
+  d@1.0.0: {}
+
+  d@2.0.0:
+    dependencies:
+      e: 1.0.0(d@2.0.0)
+
+  e@1.0.0(d@2.0.0): {}
+
+  f@1.0.0: {}
+
+  fsevents@2.3.3:
+    optional: true
+
+  h@1.0.0: {}
