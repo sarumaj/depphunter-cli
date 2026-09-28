@@ -154,7 +154,12 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 		c.report(l)
 		return nil
 	}
-	candidates := c.cfg.candidates(t.Ecosystem, t.Package, t.Registry)
+	candidates := c.cfg.candidatesFor(t)
+	// Implements: REQ-SUP-065, REQ-TRC-017
+	if t.Ecosystem == NuGet && c.cfg.nugetUnmapped(t.Package) {
+		c.note(trace.NoteUnmapped, "NuGet.Config's packageSourceMapping covers no pattern of "+t.Package+
+			": NuGet itself would not restore it (NU1100), depphunter asks the sources in their usual order")
+	}
 	// An organization's own package is not named to the world: asking the public
 	// index about corp.example/billing would not answer anyway, and the request
 	// itself is the disclosure. A private registry this machine configures is asked
@@ -175,6 +180,12 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	}
 	if len(candidates) == 0 {
 		l.Reason = trace.ReasonNoIndex
+		// Implements: REQ-SUP-068
+		if t.Ecosystem == OCI {
+			if _, blocked := c.cfg.ociEndpoints(t.Package, t.Version); blocked {
+				l.Reason = trace.ReasonBlocked
+			}
+		}
 		c.report(l)
 		return nil
 	}
