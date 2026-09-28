@@ -1147,7 +1147,7 @@ and platform paths:
 | uv         | `UV_DEFAULT_INDEX`, `UV_INDEX` and the legacy `UV_INDEX_URL`, `UV_EXTRA_INDEX_URL`; the file `UV_CONFIG_FILE` names alone; else the user's `uv.toml` (`$XDG_CONFIG_HOME/uv`, `~/.config/uv`; `%APPDATA%\uv` on Windows) and the system's (the first `$XDG_CONFIG_DIRS/uv/uv.toml`, else `/etc/uv/uv.toml`; `%ProgramData%\uv` on Windows). `UV_NO_CONFIG` reads no `uv.toml`, the repository's included                                         |
 | Poetry     | `config.toml` and `auth.toml` in `POETRY_CONFIG_DIR`, else `%APPDATA%\pypoetry` on Windows, `~/Library/Application Support/pypoetry` on macOS, else `$XDG_CONFIG_HOME/pypoetry` (`~/.config/pypoetry`); `POETRY_REPOSITORIES_<NAME>_URL`, `POETRY_HTTP_BASIC_<NAME>_USERNAME`/`_PASSWORD`                                                                                                                                                       |
 | PDM        | `PDM_PYPI_URL`, `PDM_PYPI_USERNAME`, `PDM_PYPI_PASSWORD` over `config.toml` in `PDM_CONFIG_FILE`, else `%LOCALAPPDATA%\pdm\pdm` on Windows, `~/Library/Application Support/pdm` on macOS, else `$XDG_CONFIG_HOME/pdm` (`~/.config/pdm`)                                                                                                                                                                                                         |
-| Cargo      | `CARGO_REGISTRIES_<NAME>_INDEX` and `_TOKEN` (the name upper-cased, `-` as `_`); `config`/`config.toml` and `credentials`/`credentials.toml` in `CARGO_HOME`, else `~/.cargo` (the file without an extension when both exist)                                                                                                                                                                                                                   |
+| Cargo      | `CARGO_REGISTRIES_<NAME>_INDEX`, `_TOKEN` and `_CREDENTIAL_PROVIDER` (the name upper-cased, `-` as `_`), `CARGO_REGISTRY_TOKEN` and `_CREDENTIAL_PROVIDER` for crates.io, `CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS`; `config`/`config.toml` and `credentials`/`credentials.toml` in `CARGO_HOME`, else `~/.cargo` (the file without an extension when both exist)                                                                            |
 | Go         | the environment, else the go env file (`GOENV`, else `go/env` in the user configuration directory; `GOENV=off` for none), for `GOPROXY`, `GOPRIVATE`, `GONOPROXY` and `GONOSUMDB`                                                                                                                                                                                                                                                               |
 | containers | `REGISTRY_AUTH_FILE` alone when set; else `$XDG_RUNTIME_DIR/containers/auth.json` (Linux; `~/.config/containers/auth.json` elsewhere), `$XDG_CONFIG_HOME/containers/auth.json`, and Docker's `config.json` in `DOCKER_CONFIG`, else `~/.docker`; the first file holding a registry's credential wins, as in containers-auth.json(5)                                                                                                             |
 | netrc      | `NETRC`; else `~/_netrc` on Windows when it exists; else `~/.netrc`                                                                                                                                                                                                                                                                                                                                                                             |
@@ -1339,7 +1339,8 @@ written for and to no other.
 | `~/.docker/config.json` (`DOCKER_CONFIG`)                   | stored `auths`, and the helpers named by `credsStore` and `credHelpers`                                        |
 | `containers/auth.json`, `REGISTRY_AUTH_FILE`                | the same, for Podman and Skopeo                                                                                |
 | `credentials.toml` in `CARGO_HOME` (`~/.cargo`)             | a token per registry, matched to its index through `config.toml` there (legacy `credentials` and `config` too) |
-| `CARGO_REGISTRIES_<NAME>_TOKEN`, `CARGO_REGISTRY_TOKEN`     | the same token supplied by a pipeline instead                                                                  |
+| `CARGO_REGISTRIES_<NAME>_TOKEN`, `CARGO_REGISTRY_TOKEN`     | the same token supplied by a pipeline instead, over the files                                                  |
+| `[registries.<name>] token` in Cargo's `config.toml`        | a token kept beside the index; `credentials.toml` and the variables win                                        |
 | `~/.terraformrc`, `~/.tofurc`, `TF_CLI_CONFIG_FILE`         | Terraform's and OpenTofu's `credentials "<host>"` tokens; a `host` block names a registry without one          |
 | `~/.terraform.d/credentials.tfrc.json`                      | the tokens `terraform login` stores (OpenTofu's under `~/.config/opentofu`)                                    |
 | `TF_TOKEN_<host>`                                           | a token supplied by a pipeline, for HCP Terraform and the hosts named above                                    |
@@ -1359,6 +1360,18 @@ Gemfury and the commercial gem servers Bundler is pointed at.
 
 Each file is looked for where its tool looks for it; see
 [Configuration locations](#configuration-locations).
+
+A Cargo token is sent as Cargo sends it: the whole `Authorization` header,
+exactly as written. A registry that wants a scheme has the token written with
+it (Artifactory's `Bearer <token>`); crates.io and most others take it bare.
+Each named registry's token goes to its own index path only, so registries
+sharing a host keep their own tokens, and it is sent whether or not the
+registry's `config.json` says `auth-required`. crates.io's token goes to
+crates.io alone: never to its index, which Cargo reads anonymously, nor to a
+registry replacing it. A registry whose `credential-provider` (or, without
+one, `registry.global-credential-providers`) leaves out `cargo:token` keeps
+its credential in a keychain or a program, which depphunter does not run: its
+plaintext token is skipped.
 
 In `~/.npmrc`, `settings.xml` and `NuGet.Config`, a value that is exactly
 `${NAME}`, `${env.NAME}` or `%NAME%` is read from the environment, so a password

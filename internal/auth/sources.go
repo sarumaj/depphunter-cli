@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -183,76 +184,179 @@ func registryHost(registry string) string {
 
 // ---------------------------------------------------------------- crates.io
 
-// cargoIndexes is the index URL of each registry Cargo knows, by name in the form
-// userconf.CargoRegistryName gives: the [registries] of config.toml, and over them
-// the CARGO_REGISTRIES_<NAME>_INDEX variables.
-func cargoIndexes(config []byte, env map[string]string) map[string]string {
-	var doc struct {
-		Registries map[string]struct{ Index string }
+// cargoFile is what Cargo's config.toml and credentials.toml say about registries.
+// Cargo reads the two as one configuration, credentials.toml over config.toml, so
+// either may hold any of these keys. A credential-provider is a string or a list
+// (a command and its arguments), hence any.
+type cargoFile struct {
+	Registry struct {
+		Token     string
+		Provider  any   `toml:"credential-provider"`
+		Providers []any `toml:"global-credential-providers"`
 	}
-	out := map[string]string{}
-	if _, err := toml.Decode(string(config), &doc); err == nil {
+	Registries map[string]struct {
+		Index    string
+		Token    string
+		Provider any `toml:"credential-provider"`
+	}
+}
+
+// cargoRegistry is one registry as Cargo would authenticate to it.
+type cargoRegistry struct {
+	index, token string
+	provider     []string // the registry's own credential-provider, if set
+}
+
+// cargoRegistries is every registry Cargo knows, by name in the form
+// userconf.CargoRegistryName gives, with "" for crates.io: its index from
+// config.toml or CARGO_REGISTRIES_<NAME>_INDEX (indexes), and its token from
+// config.toml, then credentials.toml, then CARGO_REGISTRIES_<NAME>_TOKEN
+// (CARGO_REGISTRY_TOKEN for crates.io), each over the one before, as Cargo takes
+// them. global is registry.global-credential-providers, nil when unset.
+func cargoRegistries(files [][]byte, indexes map[string]string, env func(string) string) (out map[string]*cargoRegistry, global []string) {
+	out = map[string]*cargoRegistry{"": {}}
+	get := func(name string) *cargoRegistry {
+		if out[name] == nil {
+			out[name] = &cargoRegistry{}
+		}
+		return out[name]
+	}
+	for _, data := range files {
+		var doc cargoFile
+		if _, err := toml.Decode(string(data), &doc); err != nil {
+			continue
+		}
+		crates := out[""]
+		if doc.Registry.Token != "" {
+			crates.token = doc.Registry.Token
+		}
+		if p := cargoProvider(doc.Registry.Provider); p != nil {
+			crates.provider = p
+		}
+		if doc.Registry.Providers != nil {
+			global = nil
+			for _, p := range doc.Registry.Providers {
+				if s, ok := p.(string); ok {
+					global = append(global, s)
+				}
+			}
+		}
 		for name, r := range doc.Registries {
+			reg := get(userconf.CargoRegistryName(name))
 			if r.Index != "" {
-				out[userconf.CargoRegistryName(name)] = r.Index
+				reg.index = r.Index
+			}
+			if r.Token != "" {
+				reg.token = r.Token
+			}
+			if p := cargoProvider(r.Provider); p != nil {
+				reg.provider = p
 			}
 		}
 	}
-	for name, index := range env {
-		out[name] = index
-	}
-	return out
-}
-
-// readCargoCredentials takes the tokens Cargo keeps for its registries, which are
-// named rather than addressed: the index URL for each name is in config.toml beside
-// them, or in the environment (cargoIndexes).
-//
-// Implements: REQ-AUTH-008
-func (c *Store) readCargoCredentials(credentials []byte, indexes map[string]string) {
-	var creds struct {
-		Registry   struct{ Token string }
-		Registries map[string]struct{ Token string }
-	}
-	if _, err := toml.Decode(string(credentials), &creds); err != nil {
-		return
-	}
-	for name, entry := range creds.Registries {
-		if entry.Token != "" {
-			c.cargo(indexes[userconf.CargoRegistryName(name)], entry.Token)
-		}
-	}
-	if creds.Registry.Token != "" {
-		c.bearer["crates.io"] = creds.Registry.Token
-		c.bearer["index.crates.io"] = creds.Registry.Token
-	}
-}
-
-// readCargoEnv takes the tokens Cargo reads from the environment, which is how a
-// pipeline supplies them. The name is upper-cased with hyphens turned into
-// underscores, and there is no way back from the variable to the name, so the
-// environment is asked for the registries config.toml and the environment define.
-//
-// Implements: REQ-AUTH-008
-func (c *Store) readCargoEnv(env func(string) string, indexes map[string]string) {
 	for name, index := range indexes {
-		if token := env("CARGO_REGISTRIES_" + name + "_TOKEN"); token != "" {
-			c.cargo(index, token)
+		get(name).index = index
+	}
+	if env == nil {
+		return out, global
+	}
+	for name, reg := range out {
+		prefix := "CARGO_REGISTRIES_" + name + "_"
+		if name == "" {
+			prefix = "CARGO_REGISTRY_"
+		}
+		if token := env(prefix + "TOKEN"); token != "" {
+			reg.token = token
+		}
+		if p := strings.Fields(env(prefix + "CREDENTIAL_PROVIDER")); len(p) > 0 {
+			reg.provider = p
 		}
 	}
-	if token := env("CARGO_REGISTRY_TOKEN"); token != "" {
-		c.bearer["crates.io"] = token
-		c.bearer["index.crates.io"] = token
+	if list := env("CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS"); list != "" {
+		global = strings.Fields(list)
 	}
+	return out, global
 }
 
-// cargo files a registry's token under the host of its index.
-func (c *Store) cargo(index, token string) {
-	if index == "" {
-		return
+// cargoProvider is a credential-provider value as a command line: a string is split
+// on whitespace, a list is taken as it is.
+func cargoProvider(v any) []string {
+	switch v := v.(type) {
+	case string:
+		if f := strings.Fields(v); len(f) > 0 {
+			return f
+		}
+	case []any:
+		var out []string
+		for _, s := range v {
+			if s, ok := s.(string); ok {
+				out = append(out, s)
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
 	}
-	if u, err := url.Parse(strings.TrimPrefix(index, "sparse+")); err == nil && u.Host != "" {
-		c.bearer[u.Host] = token
+	return nil
+}
+
+// plaintext reports whether Cargo would send the token it has in its files or
+// environment. Only the cargo:token provider does: a registry whose
+// credential-provider is another one - an OS keychain, cargo:token-from-stdout,
+// cargo:paseto, a plugin - gets its credential from that provider, which
+// depphunter does not run. Without a provider of its own, a registry uses the
+// global list, cargo:token alone unless configured.
+func (r *cargoRegistry) plaintext(global []string) bool {
+	if r.provider != nil {
+		return len(r.provider) == 1 && r.provider[0] == "cargo:token"
+	}
+	return global == nil || slices.Contains(global, "cargo:token")
+}
+
+// cargoToken is a token Cargo would accept: printable ASCII and tabs, anything else
+// being refused by Cargo and unsendable in a header.
+func cargoToken(token string) bool {
+	for _, r := range token {
+		if r != '\t' && (r < ' ' || r > '~') {
+			return false
+		}
+	}
+	return token != ""
+}
+
+// readCargo takes the tokens Cargo keeps for its registries (cargoRegistries): the
+// named registries' are filed for the path of each one's index, since a host such as
+// Artifactory serves several registries, each with its own token; crates.io's for
+// crates.io alone - never for its index, which Cargo reads anonymously, and never
+// for a registry replacing it, which has its own.
+//
+// Cargo puts the token into the Authorization header as it is written. A registry
+// that wants a scheme has it written into the token (Artifactory documents
+// "Bearer <token>"); crates.io and most others take the token bare. For an
+// alternative registry Cargo sends it to the index only when the registry's
+// config.json says auth-required; depphunter sends it to the index whenever there
+// is one, which such a registry needs and any other ignores.
+//
+// Implements: REQ-AUTH-008
+func (c *Store) readCargo(files [][]byte, indexes map[string]string, env func(string) string) {
+	registries, global := cargoRegistries(files, indexes, env)
+	for name, reg := range registries {
+		if !cargoToken(reg.token) || !reg.plaintext(global) {
+			continue
+		}
+		if name == "" {
+			c.file("crates.io", "/", secret{verbatim: true, value: reg.token}, true)
+			continue
+		}
+		u, err := url.Parse(strings.TrimPrefix(strings.TrimPrefix(reg.index, "sparse+"), "registry+"))
+		if err != nil || u.Host == "" {
+			continue
+		}
+		prefix := pathPrefix(u.Path)
+		if prefix == "" {
+			prefix = "/"
+		}
+		c.file(u.Host, prefix, secret{verbatim: true, value: reg.token}, true)
 		c.notePlain(u)
 	}
 }
@@ -294,12 +398,13 @@ func (c *Store) FromURL(raw string, trusted bool) string {
 //
 // Implements: REQ-AUTH-020
 func (c *Store) readMachineSources(m userconf.Machine, lookPath func(string) (string, error)) {
-	cargoConfig, _ := os.ReadFile(m.CargoFile("config"))
-	indexes := cargoIndexes(cargoConfig, m.CargoRegistries())
-	if data, err := os.ReadFile(m.CargoFile("credentials")); err == nil {
-		c.readCargoCredentials(data, indexes)
+	var cargo [][]byte
+	for _, name := range [...]string{"config", "credentials"} {
+		if data, err := os.ReadFile(m.CargoFile(name)); err == nil {
+			cargo = append(cargo, data)
+		}
 	}
-	c.readCargoEnv(m.Env, indexes)
+	c.readCargo(cargo, m.CargoRegistries(), m.Env)
 	c.readTerraform(m.Home, m.Env)
 	c.readComposer(m)
 	c.readBundler(m)

@@ -96,41 +96,125 @@ func TestOnlyANameCanNameAHelper(t *testing.T) {
 	}
 }
 
+// Cargo puts a registry's token into the Authorization header as it is written:
+// bare for crates.io and most registries, with its scheme for those that document
+// one (Artifactory's "Bearer <token>"). Each token goes to its own registry's index
+// and no further - two registries of one host each get their own - and crates.io's
+// goes to crates.io alone.
+//
 // Verifies: REQ-AUTH-008
 func TestCargoTokens(t *testing.T) {
 	config := []byte(`
 [registries]
 corp = { index = "sparse+https://crates.corp/index/" }
+jfrog = { index = "sparse+https://acme.jfrog.io/artifactory/api/cargo/rust/index/" }
+jfrog-dev = { index = "sparse+https://acme.jfrog.io/artifactory/api/cargo/rust-dev/index/" }
 other = { index = "https://other.corp/index" }
+mirror = { index = "sparse+https://mirror.corp/" }
+
+[source.crates-io]
+replace-with = "mirror"
 `)
-	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
-	c.readCargoCredentials([]byte(`
+	credentials := []byte(`
 [registry]
-token = "crates-io-token"
+token = "cio_crates-io-token"
 
 [registries.corp]
 token = "corp-token"
-`), cargoIndexes(config, nil))
-	if got := c.bearer["crates.corp"]; got != "corp-token" {
-		t.Errorf("crates.corp: %q - the registry's name was not matched to its index", got)
+
+[registries.jfrog]
+token = "Bearer jfrog-token"
+
+[registries.jfrog-dev]
+token = "Bearer dev-token"
+`)
+	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
+	c.readCargo([][]byte{config, credentials}, nil, env(map[string]string{"CARGO_REGISTRIES_OTHER_TOKEN": "other-token"}))
+	for raw, want := range map[string]string{
+		"https://crates.corp/index/3/s/serde":                                    "corp-token",
+		"https://crates.corp/api/v1/crates":                                      "",
+		"https://acme.jfrog.io/artifactory/api/cargo/rust/index/3/s/serde":       "Bearer jfrog-token",
+		"https://acme.jfrog.io/artifactory/api/cargo/rust-dev/index/3/s/serde":   "Bearer dev-token",
+		"https://acme.jfrog.io/artifactory/api/cargo/rust-other/index/3/s/serde": "",
+		"https://other.corp/index/3/s/serde":                                     "other-token",
+		"https://crates.io/api/v1/crates/serde":                                  "cio_crates-io-token",
+		"https://index.crates.io/se/rd/serde":                                    "",
+		"https://mirror.corp/se/rd/serde":                                        "",
+	} {
+		if got := authorization(t, c, raw); got != want {
+			t.Errorf("%s: %q, want %q", raw, got, want)
+		}
 	}
-	// The public registry is configured by name alone, and its index is served from
-	// a different host than the registry.
-	if c.bearer["crates.io"] != "crates-io-token" || c.bearer["index.crates.io"] != "crates-io-token" {
-		t.Errorf("crates.io: %v", c.bearer)
+}
+
+// Cargo's layers, each over the one before: config.toml, credentials.toml, then
+// the environment (CARGO_REGISTRY_TOKEN for crates.io). A token is used only when
+// Cargo's cargo:token provider would supply it: a registry whose
+// credential-provider is a keychain or a program, or a global provider list
+// without cargo:token, has its credential where depphunter does not look.
+//
+// Verifies: REQ-AUTH-008
+func TestCargoTokenLayersAndProviders(t *testing.T) {
+	config := []byte(`
+[registry]
+token = "config-crates-io"
+global-credential-providers = ["cargo:token", "cargo:libsecret"]
+
+[registries.a]
+index = "sparse+https://a.corp/index/"
+token = "config-a"
+[registries.b]
+index = "sparse+https://b.corp/index/"
+token = "config-b"
+[registries.keychain]
+index = "sparse+https://keychain.corp/index/"
+token = "unused"
+credential-provider = "cargo:macos-keychain"
+[registries.program]
+index = "sparse+https://program.corp/index/"
+token = "unused"
+credential-provider = ["cargo:token-from-stdout", "vault", "read"]
+[registries.explicit]
+index = "sparse+https://explicit.corp/index/"
+token = "explicit-token"
+credential-provider = "cargo:token"
+[registries.bad]
+index = "sparse+https://bad.corp/index/"
+token = "line\nbreak"
+`)
+	credentials := []byte("[registries.b]\ntoken = \"credentials-b\"\n")
+	vars := map[string]string{"CARGO_REGISTRY_TOKEN": "env-crates-io", "CARGO_REGISTRIES_A_TOKEN": "env-a"}
+	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
+	c.readCargo([][]byte{config, credentials}, nil, env(vars))
+	for raw, want := range map[string]string{
+		"https://crates.io/api/v1/me":     "env-crates-io",
+		"https://a.corp/index/1/a":        "env-a",
+		"https://b.corp/index/1/a":        "credentials-b",
+		"https://keychain.corp/index/1/a": "",
+		"https://program.corp/index/1/a":  "",
+		"https://explicit.corp/index/1/a": "explicit-token",
+		"https://bad.corp/index/1/a":      "",
+	} {
+		if got := authorization(t, c, raw); got != want {
+			t.Errorf("%s: %q, want %q", raw, got, want)
+		}
 	}
 
-	// A pipeline supplies the same token through the environment, named after the
-	// registry with hyphens turned into underscores.
-	env := &Store{bearer: map[string]string{}, basic: map[string]string{}}
-	env.readCargoEnv(func(name string) string {
-		if name == "CARGO_REGISTRIES_OTHER_TOKEN" {
-			return "other-token"
+	// A global list without cargo:token turns the plaintext tokens off, except for a
+	// registry naming cargo:token itself; the variables override the files.
+	vars["CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS"] = "cargo:libsecret"
+	vars["CARGO_REGISTRIES_KEYCHAIN_CREDENTIAL_PROVIDER"] = "cargo:token"
+	c = &Store{bearer: map[string]string{}, basic: map[string]string{}}
+	c.readCargo([][]byte{config, credentials}, nil, env(vars))
+	for raw, want := range map[string]string{
+		"https://crates.io/api/v1/me":     "",
+		"https://a.corp/index/1/a":        "",
+		"https://keychain.corp/index/1/a": "unused",
+		"https://explicit.corp/index/1/a": "explicit-token",
+	} {
+		if got := authorization(t, c, raw); got != want {
+			t.Errorf("global list without cargo:token: %s: %q, want %q", raw, got, want)
 		}
-		return ""
-	}, cargoIndexes(config, nil))
-	if got := env.bearer["other.corp"]; got != "other-token" {
-		t.Errorf("other.corp: %q", got)
 	}
 }
 
