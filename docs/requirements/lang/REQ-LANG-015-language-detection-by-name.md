@@ -47,7 +47,11 @@ and `nim.cfg` (Nim), nimble's `nimble.lock` (Nimble) and Atlas's
 `atlas.lock` (Atlas), Jsonnet's `.jsonnet` and `.libsonnet`,
 jsonnet-bundler's `jsonnetfile.json` and `jsonnetfile.lock.json`
 (jsonnet-bundler), CUE's `.cue`, Puppet's `.pp` and `Puppetfile`,
-Rego's `.rego`,
+Rego's `.rego`, GLSL's `.glsl`, `.vert`, `.frag`, `.geom`, `.tesc`,
+`.tese`, `.comp`, `.rgen`, `.rchit`, `.rahit`, `.rmiss`, `.rint`, `.rcall`,
+`.vsh` and `.fsh`, HLSL's `.hlsl`, `.hlsli`, `.fx`, `.fxh`, `.usf` and
+`.ush`, WGSL's `.wgsl`, WESL's `.wesl`, CUDA's `.cu` and `.cuh`, Metal's
+`.metal` and OpenCL's `.clh`,
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
@@ -77,7 +81,9 @@ optional `#!` line, blank lines and `;` comments, is a `#lang` line (or
 preprocessor directive (`#include`, `#define`, `#pragma`, `#if`, `#ifdef`,
 `#ifndef`, `#endif`) or declares an OpenCL kernel (`__kernel`, `kernel
 void`, `__global`) **shall** be OpenCL rather than Common Lisp
-(REQ-COMMONLISP-001).
+(REQ-COMMONLISP-001). A `.vs`, `.gs`, `.mesh` or `.task` file whose head
+shows GLSL as a `.fs` file's does **shall** be GLSL, and have no language
+otherwise (REQ-SHADER-001).
 
 ## Rationale
 
@@ -160,3 +166,11 @@ Objective-C from MATLAB, Mercury and C.
     CUE.
 19. `manifests/site.pp` and `Puppetfile` are Puppet, `policy/deny.rego` is
     Rego and `types/Deployment.dhall` is Dhall.
+20. `shaders/pbr.frag`, `shaders/cull.comp` and `shaders/hit.rchit` are
+    GLSL, `Shaders/Common.hlsli`, `Shaders/Private/Common.ush` and
+    `effects/blur.fx` are HLSL, `assets/shaders/pbr.wgsl` is WGSL,
+    `src/render/view.wesl` is WESL, `kernels/add.cu` and `kernels/add.cuh`
+    are CUDA, `shaders/Shaders.metal` is Metal and `kernels/common.clh` is
+    OpenCL; `shaders/basic.vs` starting `#version 330 core` is GLSL, and a
+    Google Apps Script `Code.gs` and a mesh file `cube.mesh` have no
+    language.

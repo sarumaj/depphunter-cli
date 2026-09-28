@@ -342,3 +342,52 @@ func (r *resolver) probe(dir string, segments []string) (lang.Target, bool) {
 	}
 	return lang.Target{}, false
 }
+
+// Crates answers what the Cargo manifests of the project declare, for a plugin
+// whose files name Rust crates: the shader plugin's WESL and naga_oil imports
+// (bevy_pbr::...) name the crates that ship those shaders.
+type Crates struct{ r *resolver }
+
+// NewCrates reads the Cargo.toml and Cargo.lock files of the file list.
+func NewCrates(all []*scan.File) Crates { return Crates{newResolver(all)} }
+
+// Crate is the target a crate name has for file, as Rust code there would get it:
+// a path dependency or a crate of the workspace as its directory, a crates.io
+// dependency with the version Cargo.lock holds. The Cargo.toml governing file is
+// asked first, then every other manifest of the project (shaders often live in an
+// assets/ directory outside the crate that loads them). ok is false when no
+// manifest declares the crate and no crate of the project has that name.
+//
+// Implements: REQ-SHADER-007
+func (c Crates) Crate(file, name string) (lang.Target, bool) {
+	crates := c.r.crates
+	if own := c.r.crateOf(file); own != nil {
+		crates = append([]*crate{own}, crates...)
+	}
+	name = norm(name)
+	for _, cr := range crates {
+		d, ok := cr.deps[name]
+		if !ok {
+			continue
+		}
+		if d.path != "" {
+			return lang.Target{Local: d.path}, true
+		}
+		if dir, ok := c.r.members[norm(d.pkg)]; ok {
+			return lang.Target{Local: dir}, true
+		}
+		t := lang.Target{Ecosystem: ecoCrates, Package: d.pkg, Version: d.version}
+		if exact := c.r.pick(d.pkg, d.version); exact != "" {
+			t.Version, t.Requested, t.Pinned = exact, d.version, true
+		}
+		return t, true
+	}
+	if dir, ok := c.r.members[name]; ok {
+		return lang.Target{Local: dir}, true
+	}
+	return lang.Target{}, false
+}
+
+// Locked is the version of a package Cargo.lock holds (the newest when it holds
+// several), or "".
+func (c Crates) Locked(name string) string { return c.r.pick(name, "") }

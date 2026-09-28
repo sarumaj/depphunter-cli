@@ -1,0 +1,9 @@
+#include "/Engine/Private/Common.ush"
+#include "/Plugin/MyFX/Private/GlowCommon.ush"
+#include "/Plugin/Niagara/Private/NiagaraCommon.ush"
+#include "/Project/Missing.ush"
+
+void MainPS(in float4 SvPosition : SV_Position, out float4 OutColor : SV_Target0)
+{
+    OutColor = GlowColor();
+}

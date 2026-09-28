@@ -18,7 +18,8 @@ JavaScript), pyright, basedpyright or pylsp (Python, first installed),
 rust-analyzer (Rust), jdtls (Java), kotlin-language-server (Kotlin), metals
 (Scala), csharp-ls (C#), FsAutoComplete (`fsautocomplete
 --adaptive-lsp-server-enabled`; `.fs`, `.fsi` and `.fsx` files), clangd (C,
-C++, Objective-C and Objective-C++), intelephense or phpactor (PHP,
+C++, Objective-C and Objective-C++, and CUDA's `.cu` and `.cuh`, Metal's
+`.metal` and OpenCL's `.clh` files), intelephense or phpactor (PHP,
 first installed), ruby-lsp or solargraph (Ruby, first installed),
 sourcekit-lsp (Swift), `dart language-server` (Dart), elixir-ls
 (`elixir-ls` or `language_server.sh`), Lexical or Next LS (Elixir, first
@@ -62,9 +63,13 @@ files), the Nomic Foundation Solidity server or solidity-ls
 `.nimble` files), jsonnet-language-server (`jsonnet-language-server`;
 `.jsonnet` and `.libsonnet` files), CUE's own server (`cue lsp`; `.cue`
 files), dhall-lsp-server (`dhall-lsp-server`; `.dhall` files), Puppet
-Editor Services (`puppet-languageserver --stdio`; `.pp` files) and Regal's
-server (`regal language-server`; `.rego`
-files), skipping a server that is not installed.
+Editor Services (`puppet-languageserver --stdio`; `.pp` files), Regal's
+server (`regal language-server`; `.rego` files), glsl_analyzer
+(`glsl_analyzer`; the GLSL extensions of REQ-SHADER-001 but the sniffed
+ones), shader-language-server (`shader-language-server`; `.hlsl`, `.hlsli`,
+`.fx`, `.fxh`, `.usf` and `.ush` files) and wgsl-analyzer (`wgsl-analyzer`
+or `wgsl_analyzer`, first installed; `.wgsl` and `.wesl` files), skipping
+a server that is not installed.
 
 ## Rationale
 
@@ -81,3 +86,6 @@ ecosystem, and they are already installed where the ecosystem is used.
    `cmake`, and not for `notes.txt`.
 4. clangd answers for `.m` files as `objective-c` and `.mm` files as
    `objective-cpp`.
+5. glsl_analyzer answers for `.frag` files, shader-language-server for
+   `.hlsli`, wgsl-analyzer for `.wgsl` and `.wesl`, and clangd for `.cu`
+   (`cuda-cpp`), `.metal` and `.clh` files.

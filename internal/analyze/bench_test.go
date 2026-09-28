@@ -56,6 +56,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/ruby"
 	"github.com/sarumaj/depphunter-cli/internal/lang/rust"
 	"github.com/sarumaj/depphunter-cli/internal/lang/scala"
+	"github.com/sarumaj/depphunter-cli/internal/lang/shader"
 	"github.com/sarumaj/depphunter-cli/internal/lang/shell"
 	"github.com/sarumaj/depphunter-cli/internal/lang/solidity"
 	"github.com/sarumaj/depphunter-cli/internal/lang/swift"
@@ -132,7 +133,7 @@ func BenchmarkColdAnalysis(b *testing.B) {
 	writeReferenceProject(b, root, referenceFiles)
 	plugins := []lang.Plugin{
 		golang.Plugin{}, javascript.Plugin{}, python.Plugin{}, rust.Plugin{}, java.Plugin{},
-		kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, fsharp.Plugin{}, cpp.Plugin{}, cmake.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, objc.Plugin{}, dart.Plugin{}, beam.Plugin{}, r.Plugin{}, haskell.Plugin{}, lua.Plugin{}, perl.Plugin{}, ocaml.Plugin{}, julia.Plugin{}, zig.Plugin{}, clojure.Plugin{}, bazel.Plugin{}, nix.Plugin{}, gleam.Plugin{}, elm.Plugin{}, purescript.Plugin{}, crystal.Plugin{}, dlang.Plugin{}, fortran.Plugin{}, haxe.Plugin{}, ada.Plugin{}, racket.Plugin{}, commonlisp.Plugin{}, solidity.Plugin{}, nim.Plugin{}, jsonnet.Plugin{}, cue.Plugin{}, dhall.Plugin{}, puppet.Plugin{}, rego.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, terraform.Plugin{}, proto.Plugin{}, shell.Plugin{}, markdown.Plugin{},
+		kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, fsharp.Plugin{}, cpp.Plugin{}, cmake.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, objc.Plugin{}, dart.Plugin{}, beam.Plugin{}, r.Plugin{}, haskell.Plugin{}, lua.Plugin{}, perl.Plugin{}, ocaml.Plugin{}, julia.Plugin{}, zig.Plugin{}, clojure.Plugin{}, bazel.Plugin{}, nix.Plugin{}, gleam.Plugin{}, elm.Plugin{}, purescript.Plugin{}, crystal.Plugin{}, dlang.Plugin{}, fortran.Plugin{}, haxe.Plugin{}, ada.Plugin{}, racket.Plugin{}, commonlisp.Plugin{}, solidity.Plugin{}, nim.Plugin{}, jsonnet.Plugin{}, cue.Plugin{}, dhall.Plugin{}, puppet.Plugin{}, rego.Plugin{}, shader.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, terraform.Plugin{}, proto.Plugin{}, shell.Plugin{}, markdown.Plugin{},
 	}
 	b.ResetTimer()
 	cpu := cpuSeconds()

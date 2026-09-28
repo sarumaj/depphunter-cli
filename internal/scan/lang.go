@@ -33,6 +33,11 @@ var byExt = map[string]string{
 	".sql": "SQL", ".proto": "Protobuf", ".graphql": "GraphQL", ".tf": "Terraform",
 	".tofu": "OpenTofu", ".tfvars": "Terraform", ".hcl": "HCL", ".cmake": "CMake",
 	".bzl": "Starlark", ".bazel": "Starlark",
+	".glsl": "GLSL", ".vert": "GLSL", ".frag": "GLSL", ".geom": "GLSL", ".tesc": "GLSL", ".tese": "GLSL",
+	".comp": "GLSL", ".rgen": "GLSL", ".rchit": "GLSL", ".rahit": "GLSL", ".rmiss": "GLSL", ".rint": "GLSL",
+	".rcall": "GLSL", ".vsh": "GLSL", ".fsh": "GLSL",
+	".hlsl": "HLSL", ".hlsli": "HLSL", ".fx": "HLSL", ".fxh": "HLSL", ".usf": "HLSL", ".ush": "HLSL",
+	".wgsl": "WGSL", ".wesl": "WESL", ".cu": "CUDA", ".cuh": "CUDA", ".metal": "Metal", ".clh": "OpenCL",
 }
 
 var byName = map[string]string{
@@ -174,12 +179,13 @@ func notObjC(head []byte) string {
 }
 
 // glslSource reports whether a ".fs" file's head is a GLSL fragment shader, which
-// shares the extension with F#: a #version, #extension, #define, #include or
+// shares the extension with F# (and whether a ".vs", ".gs", ".mesh" or ".task" file
+// is a GLSL shader at all): a #version, #extension, #define, #include or
 // #pragma line, a precision/uniform/varying/attribute/layout declaration, void main
 // or a gl_ variable. F# writes none of them: its only directives are #if, #else,
 // #endif, #nowarn, #light, #line, #load, #r and #I, and void is reserved.
 //
-// Implements: REQ-LANG-015, REQ-FSHARP-001
+// Implements: REQ-LANG-015, REQ-FSHARP-001, REQ-SHADER-001
 func glslSource(head []byte) bool {
 	for _, line := range bytes.Split(head, []byte("\n")) {
 		line = bytes.TrimLeft(line, " \t\xef\xbb\xbf")

@@ -529,6 +529,43 @@ func TestScanTellsFSharpFromShaders(t *testing.T) {
 	}
 }
 
+// ".vs", ".gs", ".mesh" and ".task" are GLSL shaders' only when a GLSL directive
+// or declaration says so; other files so named keep no language.
+//
+// Verifies: REQ-LANG-015, REQ-SHADER-001
+func TestScanSniffsGLSLExtensions(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"shaders/basic.vs":    "#version 330 core\nlayout(location = 0) in vec3 pos;\nvoid main() { gl_Position = vec4(pos, 1.0); }\n",
+		"shaders/lines.gs":    "#version 450\nlayout(points) in;\n",
+		"shaders/cull.mesh":   "#version 460\n#extension GL_EXT_mesh_shader : require\n",
+		"shaders/cull.task":   "#extension GL_EXT_mesh_shader : require\n",
+		"scripts/Code.gs":     "function onOpen() {\n  SpreadsheetApp.getUi();\n}\n",
+		"models/cube.mesh":    "MeshVersionFormatted 2\nDimension 3\n",
+		"notes/todo.task":     "- [ ] ship it\n",
+		"shaders/tone.frag":   "void main() {}\n",
+		"shaders/common.wgsl": "fn f() {}\n",
+	}
+	for p, c := range files {
+		abs := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(abs), 0o755)
+		os.WriteFile(abs, []byte(c), 0o644)
+	}
+	got, err := Scan(context.Background(), root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"shaders/basic.vs": "GLSL", "shaders/lines.gs": "GLSL", "shaders/cull.mesh": "GLSL", "shaders/cull.task": "GLSL",
+		"shaders/tone.frag": "GLSL", "shaders/common.wgsl": "WGSL",
+	}
+	for _, f := range got {
+		if f.Lang != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		}
+	}
+}
+
 // ".d" is D's, a make dependency file's (gcc -MD, dmd -makedeps) and a DTrace
 // script's: a first line `target: prerequisites`, or a probe description, a
 // provider block, #pragma D or a C preprocessor directive, say which. A D module

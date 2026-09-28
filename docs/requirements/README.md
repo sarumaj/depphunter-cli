@@ -149,6 +149,7 @@ The server **shall** ...
 | `dhall`      | The Dhall plugin: local and remote imports, hashes, the Dhall reader shared with PureScript.            |
 | `puppet`     | The Puppet plugin: manifests, modules, Puppetfile, metadata.json, .fixtures.yml and r10k's modules/.    |
 | `rego`       | The Rego plugin: packages, imports and data references between policies.                                |
+| `shader`     | The shader plugin: GLSL and HLSL includes, WGSL modules (naga_oil, WESL) and the crates shipping them.  |
 | `terraform`  | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                    |
 | `proto`      | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.            |
 | `shell`      | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                     |
@@ -388,6 +389,11 @@ requirements of type `limitation` in their scopes:
   the Forge is not asked (no `--online`).
 - Rego is read without OPA: data documents and bundles are not linked and
   references through variables are not followed.
+- Shaders are read without a shader compiler or engine: preprocessor and
+  naga_oil conditions other than `#if 0` are not evaluated, include
+  directories a build passes are known only from a compilation database,
+  engine virtual paths other than Unreal's are not known, and a WGSL item
+  used by its full path without an import is no edge.
 - Bun's binary `bun.lockb` is not read: without a `bun.lock` or a `yarn.lock`
   beside it, a Bun project's npm packages keep their declared ranges.
 - pip's keyring is not consulted for credentials.
