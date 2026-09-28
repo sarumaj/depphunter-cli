@@ -106,9 +106,9 @@ func distOf(module string) string {
 	if d, ok := distAliases[module]; ok && d != "" {
 		return d
 	}
-	segs := strings.Split(module, "::")
-	for k := len(segs) - 1; k >= 1; k-- {
-		if d, ok := distAliases[strings.Join(segs[:k], "::")+"::"]; ok {
+	segments := strings.Split(module, "::")
+	for k := len(segments) - 1; k >= 1; k-- {
+		if d, ok := distAliases[strings.Join(segments[:k], "::")+"::"]; ok {
 			if d == "" {
 				break
 			}
@@ -123,12 +123,12 @@ func distOf(module string) string {
 // stopping at a plug-in namespace.
 func candidates(module string) []string {
 	out := []string{distOf(module)}
-	segs := strings.Split(module, "::")
-	for k := len(segs) - 1; k >= 1; k-- {
-		if walkStop[segs[k-1]] {
+	segments := strings.Split(module, "::")
+	for k := len(segments) - 1; k >= 1; k-- {
+		if walkStop[segments[k-1]] {
 			break
 		}
-		d := distOf(strings.Join(segs[:k], "::"))
+		d := distOf(strings.Join(segments[:k], "::"))
 		if d != out[len(out)-1] {
 			out = append(out, d)
 		}

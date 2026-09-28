@@ -15,10 +15,10 @@ import (
 //
 // Implements: REQ-BEAM-004, REQ-BEAM-005
 func extractErlang(src []byte) *lang.Extraction {
-	toks := lexErlang(src)
+	tokens := lexErlang(src)
 	tok := func(i int) token {
-		if i >= 0 && i < len(toks) {
-			return toks[i]
+		if i >= 0 && i < len(tokens) {
+			return tokens[i]
 		}
 		return token{kind: tPunct, val: "eof"}
 	}
@@ -51,8 +51,8 @@ func extractErlang(src []byte) *lang.Extraction {
 	}
 
 	formStart := true
-	for i := 0; i < len(toks); i++ {
-		t := toks[i]
+	for i := 0; i < len(tokens); i++ {
+		t := tokens[i]
 		if t.kind == tPunct && t.val == "end" {
 			formStart = true
 			continue
@@ -60,7 +60,7 @@ func extractErlang(src []byte) *lang.Extraction {
 		atStart := formStart
 		formStart = false
 		if atStart && t.kind == tPunct && t.val == "-" && tok(i+1).kind == tAtom {
-			attr := toks[i+1]
+			attr := tokens[i+1]
 			j := i + 2
 			paren := punct(j, "(")
 			if paren {
@@ -74,14 +74,14 @@ func extractErlang(src []byte) *lang.Extraction {
 					define(arg.val, "module", t.line)
 				}
 			case "export":
-				for k := j; k < len(toks) && !punct(k, "end"); k++ {
-					if toks[k].kind == tAtom && punct(k+1, "/") && tok(k+2).kind == tNum {
-						exported[toks[k].val+"/"+toks[k+2].val] = true
+				for k := j; k < len(tokens) && !punct(k, "end"); k++ {
+					if tokens[k].kind == tAtom && punct(k+1, "/") && tok(k+2).kind == tNum {
+						exported[tokens[k].val+"/"+tokens[k+2].val] = true
 					}
 				}
 			case "compile":
-				for k := j; k < len(toks) && !punct(k, "end"); k++ {
-					if toks[k].kind == tAtom && toks[k].val == "export_all" {
+				for k := j; k < len(tokens) && !punct(k, "end"); k++ {
+					if tokens[k].kind == tAtom && tokens[k].val == "export_all" {
 						exportAll = true
 					}
 				}
@@ -114,7 +114,7 @@ func extractErlang(src []byte) *lang.Extraction {
 		}
 		// A function's first clause starts a form: name(Args) ->
 		if atStart && t.kind == tAtom && punct(i+1, "(") {
-			key := t.val + "/" + strconv.Itoa(erlArity(toks, i+1))
+			key := t.val + "/" + strconv.Itoa(erlArity(tokens, i+1))
 			if !funSeen[key] {
 				funSeen[key] = true
 				funs = append(funs, fun{key, t.line})
@@ -145,10 +145,10 @@ func extractErlang(src []byte) *lang.Extraction {
 var catchClass = map[string]bool{"error": true, "exit": true, "throw": true}
 
 // erlArity counts the arguments of the parenthesized list opening at i.
-func erlArity(toks []token, i int) int {
+func erlArity(tokens []token, i int) int {
 	depth, n, any := 0, 0, false
-	for j := i; j < len(toks); j++ {
-		t := toks[j]
+	for j := i; j < len(tokens); j++ {
+		t := tokens[j]
 		if t.kind != tPunct {
 			any = true
 			continue

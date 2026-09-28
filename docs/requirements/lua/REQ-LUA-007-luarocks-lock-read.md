@@ -14,7 +14,10 @@ verification:
 The `luarocks.lock` beside a rockspec (else the project root's), read from
 disk when it is not scanned, **shall** pin the rocks it lists to their locked
 version with revision (`1.14.0-3`), and a rock only the lock lists **shall**
-count as declared (it was installed as a dependency of one).
+count as declared (it was installed as a dependency of one). The lock records
+no edges: one that pins rocks **shall** be noted as flat in the resolution
+report, and one read from disk as such
+([REQ-TRC-017](../trc/REQ-TRC-017-resolver-notes.md)).
 
 ## Rationale
 

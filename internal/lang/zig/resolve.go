@@ -552,25 +552,25 @@ func (r *resolver) fetchedZon(f fetched) []byte {
 	if strings.ContainsAny(f.hash, `/\`) || f.hash == "" || f.hash == "." || f.hash == ".." {
 		return nil
 	}
-	var cands []string
+	var candidates []string
 	for d := f.dir; ; d = path.Dir(d) {
-		cands = append(cands, filepath.Join(r.root, filepath.FromSlash(d), "zig-pkg", f.hash))
+		candidates = append(candidates, filepath.Join(r.root, filepath.FromSlash(d), "zig-pkg", f.hash))
 		if d == "." || d == "/" {
 			break
 		}
 	}
 	if c := os.Getenv("ZIG_GLOBAL_CACHE_DIR"); c != "" {
-		cands = append(cands, filepath.Join(c, "p", f.hash))
+		candidates = append(candidates, filepath.Join(c, "p", f.hash))
 	}
 	for _, env := range []string{"XDG_CACHE_HOME", "LOCALAPPDATA"} { // LOCALAPPDATA: Windows
 		if c := os.Getenv(env); c != "" {
-			cands = append(cands, filepath.Join(c, "zig", "p", f.hash))
+			candidates = append(candidates, filepath.Join(c, "zig", "p", f.hash))
 		}
 	}
 	if h, err := os.UserHomeDir(); err == nil {
-		cands = append(cands, filepath.Join(h, ".cache", "zig", "p", f.hash))
+		candidates = append(candidates, filepath.Join(h, ".cache", "zig", "p", f.hash))
 	}
-	for _, c := range cands {
+	for _, c := range candidates {
 		if src, err := os.ReadFile(filepath.Join(c, "build.zig.zon")); err == nil && len(src) <= lang.MaxParseSize {
 			return src
 		}

@@ -510,14 +510,14 @@ func (r *resolver) resolveNS(file, ns string) lang.Target {
 // guess names the artifact of a namespace nothing declares and no table knows:
 // com.climate.claypoole is com.climate:claypoole, foo.core foo:foo.
 func guess(ns string) string {
-	segs := strings.Split(ns, ".")
-	switch segs[0] {
+	segments := strings.Split(ns, ".")
+	switch segments[0] {
 	case "com", "org", "net", "io", "me", "dev", "tech", "ai", "co", "de", "nl", "se", "fi", "ch", "uk":
-		if len(segs) >= 3 {
-			return segs[0] + "." + segs[1] + ":" + segs[2]
+		if len(segments) >= 3 {
+			return segments[0] + "." + segments[1] + ":" + segments[2]
 		}
 	}
-	return segs[0] + ":" + segs[0]
+	return segments[0] + ":" + segments[0]
 }
 
 // lookup is a governing project's declaration of an artifact.
@@ -604,10 +604,10 @@ func fold(s string) string {
 //     com.datomic/datomic-pro): 10, 12 for the group's main artifact.
 func score(ns, art string) int {
 	g, a, _ := strings.Cut(art, ":")
-	segs := strings.Split(ns, ".")
+	segments := strings.Split(ns, ".")
 	fa := fold(a)
-	for k := len(segs); k >= 1; k-- {
-		if fold(strings.Join(segs[:k], ".")) == fa {
+	for k := len(segments); k >= 1; k-- {
+		if fold(strings.Join(segments[:k], ".")) == fa {
 			return 100 + 10*k
 		}
 	}
@@ -618,20 +618,20 @@ func score(ns, art string) int {
 		if b == a || b == "" {
 			continue
 		}
-		for k := len(segs); k >= 1; k-- {
-			if fold(strings.Join(segs[:k], ".")) == fold(b) {
+		for k := len(segments); k >= 1; k-- {
+			if fold(strings.Join(segments[:k], ".")) == fold(b) {
 				return 95 + 10*k
 			}
 		}
 	}
-	gsegs := strings.Split(g, ".")
-	glast := gsegs[len(gsegs)-1]
+	gsegments := strings.Split(g, ".")
+	glast := gsegments[len(gsegments)-1]
 	rest := []string(nil)
 	switch {
-	case len(segs) > len(gsegs) && strings.Join(segs[:len(gsegs)], ".") == g:
-		rest = segs[len(gsegs):]
-	case len(segs) > 1 && segs[0] == glast:
-		rest = segs[1:]
+	case len(segments) > len(gsegments) && strings.Join(segments[:len(gsegments)], ".") == g:
+		rest = segments[len(gsegments):]
+	case len(segments) > 1 && segments[0] == glast:
+		rest = segments[1:]
 	}
 	for k := len(rest); k >= 1; k-- {
 		if fold(strings.Join(rest[:k], ".")) == fa {
@@ -640,7 +640,7 @@ func score(ns, art string) int {
 	}
 	words := strings.FieldsFunc(a, func(c rune) bool { return c == '-' || c == '.' || c == '_' })
 	nsWords := map[string]bool{}
-	for _, s := range segs {
+	for _, s := range segments {
 		for _, w := range strings.FieldsFunc(s, func(c rune) bool { return c == '-' || c == '_' }) {
 			nsWords[w] = true
 		}
@@ -654,17 +654,17 @@ func score(ns, art string) int {
 			return 50 + len(words)
 		}
 	}
-	if segs[0] == glast && len(segs) > 1 {
+	if segments[0] == glast && len(segments) > 1 {
 		// Only the group in common: datomic.api from com.datomic/datomic-pro, but not
 		// babashka.curl from babashka/fs - a named sub-namespace is another library.
 		switch {
 		case a == glast || a == glast+"-core":
 			return 12
-		case strings.Contains(a, glast) || genericNames[segs[1]]:
+		case strings.Contains(a, glast) || genericNames[segments[1]]:
 			return 10
 		}
 		for _, w := range words {
-			if w == segs[1] {
+			if w == segments[1] {
 				return 40 // cognitect.transit from com.cognitect/transit-clj
 			}
 		}
@@ -868,12 +868,12 @@ func classScore(cls, art string) int {
 	if score == 0 {
 		return 0
 	}
-	segs := map[string]bool{}
+	segments := map[string]bool{}
 	for _, s := range pkg {
-		segs[strings.ToLower(s)] = true
+		segments[strings.ToLower(s)] = true
 	}
 	for _, w := range strings.FieldsFunc(a, func(c rune) bool { return c == '-' || c == '.' }) {
-		if segs[strings.ToLower(w)] {
+		if segments[strings.ToLower(w)] {
 			score += 2
 		} else {
 			score -= 3

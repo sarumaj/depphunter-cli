@@ -11,6 +11,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 // flutterSDK are the packages Flutter's SDK ships: a project depends on them with
@@ -45,7 +46,11 @@ type resolver struct {
 	files map[string]bool
 	dirs  map[string]bool
 	pkgs  []*pkg // deepest first
+	lang.NoteList
 }
+
+// The notes a resolver keeps reach --explain only through lang.Noter.
+var _ lang.Noter = (*resolver)(nil)
 
 // Implements: REQ-DART-004, REQ-DART-006, REQ-DART-007, REQ-DART-009
 func newResolver(root string, all []*scan.File) *resolver {
@@ -104,6 +109,14 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 		if src, ok := read(path.Join(p.dir, "pubspec.lock")); ok {
 			p.lock, p.lockDir = readLock(src), p.dir
+			// Implements: REQ-DART-007, REQ-TRC-017
+			if lock := path.Join(p.dir, "pubspec.lock"); len(p.lock) > 0 {
+				if _, listed := abs[lock]; !listed {
+					r.NoteIgnored(lock)
+				}
+				r.Note(lock, trace.NoteFlat, "pubspec.lock pins versions but records no edges: offline, "+
+					"--resolve-depth adds nothing past the packages it pins (--online asks pub)")
+			}
 		}
 		byDir[p.dir] = p
 		r.pkgs = append(r.pkgs, p)

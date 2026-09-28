@@ -13,6 +13,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/cocoapods"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 type resolver struct {
@@ -27,7 +28,11 @@ type resolver struct {
 	projects []*project
 	types    map[string][]string // type name -> files declaring it at the top level
 	pods     *cocoapods.Index    // what Podfiles and Cartfiles declare
+	lang.NoteList
 }
+
+// The notes a resolver keeps reach --explain only through lang.Noter.
+var _ lang.Noter = (*resolver)(nil)
 
 // project is what one directory's manifests say: Package.swift, the Xcode projects
 // and workspaces beside it, and their Package.resolved files.
@@ -106,7 +111,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 			if d != "." {
 				src, _ := read(f.Path)
-				get(path.Dir(d)).pin(readResolved([]byte(src)))
+				pins := readResolved([]byte(src))
+				get(path.Dir(d)).pin(pins)
+				r.noteResolved(f.Path, path.Dir(d), len(pins))
 			}
 		}
 	}
@@ -129,7 +136,12 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		}
 		if lock, ok := read(path.Join(dir, "Package.resolved")); ok {
-			p.pin(readResolved([]byte(lock)))
+			pins := readResolved([]byte(lock))
+			p.pin(pins)
+			if _, listed := abs[path.Join(dir, "Package.resolved")]; !listed && len(pins) > 0 {
+				r.NoteIgnored(path.Join(dir, "Package.resolved"))
+			}
+			r.noteResolved(path.Join(dir, "Package.resolved"), dir, len(pins))
 		}
 	}
 	for _, p := range byDir {
@@ -198,6 +210,24 @@ func (p *project) pin(pins []pin) {
 	for _, q := range pins {
 		p.pins[q.identity] = q
 	}
+}
+
+// noteResolved notes a Package.resolved that pins packages the walk cannot go past:
+// it is flat, and Dependencies reads edges only from the checkouts SwiftPM leaves
+// under .build/checkouts, which this project has none of.
+//
+// Implements: REQ-SWIFT-012, REQ-TRC-017
+func (r *resolver) noteResolved(file, dir string, pins int) {
+	if pins == 0 {
+		return
+	}
+	if r.root != "" {
+		if fi, err := os.Stat(filepath.Join(r.root, filepath.FromSlash(dir), ".build", "checkouts")); err == nil && fi.IsDir() {
+			return
+		}
+	}
+	r.Note(file, trace.NoteFlat, "Package.resolved pins versions but records no edges, and no .build/checkouts "+
+		"is on disk: --resolve-depth adds nothing past the packages it pins")
 }
 
 // has reports whether the project declares or pins a package identity.

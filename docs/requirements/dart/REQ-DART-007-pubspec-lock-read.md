@@ -15,7 +15,10 @@ The plugin **shall** read `pubspec.lock` beside a pubspec (from disk when the
 scan left it out), or the workspace root's for a workspace member, and resolve
 a package it records: hosted at its version, git by its URL and resolved
 commit, path to the directory, sdk to the Flutter SDK island, with the
-pubspec's constraint as the requested version when it differs.
+pubspec's constraint as the requested version when it differs. A lock that
+pins packages **shall** be noted as flat in the resolution report (it records
+no edges), and one read from disk as such
+([REQ-TRC-017](../trc/REQ-TRC-017-resolver-notes.md)).
 
 ## Rationale
 

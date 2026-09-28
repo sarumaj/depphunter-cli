@@ -85,11 +85,11 @@ func (Plugin) Claims(f *scan.File) bool {
 // beside it: fpm builds there and fetches dependencies into
 // build/dependencies/. Other projects may keep sources in build/.
 func generated(f *scan.File) bool {
-	segs := strings.Split(f.Path, "/")
-	for i, s := range segs[:len(segs)-1] {
+	segments := strings.Split(f.Path, "/")
+	for i, s := range segments[:len(segments)-1] {
 		if s == "build" && f.Abs != "" && strings.HasSuffix(filepath.ToSlash(f.Abs), f.Path) {
 			base := f.Abs[:len(f.Abs)-len(f.Path)]
-			if hasManifest(filepath.Join(base, filepath.FromSlash(strings.Join(segs[:i], "/")))) {
+			if hasManifest(filepath.Join(base, filepath.FromSlash(strings.Join(segments[:i], "/")))) {
 				return true
 			}
 		}

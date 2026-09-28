@@ -1671,7 +1671,7 @@ It is a single account of one analysis, available in three forms:
 | `GET /api/resolution`           | the complete report as JSON, for comparison between runs or assertions in CI |
 | `?format=md`, `?format=text`    | the same report rendered; the Markdown form is what the editor opens         |
 
-The report records five things:
+The report records six things:
 
 - **the indexes known to the run** — each index's URL, the scope it serves, and
   whether it was learned from this machine, from the repository, from the
@@ -1688,7 +1688,19 @@ The report records five things:
 - **the ecosystems not walked at all** — when `--online` is not given, an
   ecosystem whose dependency graph is held outside the repository (Go modules,
   NuGet, Maven, container images) is named, rather than silently contributing
-  nothing; and
+  nothing;
+- **what the resolvers noticed** — notes a plugin or the index client adds
+  once per file or registry, each with a code: a `bun.lockb` nothing reads
+  (`lock-unread`); a lock that pins versions but records no edges, so that
+  offline the walk adds nothing past it — `rebar.lock` without a `mix.lock`,
+  a Conan 2 `conan.lock`, `Package.resolved` without `.build/checkouts`,
+  `pubspec.lock`, an opam lock without `dune.lock`, `luarocks.lock`
+  (`lock-flat`); a lock the scan left out as git-ignored that was read from
+  disk, so it reflects this checkout's last install (`lock-ignored`); a Hex
+  organization with no key on this machine (`no-key`) or whose API refused the
+  key (`forbidden`, an organization key without `api:read`); and a NuGet
+  package no `packageSourceMapping` pattern covers, which NuGet itself would
+  not restore (`unmapped`); and
 - **the questions nothing answered** — every package for which no answer was
   obtained, with the reason: no lock file covers it; its index is named only by
   the repository; it is private and its index is the public one; the proxy
@@ -1714,6 +1726,11 @@ answers
   already asked); 28 unanswered (4 of them asked and failed); 89 requests; 159
   external packages on the map (87 transitive, 0 private, 0 from an index
   nothing here vouches for)
+
+what the resolvers noticed
+  beam erl/rebar.lock (lock-flat): rebar.lock pins versions but records no
+  edges, only a depth: offline, --resolve-depth adds nothing past the packages
+  it pins (--online asks Hex)
 
 nothing answered for these
   COUNT  WHY

@@ -59,14 +59,14 @@ func (Plugin) Claims(f *scan.File) bool {
 // dependencies. Other projects keep sources in lib/, so a lib/ without a
 // shard.yml next to it is read.
 func installed(f *scan.File) bool {
-	segs := strings.Split(f.Path, "/")
-	for i, s := range segs[:len(segs)-1] {
+	segments := strings.Split(f.Path, "/")
+	for i, s := range segments[:len(segments)-1] {
 		if s == ".crystal" {
 			return true
 		}
 		if s == "lib" && f.Abs != "" && strings.HasSuffix(filepath.ToSlash(f.Abs), f.Path) {
 			base := f.Abs[:len(f.Abs)-len(f.Path)]
-			if hasShard(filepath.Join(base, filepath.FromSlash(strings.Join(segs[:i], "/")))) {
+			if hasShard(filepath.Join(base, filepath.FromSlash(strings.Join(segments[:i], "/")))) {
 				return true
 			}
 		}

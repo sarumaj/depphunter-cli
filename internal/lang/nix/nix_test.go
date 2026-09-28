@@ -339,9 +339,9 @@ func TestLexer(t *testing.T) {
 	if !reflect.DeepEqual(specs, want) {
 		t.Errorf("imports %v, want %v", specs, want)
 	}
-	toks := lex([]byte("''a ''' b ''$c ''\\n''"))
+	tokens := lex([]byte("''a ''' b ''$c ''\\n''"))
 	var text string
-	for _, tk := range toks {
+	for _, tk := range tokens {
 		if tk.kind == tStrText {
 			text += tk.text
 		}

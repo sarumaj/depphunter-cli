@@ -428,13 +428,13 @@ func fold(s string) string {
 // http-client. The longest run wins; a run of only a first segment that is a subject
 // (Text, Data) does not count.
 func runMatch(mod string, names map[string]string) string {
-	segs := strings.Split(mod, ".")
-	for n := len(segs); n >= 1; n-- {
-		for i := 0; i+n <= len(segs); i++ {
-			if n == 1 && categories[segs[i]] {
+	segments := strings.Split(mod, ".")
+	for n := len(segments); n >= 1; n-- {
+		for i := 0; i+n <= len(segments); i++ {
+			if n == 1 && categories[segments[i]] {
 				continue
 			}
-			if p := names[fold(strings.Join(segs[i:i+n], ""))]; p != "" {
+			if p := names[fold(strings.Join(segments[i:i+n], ""))]; p != "" {
 				return p
 			}
 		}
@@ -445,11 +445,11 @@ func runMatch(mod string, names map[string]string) string {
 // guessName names the package of a module nothing else resolved: its first segment
 // that does not name a subject, lower case (Network.Wai: wai, Hasql.Pool: hasql).
 func guessName(mod string) string {
-	segs := strings.Split(mod, ".")
-	for i, s := range segs {
-		if !categories[s] || i == len(segs)-1 {
+	segments := strings.Split(mod, ".")
+	for i, s := range segments {
+		if !categories[s] || i == len(segments)-1 {
 			return strings.ToLower(s)
 		}
 	}
-	return strings.ToLower(segs[0])
+	return strings.ToLower(segments[0])
 }

@@ -16,7 +16,9 @@ The plugin **shall** read `Package.resolved` in format versions 1
 `identity`, `kind` and `location`), beside a `Package.swift` (read from disk
 when the scan left it out) and in an Xcode project's or workspace's
 `xcshareddata/swiftpm/`, and **shall** count the packages it pins as
-declared.
+declared. One read from disk because the scan left it out **shall** be noted
+in the resolution report
+([REQ-TRC-017](../trc/REQ-TRC-017-resolver-notes.md)).
 
 ## Rationale
 

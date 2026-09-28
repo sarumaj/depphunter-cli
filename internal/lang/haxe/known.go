@@ -59,20 +59,20 @@ var tinkSpecial = map[string]string{"coreapi": "tink_core", "macroapi": "tink_ma
 // tink.Json tink_json.
 //
 // Implements: REQ-HAXE-007
-func table(segs []string) (lib string, k int, std bool) {
-	for n := min(len(segs), 4); n >= 1; n-- {
-		if l, ok := known[strings.Join(segs[:n], ".")]; ok && l != "" {
+func table(segments []string) (lib string, k int, std bool) {
+	for n := min(len(segments), 4); n >= 1; n-- {
+		if l, ok := known[strings.Join(segments[:n], ".")]; ok && l != "" {
 			return l, n, false
 		}
 	}
-	if segs[0] == "tink" && len(segs) > 1 {
-		s := strings.ToLower(segs[1])
+	if segments[0] == "tink" && len(segments) > 1 {
+		s := strings.ToLower(segments[1])
 		if l, ok := tinkSpecial[s]; ok {
 			return l, 2, false
 		}
 		return "tink_" + strings.TrimSuffix(s, "api"), 2, false
 	}
-	if stdPackages[segs[0]] || stdTypes[segs[0]] {
+	if stdPackages[segments[0]] || stdTypes[segments[0]] {
 		return "", 1, true
 	}
 	return "", 0, false
@@ -81,9 +81,9 @@ func table(segs []string) (lib string, k int, std bool) {
 // stdName is the standard library package a module belongs to: the first two
 // segments when both are packages (haxe.ds, js.html), else the first (haxe
 // for haxe.Json, StringTools for itself).
-func stdName(segs []string) string {
-	if len(segs) > 2 && lower(segs[1]) {
-		return segs[0] + "." + segs[1]
+func stdName(segments []string) string {
+	if len(segments) > 2 && lower(segments[1]) {
+		return segments[0] + "." + segments[1]
 	}
-	return segs[0]
+	return segments[0]
 }

@@ -58,11 +58,11 @@ func contrib(ns string) string {
 			return a
 		}
 	}
-	segs := strings.Split(ns, ".")
-	if len(segs) < 3 || segs[0] != "clojure" || !contribFamilies[segs[1]] {
+	segments := strings.Split(ns, ".")
+	if len(segments) < 3 || segments[0] != "clojure" || !contribFamilies[segments[1]] {
 		return ""
 	}
-	return "org.clojure:" + segs[1] + "." + segs[2]
+	return "org.clojure:" + segments[1] + "." + segments[2]
 }
 
 // knownArtifacts maps namespace prefixes of popular libraries to their artifact
@@ -179,17 +179,17 @@ func known(ns string) string {
 		return "metosin:reitit"
 	}
 	// reitit.<x> is metosin/reitit-<x>, taoensso.<x> is com.taoensso/<x>.
-	segs := strings.Split(ns, ".")
-	if len(segs) >= 2 {
-		switch segs[0] {
+	segments := strings.Split(ns, ".")
+	if len(segments) >= 2 {
+		switch segments[0] {
 		case "reitit":
-			return "metosin:reitit-" + segs[1]
+			return "metosin:reitit-" + segments[1]
 		case "taoensso":
-			return "com.taoensso:" + segs[1]
+			return "com.taoensso:" + segments[1]
 		case "lambdaisland":
-			return "lambdaisland:" + segs[1]
+			return "lambdaisland:" + segments[1]
 		case "buddy":
-			return "buddy:buddy-" + segs[1]
+			return "buddy:buddy-" + segments[1]
 		}
 	}
 	return ""

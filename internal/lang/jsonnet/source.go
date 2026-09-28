@@ -17,13 +17,13 @@ const (
 //
 // Implements: REQ-JSONNET-002, REQ-JSONNET-003
 func extractSource(src []byte) *lang.Extraction {
-	toks := lex(src)
-	m := match(toks)
+	tokens := lex(src)
+	m := match(tokens)
 	ex := &lang.Extraction{}
 	seen := map[string]bool{}
-	for i := 0; i+1 < len(toks); i++ {
-		t := toks[i]
-		if t.kind != tIdent || toks[i+1].kind != tString {
+	for i := 0; i+1 < len(tokens); i++ {
+		t := tokens[i]
+		if t.kind != tIdent || tokens[i+1].kind != tString {
 			continue
 		}
 		switch t.text {
@@ -31,7 +31,7 @@ func extractSource(src []byte) *lang.Extraction {
 		default:
 			continue
 		}
-		mod := toks[i+1].text
+		mod := tokens[i+1].text
 		spec := mod
 		if t.text != kindImport {
 			spec = t.text + " " + mod
@@ -53,20 +53,20 @@ func extractSource(src []byte) *lang.Extraction {
 	i := 0
 	// The file's leading `local x = e;` and `assert e;` statements.
 leading:
-	for i < len(toks) {
+	for i < len(tokens) {
 		switch {
-		case isWord(toks[i], "local"):
-			i = binds(toks, m, i+1, ";", add)
-		case isWord(toks[i], "assert"):
-			i = skipTo(toks, m, i+1, len(toks), ";") + 1
+		case isWord(tokens[i], "local"):
+			i = binds(tokens, m, i+1, ";", add)
+		case isWord(tokens[i], "assert"):
+			i = skipTo(tokens, m, i+1, len(tokens), ";") + 1
 		default:
 			break leading
 		}
 	}
 	// The body: object literals at bracket depth 0 (`{...} + {...}`, a
 	// function's result, the branches of an if).
-	for ; i < len(toks); i++ {
-		t := toks[i]
+	for ; i < len(tokens); i++ {
+		t := tokens[i]
 		if t.kind != tPunct {
 			continue
 		}
@@ -74,13 +74,13 @@ leading:
 		case "{":
 			end := m[i]
 			if end < 0 {
-				end = len(toks)
+				end = len(tokens)
 			}
-			object(toks, m, i+1, end, add)
+			object(tokens, m, i+1, end, add)
 			i = end
 		case "(", "[":
 			if m[i] < 0 {
-				i = len(toks)
+				i = len(tokens)
 			} else {
 				i = m[i]
 			}
@@ -95,9 +95,9 @@ func isWord(t token, w string) bool { return t.kind == tIdent && t.text == w }
 func isPunct(t token, p string) bool { return t.kind == tPunct && t.text == p }
 
 // skipTo returns the index of the first stop token at depth 0 from i, or end.
-func skipTo(toks []token, m []int, i, end int, stops ...string) int {
+func skipTo(tokens []token, m []int, i, end int, stops ...string) int {
 	for ; i < end; i++ {
-		t := toks[i]
+		t := tokens[i]
 		if t.kind != tPunct {
 			continue
 		}
@@ -119,64 +119,64 @@ func skipTo(toks []token, m []int, i, end int, stops ...string) int {
 
 // binds reads `a = e, f(x) = e` from i up to the terminator term (";" at the
 // top, "," ends a whole object-level local) and returns the index after it.
-func binds(toks []token, m []int, i int, term string, add func(string, string, int)) int {
-	for i < len(toks) {
-		if toks[i].kind != tIdent {
-			return skipTo(toks, m, i, len(toks), term) + 1
+func binds(tokens []token, m []int, i int, term string, add func(string, string, int)) int {
+	for i < len(tokens) {
+		if tokens[i].kind != tIdent {
+			return skipTo(tokens, m, i, len(tokens), term) + 1
 		}
-		name, line := toks[i].text, toks[i].line
+		name, line := tokens[i].text, tokens[i].line
 		kind := "var"
 		j := i + 1
-		if j < len(toks) && isPunct(toks[j], "(") {
+		if j < len(tokens) && isPunct(tokens[j], "(") {
 			kind = "func"
 			if m[j] < 0 {
-				return len(toks)
+				return len(tokens)
 			}
 			j = m[j] + 1
-		} else if j+1 < len(toks) && isPunct(toks[j], "=") && isWord(toks[j+1], "function") {
+		} else if j+1 < len(tokens) && isPunct(tokens[j], "=") && isWord(tokens[j+1], "function") {
 			kind = "func"
 		}
 		add(name, kind, line)
-		k := skipTo(toks, m, j, len(toks), ",", term)
-		if k >= len(toks) || toks[k].text == term {
+		k := skipTo(tokens, m, j, len(tokens), ",", term)
+		if k >= len(tokens) || tokens[k].text == term {
 			return k + 1
 		}
 		i = k + 1
 	}
-	return len(toks)
+	return len(tokens)
 }
 
 // object records the fields of the object literal between from and end (the
 // braces excluded): `a: e`, `a:: e`, `a+: e`, `'a-b': e`, `f(x): e`.
 // Computed fields, object locals, asserts and comprehensions give none.
-func object(toks []token, m []int, from, end int, add func(string, string, int)) {
+func object(tokens []token, m []int, from, end int, add func(string, string, int)) {
 	for i := from; i < end; {
-		t := toks[i]
+		t := tokens[i]
 		if isWord(t, "for") {
 			return // an object comprehension
 		}
 		if t.kind == tIdent && t.text != "local" && t.text != "assert" || t.kind == tString {
 			kind := "field"
 			j := i + 1
-			if j < end && isPunct(toks[j], "(") && m[j] > 0 && m[j] < end {
+			if j < end && isPunct(tokens[j], "(") && m[j] > 0 && m[j] < end {
 				kind = "func"
 				j = m[j] + 1
 			}
-			if j < end && isPunct(toks[j], "+") {
+			if j < end && isPunct(tokens[j], "+") {
 				j++
 			}
-			if j < end && isPunct(toks[j], ":") {
-				for j < end && isPunct(toks[j], ":") {
+			if j < end && isPunct(tokens[j], ":") {
+				for j < end && isPunct(tokens[j], ":") {
 					j++
 				}
-				if j < end && isWord(toks[j], "function") {
+				if j < end && isWord(tokens[j], "function") {
 					kind = "func"
 				}
 				add(t.text, kind, t.line)
 			}
 		}
-		k := skipTo(toks, m, i, end, ",")
-		if k < end && k+1 < end && isWord(toks[k+1], "for") {
+		k := skipTo(tokens, m, i, end, ",")
+		if k < end && k+1 < end && isWord(tokens[k+1], "for") {
 			return
 		}
 		i = k + 1

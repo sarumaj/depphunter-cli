@@ -268,9 +268,9 @@ func openKinds(spec string) string {
 // refFiles looks a qualified name up longest prefix first: Shop.Cart.Item may be a
 // type Item in module Shop.Cart, or module Cart in namespace Shop.
 func (r *resolver) refFiles(file, name string, ctx []string) []string {
-	segs := strings.Split(name, ".")
-	for n := len(segs); n >= 1; n-- {
-		if files, _ := r.local(file, strings.Join(segs[:n], "."), ctx, "mt"); len(files) > 0 {
+	segments := strings.Split(name, ".")
+	for n := len(segments); n >= 1; n-- {
+		if files, _ := r.local(file, strings.Join(segments[:n], "."), ctx, "mt"); len(files) > 0 {
 			return files
 		}
 	}
@@ -563,14 +563,14 @@ func (r *resolver) candidates(file, arg string, idirs []string) []string {
 // installed is the package a path under packages/ belongs to (Paket installs
 // packages/<id>/ and packages/<group>/<id>/).
 func (r *resolver) installed(file, p string) (lang.Target, bool) {
-	segs := strings.Split(p, "/")
-	for i, s := range segs {
+	segments := strings.Split(p, "/")
+	for i, s := range segments {
 		if s != "packages" {
 			continue
 		}
 		for _, k := range []int{i + 1, i + 2} {
-			if k < len(segs)-1 {
-				if t, ok := r.Package(file, "", segs[k]); ok {
+			if k < len(segments)-1 {
+				if t, ok := r.Package(file, "", segments[k]); ok {
 					return t, true
 				}
 			}

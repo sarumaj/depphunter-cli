@@ -31,7 +31,7 @@ func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 //
 // Implements: REQ-PROTO-009
 func lex(src []byte) []tok {
-	var toks []tok
+	var tokens []tok
 	line := 1
 	if len(src) >= 3 && src[0] == 0xEF && src[1] == 0xBB && src[2] == 0xBF {
 		src = src[3:] // a byte order mark
@@ -76,13 +76,13 @@ func lex(src []byte) []tok {
 				i++
 			}
 			i++ // the closing quote
-			toks = append(toks, tok{kind: tString, text: string(b), line: start})
+			tokens = append(tokens, tok{kind: tString, text: string(b), line: start})
 		case isLetter(c):
 			j := i
 			for j < len(src) && (isLetter(src[j]) || isDigit(src[j])) {
 				j++
 			}
-			toks = append(toks, tok{kind: tIdent, text: string(src[i:j]), line: line})
+			tokens = append(tokens, tok{kind: tIdent, text: string(src[i:j]), line: line})
 			i = j
 		case isDigit(c):
 			j := i
@@ -90,12 +90,12 @@ func lex(src []byte) []tok {
 				((src[j] == '-' || src[j] == '+') && (src[j-1] == 'e' || src[j-1] == 'E'))) {
 				j++
 			}
-			toks = append(toks, tok{kind: tNumber, text: string(src[i:j]), line: line})
+			tokens = append(tokens, tok{kind: tNumber, text: string(src[i:j]), line: line})
 			i = j
 		default:
-			toks = append(toks, tok{kind: tPunct, text: string(c), line: line})
+			tokens = append(tokens, tok{kind: tPunct, text: string(c), line: line})
 			i++
 		}
 	}
-	return toks
+	return tokens
 }

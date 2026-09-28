@@ -355,21 +355,21 @@ type RtMsghdr struct {
 }
 
 type RtMetrics struct {
-	Locks     uint64
-	Mtu       uint64
-	Pksent    uint64
-	Expire    uint64
-	Sendpipe  uint64
-	Ssthresh  uint64
-	Rtt       uint64
-	Rttvar    uint64
-	Recvpipe  uint64
-	Hopcount  uint64
-	Mssopt    uint16
-	Pad       uint16
-	Msl       uint64
-	Iwmaxsegs uint64
-	Iwcapsegs uint64
+	Locks         uint64
+	Mtu           uint64
+	Pksent        uint64
+	Expire        uint64
+	Sendpipe      uint64
+	Ssthresh      uint64
+	Rtt           uint64
+	Rttvar        uint64
+	Recvpipe      uint64
+	Hopcount      uint64
+	Mssopt        uint16
+	Pad           uint16
+	Msl           uint64
+	Iwmaxsegments uint64
+	Iwcapsegments uint64
 }
 
 const (

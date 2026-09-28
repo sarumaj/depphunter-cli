@@ -12,6 +12,7 @@ import (
 	"path"
 
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 // Implements: REQ-LANG-003
@@ -103,6 +104,42 @@ type Expander interface {
 // resolution report tells apart.
 type Installed interface {
 	Installed(t Target) bool
+}
+
+// Noter is the optional part of a Resolver that has something to say to --explain
+// which no single question shows: a lock file it saw and does not read, one that
+// pins versions and records no edges, one the scan left out and it read from disk.
+// Notes is asked once the plugin's walk is done; a note without a Plugin is filed
+// under the plugin's name. Embedding NoteList is the usual way to implement it.
+//
+// Implements: REQ-TRC-017
+type Noter interface {
+	Notes() []trace.Note
+}
+
+// NoteList collects a resolver's notes. The zero value is ready; it is not safe for
+// concurrent use, so a resolver notes while it is built, before Resolve is called
+// from several goroutines.
+//
+// Implements: REQ-TRC-017
+type NoteList struct{ list []trace.Note }
+
+// Note records one note about file ("" for none).
+func (n *NoteList) Note(file, code, message string) {
+	n.list = append(n.list, trace.Note{File: file, Code: code, Message: message})
+}
+
+// Notes implements Noter.
+func (n *NoteList) Notes() []trace.Note { return n.list }
+
+// NoteIgnored notes a lock file a resolver read from disk although the scan left it
+// out - a library's git-ignored lock, as often as not. What it pins is what was
+// last resolved on this machine, not what the repository records.
+//
+// Implements: REQ-TRC-017
+func (n *NoteList) NoteIgnored(file string) {
+	n.Note(file, trace.NoteIgnored, "not in the scan (git-ignored or excluded) but read from disk: "+
+		"its versions are this checkout's last install, not something the repository records")
 }
 
 type Import struct {

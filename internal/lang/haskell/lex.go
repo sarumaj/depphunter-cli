@@ -35,18 +35,18 @@ type tok struct {
 // constructor ('True) or a Template Haskell name quote (”Maybe), C preprocessor
 // lines, and the UnicodeSyntax arrows.
 type lexer struct {
-	src  []byte
-	i    int
-	line int
-	col  int
-	bol  bool
-	toks []tok
+	src    []byte
+	i      int
+	line   int
+	col    int
+	bol    bool
+	tokens []tok
 }
 
 func lex(src []byte) []tok {
 	l := &lexer{src: src, line: 1, col: 1, bol: true}
 	l.run()
-	return l.toks
+	return l.tokens
 }
 
 func isSymbol(r rune) bool {
@@ -98,7 +98,7 @@ func (l *lexer) advance(n int) {
 }
 
 func (l *lexer) emit(k int, s string, line, col int) {
-	l.toks = append(l.toks, tok{k: k, s: s, line: line, col: col, bol: l.bol, end: l.col})
+	l.tokens = append(l.tokens, tok{k: k, s: s, line: line, col: col, bol: l.bol, end: l.col})
 	l.bol = false
 }
 

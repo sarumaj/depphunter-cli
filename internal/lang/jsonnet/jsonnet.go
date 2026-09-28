@@ -76,14 +76,14 @@ func class(p string) string {
 // ignored reports whether f lies in a vendor/ directory beside a
 // jsonnetfile.json.
 func ignored(f *scan.File) bool {
-	segs := strings.Split(f.Path, "/")
+	segments := strings.Split(f.Path, "/")
 	abs := filepath.ToSlash(f.Abs)
 	if f.Abs == "" || !strings.HasSuffix(abs, f.Path) {
 		return false
 	}
 	base := abs[:len(abs)-len(f.Path)]
-	for i, s := range segs[:len(segs)-1] {
-		if s == "vendor" && jbRoot(filepath.FromSlash(base+strings.Join(segs[:i], "/"))) {
+	for i, s := range segments[:len(segments)-1] {
+		if s == "vendor" && jbRoot(filepath.FromSlash(base+strings.Join(segments[:i], "/"))) {
 			return true
 		}
 	}

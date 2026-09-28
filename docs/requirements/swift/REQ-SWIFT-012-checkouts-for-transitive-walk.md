@@ -15,7 +15,9 @@ For `--resolve-depth`, the plugin **shall** read the dependencies of a
 package from the `Package.swift` SwiftPM checked out under
 `.build/checkouts/<identity>/` beside the project's manifest, each pinned by
 the project's `Package.resolved` where it has one; without a checkout a
-package has no known dependencies.
+package has no known dependencies, and a `Package.resolved` that pins
+packages beside no `.build/checkouts` **shall** be noted as flat in the
+resolution report ([REQ-TRC-017](../trc/REQ-TRC-017-resolver-notes.md)).
 
 ## Rationale
 

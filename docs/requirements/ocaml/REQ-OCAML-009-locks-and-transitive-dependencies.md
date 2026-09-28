@@ -18,7 +18,9 @@ directory `dune.lock/` beside a dune-project (from disk; one
 directory **shall** answer `--resolve-depth`: a locked package's
 dependencies at their locked versions, without the compiler and the
 repository's own packages. opam's locks are flat and answer nothing, so
-beyond them dependencies come from `--online` (REQ-SUP-054).
+beyond them dependencies come from `--online` (REQ-SUP-054); without a lock
+directory an opam lock that pins packages **shall** be noted as flat in the
+resolution report ([REQ-TRC-017](../trc/REQ-TRC-017-resolver-notes.md)).
 
 ## Rationale
 

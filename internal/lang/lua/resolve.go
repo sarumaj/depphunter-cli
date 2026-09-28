@@ -10,6 +10,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 type rockspec struct {
@@ -42,7 +43,11 @@ type resolver struct {
 	// models are the model projects (default.project.json whose tree is not a
 	// DataModel) by directory: a $path naming that directory builds its tree.
 	models map[string]*rojoNode
+	lang.NoteList
 }
+
+// The notes a resolver keeps reach --explain only through lang.Noter.
+var _ lang.Noter = (*resolver)(nil)
 
 // sourceExts are the extensions of Lua sources a module path may name, in the order
 // they are tried.
@@ -107,9 +112,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 			if path.Base(mod) == "init" {
 				mod = path.Dir(mod)
 			}
-			segs := strings.Split(mod, "/")
-			for i := range segs {
-				key := strings.Join(segs[i:], "/")
+			segments := strings.Split(mod, "/")
+			for i := range segments {
+				key := strings.Join(segments[i:], "/")
 				r.suffixes[key] = append(r.suffixes[key], p)
 			}
 		}
@@ -122,6 +127,14 @@ func newResolver(root string, all []*scan.File) *resolver {
 		var l map[string]string
 		if b, ok := read(path.Join(dir, "luarocks.lock")); ok {
 			l = luarocks.ReadLock(b)
+			// Implements: REQ-LUA-007, REQ-TRC-017
+			if lock := path.Join(dir, "luarocks.lock"); len(l) > 0 {
+				if !r.files[lock] {
+					r.NoteIgnored(lock)
+				}
+				r.Note(lock, trace.NoteFlat, "luarocks.lock pins versions but records no edges: offline, "+
+					"--resolve-depth adds nothing past the rocks it pins (--online asks the rocks servers)")
+			}
 		}
 		locks[dir] = l
 		return l

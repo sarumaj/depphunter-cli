@@ -41,6 +41,25 @@ func (r *Report) Text(w io.Writer) error {
 		out.printf("\nnot walked at all\n")
 		out.text(r.skipTable())
 	}
+	if len(r.Notes) > 0 {
+		// One note to a line rather than a table: a note is a sentence, and the
+		// text table cuts cells at textCell.
+		out.printf("\nwhat the resolvers noticed\n")
+		shown := r.Notes
+		if len(shown) > maxListed {
+			shown = shown[:maxListed]
+		}
+		for _, n := range shown {
+			where := n.Plugin
+			if n.File != "" {
+				where += " " + n.File
+			}
+			out.printf("  %s (%s): %s\n", where, n.Code, n.Message)
+		}
+		if more := len(r.Notes) - len(shown); more > 0 {
+			out.printf("  … and %d more\n", more)
+		}
+	}
 	if r.Totals.Asked > 0 {
 		out.printf("\nanswers\n  %s\n", r.answers())
 	}
@@ -108,6 +127,10 @@ func (r *Report) Markdown(w io.Writer) error {
 		out.markdown(r.skipTable())
 	}
 
+	if len(r.Notes) > 0 {
+		out.printf("\n## What the resolvers noticed\n\n")
+		out.markdown(r.noteTable())
+	}
 	if r.Totals.Asked > 0 {
 		out.printf("\n## Answers\n\n%s\n", r.answers())
 	}
@@ -208,6 +231,17 @@ func (r *Report) skipTable() *table {
 	t := &table{head: []string{"plugin", "why"}}
 	for _, s := range r.Skipped {
 		t.add(s.Plugin, s.Reason)
+	}
+	return t
+}
+
+// noteTable lists the notes for the Markdown report, which keeps every one.
+//
+// Implements: REQ-TRC-017
+func (r *Report) noteTable() *table {
+	t := &table{head: []string{"plugin", "file", "what", "note"}}
+	for _, n := range r.Notes {
+		t.add(n.Plugin, or(n.File, "-"), n.Code, n.Message)
 	}
 	return t
 }

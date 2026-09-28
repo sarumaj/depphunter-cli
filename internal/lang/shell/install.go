@@ -182,22 +182,22 @@ func goModule(pkg string) string {
 	if i := strings.Index(pkg, "/cmd/"); i > 0 && !nested[pkg[:i+4]] {
 		pkg = pkg[:i]
 	}
-	segs := strings.Split(pkg, "/")
-	switch segs[0] {
+	segments := strings.Split(pkg, "/")
+	switch segments[0] {
 	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org":
 		n := 3
-		if len(segs) > 3 && majorSuffix.MatchString(segs[3]) {
+		if len(segments) > 3 && majorSuffix.MatchString(segments[3]) {
 			n = 4
 		}
-		if len(segs) > n {
-			segs = segs[:n]
+		if len(segments) > n {
+			segments = segments[:n]
 		}
 	case "golang.org":
-		if len(segs) > 3 && !nested[strings.Join(segs[:4], "/")] {
-			segs = segs[:3]
+		if len(segments) > 3 && !nested[strings.Join(segments[:4], "/")] {
+			segments = segments[:3]
 		}
 	}
-	return strings.Join(segs, "/")
+	return strings.Join(segments, "/")
 }
 
 var majorSuffix = regexp.MustCompile(`^v[0-9]+$`)
