@@ -88,6 +88,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scope"
 	"github.com/sarumaj/depphunter-cli/internal/server"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
+	"github.com/sarumaj/depphunter-cli/internal/userconf"
 	"github.com/sarumaj/depphunter-cli/internal/watch"
 	"github.com/sarumaj/depphunter-cli/web"
 )
@@ -205,9 +206,10 @@ func run(ctx context.Context, cfg config.Config) error {
 	// each credential goes only to the host it was written for.
 	credentials := auth.Read(home, os.Getenv)
 	// What this organization owns: what was declared, plus what the machine already
-	// says about private Go modules (internal/scope).
+	// says about private Go modules (internal/scope), in the environment or in the
+	// file `go env -w` writes, as the go command reads them.
 	// Implements: REQ-SUP-036
-	private := scope.New(append(append([]string{}, cfg.Private...), scope.FromGoEnv(os.Getenv)...))
+	private := scope.New(append(append([]string{}, cfg.Private...), scope.FromGoEnv(userconf.New(home, os.Getenv).GoEnv)...))
 	if !private.Empty() {
 		log.Printf("private: %s", strings.Join(private.Patterns(), ", "))
 	}

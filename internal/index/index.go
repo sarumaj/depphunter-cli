@@ -17,6 +17,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
+	"github.com/sarumaj/depphunter-cli/internal/userconf"
 )
 
 // Ecosystem ids, as the language plugins emit them.
@@ -268,7 +269,10 @@ type Source struct {
 	Kind Kind
 	// Registry names a Cargo alternative registry (`[registries.<name>]`): the
 	// source serves only the crates that declare it, by that name in Cargo.toml or
-	// by its index URL in Cargo.lock (lang.Target.Registry), and nothing else.
+	// by its index URL in Cargo.lock (lang.Target.Registry), and nothing else. Two
+	// names are the same registry when Cargo's variables spell them alike
+	// (userconf.CargoRegistryName): a CARGO_REGISTRIES_MY_REG_INDEX registry is
+	// recorded as "my_reg" and serves the crates that declare "my-reg".
 	Registry string
 	// OnError moves on to the next Listed source when this one fails in any way,
 	// not only when it does not have the package: GOPROXY's "|" separator.
@@ -575,7 +579,8 @@ func (c *Config) candidates(eco, pkg, registry string) []candidate {
 		// crate comes from, and is known only if the user vouched for it.
 		want := cargoRegistryURL(registry)
 		for _, s := range c.sources[eco] {
-			if s.Registry != "" && (s.Registry == registry || cargoRegistryURL(s.URL) == want) {
+			if s.Registry != "" && (userconf.CargoRegistryName(s.Registry) == userconf.CargoRegistryName(registry) ||
+				cargoRegistryURL(s.URL) == want) {
 				return one(s)
 			}
 		}

@@ -11,8 +11,11 @@ verification:
 
 ## Statement
 
-The system **shall** read the stored `auths` of `~/.docker/config.json` and
-`~/.config/containers/auth.json`, as a base64 `auth` or a `username`/`password`
+The system **shall** read the stored `auths` of the container registry
+credential files (`~/.docker/config.json`, `~/.config/containers/auth.json`
+and the others
+[REQ-AUTH-020](REQ-AUTH-020-credential-file-locations.md) names), as a base64
+`auth` or a `username`/`password`
 pair, and file each under its registry host, Docker Hub's historical keys being
 filed under `registry-1.docker.io`.
 

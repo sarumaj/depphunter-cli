@@ -7,24 +7,16 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/sarumaj/depphunter-cli/internal/userconf"
 )
 
 // ---------------------------------------------------------------- container registries
-
-// dockerConfig is where Docker, Podman and every tool that borrowed their format keep
-// what they know about a registry.
-func dockerConfigs(home string) []string {
-	return []string{
-		filepath.Join(home, ".docker", "config.json"),
-		filepath.Join(home, ".config", "containers", "auth.json"),
-	}
-}
 
 // readDockerConfig takes the credentials a container registry configuration holds, and
 // the names of the helpers it keeps the rest in.
@@ -56,6 +48,10 @@ func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, err
 			c.registries[host] = true
 		}
 	}
+	// What this file holds, filed over what an earlier file held only once it is
+	// complete: the files are read from the last to be consulted to the first, and a
+	// helper this file names must run even when a later file stored a credential.
+	got := map[string]string{}
 	for registry, entry := range doc.Auths {
 		host := registryHost(registry)
 		if host == "" {
@@ -65,10 +61,10 @@ func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, err
 		switch {
 		case entry.Auth != "":
 			if pair, err := base64.StdEncoding.DecodeString(entry.Auth); err == nil && strings.Contains(string(pair), ":") {
-				c.basic[host] = string(pair)
+				got[host] = string(pair)
 			}
 		case entry.Username != "":
-			c.basic[host] = entry.Username + ":" + entry.Password
+			got[host] = entry.Username + ":" + entry.Password
 		}
 	}
 	// A helper is asked only for a registry the configuration actually names, so the
@@ -86,12 +82,15 @@ func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, err
 	}
 	for registry, helper := range helpers {
 		host := registryHost(registry)
-		if host == "" || c.basic[host] != "" {
+		if host == "" || got[host] != "" {
 			continue
 		}
 		if user, secret, ok := runHelper(helper, registry, lookPath); ok {
-			c.basic[host] = user + ":" + secret
+			got[host] = user + ":" + secret
 		}
+	}
+	for host, pair := range got {
+		c.basic[host] = pair
 	}
 }
 
@@ -184,12 +183,33 @@ func registryHost(registry string) string {
 
 // ---------------------------------------------------------------- crates.io
 
+// cargoIndexes is the index URL of each registry Cargo knows, by name in the form
+// userconf.CargoRegistryName gives: the [registries] of config.toml, and over them
+// the CARGO_REGISTRIES_<NAME>_INDEX variables.
+func cargoIndexes(config []byte, env map[string]string) map[string]string {
+	var doc struct {
+		Registries map[string]struct{ Index string }
+	}
+	out := map[string]string{}
+	if _, err := toml.Decode(string(config), &doc); err == nil {
+		for name, r := range doc.Registries {
+			if r.Index != "" {
+				out[userconf.CargoRegistryName(name)] = r.Index
+			}
+		}
+	}
+	for name, index := range env {
+		out[name] = index
+	}
+	return out
+}
+
 // readCargoCredentials takes the tokens Cargo keeps for its registries, which are
 // named rather than addressed: the index URL for each name is in config.toml beside
-// them.
+// them, or in the environment (cargoIndexes).
 //
 // Implements: REQ-AUTH-008
-func (c *Store) readCargoCredentials(credentials, config []byte) {
+func (c *Store) readCargoCredentials(credentials []byte, indexes map[string]string) {
 	var creds struct {
 		Registry   struct{ Token string }
 		Registries map[string]struct{ Token string }
@@ -199,7 +219,7 @@ func (c *Store) readCargoCredentials(credentials, config []byte) {
 	}
 	for name, entry := range creds.Registries {
 		if entry.Token != "" {
-			c.cargo(name, entry.Token, config)
+			c.cargo(indexes[userconf.CargoRegistryName(name)], entry.Token)
 		}
 	}
 	if creds.Registry.Token != "" {
@@ -211,20 +231,13 @@ func (c *Store) readCargoCredentials(credentials, config []byte) {
 // readCargoEnv takes the tokens Cargo reads from the environment, which is how a
 // pipeline supplies them. The name is upper-cased with hyphens turned into
 // underscores, and there is no way back from the variable to the name, so the
-// environment is matched against the names config.toml declares.
+// environment is asked for the registries config.toml and the environment define.
 //
 // Implements: REQ-AUTH-008
-func (c *Store) readCargoEnv(env func(string) string, config []byte) {
-	var doc struct {
-		Registries map[string]struct{ Index string }
-	}
-	if _, err := toml.Decode(string(config), &doc); err != nil {
-		return
-	}
-	for name := range doc.Registries {
-		variable := "CARGO_REGISTRIES_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_TOKEN"
-		if token := env(variable); token != "" {
-			c.cargo(name, token, config)
+func (c *Store) readCargoEnv(env func(string) string, indexes map[string]string) {
+	for name, index := range indexes {
+		if token := env("CARGO_REGISTRIES_" + name + "_TOKEN"); token != "" {
+			c.cargo(index, token)
 		}
 	}
 	if token := env("CARGO_REGISTRY_TOKEN"); token != "" {
@@ -234,18 +247,11 @@ func (c *Store) readCargoEnv(env func(string) string, config []byte) {
 }
 
 // cargo files a registry's token under the host of its index.
-func (c *Store) cargo(name, token string, config []byte) {
-	var doc struct {
-		Registries map[string]struct{ Index string }
-	}
-	if _, err := toml.Decode(string(config), &doc); err != nil {
+func (c *Store) cargo(index, token string) {
+	if index == "" {
 		return
 	}
-	entry, ok := doc.Registries[name]
-	if !ok || entry.Index == "" {
-		return
-	}
-	if u, err := url.Parse(strings.TrimPrefix(entry.Index, "sparse+")); err == nil && u.Host != "" {
+	if u, err := url.Parse(strings.TrimPrefix(index, "sparse+")); err == nil && u.Host != "" {
 		c.bearer[u.Host] = token
 		c.notePlain(u)
 	}
@@ -285,22 +291,23 @@ func (c *Store) FromURL(raw string, trusted bool) string {
 // ---------------------------------------------------------------- reading them all
 
 // readMachineSources adds the credential files that are read wholesale.
-func (c *Store) readMachineSources(home string, env func(string) string, lookPath func(string) (string, error)) {
-	cargoConfig, _ := os.ReadFile(filepath.Join(home, ".cargo", "config.toml"))
-	if len(cargoConfig) == 0 {
-		cargoConfig, _ = os.ReadFile(filepath.Join(home, ".cargo", "config"))
+//
+// Implements: REQ-AUTH-020
+func (c *Store) readMachineSources(m userconf.Machine, lookPath func(string) (string, error)) {
+	cargoConfig, _ := os.ReadFile(m.CargoFile("config"))
+	indexes := cargoIndexes(cargoConfig, m.CargoRegistries())
+	if data, err := os.ReadFile(m.CargoFile("credentials")); err == nil {
+		c.readCargoCredentials(data, indexes)
 	}
-	for _, name := range []string{"credentials.toml", "credentials"} {
-		if data, err := os.ReadFile(filepath.Join(home, ".cargo", name)); err == nil {
-			c.readCargoCredentials(data, cargoConfig)
-		}
-	}
-	c.readCargoEnv(env, cargoConfig)
-	c.readTerraform(home, env)
-	c.readComposer(home, env)
-	c.readBundler(home, env)
-	for _, name := range dockerConfigs(home) {
-		if data, err := os.ReadFile(name); err == nil {
+	c.readCargoEnv(m.Env, indexes)
+	c.readTerraform(m.Home, m.Env)
+	c.readComposer(m)
+	c.readBundler(m)
+	// The first file to hold a registry's credential is the one used, so they are
+	// read from the last to the first, each over the one before.
+	files := m.ContainerAuthFiles()
+	for i := len(files) - 1; i >= 0; i-- {
+		if data, err := os.ReadFile(files[i]); err == nil {
 			c.readDockerConfig(data, lookPath)
 		}
 	}

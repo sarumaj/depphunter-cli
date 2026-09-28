@@ -307,7 +307,8 @@ variables (`ADDR`, `OPEN`, `EXCLUDE`, `MAX_FILE_SIZE`, `THEME`, `COLOR_BY`,
 `exclude`, `findings`, `private` and `trust_indexes`, the lists from every
 source — the user file, the project file, the environment and the flags — are
 combined rather than replacing one another. `--private` also takes in the Go toolchain's
-`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` patterns.
+`GOPRIVATE`, `GONOPROXY` and `GONOSUMDB` patterns, from the environment or
+the file `go env -w` writes.
 
 The project configuration arrives with the repository, so it may not set
 `editor` (a command depphunter executes), `online`, `python` or
@@ -1119,6 +1120,28 @@ and neither does a Terraform module: `app.terraform.io/acme/vpc/aws` names its
 registry, which is trusted when Terraform's CLI configuration names the host
 (see [Authenticated registries](#authenticated-registries)).
 
+#### Configuration locations
+
+The files named above as `~/...` are where each tool keeps its configuration by
+default. depphunter looks for the machine's configuration, and the credentials
+kept beside it, where the tool itself would, following the tool's own variables
+and platform paths:
+
+| Tool       | Where, in the tool's order of precedence                                                                                                                                                                                                                                                                                                                                                                                                        |
+|------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| npm        | `npm_config_*` variables in any case (`npm_config_registry`, `npm_config_@scope:registry`, `npm_config_//host/:_authToken`; the lower-case spelling wins); the user's npmrc (`npm_config_userconfig`, else `~/.npmrc`); the global npmrc (`npm_config_globalconfig`, else `etc/npmrc` under `npm_config_prefix`; npm's built-in prefix is not guessed)                                                                                          |
+| pip        | `PIP_INDEX_URL` and `PIP_EXTRA_INDEX_URL`; the file `PIP_CONFIG_FILE` names; the user's `pip.conf` (`$XDG_CONFIG_HOME/pip`, `~/Library/Application Support/pip` on macOS, `%APPDATA%\pip\pip.ini` on Windows, and the legacy `~/.pip`), skipped when `PIP_CONFIG_FILE` names an existing file; the site-wide `/etc/pip.conf`, `$XDG_CONFIG_DIRS/pip/pip.conf`, `%ProgramData%\pip\pip.ini`. `PIP_CONFIG_FILE=/dev/null` switches every file off |
+| Cargo      | `CARGO_REGISTRIES_<NAME>_INDEX` and `_TOKEN` (the name upper-cased, `-` as `_`); `config`/`config.toml` and `credentials`/`credentials.toml` in `CARGO_HOME`, else `~/.cargo` (the file without an extension when both exist)                                                                                                                                                                                                                   |
+| Go         | the environment, else the go env file (`GOENV`, else `go/env` in the user configuration directory; `GOENV=off` for none), for `GOPROXY`, `GOPRIVATE`, `GONOPROXY` and `GONOSUMDB`                                                                                                                                                                                                                                                               |
+| containers | `REGISTRY_AUTH_FILE` alone when set; else `$XDG_RUNTIME_DIR/containers/auth.json` (Linux; `~/.config/containers/auth.json` elsewhere), `$XDG_CONFIG_HOME/containers/auth.json`, and Docker's `config.json` in `DOCKER_CONFIG`, else `~/.docker`; the first file holding a registry's credential wins, as in containers-auth.json(5)                                                                                                             |
+| netrc      | `NETRC`; else `~/_netrc` on Windows when it exists; else `~/.netrc`                                                                                                                                                                                                                                                                                                                                                                             |
+| NuGet      | `%APPDATA%\NuGet\NuGet.Config` on Windows; elsewhere `~/.nuget/NuGet/NuGet.Config` and `~/.config/NuGet/NuGet.Config`                                                                                                                                                                                                                                                                                                                           |
+| Composer   | one home, for repositories and credentials alike: `COMPOSER_HOME`; `%APPDATA%\Composer` on Windows; else the first that exists of `$XDG_CONFIG_HOME/composer` (`~/.config/composer`) and `~/.composer`                                                                                                                                                                                                                                          |
+| Bundler    | `BUNDLE_USER_CONFIG`; else `config` in `BUNDLE_USER_HOME`; else `~/.bundle/config`                                                                                                                                                                                                                                                                                                                                                              |
+
+Nothing is read from the repository through these variables' defaults; they
+only say where this machine's own files are.
+
 The two sources are not treated alike. An index named by **this machine's** own
 configuration is trusted. One that appears only in the repository is recorded
 and marked **⚠ index**, because a repository directing a package manager at an
@@ -1234,13 +1257,13 @@ written for and to no other.
 
 | Source                                                        | Holds                                                                                                             |
 |---------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|
-| `~/.npmrc`                                                    | `_authToken`, `_auth`, and `username` with `_password`, per registry                                              |
-| `~/.netrc`, `~/_netrc`                                        | the machine/login/password triples git, curl, Go and pip already read                                             |
+| npm's user and global npmrc, `npm_config_//<host>/:<field>`   | `_authToken`, `_auth`, and `username` with `_password`, per registry                                              |
+| `~/.netrc` (`NETRC`; `~/_netrc` on Windows)                   | the machine/login/password triples git, curl, Go and pip already read                                             |
 | `~/.m2/settings.xml`                                          | each `<server>`, matched to the `<mirror>` or profile `<repository>` in the same file                             |
-| `~/.nuget/NuGet/NuGet.Config`, `~/.config/NuGet/NuGet.Config` | `<packageSourceCredentials>` (`ClearTextPassword`), matched to its `<packageSources>` entry                       |
-| `~/.docker/config.json`                                       | stored `auths`, and the helpers named by `credsStore` and `credHelpers`                                           |
-| `~/.config/containers/auth.json`                              | the same, for Podman and Skopeo                                                                                   |
-| `~/.cargo/credentials.toml`                                   | a token per registry, matched to its index through `~/.cargo/config.toml` (legacy `credentials` and `config` too) |
+| the user's `NuGet.Config` (`%APPDATA%\NuGet` on Windows)      | `<packageSourceCredentials>` (`ClearTextPassword`), matched to its `<packageSources>` entry                       |
+| `~/.docker/config.json` (`DOCKER_CONFIG`)                     | stored `auths`, and the helpers named by `credsStore` and `credHelpers`                                           |
+| `containers/auth.json`, `REGISTRY_AUTH_FILE`                  | the same, for Podman and Skopeo                                                                                   |
+| `credentials.toml` in `CARGO_HOME` (`~/.cargo`)               | a token per registry, matched to its index through `config.toml` there (legacy `credentials` and `config` too)    |
 | `CARGO_REGISTRIES_<NAME>_TOKEN`, `CARGO_REGISTRY_TOKEN`       | the same token supplied by a pipeline instead                                                                     |
 | `~/.terraformrc`, `~/.tofurc`, `TF_CLI_CONFIG_FILE`           | Terraform's and OpenTofu's `credentials "<host>"` tokens; a `host` block names a registry without one             |
 | `~/.terraform.d/credentials.tfrc.json`                        | the tokens `terraform login` stores (OpenTofu's under `~/.config/opentofu`)                                       |
@@ -1255,6 +1278,9 @@ Between them these cover Nexus, Artifactory, Azure Artifacts, ProGet, GitHub
 Packages, Harbor, GHCR, a private crate registry, a private Terraform
 registry, Private Packagist, Satis, Repman and GitLab's Composer registry, and
 Gemfury and the commercial gem servers Bundler is pointed at.
+
+Each file is looked for where its tool looks for it; see
+[Configuration locations](#configuration-locations).
 
 In `~/.npmrc`, `settings.xml` and `NuGet.Config`, a value that is exactly
 `${NAME}`, `${env.NAME}` or `%NAME%` is read from the environment, so a password
@@ -1341,8 +1367,10 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `soldeer:`, `git-submodule:`, `nimble:`, `jsonnet-bundler:`, `cue:`,
 `dhall:` or `puppet-forge:` — restricts it to that ecosystem.
 
-**`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
-to whatever is configured here**, so a Go project whose machine is already
+**`GOPRIVATE`, `GONOPROXY` and `GONOSUMDB` are read in addition to whatever is
+configured here** — from the environment, or else from the file `go env -w`
+writes (`GOENV`, by default `go/env` in the user configuration directory), as
+the go command reads them — so a Go project whose machine is already
 configured requires no further setting.
 
 A package matched in this way is drawn with a **private** label, is never named

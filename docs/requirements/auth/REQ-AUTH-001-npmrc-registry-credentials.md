@@ -11,7 +11,9 @@ verification:
 
 ## Statement
 
-The system **shall** read from the user's `~/.npmrc` the four per-registry
+The system **shall** read from npm's global npmrc, the user's npmrc and the
+`npm_config_//<host>/:<field>` variables
+([REQ-AUTH-020](REQ-AUTH-020-credential-file-locations.md)) the four per-registry
 credential forms `//<host>/...:_authToken`, `:_auth` (base64 "user:password"),
 `:username` and `:_password` (base64), and **shall** file each under the host it
 names.

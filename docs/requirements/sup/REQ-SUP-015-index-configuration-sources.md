@@ -11,14 +11,17 @@ verification:
 
 ## Statement
 
-The system **shall** read index configuration from this machine:
-`NPM_CONFIG_REGISTRY`, `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `GOPROXY`
-(its proxies up to the first `direct` or `off`, each with the separator after
-it), `~/.npmrc`, `~/.config/pip/pip.conf`,
-`~/.pip/pip.conf`, `~/.cargo/config.toml`, the mirrors of `~/.m2/settings.xml`,
-`~/.nuget/NuGet/NuGet.Config`, `~/.config/NuGet/NuGet.Config`, and the
-`composer` repositories of Composer's `config.json` in `COMPOSER_HOME`,
-`~/.config/composer` and `~/.composer` (whose credentials are read from
+The system **shall** read index configuration from this machine, each file
+found where its tool finds it
+([REQ-SUP-064](REQ-SUP-064-tool-configuration-locations.md)): npm's registry
+settings (`npm_config_registry` and `@scope:registry`, the user's and the
+global npmrc), pip's `index-url` and `extra-index-url` (`PIP_INDEX_URL`,
+`PIP_EXTRA_INDEX_URL` and pip's configuration files), `GOPROXY` (its proxies
+up to the first `direct` or `off`, each with the separator after it; from the
+environment or the go env file), Cargo's `config.toml` and
+`CARGO_REGISTRIES_<NAME>_INDEX`, the mirrors of `~/.m2/settings.xml`, the
+user's `NuGet.Config`, and the `composer` repositories of the `config.json`
+in Composer's home (whose credentials are read from
 Composer's `auth.json` and `COMPOSER_AUTH`,
 [REQ-AUTH-016](../auth/REQ-AUTH-016-composer-auth-json-credentials.md)),
 Bundler's rubygems.org mirror (`BUNDLE_MIRROR__RUBYGEMS__ORG`, and the user's
