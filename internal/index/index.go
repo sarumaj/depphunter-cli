@@ -295,6 +295,11 @@ type Source struct {
 	// Origin is where the source was learned from, for the resolution report. It is
 	// one of the Origin constants above.
 	Origin string
+	// Local is a copy of the index on this machine's disk, read in its place:
+	// the directory or archive opam keeps of a repository it fetched, the
+	// checkout Alire keeps of an index. Only this machine's configuration
+	// names one.
+	Local string
 	// nugetKey is the key of a NuGet.Config package source: such sources are
 	// recomputed from the merged configuration on every discovery (applyNuGet).
 	nugetKey string
@@ -345,6 +350,10 @@ type Config struct {
 	// oci is where this machine's container tools pull images from: registries.conf
 	// and the Docker daemon's mirrors (see ociEndpoints).
 	oci ociConf
+	// cpanArchives is where the repository's cpanfile.snapshot says each
+	// distribution's release was installed from ("<dist> <version>" ->
+	// A/AU/AUTHOR/Dist-1.23.tar.gz), which names the release's author.
+	cpanArchives map[string]string
 }
 
 func New() *Config {
@@ -441,7 +450,7 @@ func (c *Config) Add(eco string, s Source) {
 
 // forgetProject drops what the repository declared, before it is read again.
 func (c *Config) forgetProject() {
-	c.clojure, c.biocRelease = false, ""
+	c.clojure, c.biocRelease, c.cpanArchives = false, "", nil
 	for eco, origin := range c.off {
 		if origin == OriginProject {
 			delete(c.off, eco)

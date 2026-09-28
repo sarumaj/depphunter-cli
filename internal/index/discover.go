@@ -174,6 +174,9 @@ func (c *Config) machine(m userconf.Machine) {
 	machineJVM(m, k)
 	machineDub(m, k)
 	machineQuicklisp(m, k)
+	machineCPAN(m, k)
+	machineOpam(m, k)
+	machineAlire(m, k)
 	// Julia registries installed in the depots (JULIA_DEPOT_PATH, else ~/.julia)
 	// besides General. JULIA_PKG_SERVER is not read: a package server serves
 	// registries as tarballs, not as the files asked for here.
@@ -410,6 +413,10 @@ func (c *Config) project(files []*scan.File) {
 			parseDubSettings(data, k)
 		case base == "qlfile":
 			parseQlfile(data, k)
+		case base == "cpanfile.snapshot":
+			c.readCPANSnapshot(data)
+		case base == "dune-workspace":
+			parseDuneWorkspace(data, k)
 		case strings.HasPrefix(base, "config-") && strings.HasSuffix(base, ".lua") && path.Base(path.Dir(f.Path)) == ".luarocks":
 			parseLuaRocksConfig(data, add) // what luarocks init writes for the project
 		}

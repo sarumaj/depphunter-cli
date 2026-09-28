@@ -20,7 +20,11 @@ modules are not read from installed packages, so a module of a package is
 matched by names (the library's main module, the package's prefix, a curated
 table); dune rules that generate modules are not run (a `x.cppo.ml` stands
 for `x.ml`); `(subdir)` stanzas, `(vendored_dirs)` and virtual libraries'
-implementations are not read.
+implementations are not read. With `--online`, opam's solver is not run
+either: an unpinned package stands for the newest version its constraint
+admits in its repository, and a range is not asked of a repository served
+over HTTP that this machine keeps no copy of and GitHub does not list
+([REQ-SUP-054](../sup/REQ-SUP-054-opam-repository-files.md)).
 
 ## Rationale
 

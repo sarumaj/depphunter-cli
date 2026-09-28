@@ -9,6 +9,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
+	"github.com/sarumaj/depphunter-cli/internal/lang/opam"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -403,4 +404,27 @@ func TestTruncated(t *testing.T) {
 	readSource([]byte(deep), ".ml")
 	extractDune([]byte(strings.Repeat("(", 100000)))
 	extractOpam([]byte("depends: " + strings.Repeat("[{(", 100000)))
+}
+
+// A dune-workspace's opam repositories: the repository stanzas in order, and
+// the first lock_dir's repositories list.
+//
+// Verifies: REQ-SUP-054
+func TestWorkspaceRepositories(t *testing.T) {
+	src := []byte(`(lang dune 3.16)
+; a comment
+(repository (name corp) (url git+https://git.corp/opam.git))
+(repository (name "local") (url file:///srv/opam))
+(repository (name broken))
+(lock_dir (path dune.lock) (repositories corp :standard))
+(lock_dir (path other.lock) (repositories upstream))
+`)
+	defined, order, listed := WorkspaceRepositories(src)
+	want := []opam.Repository{{Name: "corp", URL: "git+https://git.corp/opam.git"}, {Name: "local", URL: "file:///srv/opam"}}
+	if !reflect.DeepEqual(defined, want) || !reflect.DeepEqual(order, []string{"corp", ":standard"}) || !listed {
+		t.Errorf("got %+v %v %v", defined, order, listed)
+	}
+	if _, _, listed := WorkspaceRepositories([]byte("(lang dune 3.16)\n(lock_dir (path dune.lock))\n")); listed {
+		t.Error("a lock_dir without repositories lists them")
+	}
 }

@@ -15,7 +15,8 @@ The report **shall** carry notes: what a plugin's resolver or the index client
 knows about the run that no single question shows. Each note **shall** name
 the plugin (the walk's, when the index client gives it), the project file it
 is about when there is one, a code (`lock-unread`, `lock-flat`,
-`lock-ignored`, `no-key`, `forbidden`, `unmapped`) and a sentence. A note
+`lock-ignored`, `no-key`, `forbidden`, `unmapped`, `no-release`,
+`no-copy`) and a sentence. A note
 given more than once **shall** be kept once, and the notes **shall** be listed
 in the same order in every run (by plugin, file, code, sentence). A
 resolver's notes **shall** be recorded whether or not the walk ran.
@@ -39,7 +40,13 @@ JSON (`notes`). At least these **shall** be noted:
   ([REQ-SUP-047](../sup/REQ-SUP-047-hex-api.md));
 - a NuGet package no `packageSourceMapping` pattern covers while a mapping is
   in force, which NuGet itself would not restore
-  ([REQ-SUP-065](../sup/REQ-SUP-065-nuget-configuration-layers-and-source-mapping.md)).
+  ([REQ-SUP-065](../sup/REQ-SUP-065-nuget-configuration-layers-and-source-mapping.md));
+- a CPAN release MetaCPAN does not describe: a pinned version it has no
+  release of, or a mirror's distribution
+  ([REQ-SUP-053](../sup/REQ-SUP-053-metacpan-releases.md));
+- an opam repository or Alire index only git serves, with no copy on this
+  machine ([REQ-SUP-054](../sup/REQ-SUP-054-opam-repository-files.md),
+  [REQ-SUP-061](../sup/REQ-SUP-061-alire-community-index.md)).
 
 ## Rationale
 

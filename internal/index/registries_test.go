@@ -1012,13 +1012,16 @@ func TestLuaRocksDependencies(t *testing.T) {
 }
 
 // MetaCPAN's release endpoint lists a distribution's latest release's dependencies by
-// module; the run-time requirements are kept, without perl, each module named by the
+// module (for a version that is not one release); the run-time requirements are kept, without perl, each module named by the
 // distribution the module endpoint says provides it (asked once), a module only perl
 // provides (or one MetaCPAN does not know) left out, and a version is a minimum,
 // never pinned.
 //
 // Verifies: REQ-SUP-053
 func TestCPANDependencies(t *testing.T) {
+	if idx, known := Discover(nil, env(nil), "").For(CPAN, "Plack"); idx != "https://fastapi.metacpan.org" || !known {
+		t.Errorf("default index: %s (known %v)", idx, known)
+	}
 	var asked []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
@@ -1048,8 +1051,8 @@ func TestCPANDependencies(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	c := clientFor(t, CPAN, srv.URL, "")
-	got := c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack", Version: "1.0050", Pinned: true})
+	c := publicClient(t, CPAN, srv.URL, nil)
+	got := c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack", Version: ">= 1.0047"})
 	want := []lang.Target{
 		{Ecosystem: CPAN, Package: "HTTP-Message", Version: ">= 5.814"},
 		{Ecosystem: CPAN, Package: "Try-Tiny"},
@@ -1064,9 +1067,6 @@ func TestCPANDependencies(t *testing.T) {
 	}
 	if got := c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Absent"}); len(got) != 0 {
 		t.Errorf("absent: %+v", got)
-	}
-	if idx, known := Discover(nil, env(nil), "").For(CPAN, "Plack"); idx != "https://fastapi.metacpan.org" || !known {
-		t.Errorf("default index: %s (known %v)", idx, known)
 	}
 }
 

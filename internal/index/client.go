@@ -19,6 +19,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/ada"
 	"github.com/sarumaj/depphunter-cli/internal/lang/opam"
 	"github.com/sarumaj/depphunter-cli/internal/scope"
 	"github.com/sarumaj/depphunter-cli/internal/store"
@@ -56,6 +57,12 @@ type Client struct {
 	// release lists the modules it requires, and the map's packages are
 	// distributions.
 	cpanModules map[string]string
+	// cpanMirrors is what each CPAN mirror's 02packages lists, read once.
+	cpanMirrors memo[*cpanPackages]
+	// opamCopies are the repository copies opam keeps, an archive read once.
+	opamCopies memo[*opamCopy]
+	// listings are directories of public index repositories GitHub listed.
+	listings memo[[]string]
 	// juliaDirs is where each package's files are in a Julia registry other than
 	// General, from its Registry.toml: one request per registry.
 	juliaDirs map[string]map[string]string
@@ -372,11 +379,14 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 	if a, ok := c.cached(t, index); ok {
 		return a, nil
 	}
-	if t.Ecosystem == Go && t.Version == "" || t.Ecosystem == Opam && !opam.ExactVersion(t.Version) || t.Ecosystem == Alire && !alireExact(t.Version) {
+	if t.Ecosystem == Go && t.Version == "" ||
+		t.Ecosystem == Opam && !opam.ExactVersion(t.Version) && c.unlisted(Opam, index) ||
+		t.Ecosystem == Alire && !alireExact(t.Version) && (!ada.ValidConstraint(t.Version) || c.unlisted(Alire, index)) {
 		// A module proxy serves a go.mod for one version; without one there is no
-		// document to ask for. Said here rather than deeper down so the report can
-		// say it, instead of recording an empty answer that looks like "no
-		// dependencies".
+		// document to ask for. An opam repository or Alire index served over HTTP
+		// that cannot list its versions has none for a range either. Said here
+		// rather than deeper down so the report can say it, instead of recording
+		// an empty answer that looks like "no dependencies".
 		return answer{source: trace.NoAnswer, reason: trace.ReasonNoVersion}, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
