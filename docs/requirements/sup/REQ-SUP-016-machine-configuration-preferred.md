@@ -24,6 +24,13 @@ source chosen this way is still marked and never fetched from
 The machine's configuration is what the package manager on this machine would
 actually use.
 
+## Notes
+
+Sources asked beside the public default are all asked, the machine's before
+the repository's
+([REQ-SUP-063](REQ-SUP-063-additive-sources-fall-back-to-the-public-index.md));
+this preference decides between sources that replace it.
+
 ## Acceptance criteria
 
 1. With the same ecosystem configured on the machine and in the repository,

@@ -150,3 +150,55 @@ version = "1.0.12"
 		t.Errorf("syn 1 depends on %+v, want quote and unicode-ident", got)
 	}
 }
+
+// A dependency from an alternative registry carries it - the name Cargo.toml gives,
+// else the index URL Cargo.lock records - so that only that registry is asked
+// about it; a crates.io dependency carries none.
+//
+// Verifies: REQ-RS-010
+func TestAlternativeRegistryTravelsWithTheCrate(t *testing.T) {
+	root := t.TempDir()
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("Cargo.toml", "[package]\nname = \"app\"\n\n[dependencies]\n"+
+		"billing = { version = \"1\", registry = \"corp\" }\nledger = \"2\"\nserde = \"1\"\n")
+	write("Cargo.lock", `version = 3
+
+[[package]]
+name = "billing"
+version = "1.2.0"
+source = "registry+https://crates.corp.example/index"
+dependencies = ["serde"]
+
+[[package]]
+name = "ledger"
+version = "2.0.1"
+source = "sparse+https://crates.corp.example/index/"
+
+[[package]]
+name = "serde"
+version = "1.0.200"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+`)
+	os.MkdirAll(filepath.Join(root, "src"), 0o755)
+	write("src/main.rs", "use billing::Invoice;\nuse ledger::Entry;\nuse serde::Serialize;\nfn main() {}\n")
+
+	res := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, res["src/main.rs"], map[string]lang.Target{
+		"use billing::Invoice": {Ecosystem: "crates", Package: "billing", Version: "1.2.0", Requested: "1", Pinned: true, Registry: "corp"},
+		"use ledger::Entry":    {Ecosystem: "crates", Package: "ledger", Version: "2.0.1", Requested: "2", Pinned: true, Registry: "https://crates.corp.example/index"},
+		"use serde::Serialize": {Ecosystem: "crates", Package: "serde", Version: "1.0.200", Requested: "1", Pinned: true},
+	})
+	r, err := (Plugin{}).Resolver(root, langtest.Files(t, root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r.(lang.Transitive).Dependencies(lang.Target{Ecosystem: "crates", Package: "billing", Version: "1.2.0"})
+	if len(got) != 1 || got[0].Package != "serde" || got[0].Registry != "" {
+		t.Errorf("billing depends on %+v, want crates.io's serde", got)
+	}
+}

@@ -136,36 +136,60 @@ func TestDiscoverReadsEveryEcosystem(t *testing.T) {
 	})
 	c := Discover(files, env(map[string]string{"GOPROXY": "https://goproxy.internal,direct"}), "")
 
+	// What replaces the public default is what a package is attributed to; what is
+	// asked beside it is not, since which packages it holds is not known offline.
 	for _, tt := range []struct{ eco, want string }{
-		// Several files name an index; the first by path wins, the same way every run.
-		{PyPI, "https://uv.internal/simple"},
-		{NuGet, "https://nuget.internal/v3/index.json"},
-		{Maven, "https://maven.internal/releases"},
-		{Cargo, "https://crates.internal/index"},
+		{PyPI, "https://pypi.org/simple"},
+		{NuGet, "https://api.nuget.org/v3/index.json"},
+		{Maven, "https://repo.maven.apache.org/maven2"},
+		// [source.corp] is not what crates.io is replaced with: it serves nothing.
+		{Cargo, "https://crates.io"},
 		{NPM, "https://yarn.internal/npm"},
 		{Go, "https://goproxy.internal"},
-		{Composer, "https://satis.internal"}, // a VCS repository is not an index
+		{Composer, "https://satis.internal"}, // Packagist is off; a VCS repository is not an index
 	} {
 		if idx, _ := c.For(tt.eco, "pkg"); idx != tt.want {
 			t.Errorf("%s: got %s, want %s", tt.eco, idx, tt.want)
 		}
 	}
-	// The others are still recorded: the map shows one, the configuration keeps all.
-	var found bool
-	for _, s := range c.Sources(PyPI) {
-		found = found || s.URL == "https://pypi.internal/simple"
-	}
-	if !found {
-		t.Errorf("the requirements file's index was dropped: %+v", c.Sources(PyPI))
+	// Every source is recorded, and each additive one is a candidate before the
+	// public default, in the same order on every run.
+	for _, tt := range []struct {
+		eco  string
+		want []string
+	}{
+		{PyPI, []string{"https://uv.internal/simple?", "https://pypi.internal/simple?", "https://pypi.org/simple"}},
+		{NuGet, []string{"https://nuget.internal/v3/index.json?", "https://api.nuget.org/v3/index.json"}},
+		{Maven, []string{"https://maven.internal/releases?", "https://repo.maven.apache.org/maven2"}},
+		{Go, []string{"https://goproxy.internal"}},
+		{Composer, []string{"https://satis.internal?"}},
+	} {
+		if got := order(c, tt.eco, "pkg", ""); strings.Join(got, " ") != strings.Join(tt.want, " ") {
+			t.Errorf("%s: asked in the order %v, want %v", tt.eco, got, tt.want)
+		}
 	}
 	// GOPROXY comes from this machine's environment, so it is vouched for; the
 	// repository's own files are not.
 	if _, known := c.For(Go, "example.com/mod"); !known {
 		t.Error("GOPROXY from the environment is not trusted")
 	}
-	if _, known := c.For(PyPI, "requests"); known {
+	if _, known := c.For(Composer, "acme/lib"); known {
 		t.Error("an index only the repository names is trusted")
 	}
+}
+
+// order lists the indexes a package is asked of, in order, with "?" after one that
+// is not fetched from.
+func order(c *Config, eco, pkg, registry string) []string {
+	var out []string
+	for _, k := range c.candidates(eco, pkg, registry) {
+		u := k.url
+		if !k.known {
+			u += "?"
+		}
+		out = append(out, u)
+	}
+	return out
 }
 
 // Verifies: REQ-SUP-017
@@ -352,11 +376,11 @@ index = "https://zzz.example/index"
 `
 	for range 20 {
 		var first string
-		parseCargoConfig([]byte(config), func(eco, url, scope string) {
-			if first == "" && url != "" {
-				first = url
+		parseCargoConfig([]byte(config), sink{put: func(eco string, s Source) {
+			if first == "" && s.URL != "" {
+				first = s.URL
 			}
-		})
+		}})
 		if first != "https://corp.example/index" {
 			t.Fatalf("crates.io resolves from %s, want the source replace-with names", first)
 		}
@@ -404,8 +428,9 @@ func TestReadsNuGetConfigFromBothUserLocations(t *testing.T) {
 			t.Fatal(err)
 		}
 		c := Discover(nil, env(nil), home)
-		if idx, known := c.For(NuGet, "Acme.Tools"); idx != "https://nuget.corp/v3/index.json" || !known {
-			t.Errorf("~/%s: got %s (known %v), want the machine's feed, known", filepath.Join(dir...), idx, known)
+		want := []string{"https://nuget.corp/v3/index.json", "https://api.nuget.org/v3/index.json"}
+		if got := order(c, NuGet, "Acme.Tools", ""); strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Errorf("~/%s: asked %v, want the machine's feed (known) before nuget.org", filepath.Join(dir...), got)
 		}
 	}
 }

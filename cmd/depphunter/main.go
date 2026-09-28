@@ -215,6 +215,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	indexes := index.NewDiscoverer(os.Getenv, home)
 	indexes.Config().Credentials(credentials)
 	indexes.Config().Trust(cfg.TrustIndexes)
+	indexes.Config().Private(private.Match)
 	opts.Indexes = func(files []*scan.File) anal.Indexes { return indexes.Discover(files) }
 	// Implements: REQ-DIST-003, REQ-SUP-010, REQ-SUP-020
 	if cfg.Online {

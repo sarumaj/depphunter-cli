@@ -19,6 +19,9 @@ type dep struct {
 	pkg     string // package name on crates.io (differs from the key when renamed)
 	version string
 	path    string // project-relative directory of a path dependency
+	// registry is the alternative registry the dependency declares: its name
+	// (registry = "corp") or its index URL (registry-index = "...").
+	registry string
 }
 
 type crate struct {
@@ -35,6 +38,9 @@ type resolver struct {
 	// of them a dependency means is decided by its own requirement (see pick).
 	locked map[string][]string
 	tree   map[string][]locked // "package version" -> the crates it depends on
+	// sources is the registry Cargo.lock says each "package version" came from,
+	// when it is not crates.io: its index URL.
+	sources map[string]string
 }
 
 // locked is one crate in Cargo.lock: its name, and its version when the lock names
@@ -57,6 +63,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 		}
 		out = append(out, lang.Target{
 			Ecosystem: ecoCrates, Package: dep.name, Version: version, Pinned: version != "",
+			Registry: r.sources[dep.name+" "+version],
 		})
 	}
 	return out
@@ -118,7 +125,8 @@ func norm(name string) string { return strings.ReplaceAll(name, "-", "_") }
 
 // Implements: REQ-RS-004, REQ-RS-006, REQ-RS-007
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, members: map[string]string{}, locked: map[string][]string{}, tree: map[string][]locked{}}
+	r := &resolver{files: map[string]bool{}, members: map[string]string{}, locked: map[string][]string{},
+		tree: map[string][]locked{}, sources: map[string]string{}}
 	workspaceDeps := map[string]dep{}
 	type manifest struct {
 		f   *scan.File
@@ -141,7 +149,7 @@ func newResolver(all []*scan.File) *resolver {
 		case "Cargo.lock":
 			var lock struct {
 				Package []struct {
-					Name, Version string
+					Name, Version, Source string
 					// Each entry lists what that crate needs, as "name" or
 					// "name version": the transitive graph, already resolved.
 					Dependencies []string
@@ -150,6 +158,9 @@ func newResolver(all []*scan.File) *resolver {
 			if _, err := toml.DecodeFile(f.Abs, &lock); err == nil {
 				for _, p := range lock.Package {
 					r.locked[p.Name] = append(r.locked[p.Name], p.Version)
+					if reg := lockRegistry(p.Source); reg != "" {
+						r.sources[p.Name+" "+p.Version] = reg
+					}
 					for _, d := range p.Dependencies {
 						// "name", or "name version" and possibly " (source)".
 						fields := strings.Fields(d)
@@ -221,8 +232,49 @@ func parseDep(key string, v any, dir string) dep {
 		if s, ok := v["path"].(string); ok {
 			d.path = path.Clean(path.Join(dir, s))
 		}
+		if s, ok := v["registry"].(string); ok {
+			d.registry = s
+		} else if s, ok := v["registry-index"].(string); ok {
+			d.registry = s
+		}
 	}
 	return d
+}
+
+// lockRegistry is the index URL of a Cargo.lock `source` naming a registry other
+// than crates.io ("registry+<url>", "sparse+<url>"), else "".
+//
+// Implements: REQ-RS-010
+func lockRegistry(source string) string {
+	var u string
+	switch {
+	case strings.HasPrefix(source, "registry+"):
+		u = strings.TrimPrefix(source, "registry+")
+	case strings.HasPrefix(source, "sparse+"):
+		u = strings.TrimPrefix(source, "sparse+")
+	default:
+		return "" // crates.io needs no name; a git or path source is no registry
+	}
+	u = strings.TrimRight(u, "/")
+	if u == "https://github.com/rust-lang/crates.io-index" || u == "https://index.crates.io" {
+		return ""
+	}
+	return u
+}
+
+// target is the crates target of a registry dependency: the version Cargo.lock
+// holds for it, and the registry it comes from when that is not crates.io.
+//
+// Implements: REQ-RS-007, REQ-RS-010
+func (r *resolver) target(d dep) lang.Target {
+	t := lang.Target{Ecosystem: ecoCrates, Package: d.pkg, Version: d.version, Registry: d.registry}
+	if exact := r.pick(d.pkg, d.version); exact != "" {
+		t.Version, t.Requested, t.Pinned = exact, d.version, true
+		if t.Registry == "" {
+			t.Registry = r.sources[d.pkg+" "+exact]
+		}
+	}
+	return t
 }
 
 func (r *resolver) crateOf(file string) *crate {
@@ -293,11 +345,7 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 			}
 			// Cargo reads a bare "1.2.3" as ^1.2.3, so a manifest never pins on its
 			// own: only Cargo.lock says which version is built.
-			t := lang.Target{Ecosystem: ecoCrates, Package: d.pkg, Version: d.version}
-			if exact := r.pick(d.pkg, d.version); exact != "" {
-				t.Version, t.Requested, t.Pinned = exact, d.version, true
-			}
-			return t
+			return r.target(d)
 		}
 	}
 	if dir, ok := r.members[name]; ok {
@@ -376,11 +424,7 @@ func (c Crates) Crate(file, name string) (lang.Target, bool) {
 		if dir, ok := c.r.members[norm(d.pkg)]; ok {
 			return lang.Target{Local: dir}, true
 		}
-		t := lang.Target{Ecosystem: ecoCrates, Package: d.pkg, Version: d.version}
-		if exact := c.r.pick(d.pkg, d.version); exact != "" {
-			t.Version, t.Requested, t.Pinned = exact, d.version, true
-		}
-		return t, true
+		return c.r.target(d), true
 	}
 	if dir, ok := c.r.members[name]; ok {
 		return lang.Target{Local: dir}, true

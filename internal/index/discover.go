@@ -69,26 +69,26 @@ func (d *Discoverer) Discover(files []*scan.File) *Config {
 //
 // Implements: REQ-SUP-015
 func (c *Config) machine(env func(string) string, home string) {
-	add := func(eco, url, scope string) {
-		c.Add(eco, Source{URL: url, Scope: scope, Trusted: true, Origin: OriginMachine})
+	k := sink{
+		put: func(eco string, s Source) {
+			s.Trusted, s.Origin = true, OriginMachine
+			c.Add(eco, s)
+		},
+		off: func(eco string) { c.SwitchOff(eco, OriginMachine) },
 	}
+	add := k.add
 
 	add(NPM, env("NPM_CONFIG_REGISTRY"), "")
 	add(PyPI, env("PIP_INDEX_URL"), "")
 	for _, u := range strings.Fields(env("PIP_EXTRA_INDEX_URL")) {
-		add(PyPI, u, "")
+		k.extra(PyPI, u)
 	}
-	// GOPROXY is a fallback list; "direct" and "off" name no index.
-	for _, p := range strings.FieldsFunc(env("GOPROXY"), func(r rune) bool { return r == ',' || r == '|' }) {
-		if p = strings.TrimSpace(p); p != "" && p != "direct" && p != "off" {
-			add(Go, p, "")
-		}
-	}
+	parseGoproxy(env("GOPROXY"), k)
 	// Composer's global configuration lives in COMPOSER_HOME, whose default depends on
 	// the platform; both usual places are read below.
 	if dir := env("COMPOSER_HOME"); dir != "" {
 		if data, err := os.ReadFile(filepath.Join(dir, "config.json")); err == nil {
-			parseComposer(data, add)
+			parseComposer(data, k)
 		}
 	}
 	// Bundler's mirror of rubygems.org, from the environment.
@@ -162,9 +162,9 @@ func (c *Config) machine(env func(string) string, home string) {
 	}
 	for _, f := range []struct {
 		path  string
-		parse func([]byte, func(eco, url, scope string))
+		parse func([]byte, sink)
 	}{
-		{filepath.Join(home, ".npmrc"), parseNpmrc},
+		{filepath.Join(home, ".npmrc"), plain(parseNpmrc)},
 		{filepath.Join(home, ".config", "pip", "pip.conf"), parsePipConf},
 		{filepath.Join(home, ".pip", "pip.conf"), parsePipConf},
 		{filepath.Join(home, ".cargo", "config.toml"), parseCargoConfig},
@@ -175,16 +175,67 @@ func (c *Config) machine(env func(string) string, home string) {
 		{filepath.Join(home, ".config", "NuGet", "NuGet.Config"), parseNuGetConfig},
 		{filepath.Join(home, ".config", "composer", "config.json"), parseComposer},
 		{filepath.Join(home, ".composer", "config.json"), parseComposer},
-		{filepath.Join(home, ".gemrc"), parseGemrc},
-		{filepath.Join(home, ".bundle", "config"), parseBundleConfig},
-		{filepath.Join(home, ".Rprofile"), parseRprofile},
-		{filepath.Join(home, ".config", "cabal", "config"), parseCabalRepositories},
-		{filepath.Join(home, ".bazelrc"), parseBazelrc},
-		{filepath.Join(home, ".cabal", "config"), parseCabalRepositories},
+		{filepath.Join(home, ".gemrc"), plain(parseGemrc)},
+		{filepath.Join(home, ".bundle", "config"), plain(parseBundleConfig)},
+		{filepath.Join(home, ".Rprofile"), plain(parseRprofile)},
+		{filepath.Join(home, ".config", "cabal", "config"), plain(parseCabalRepositories)},
+		{filepath.Join(home, ".bazelrc"), plain(parseBazelrc)},
+		{filepath.Join(home, ".cabal", "config"), plain(parseCabalRepositories)},
 	} {
 		if data, err := os.ReadFile(f.path); err == nil {
-			f.parse(data, add)
+			f.parse(data, k)
 		}
+	}
+}
+
+// sink is where a parser records what it reads. Most name a URL and perhaps a scope
+// (add); those that know how a source relates to the public default say so (put,
+// extra), and a configuration that switches the default off says that (off).
+type sink struct {
+	put func(eco string, s Source)
+	off func(eco string)
+}
+
+// add records a source that replaces the public default, or serves its scope.
+func (k sink) add(eco, url, scope string) { k.put(eco, Source{URL: url, Scope: scope}) }
+
+// extra records a source asked beside the public default.
+func (k sink) extra(eco, url string) { k.put(eco, Source{URL: url, Kind: Additive}) }
+
+// plain adapts a parser that only ever calls add.
+func plain(parse func([]byte, func(eco, url, scope string))) func([]byte, sink) {
+	return func(data []byte, k sink) { parse(data, k.add) }
+}
+
+// parseGoproxy reads GOPROXY as the go command does: a list of proxies asked in
+// order, each moving on to the next when it answers 404 or 410 (a "," after it) or
+// after any failure (a "|"). "direct" (a version control fetch) and "off" end what
+// can be asked; entries after them are not reached by anything asked here. A GOPROXY
+// that is set replaces proxy.golang.org, so GOPROXY=direct or =off leaves no proxy
+// to ask at all.
+//
+// Implements: REQ-SUP-015, REQ-SUP-063
+func parseGoproxy(value string, k sink) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return
+	}
+	k.off(Go)
+	for value != "" {
+		i := strings.IndexAny(value, ",|")
+		entry, sep := value, byte(0)
+		if i >= 0 {
+			entry, sep, value = value[:i], value[i], value[i+1:]
+		} else {
+			value = ""
+		}
+		switch entry = strings.TrimSpace(entry); entry {
+		case "":
+			continue
+		case "direct", "off":
+			return
+		}
+		k.put(Go, Source{URL: entry, Kind: Listed, OnError: sep == '|'})
 	}
 }
 
@@ -193,7 +244,14 @@ func (c *Config) machine(env func(string) string, home string) {
 //
 // Implements: REQ-SUP-015, REQ-SUP-018
 func (c *Config) project(files []*scan.File) {
-	add := func(eco, url, scope string) { c.Add(eco, Source{URL: url, Scope: scope, Origin: OriginProject}) }
+	k := sink{
+		put: func(eco string, s Source) {
+			s.Trusted, s.Origin = false, OriginProject
+			c.Add(eco, s)
+		},
+		off: func(eco string) { c.SwitchOff(eco, OriginProject) },
+	}
+	add := k.add
 	// A repository may declare several indexes for one ecosystem. Which one is shown
 	// is then arbitrary, but it must not change between runs, or the same repository
 	// would draw differently each time.
@@ -211,26 +269,26 @@ func (c *Config) project(files []*scan.File) {
 		case base == ".yarnrc.yml":
 			parseYarnrc(data, add)
 		case base == "pip.conf", base == "pip.ini":
-			parsePipConf(data, add)
+			parsePipConf(data, k)
 		case strings.HasPrefix(base, "requirements") && strings.HasSuffix(base, ".txt"):
-			parseRequirements(data, add)
+			parseRequirements(data, k)
 		case base == "pyproject.toml":
-			parsePyproject(data, add)
+			parsePyproject(data, k)
 		case base == "nuget.config":
-			parseNuGetConfig(data, add)
+			parseNuGetConfig(data, k)
 		case base == "paket.dependencies":
-			parsePaketSources(data, add)
+			parsePaketSources(data, k)
 		case base == "paket.lock":
-			parsePaketLock(data, add)
+			parsePaketLock(data, k)
 		case base == "pom.xml":
-			parsePom(data, add)
+			parsePom(data, k)
 		case base == "build.gradle", base == "build.gradle.kts", base == "settings.gradle", base == "settings.gradle.kts":
-			parseGradleRepos(data, add)
+			parseGradleRepos(data, k)
 		case base == "deps.edn", base == "bb.edn", base == "shadow-cljs.edn", base == "project.clj", base == "build.boot":
 			c.clojure = true
-			parseClojureRepos(base, data, add)
+			parseClojureRepos(base, data, k)
 		case base == "composer.json":
-			parseComposer(data, add)
+			parseComposer(data, k)
 		case f.Path == "Gemfile" || strings.HasSuffix(f.Path, "/Gemfile") || base == "gems.rb":
 			parseGemfile(data, add)
 		case base == "gemfile.lock" || base == "gems.locked":
@@ -246,7 +304,7 @@ func (c *Config) project(files []*scan.File) {
 		case base == "cabal.project" || base == "cabal.project.local":
 			parseCabalRepositories(data, add)
 		case base == "config.toml" && strings.HasSuffix(path.Dir(f.Path), ".cargo"):
-			parseCargoConfig(data, add)
+			parseCargoConfig(data, k)
 		case f.Path == "Podfile" || strings.HasSuffix(f.Path, "/Podfile"):
 			parsePodfile(data, add)
 		case base == "podfile.lock":
@@ -305,27 +363,43 @@ func parseYarnrc(data []byte, add func(eco, url, scope string)) {
 	}
 }
 
-// parsePipConf reads index-url and extra-index-url from a pip configuration file.
-func parsePipConf(data []byte, add func(eco, url, scope string)) {
+// parsePipConf reads a pip configuration file: index-url replaces PyPI, and each URL
+// of extra-index-url (on the line, or on the indented lines that continue it) is
+// asked beside it.
+//
+// Implements: REQ-SUP-015, REQ-SUP-063
+func parsePipConf(data []byte, k sink) {
+	extra := false
 	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		key, value, ok := strings.Cut(line, "=")
+		trimmed := strings.TrimSpace(line)
+		if extra && trimmed != "" && (line[0] == ' ' || line[0] == '\t') && !strings.Contains(trimmed, "=") {
+			for _, u := range strings.Fields(trimmed) {
+				k.extra(PyPI, u)
+			}
+			continue
+		}
+		extra = false
+		key, value, ok := strings.Cut(trimmed, "=")
 		if !ok {
 			continue
 		}
 		switch strings.TrimSpace(key) {
 		case "index-url", "index_url":
-			add(PyPI, strings.TrimSpace(value), "")
+			k.add(PyPI, strings.TrimSpace(value), "")
 		case "extra-index-url", "extra_index_url":
+			extra = true
 			for _, u := range strings.Fields(value) {
-				add(PyPI, u, "")
+				k.extra(PyPI, u)
 			}
 		}
 	}
 }
 
-// parseRequirements reads the index options a requirements file may carry.
-func parseRequirements(data []byte, add func(eco, url, scope string)) {
+// parseRequirements reads the index options a requirements file may carry:
+// --index-url replaces PyPI, --extra-index-url is asked beside it.
+//
+// Implements: REQ-SUP-015, REQ-SUP-063
+func parseRequirements(data []byte, k sink) {
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
 		if len(fields) == 0 {
@@ -339,42 +413,117 @@ func parseRequirements(data []byte, add func(eco, url, scope string)) {
 			option, value = o, v
 		}
 		switch option {
-		case "--index-url", "-i", "--extra-index-url":
-			add(PyPI, value, "")
+		case "--index-url", "-i":
+			k.add(PyPI, value, "")
+		case "--extra-index-url":
+			k.extra(PyPI, value)
 		}
 	}
 }
 
-// parsePyproject reads the indexes Poetry and uv declare.
-func parsePyproject(data []byte, add func(eco, url, scope string)) {
+// parsePyproject reads the indexes Poetry and uv declare, as each tool uses them.
+//
+// A Poetry source is primary unless its priority says otherwise, and a primary
+// source replaces PyPI; a supplemental one (or a legacy secondary one) is asked
+// beside it; an explicit one serves only the dependencies that name it with
+// `source = "<name>"`. A uv index is asked before PyPI unless it is the default
+// (default = true), which replaces PyPI; an explicit one serves only the packages
+// [tool.uv.sources] pins to it, as any index a package is pinned to does.
+//
+// Implements: REQ-SUP-015, REQ-SUP-063
+func parsePyproject(data []byte, k sink) {
+	type poetrySource struct {
+		Name, URL, Priority string
+		Default, Secondary  bool
+	}
 	var doc struct {
 		Tool struct {
 			Poetry struct {
-				Source []struct{ Name, URL string }
+				Source       []poetrySource
+				Dependencies map[string]any
+				Group        map[string]struct{ Dependencies map[string]any }
 			}
 			UV struct {
-				Index []struct{ Name, URL string }
+				Index []struct {
+					Name, URL         string
+					Default, Explicit bool
+				}
+				Sources map[string]any
 			} `toml:"uv"`
 		}
 	}
 	if _, err := toml.Decode(string(data), &doc); err != nil {
 		return
 	}
-	for _, s := range doc.Tool.Poetry.Source {
-		add(PyPI, s.URL, "")
+	poetry := doc.Tool.Poetry
+	named := map[string]string{}
+	for _, s := range poetry.Source {
+		named[s.Name] = s.URL
+		switch {
+		case s.Priority == "explicit":
+		case s.Priority == "supplemental" || s.Secondary || s.Priority == "secondary":
+			k.extra(PyPI, s.URL)
+		default:
+			k.add(PyPI, s.URL, "")
+		}
 	}
-	for _, s := range doc.Tool.UV.Index {
-		add(PyPI, s.URL, "")
+	deps := []map[string]any{poetry.Dependencies}
+	for _, g := range slices.Sorted(maps.Keys(poetry.Group)) {
+		deps = append(deps, poetry.Group[g].Dependencies)
+	}
+	for _, d := range deps {
+		for _, name := range slices.Sorted(maps.Keys(d)) {
+			if spec, ok := d[name].(map[string]any); ok {
+				if src, ok := spec["source"].(string); ok && named[src] != "" {
+					k.add(PyPI, named[src], name)
+				}
+			}
+		}
+	}
+	uv := doc.Tool.UV
+	clear(named)
+	for _, s := range uv.Index {
+		named[s.Name] = s.URL
+		switch {
+		case s.Explicit:
+		case s.Default:
+			k.add(PyPI, s.URL, "")
+		default:
+			k.extra(PyPI, s.URL)
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(uv.Sources)) {
+		// { index = "name" }, or a list of such entries with markers
+		specs, ok := uv.Sources[name].([]map[string]any)
+		if !ok {
+			if list, isList := uv.Sources[name].([]any); isList {
+				for _, e := range list {
+					if m, ok := e.(map[string]any); ok {
+						specs = append(specs, m)
+					}
+				}
+			} else if m, isMap := uv.Sources[name].(map[string]any); isMap {
+				specs = append(specs, m)
+			}
+		}
+		for _, spec := range specs {
+			if idx, ok := spec["index"].(string); ok && named[idx] != "" {
+				k.add(PyPI, named[idx], name)
+			}
+		}
 	}
 }
 
-// parseCargoConfig reads replaced sources and alternative registries.
+// parseCargoConfig reads what replaces crates.io and the alternative registries.
 //
-// The first source added is the one packages resolve from, so the order is fixed:
-// the source crates.io is replaced with (following replace-with to the end), then
-// every other source and registry by name. Ranging over the maps as they come would
-// pick a different one from run to run.
-func parseCargoConfig(data []byte, add func(eco, url, scope string)) {
+// crates.io is replaced by whatever `[source.crates-io] replace-with` ends at,
+// following the chain; that source serves every crate crates.io would. An
+// alternative registry (`[registries.<name>]`) is not a replacement: it serves only
+// the crates that declare it (lang.Target.Registry), and is recorded under its name
+// for them. A [source] no chain reaches serves nothing.
+//
+// Implements: REQ-SUP-015, REQ-SUP-063
+func parseCargoConfig(data []byte, k sink) {
 	var doc struct {
 		Source map[string]struct {
 			Registry    string
@@ -393,16 +542,13 @@ func parseCargoConfig(data []byte, add func(eco, url, scope string)) {
 		}
 		name = next
 	}
-	if s, ok := doc.Source[name]; ok {
-		add(Cargo, s.Registry, "")
+	if s, ok := doc.Source[name]; ok && name != "crates-io" {
+		k.add(Cargo, s.Registry, "")
 	} else if r, ok := doc.Registries[name]; ok {
-		add(Cargo, r.Index, "")
-	}
-	for _, key := range slices.Sorted(maps.Keys(doc.Source)) {
-		add(Cargo, doc.Source[key].Registry, "")
+		k.add(Cargo, r.Index, "")
 	}
 	for _, key := range slices.Sorted(maps.Keys(doc.Registries)) {
-		add(Cargo, doc.Registries[key].Index, "")
+		k.put(Cargo, Source{URL: doc.Registries[key].Index, Registry: key, Kind: Additive})
 	}
 }
 
@@ -419,16 +565,29 @@ type nugetSources struct {
 	Add []nugetEntry `xml:"add"`
 }
 
-// parseNuGetConfig reads the package sources of a NuGet configuration.
-func parseNuGetConfig(data []byte, add func(eco, url, scope string)) {
+// parseNuGetConfig reads the package sources of a NuGet configuration. NuGet asks
+// every source it has for a package, nuget.org among them, so each feed is asked
+// beside the public default - unless the config's <packageSources> starts with
+// <clear/>, which drops what other configs (and so nuget.org) contributed. A feed
+// on nuget.org itself is the public default; a local folder is no index.
+//
+// Implements: REQ-SUP-015, REQ-SUP-063
+func parseNuGetConfig(data []byte, k sink) {
 	var doc struct {
-		PackageSources nugetSources `xml:"packageSources"`
+		PackageSources struct {
+			nugetSources
+			Clear *struct{} `xml:"clear"`
+		} `xml:"packageSources"`
 	}
 	if xml.Unmarshal(data, &doc) != nil {
 		return
 	}
+	official := false
 	for _, s := range doc.PackageSources.Add {
-		add(NuGet, s.Value, "")
+		official = addNuGetFeed(s.Value, k) || official
+	}
+	if doc.PackageSources.Clear != nil && !official {
+		k.off(NuGet)
 	}
 }
 
@@ -437,10 +596,10 @@ func parseNuGetConfig(data []byte, add func(eco, url, scope string)) {
 // projects often still name its retired v2 API) is the public index already.
 //
 // Implements: REQ-FSHARP-010
-func parsePaketSources(data []byte, add func(eco, url, scope string)) {
+func parsePaketSources(data []byte, k sink) {
 	_, sources := nuget.ParseDependencies(data)
 	for _, s := range sources {
-		addPaketFeed(s.URL, add)
+		addNuGetFeed(s.URL, k)
 	}
 }
 
@@ -448,29 +607,36 @@ func parsePaketSources(data []byte, add func(eco, url, scope string)) {
 // `remote:` lines of its NUGET sections).
 //
 // Implements: REQ-FSHARP-010
-func parsePaketLock(data []byte, add func(eco, url, scope string)) {
+func parsePaketLock(data []byte, k sink) {
 	seen := map[string]bool{}
 	for _, l := range nuget.ParseLock(data) {
 		if l.Kind == "nuget" && !seen[l.Remote] {
 			seen[l.Remote] = true
-			addPaketFeed(l.Remote, add)
+			addNuGetFeed(l.Remote, k)
 		}
 	}
 }
 
-func addPaketFeed(feed string, add func(eco, url, scope string)) {
-	u, err := url.Parse(strings.Trim(feed, `"`))
+// addNuGetFeed records a feed asked beside nuget.org, and reports whether the feed
+// is nuget.org itself (by any of its addresses): the public default, which is not
+// recorded again.
+func addNuGetFeed(feed string, k sink) (official bool) {
+	u, err := url.Parse(strings.TrimSpace(strings.Trim(feed, `"`)))
 	if err != nil || u.Scheme != "https" && u.Scheme != "http" {
-		return
+		return false
 	}
 	if h := strings.ToLower(u.Hostname()); h == "nuget.org" || strings.HasSuffix(h, ".nuget.org") {
-		return
+		return true
 	}
-	add(NuGet, u.String(), "")
+	k.extra(NuGet, u.String())
+	return false
 }
 
-// parsePom reads the repositories a Maven project declares.
-func parsePom(data []byte, add func(eco, url, scope string)) {
+// parsePom reads the repositories a Maven project declares. Maven asks them before
+// Maven Central, which stays: each is a source beside it.
+//
+// Implements: REQ-SUP-015, REQ-SUP-063
+func parsePom(data []byte, k sink) {
 	var doc struct {
 		Repositories struct {
 			Repository []struct {
@@ -483,7 +649,7 @@ func parsePom(data []byte, add func(eco, url, scope string)) {
 	}
 	for _, r := range doc.Repositories.Repository {
 		if u := strings.TrimSpace(r.URL); !MavenPublic(u) {
-			add(Maven, u, "")
+			k.extra(Maven, u)
 		}
 	}
 }
@@ -503,9 +669,10 @@ var (
 // declares, other than Maven Central. mavenCentral(), google() and mavenLocal()
 // name no repository of the project's own, and the repositories of
 // pluginManagement and buildscript blocks serve Gradle's plugins, not the code.
+// Each is asked beside Maven Central.
 //
-// Implements: REQ-SUP-015, REQ-SUP-056
-func parseGradleRepos(data []byte, add func(eco, url, scope string)) {
+// Implements: REQ-SUP-015, REQ-SUP-056, REQ-SUP-063
+func parseGradleRepos(data []byte, k sink) {
 	src := string(data)
 	for {
 		loc := gradleOwnBlock.FindStringIndex(src)
@@ -528,7 +695,7 @@ func parseGradleRepos(data []byte, add func(eco, url, scope string)) {
 	for _, m := range gradleRepo.FindAllStringSubmatch(src, -1) {
 		u := strings.TrimSpace(m[1] + m[2])
 		if strings.HasPrefix(u, "http") && !MavenPublic(u) {
-			add(Maven, u, "")
+			k.extra(Maven, u)
 		}
 	}
 }
@@ -536,10 +703,11 @@ func parseGradleRepos(data []byte, add func(eco, url, scope string)) {
 // parseClojureRepos reads the Maven repositories a Clojure manifest declares:
 // deps.edn's and bb.edn's :mvn/repos, Leiningen's and Boot's :repositories,
 // shadow-cljs's :repositories or :maven {:repositories}. Maven Central and Clojars
-// are the public indexes and are not recorded as the repository's.
+// are the public indexes and are not recorded as the repository's; the others are
+// asked beside them.
 //
-// Implements: REQ-SUP-056
-func parseClojureRepos(base string, data []byte, add func(eco, url, scope string)) {
+// Implements: REQ-SUP-056, REQ-SUP-063
+func parseClojureRepos(base string, data []byte, k sink) {
 	forms := edn.Read(data)
 	var repos []*edn.Node
 	switch base {
@@ -587,7 +755,7 @@ func parseClojureRepos(base string, data []byte, add func(eco, url, scope string
 				u = v.Get("url")
 			}
 			if u != nil && u.Kind == edn.String && !MavenPublic(u.Text) {
-				add(Maven, strings.TrimSpace(u.Text), "")
+				k.extra(Maven, strings.TrimSpace(u.Text))
 			}
 		}
 	}
@@ -595,10 +763,14 @@ func parseClojureRepos(base string, data []byte, add func(eco, url, scope string
 
 // parseComposer reads the Composer repositories a composer.json or Composer's global
 // config.json declares: those of type "composer" (Private Packagist, Satis, a
-// Repman or Nexus proxy) are package indexes. A VCS, path or inline package
-// repository is not an index, and `"packagist.org": false` names none. The list form
-// and the object form (keyed by name) are both read, in order and by name.
-func parseComposer(data []byte, add func(eco, url, scope string)) {
+// Repman or Nexus proxy) are package indexes, asked before Packagist as Composer
+// does, and Packagist stays unless `"packagist.org": false` (or the older
+// `"packagist": false`) switches it off. A VCS, path or inline package repository
+// is not an index. The list form and the object form (keyed by name) are both
+// read, in order and by name.
+//
+// Implements: REQ-SUP-015, REQ-SUP-063
+func parseComposer(data []byte, k sink) {
 	var doc struct {
 		Repositories json.RawMessage `json:"repositories"`
 	}
@@ -609,6 +781,9 @@ func parseComposer(data []byte, add func(eco, url, scope string)) {
 		Type string `json:"type"`
 		URL  string `json:"url"`
 	}
+	disabled := func(name string, raw json.RawMessage) bool {
+		return (name == "packagist.org" || name == "packagist") && strings.TrimSpace(string(raw)) == "false"
+	}
 	var repos []json.RawMessage
 	if json.Unmarshal(doc.Repositories, &repos) != nil {
 		var named map[string]json.RawMessage
@@ -616,13 +791,26 @@ func parseComposer(data []byte, add func(eco, url, scope string)) {
 			return
 		}
 		for _, key := range slices.Sorted(maps.Keys(named)) {
+			if disabled(key, named[key]) {
+				k.off(Composer)
+				continue
+			}
 			repos = append(repos, named[key])
 		}
 	}
 	for _, raw := range repos {
 		var r repository
 		if json.Unmarshal(raw, &r) == nil && r.Type == "composer" {
-			add(Composer, strings.TrimSpace(r.URL), "")
+			k.extra(Composer, strings.TrimSpace(r.URL))
+			continue
+		}
+		var off map[string]json.RawMessage // [{"packagist.org": false}]
+		if json.Unmarshal(raw, &off) == nil {
+			for name, v := range off {
+				if disabled(name, v) {
+					k.off(Composer)
+				}
+			}
 		}
 	}
 }
@@ -856,12 +1044,19 @@ func parseCabalRepositories(data []byte, add func(eco, url, scope string)) {
 	}
 }
 
-// parseMavenSettings reads the mirrors this machine sends Maven through.
-func parseMavenSettings(data []byte, add func(eco, url, scope string)) {
+// parseMavenSettings reads the mirrors this machine sends Maven through. A mirror
+// of `*` (or `external:*`) stands in for every repository, Central and those a
+// project declares; a mirror of `central` replaces Central only; a mirror of some
+// other repository serves what that repository holds, beside Central. A mirror
+// that says nothing is taken to mirror everything, as the most common setup does.
+//
+// Implements: REQ-SUP-015, REQ-SUP-063
+func parseMavenSettings(data []byte, k sink) {
 	var doc struct {
 		Mirrors struct {
 			Mirror []struct {
-				URL string `xml:"url"`
+				URL      string `xml:"url"`
+				MirrorOf string `xml:"mirrorOf"`
 			} `xml:"mirror"`
 		} `xml:"mirrors"`
 	}
@@ -869,7 +1064,17 @@ func parseMavenSettings(data []byte, add func(eco, url, scope string)) {
 		return
 	}
 	for _, m := range doc.Mirrors.Mirror {
-		add(Maven, strings.TrimSpace(m.URL), "")
+		kind := Additive
+		of := strings.Split(strings.ReplaceAll(m.MirrorOf, " ", ""), ",")
+		switch {
+		case strings.TrimSpace(m.MirrorOf) == "", slices.Contains(of, "*"), slices.ContainsFunc(of, func(s string) bool {
+			return strings.HasPrefix(s, "external:")
+		}):
+			kind = ReplaceAll
+		case slices.Contains(of, "central"):
+			kind = Replace
+		}
+		k.put(Maven, Source{URL: strings.TrimSpace(m.URL), Kind: kind})
 	}
 }
 

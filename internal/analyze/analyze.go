@@ -56,6 +56,21 @@ type Indexes interface {
 	For(eco, pkg string) (index string, known bool)
 }
 
+// TargetIndexes is the optional half of Indexes that reads the whole target, for a
+// package that names a registry of its own (lang.Target.Registry). internal/index's
+// Config implements it.
+type TargetIndexes interface {
+	ForTarget(t lang.Target) (index string, known bool)
+}
+
+// Locator is the optional half of a Registry that says where a package it was asked
+// about was found. Before anything is asked a package is attributed to its
+// ecosystem's primary index; one found only on an index asked beside it (an extra
+// pip index, a POM's repository) is moved there afterwards.
+type Locator interface {
+	Located(eco, pkg string) (index string, known, ok bool)
+}
+
 // Discovered is the optional half of Indexes: every index the run knew about and
 // where it was learned from, which is what the resolution report opens with.
 // internal/index's Config implements it.
@@ -170,11 +185,33 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 				"the repository records no dependency graph for it, and --online was not given")
 		}
 	}
+	b.relocate(opts.Registry)
 	stats.Parsed, stats.Cached = int(parsed.Load()), int(cached.Load())
 	opts.Trace.Summarize(b.g)
 	opts.Trace.Finish()
 	opts.Cache.EndRun()
 	return b.g, stats, nil
+}
+
+// relocate moves each package the registry found somewhere other than where it was
+// attributed to that index, or marks it when only an index the repository names can
+// have it.
+//
+// Implements: REQ-SUP-018, REQ-SUP-063
+func (b *builder) relocate(r lang.Transitive) {
+	loc, ok := r.(Locator)
+	if !ok {
+		return
+	}
+	for id, t := range b.packages {
+		n := b.nodes[id]
+		if n == nil || n.Index == "" || n.Origin != "" || t.Origin != "" {
+			continue
+		}
+		if idx, known, found := loc.Located(t.Ecosystem, t.Package); found && idx != "" {
+			n.Index, n.IndexUnknown = idx, !known
+		}
+	}
 }
 
 // chain asks what the repository records before it asks an index: a lock file is
@@ -408,7 +445,13 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 		b.packages[n.ID] = t
 	}
 	if b.indexes != nil && n.Index == "" && n.Origin == "" && t.Origin == "" {
-		if idx, known := b.indexes.For(t.Ecosystem, t.Package); idx != "" {
+		idx, known := "", false
+		if ti, ok := b.indexes.(TargetIndexes); ok {
+			idx, known = ti.ForTarget(t)
+		} else {
+			idx, known = b.indexes.For(t.Ecosystem, t.Package)
+		}
+		if idx != "" {
 			n.Index, n.IndexUnknown = idx, !known
 		}
 	}

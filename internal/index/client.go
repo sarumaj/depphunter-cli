@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -58,6 +59,8 @@ type Client struct {
 	// qlSystems is what each Quicklisp dist's system index lists: one request
 	// per dist version rather than one per project.
 	qlSystems map[string]*qlIndex
+	// located is where each package asked about was found (see Located).
+	located map[string]located
 	// rep is the report this run is writing, if anybody is reading it. It is set per
 	// analysis - one client serves every re-analysis in --watch - so it is guarded
 	// like the rest.
@@ -103,6 +106,7 @@ func NewClient(cfg *Config, dir string, ttl, timeout time.Duration,
 		cpanModules: map[string]string{},
 		juliaDirs:   map[string]map[string]string{},
 		qlSystems:   map[string]*qlIndex{},
+		located:     map[string]located{},
 	}
 }
 
@@ -124,27 +128,49 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 		c.report(l)
 		return nil
 	}
-	index, known := c.cfg.For(t.Ecosystem, t.Package)
-	l.Index = index
-	if !known {
-		// An index only the repository asks for is not fetched from.
-		l.Reason = trace.ReasonUntrusted
-		if index == "" {
-			l.Reason = trace.ReasonNoIndex
-		}
-		c.report(l)
-		return nil
-	}
+	candidates := c.cfg.candidates(t.Ecosystem, t.Package, t.Registry)
 	// An organization's own package is not named to the world: asking the public
 	// index about corp.example/billing would not answer anyway, and the request
 	// itself is the disclosure. A private registry this machine configures is asked
-	// as usual.
-	if c.private.Match(t.Ecosystem, t.Package) && c.cfg.Public(t.Ecosystem, index) {
-		l.Reason = trace.ReasonPrivate
+	// as usual, whether it replaces the public index or is asked beside it.
+	if c.private.Match(t.Ecosystem, t.Package) {
+		kept := candidates[:0:0]
+		for _, k := range candidates {
+			if !c.cfg.Public(t.Ecosystem, k.url) {
+				kept = append(kept, k)
+			}
+		}
+		if len(kept) == 0 && len(candidates) > 0 {
+			l.Index, l.Reason = candidates[0].url, trace.ReasonPrivate
+			c.report(l)
+			return nil
+		}
+		candidates = kept
+	}
+	if len(candidates) == 0 {
+		l.Reason = trace.ReasonNoIndex
 		c.report(l)
 		return nil
 	}
-	key := t.Ecosystem + " " + t.Package + "@" + t.Version
+	// An index only the repository asks for is not fetched from, but it is not in
+	// the way either: the package is asked of the others, and only when none of
+	// them has it is the repository's index what it would have come from.
+	var untrusted string
+	var asked []candidate
+	for _, k := range candidates {
+		if k.known {
+			asked = append(asked, k)
+		} else if untrusted == "" {
+			untrusted = k.url
+		}
+	}
+	if len(asked) == 0 {
+		l.Index, l.Reason = untrusted, trace.ReasonUntrusted
+		c.locate(t, untrusted, false)
+		c.report(l)
+		return nil
+	}
+	key := t.Ecosystem + " " + t.Package + "@" + t.Version + " " + t.Registry
 	c.mu.Lock()
 	cached, ok := c.seen[key]
 	if at, failed := c.failed[key]; !ok && failed && time.Since(at) < failRetry {
@@ -152,14 +178,30 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	}
 	c.mu.Unlock()
 	if ok {
+		l.Index = asked[0].url
+		if at, _, found := c.Located(t.Ecosystem, t.Package); found {
+			l.Index = at
+		}
 		l.Answer, l.Deps = trace.FromMemo, len(cached)
 		c.report(l)
 		return cached
 	}
 
 	start := time.Now()
-	a, err := c.lookup(t, index)
-	if err != nil {
+	a, index, err := c.ask(t, asked)
+	l.Index = index
+	switch {
+	case err == nil:
+		c.locate(t, index, true)
+	case notFound(err) && untrusted != "":
+		// Nowhere this machine may ask has it: it can only have come from the
+		// index the repository names, which is what the map and the report say.
+		// It is kept as a failure, not an answer, so that it is asked again once
+		// the repository stops naming that index.
+		a = answer{source: trace.NoAnswer, reason: trace.ReasonUntrusted, requests: a.requests}
+		l.Index = untrusted
+		c.locate(t, untrusted, false)
+	default:
 		// An index that will not answer is not an error the map can use - but it is
 		// the whole of what the report has to say about this package.
 		a = answer{source: trace.NoAnswer, reason: err.Error(), requests: a.requests}
@@ -178,6 +220,71 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	return a.deps
 }
 
+// ask puts the question to each index in turn and returns the first answer, with the
+// index that gave it. An index that does not have the package (404, 410, or an
+// answer that does not list it) passes the question on; any other failure ends it,
+// unless the index is one a failure of any kind moves on from (GOPROXY's "|"): an
+// index that is down is not the same as one that said no, and the next one's answer
+// might be a different package of the same name. A cached answer from any of them
+// is taken before anything is sent.
+//
+// Implements: REQ-SUP-063
+func (c *Client) ask(t lang.Target, asked []candidate) (answer, string, error) {
+	for _, k := range asked {
+		if a, ok := c.cached(t, k.url); ok {
+			return a, k.url, nil
+		}
+	}
+	var requests []trace.Request
+	var err error
+	index := ""
+	for _, k := range asked {
+		var a answer
+		index = k.url
+		a, err = c.lookup(t, k.url)
+		requests = append(requests, a.requests...)
+		a.requests = requests
+		if err == nil {
+			return a, index, nil
+		}
+		if !notFound(err) && !k.onError {
+			return answer{requests: requests}, index, err
+		}
+	}
+	return answer{requests: requests}, index, err
+}
+
+// locate records which index a package was found on, or - when only an index the
+// repository names can have it - that one, for Located.
+func (c *Client) locate(t lang.Target, index string, known bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.located[t.Ecosystem+" "+t.Package] = located{index, known}
+}
+
+type located struct {
+	index string
+	known bool
+}
+
+// Located reports where a package asked about was found: the index that answered,
+// or the index only the repository names when nothing this machine may ask had it
+// (known false). ok is false for a package not asked, or asked without an answer
+// either way. internal/analyze puts it on the map in place of the attribution made
+// before anything was asked (Config.ForTarget), which cannot know which of several
+// indexes has a package.
+//
+// Implements: REQ-SUP-018, REQ-SUP-063
+func (c *Client) Located(eco, pkg string) (index string, known, ok bool) {
+	if c == nil {
+		return "", false, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	l, ok := c.located[eco+" "+pkg]
+	return l.index, l.known, ok
+}
+
 // failRetry is how long a question an index did not answer is left before it is
 // asked again.
 //
@@ -193,13 +300,27 @@ type answer struct {
 	requests []trace.Request
 }
 
+// cacheKey is where an index's answer about a package is kept on disk.
+func cacheKey(t lang.Target, index string) string {
+	return t.Ecosystem + "|" + index + "|" + t.Package + "|" + t.Version
+}
+
+// cached is an index's answer from the disk cache, if it has one.
+func (c *Client) cached(t lang.Target, index string) (answer, bool) {
+	deps, ok := store.Get[[]dep](c.cache, cacheKey(t, index))
+	if !ok {
+		return answer{}, false
+	}
+	return answer{deps: c.targets(t, deps), source: trace.FromCache}, true
+}
+
 // lookup answers from the cache when it can, and from the index when it must.
 //
 // Implements: REQ-SUP-020, REQ-SUP-029, REQ-SUP-032, REQ-TRC-006
 func (c *Client) lookup(t lang.Target, index string) (answer, error) {
-	key := t.Ecosystem + "|" + index + "|" + t.Package + "|" + t.Version
-	if deps, ok := store.Get[[]dep](c.cache, key); ok {
-		return answer{deps: c.targets(t.Ecosystem, deps), source: trace.FromCache}, nil
+	key := cacheKey(t, index)
+	if a, ok := c.cached(t, index); ok {
+		return a, nil
 	}
 	if t.Ecosystem == Go && t.Version == "" || t.Ecosystem == Opam && !opam.ExactVersion(t.Version) || t.Ecosystem == Alire && !alireExact(t.Version) {
 		// A module proxy serves a go.mod for one version; without one there is no
@@ -284,7 +405,7 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		return answer{requests: made.taken()}, err
 	}
 	c.cache.Put(key, deps)
-	return answer{deps: c.targets(t.Ecosystem, deps), source: trace.FromIndex, requests: made.taken()}, nil
+	return answer{deps: c.targets(t, deps), source: trace.FromIndex, requests: made.taken()}, nil
 }
 
 // requestLog collects what one question sent, in the order it sent it. The ecosystem
@@ -321,17 +442,20 @@ func (l *requestLog) taken() []trace.Request {
 // the name: without it the next level cannot be asked for at all - a module proxy
 // serves a go.mod for a version, not for a module.
 //
-// Implements: REQ-SUP-029
-func (c *Client) targets(eco string, deps []dep) []lang.Target {
+// A crate's dependency comes from the registry the index says it does: its own
+// unless the index names another (see cargoSparse).
+//
+// Implements: REQ-SUP-029, REQ-SUP-063
+func (c *Client) targets(from lang.Target, deps []dep) []lang.Target {
 	out := make([]lang.Target, 0, len(deps))
 	for _, d := range deps {
-		e := eco
+		e := from.Ecosystem
 		if d.Eco != "" {
 			e = d.Eco
 		}
 		out = append(out, lang.Target{
 			Ecosystem: e, Package: d.Name, Version: d.Version,
-			Pinned: d.Pinned(e),
+			Pinned: d.Pinned(e), Registry: d.registry(from),
 		})
 	}
 	return out
@@ -358,9 +482,35 @@ func (c *Client) accept(ctx context.Context, url, media string) ([]byte, error) 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s: %s", url, resp.Status)
+		return nil, &statusError{url: url, status: resp.Status, code: resp.StatusCode}
 	}
 	return readLimited(resp)
+}
+
+// statusError is an index's answer other than 200 OK.
+type statusError struct {
+	url, status string
+	code        int
+}
+
+func (e *statusError) Error() string { return e.url + ": " + e.status }
+
+// errAbsent is an index's answer that does not list the package asked about: a
+// Composer repository whose metadata has no such package, a feed with no version of
+// it. It is "not found" as much as a 404 is.
+var errAbsent = errors.New("the index does not list this package")
+
+// notFound reports whether an index said it does not have a package - 404 or 410
+// (the go command's rule for moving on to the next proxy), or an answer that does
+// not list it - as opposed to failing to answer at all.
+//
+// Implements: REQ-SUP-063
+func notFound(err error) bool {
+	var s *statusError
+	if errors.As(err, &s) {
+		return s.code == http.StatusNotFound || s.code == http.StatusGone
+	}
+	return errors.Is(err, errAbsent)
 }
 
 // readLimited reads an answer, and no more of it than any of this has any use for.
@@ -519,7 +669,28 @@ type dep struct {
 	// Eco is the dependency's ecosystem when it is not the package's own: a Terraform
 	// module requires providers as well as modules.
 	Eco string `json:"e,omitempty"`
+	// Registry is where a crate's dependency is published, as a Cargo index line
+	// says it: "" for the registry of the crate itself, crates.io for crates.io,
+	// else the other registry's index URL.
+	Registry string `json:"r,omitempty"`
 }
+
+// registry is the lang.Target.Registry of a dependency of from.
+func (d dep) registry(from lang.Target) string {
+	switch {
+	case from.Ecosystem != Cargo:
+		return ""
+	case d.Registry == "":
+		return from.Registry // the same registry as the crate that depends on it
+	case d.Registry == cratesIO:
+		return ""
+	}
+	return d.Registry
+}
+
+// cratesIO is how a Cargo index names crates.io when a crate of another registry
+// depends on one of its crates.
+const cratesIO = "crates.io"
 
 // Pinned reports whether the version this index gave fixes one release. A Go module
 // proxy answers with the exact version the build selects; npm and PyPI answer with

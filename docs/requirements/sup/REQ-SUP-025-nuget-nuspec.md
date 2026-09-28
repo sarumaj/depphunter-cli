@@ -25,3 +25,9 @@ the same for every package on the feed and is kept for the run.
 1. Against a stub feed, flat and framework-grouped dependencies are returned
    once each.
 2. Without a version, the newest release, not a pre-release, is read.
+
+## Notes
+
+Every configured feed is asked, before nuget.org
+([REQ-SUP-063](REQ-SUP-063-additive-sources-fall-back-to-the-public-index.md));
+a feed that lists no version of the package passes it on to the next.

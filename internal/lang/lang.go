@@ -63,6 +63,12 @@ type Target struct {
 	// index - a local directory, an archive, a VCS URL - which is how a package no
 	// index has is known at all. Nothing so marked is named to an index.
 	Origin string
+	// Registry is the alternative registry a package is published to when its
+	// manifest or lock file names one: a Cargo registry's name (`registry =
+	// "corp"`) or its index URL (Cargo.lock's `source = "registry+<url>"`). Only
+	// that registry serves the package (see internal/index). Empty for the
+	// ecosystem's default.
+	Registry string
 }
 
 type Resolver interface {
