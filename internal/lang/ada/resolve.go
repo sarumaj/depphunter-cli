@@ -218,14 +218,10 @@ func (r *resolver) readProjects(sources []*scan.File) {
 	for _, pp := range paths {
 		p := r.gprs[pp]
 		for unit, file := range p.g.specs {
-			for _, f := range r.inProject(p, file) {
-				r.specs[unit] = append(r.specs[unit], f)
-			}
+			r.specs[unit] = append(r.specs[unit], r.inProject(p, file)...)
 		}
 		for unit, file := range p.g.bodies {
-			for _, f := range r.inProject(p, file) {
-				r.bodies[unit] = append(r.bodies[unit], f)
-			}
+			r.bodies[unit] = append(r.bodies[unit], r.inProject(p, file)...)
 		}
 	}
 	if len(r.gprs) == 0 {

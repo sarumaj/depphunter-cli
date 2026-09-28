@@ -1,7 +1,6 @@
 package clojure
 
 import (
-	"path"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -347,6 +346,3 @@ func manifestImports(m *manifest) []lang.RawImport {
 	}
 	return out
 }
-
-// isManifest reports whether a path is a Clojure manifest.
-func isManifest(p string) bool { return manifestNames[path.Base(p)] }

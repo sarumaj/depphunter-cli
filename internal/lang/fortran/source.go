@@ -410,7 +410,6 @@ type extractor struct {
 	symbols lang.SymbolSet
 	stack   []frame
 	uses    map[string]bool
-	anonBD  int
 }
 
 // Implements: REQ-FORTRAN-002, REQ-FORTRAN-003, REQ-FORTRAN-010, REQ-FORTRAN-011

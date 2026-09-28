@@ -35,8 +35,6 @@ type pubspec struct {
 	memberLine map[string]int
 }
 
-var sections = []string{"dependencies", "dev_dependencies", "dependency_overrides"}
-
 // readPubspec reads a pubspec.yaml (or pubspec_overrides.yaml, which has only
 // dependency_overrides).
 //

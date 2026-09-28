@@ -180,22 +180,22 @@ func TestSymbols(t *testing.T) {
 // Verifies: REQ-SOLIDITY-002
 func TestImportForms(t *testing.T) {
 	for src, want := range map[string][]string{
-		`import "a.sol";`:                                                                {"a.sol"},
-		`import "a.sol" as A;`:                                                           {"a.sol"},
-		`import * as A from "a.sol";`:                                                    {"a.sol"},
-		`import {A, B as C} from 'a.sol';`:                                               {"a.sol"},
-		"import {\n  A,\n  B\n} from \"a.sol\";":                                         {"a.sol"},
-		`import "a.sol"; import "a.sol";`:                                                {"a.sol"},
-		`import "a\"b.sol";`:                                                             {`a\"b.sol`},
-		`import unicode"a.sol";`:                                                         {"a.sol"},
-		`pragma solidity ^0.8.20; import "a.sol";`:                                       {"a.sol"},
-		`// import "x.sol";` + "\n" + `import "a.sol";`:                                  {"a.sol"},
-		`/// @dev import "x.sol";` + "\n" + `import "a.sol";`:                            {"a.sol"},
-		`/* import "x.sol"; */ import "a.sol";`:                                          {"a.sol"},
-		`contract C { string s = "import \"x.sol\";"; }`:                                 nil,
+		`import "a.sol";`:                                     {"a.sol"},
+		`import "a.sol" as A;`:                                {"a.sol"},
+		`import * as A from "a.sol";`:                         {"a.sol"},
+		`import {A, B as C} from 'a.sol';`:                    {"a.sol"},
+		"import {\n  A,\n  B\n} from \"a.sol\";":              {"a.sol"},
+		`import "a.sol"; import "a.sol";`:                     {"a.sol"},
+		`import "a\"b.sol";`:                                  {`a\"b.sol`},
+		`import unicode"a.sol";`:                              {"a.sol"},
+		`pragma solidity ^0.8.20; import "a.sol";`:            {"a.sol"},
+		`// import "x.sol";` + "\n" + `import "a.sol";`:       {"a.sol"},
+		`/// @dev import "x.sol";` + "\n" + `import "a.sol";`: {"a.sol"},
+		`/* import "x.sol"; */ import "a.sol";`:               {"a.sol"},
+		`contract C { string s = "import \"x.sol\";"; }`:      nil,
 		`contract C { function f() { assembly { let x := "import" } } } import "a.sol";`: {"a.sol"},
 		`import {A} from "a.sol"` + "\n" + `import "b.sol";`:                             {"a.sol", "b.sol"},
-		`import "unterminated`:                                                           {"unterminated"},
+		`import "unterminated`: {"unterminated"},
 	} {
 		var got []string
 		for _, im := range scanSource([]byte(src)).Imports {
