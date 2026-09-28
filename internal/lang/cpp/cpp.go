@@ -14,7 +14,7 @@
 // compile_commands.json, then the conventional include/ and src/ directories and a
 // unique file whose path ends in the include), to the C and C++ standard libraries
 // and the system headers, to a package a vcpkg or Conan manifest declares
-// (packages.go), and otherwise to a third-party library named after the include's
+// (packages.go) or content the CMake build fetches (fetched.go), and otherwise to a third-party library named after the include's
 // first directory (resolve.go).
 package cpp
 
@@ -51,7 +51,12 @@ var exts = map[string]bool{
 var cExts = map[string]bool{".c": true, ".cl": true, ".clh": true}
 
 // Implements: REQ-CPP-001
-type Plugin struct{}
+type Plugin struct {
+	// Fetches reads the content the project's build fetches when it is configured
+	// (the cmake plugin), which an include of its headers is attributed to. nil
+	// leaves such includes to c-external.
+	Fetches FetchReader
+}
 
 func (Plugin) Name() string { return "cpp" }
 func (Plugin) Version() int { return 3 }
@@ -78,8 +83,12 @@ func (Plugin) Claims(f *scan.File) bool {
 // headers belong to.
 //
 // Implements: REQ-CPP-016
-func (Plugin) Ecosystems() []lang.Ecosystem {
-	return append(PackageEcosystems(), []lang.Ecosystem{
+func (p Plugin) Ecosystems() []lang.Ecosystem {
+	out := PackageEcosystems()
+	if p.Fetches != nil {
+		out = append(out, p.Fetches.FetchIsland())
+	}
+	return append(out, []lang.Ecosystem{
 		{ID: ecoCStd, Name: "C standard library", Std: true},
 		{ID: ecoCppStd, Name: "C++ standard library", Std: true},
 		{ID: ecoSystem, Name: "System headers", Std: true},
@@ -89,8 +98,13 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 	}...)
 }
 
-func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
-	return newResolver(root, all), nil
+// Implements: REQ-CPP-017
+func (p Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
+	r := newResolver(root, all)
+	if p.Fetches != nil {
+		Packages{r.pkgs}.Fetch(p.Fetches.Fetched(all))
+	}
+	return r, nil
 }
 
 type def struct {

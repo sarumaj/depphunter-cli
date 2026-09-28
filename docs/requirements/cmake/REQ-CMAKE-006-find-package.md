@@ -14,18 +14,18 @@ verification:
 `find_package(Name)` and `find_dependency(Name)` **shall** resolve to the
 `CMakeLists.txt` of a project of that name in the repository (other than the
 file's own); else to the package a vcpkg or Conan manifest over the file
-declares, matched as the cpp plugin matches the library's headers
-(REQ-CPP-012) - `ZLIB` as `<zlib.h>`, `nlohmann_json` as
-`<nlohmann/json.hpp>`, `Eigen3` as `<Eigen/...>`, `GTest` as `<gtest/...>`,
-each Boost and Qt component on its own (`Boost filesystem` as
+declares, or else content the project fetches, matched as the cpp plugin matches
+the library's headers (REQ-CPP-012, REQ-CPP-017) - `ZLIB` as `<zlib.h>`,
+`nlohmann_json` as `<nlohmann/json.hpp>`, `Eigen3` as `<Eigen/...>`, `GTest` as
+`<gtest/...>`, each Boost and Qt component on its own (`Boost filesystem` as
 `<boost/filesystem/...>`, `Qt6 Widgets` as `<QtWidgets/...>`, also for
-`Qt${QT_VERSION_MAJOR}`), any other name as `<name/...>` in lower case;
-else to the project's own `FindName.cmake` on `CMAKE_MODULE_PATH`; else to
-content the project fetches under that name (REQ-CMAKE-007); else, for a
-tool or platform package CMake's find modules find (Threads, OpenMP,
-PkgConfig, Python, Java, Doxygen, Git, CUDA, MPI, OpenGL, X11 and the
-like), to the `cmake-std` module `FindName`; else to the unresolved
-`c-external` library the cpp plugin names for those headers.
+`Qt${QT_VERSION_MAJOR}`), any other name as `<name/...>` in lower case; else to
+the project's own `FindName.cmake` on `CMAKE_MODULE_PATH`; else to content the
+project fetches under that name (REQ-CMAKE-007); else, for a tool or platform
+package CMake's find modules find (Threads, OpenMP, PkgConfig, Python, Java,
+Doxygen, Git, CUDA, MPI, OpenGL, X11 and the like), to the `cmake-std` module
+`FindName`; else to the unresolved `c-external` library the cpp plugin names for
+those headers.
 
 ## Rationale
 

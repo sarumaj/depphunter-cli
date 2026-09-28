@@ -3,8 +3,9 @@
 //
 // An import names a file relative to an import root. It resolves to a project file
 // under the roots Buf's configuration declares (a v1 module's directory, a
-// buf.work.yaml's directories, a v2 buf.yaml's module paths), else under the roots
-// protoc is usually pointed at (the repository root, proto/, protos/, api/,
+// buf.work.yaml's directories, a v2 buf.yaml's module paths), else under the -I
+// roots the repository's build scripts give protoc (protoc.go) and those protoc is
+// usually pointed at (the repository root, proto/, protos/, api/,
 // src/main/proto/, the importer's directory and its ancestors), else to a unique
 // project file ending in the path. The well-known types (google/protobuf/*.proto) are
 // the hidden protobuf-std island; other protos go to the buf island of Buf Schema

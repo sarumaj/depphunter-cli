@@ -12,9 +12,9 @@ verification:
 ## Statement
 
 The plugin **shall not** run protoc or buf. `.proto` files are read by a
-scanner of the plugin's own; the `-I` flags a Makefile or script passes to
-protoc are not read (the conventional roots of REQ-PROTO-004 stand in for
-them); a type used from another file is not linked separately, as protobuf
+scanner of the plugin's own; the `-I` flags of build scripts are read as text
+(REQ-PROTO-004), not by running them, so a root computed at run time is not
+known; a type used from another file is not linked separately, as protobuf
 requires an import of the declaring file, which is already the edge; the Buf
 Schema Registry is not asked about a module's own dependencies (its API is
 Connect RPC, not a plain index), so `--online` adds nothing for the `buf`

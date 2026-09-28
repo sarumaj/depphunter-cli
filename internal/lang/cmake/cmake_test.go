@@ -2,6 +2,7 @@ package cmake
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -57,7 +58,7 @@ func TestBuildFilesAndPackages(t *testing.T) {
 			"find_package(OpenSSL)":                  external("openssl"),
 			"find_package(Qt6 Core)":                 external("QtCore"),
 			"find_package(Qt6 Widgets)":              external("QtWidgets"),
-			"find_package(nlohmann_json)":            external("nlohmann"),
+			"find_package(nlohmann_json)":            json, // fetched by cmake/Deps.cmake
 			"find_package(Eigen3)":                   external("Eigen"),
 			"find_package(Catch2)":                   catch2,
 			"find_package(PkgConfig)":                std("FindPkgConfig"),
@@ -110,7 +111,7 @@ func TestBuildFilesAndPackages(t *testing.T) {
 		},
 		"tests/CMakeLists.txt": {
 			"find_package(Shop)":                       local("CMakeLists.txt"),
-			"find_package(GTest)":                      external("gtest"),
+			"find_package(GTest)":                      gtest,
 			"include(GoogleTest)":                      std("GoogleTest"),
 			"include(CTest)":                           std("CTest"),
 			"add_executable(shop_tests test_main.cpp)": local("tests/test_main.cpp"),
@@ -155,24 +156,61 @@ func TestBuildFilesAndPackages(t *testing.T) {
 
 // A library found by the build and included by the sources is one node: the cpp
 // plugin's attribution of src/deps.cpp's includes equals the cmake plugin's of the
-// matching find_package calls, declared in vcpkg.json or not.
+// matching find_package calls, declared in vcpkg.json, fetched or neither. Headers of
+// fetched content are attributed to it by its declared name (doctest, magic_enum)
+// or its repository's (googletest's gtest by the alias, nlohmann/json); without the
+// cmake plugin's reader they stay c-external.
 //
-// Verifies: REQ-CMAKE-006
+// Verifies: REQ-CMAKE-006, REQ-CPP-017
 func TestFindPackageMeetsIncludes(t *testing.T) {
 	build := langtest.Imports(t, langtest.Analyze(t, Plugin{}, "testdata/repo")["CMakeLists.txt"])
 	build2 := langtest.Imports(t, langtest.Analyze(t, Plugin{}, "testdata/repo")["tests/CMakeLists.txt"])
-	sources := langtest.Imports(t, langtest.Analyze(t, cpp.Plugin{}, "testdata/repo")["src/deps.cpp"])
+	deps := langtest.Imports(t, langtest.Analyze(t, Plugin{}, "testdata/repo")["cmake/Deps.cmake"])
+	sources := langtest.Imports(t, langtest.Analyze(t, cpp.Plugin{Fetches: Plugin{}}, "testdata/repo")["src/deps.cpp"])
 	for include, find := range map[string]lang.Target{
-		"#include <nlohmann/json.hpp>":           build["find_package(nlohmann_json)"],
-		"#include <boost/system/error_code.hpp>": build["find_package(Boost system)"],
-		"#include <QtWidgets/QWidget>":           build["find_package(Qt6 Widgets)"],
-		"#include <zlib.h>":                      build["find_package(ZLIB)"],
-		"#include <gtest/gtest.h>":               build2["find_package(GTest)"],
+		"#include <nlohmann/json.hpp>":            build["find_package(nlohmann_json)"],
+		"#include <boost/system/error_code.hpp>":  build["find_package(Boost system)"],
+		"#include <QtWidgets/QWidget>":            build["find_package(Qt6 Widgets)"],
+		"#include <zlib.h>":                       build["find_package(ZLIB)"],
+		"#include <gtest/gtest.h>":                build2["find_package(GTest)"],
+		"#include <doctest/doctest.h>":            deps["CPMAddPackage(doctest)"],
+		"#include <magic_enum.hpp>":               deps["CPMAddPackage(magic_enum)"],
+		"#include <catch2/catch_test_macros.hpp>": deps["FetchContent_Declare(Catch2)"],
+		"#include <cxxopts.hpp>":                  {Ecosystem: "c-external", Package: "cxxopts", Unresolved: true},
 	} {
 		if got, ok := sources[include]; !ok {
 			t.Errorf("%s: not captured", include)
-		} else if got != find {
-			t.Errorf("%s: %+v, but find_package gives %+v", include, got, find)
+		} else if got != find || find == (lang.Target{}) {
+			t.Errorf("%s: %+v, but the build gives %+v", include, got, find)
+		}
+	}
+	alone := langtest.Imports(t, langtest.Analyze(t, cpp.Plugin{}, "testdata/repo")["src/deps.cpp"])
+	if got := alone["#include <doctest/doctest.h>"]; got.Ecosystem != "c-external" {
+		t.Errorf("without a reader: %+v", got)
+	}
+	if !slices.Contains(cpp.Plugin{Fetches: Plugin{}}.Ecosystems(), Plugin{}.FetchIsland()) ||
+		slices.Contains(cpp.Plugin{}.Ecosystems(), Plugin{}.FetchIsland()) {
+		t.Error("the cpp plugin declares the fetched content's island only with a reader")
+	}
+	// Content named differently from its repository is found by the repository's
+	// name; content in the repository is not fetched.
+	root := langtest.Write(t, map[string]string{
+		"CMakeLists.txt": "FetchContent_Declare(ext_opts GIT_REPOSITORY https://github.com/jarro2783/cxxopts GIT_TAG v3.2.0)\n" +
+			"FetchContent_Declare(vendored URL ${CMAKE_CURRENT_LIST_DIR}/vendored.tar.gz)\n",
+		"vendored.tar.gz": "",
+		"main.cpp":        "#include <cxxopts.hpp>\n#include <vendored/v.h>\n",
+	})
+	langtest.CheckImports(t, langtest.Analyze(t, cpp.Plugin{Fetches: Plugin{}}, root)["main.cpp"], map[string]lang.Target{
+		"#include <cxxopts.hpp>":  {Ecosystem: ecoFetch, Package: "github.com/jarro2783/cxxopts", Version: "v3.2.0"},
+		"#include <vendored/v.h>": {Ecosystem: "c-external", Package: "vendored", Unresolved: true},
+	})
+	// No CMake file, or one that is garbage, fetches nothing.
+	for _, files := range []map[string]string{
+		{"main.cpp": "#include <doctest/doctest.h>\n"},
+		{"CMakeLists.txt": "\x00FetchContent_Declare(doctest GIT_REPOSITORY\n((", "x.cmake": "CPMAddPackage(NAME)\nFetchContent_Declare()\nFetchContent_Declare(x URL)"},
+	} {
+		if got := (Plugin{}).Fetched(langtest.Files(t, langtest.Write(t, files))); len(got) != 0 {
+			t.Errorf("%v: fetched %+v", files, got)
 		}
 	}
 }

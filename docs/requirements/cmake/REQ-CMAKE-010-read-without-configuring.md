@@ -17,10 +17,9 @@ every branch counts, a variable takes the last value set in the file, and a
 value computed at configure time (`find_package` results,
 `<name>_SOURCE_DIR` of fetched content, the binary directories, variables
 set inside an included file or by a parent with `PARENT_SCOPE`) is unknown.
-Includes of sources by fetched content (`#include <doctest/doctest.h>` when
-doctest is fetched) are not attributed to the `cmake-fetch` package.
 `target_link_libraries()` and `target_include_directories()` are not
-read.
+read, so the sources' includes of fetched content are matched to it by name
+(REQ-CPP-017), not by the include directories a target adds.
 
 ## Rationale
 

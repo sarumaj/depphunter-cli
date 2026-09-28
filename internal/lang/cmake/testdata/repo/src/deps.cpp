@@ -3,3 +3,7 @@
 #include <gtest/gtest.h>
 #include <QtWidgets/QWidget>
 #include <zlib.h>
+#include <doctest/doctest.h>
+#include <magic_enum.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <cxxopts.hpp>
