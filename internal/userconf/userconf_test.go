@@ -371,3 +371,17 @@ func TestNoHome(t *testing.T) {
 		t.Error("a nil environment answered")
 	}
 }
+
+// New gives the machine the platform Platform names - runtime.GOOS unless a test
+// pinned it - so tests whose fixtures sit where one platform keeps the files pass
+// on every platform.
+//
+// Verifies: REQ-SUP-064
+func TestNewPlatform(t *testing.T) {
+	saved := Platform
+	t.Cleanup(func() { Platform = saved })
+	Platform = "darwin"
+	if got := New("h", nil).ConfigDir(); got != filepath.Join("h", "Library", "Application Support") {
+		t.Errorf("pinned darwin: ConfigDir = %q", got)
+	}
+}

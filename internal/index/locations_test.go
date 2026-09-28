@@ -11,13 +11,18 @@ import (
 )
 
 // TestMain keeps the system-wide configuration of the machine running the tests
-// (/etc/pip.conf and the like) out of every test here.
+// (/etc/pip.conf and the like) out of every test here, and pins the platform of
+// every Discoverer and credential store the tests make to Linux: their fixtures sit
+// where the tools keep their files there (~/.config/...), not in macOS's
+// ~/Library/Application Support or Windows's %APPDATA%. The tests of another
+// platform's locations pick it through discoverOn.
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "depphunter-system")
 	if err != nil {
 		panic(err)
 	}
 	userconf.SystemRoot = dir
+	userconf.Platform = "linux"
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
