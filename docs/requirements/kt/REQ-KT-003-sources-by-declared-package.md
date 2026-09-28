@@ -42,4 +42,5 @@ modules import in both directions.
 ## Notes
 
 The index is read from the text of each `.kt` and `.scala` file on every run
-(see [REQ-KT-005](REQ-KT-005-declarations-read-from-the-first-column.md)).
+(see [REQ-KT-007](REQ-KT-007-declarations-found-by-nesting.md) and
+[REQ-KT-005](REQ-KT-005-declarations-read-from-the-text.md)).

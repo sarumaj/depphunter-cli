@@ -217,9 +217,9 @@ requirements of type `limitation` in their scopes:
 - Java imports name packages rather than artifacts, so the Maven artifact an
   import comes from is found heuristically (package prefixes, naming rules and
   a table of well-known libraries).
-- Kotlin and Scala declarations are read from the text of their files, so a
-  definition that does not begin in the first column cannot be imported from
-  another file.
+- Kotlin and Scala declarations are read from the text of their files, so
+  generated definitions, Scala 3 extension methods and given instances cannot
+  be imported from another file.
 - GitHub Actions references from github.com and from GitHub Enterprise are one
   ecosystem.
 - Build arguments and environment variables are not read, so an image
@@ -241,10 +241,10 @@ requirements of type `limitation` in their scopes:
   are not read (module directories are guessed by name), `Package.resolved`
   has no package-to-package edges without a checkout, and type references are
   matched by name by a scanner that does not type-check.
-- Objective-C is read without Xcode or CocoaPods: header search paths of an
-  Xcode project or `.xcconfig` are not read, pods are matched to headers and
-  modules by name, private spec repositories are never fetched, and no
-  vulnerability database covers CocoaPods or Carthage.
+- Objective-C is read without Xcode or CocoaPods: an Xcode project's header
+  search paths apply to every file below it whatever its target, pods are
+  matched to headers and modules by name, private spec repositories are never
+  fetched, and no vulnerability database covers CocoaPods or Carthage.
 - Dart is read without running pub: generated files that are not committed are
   not seen, and `pubspec.lock` has no package-to-package edges, so only
   `--online` walks past the first level.

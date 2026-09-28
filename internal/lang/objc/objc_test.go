@@ -291,3 +291,33 @@ func TestScannerSurvivesBrokenSource(t *testing.T) {
 		}
 	}
 }
+
+// An Xcode project's header search path tells apart headers that two directories
+// hold: without it <Lib/Lib.h> is taken to the shallowest directory named Lib, and
+// "Config.h" to nothing.
+//
+// Verifies: REQ-OBJC-004, REQ-OBJC-015
+func TestXcodeHeaderSearchPaths(t *testing.T) {
+	files := map[string]string{
+		"App/main.m":            "#import <Lib/Lib.h>\n#import \"Config.h\"\n",
+		"Vendor/x/Lib/Lib.h":    "",
+		"Settings/Config.h":     "",
+		"Other/Lib/Lib.h":       "",
+		"Other/Config.h":        "",
+		"Settings/App.xcconfig": "USER_HEADER_SEARCH_PATHS = $(inherited) \"$(PROJECT_DIR)/Settings\"\n",
+		"App.xcodeproj/project.pbxproj": "{ objects = { 1 = { isa = XCBuildConfiguration; buildSettings = {\n" +
+			"HEADER_SEARCH_PATHS = (\"$(inherited)\", \"$(SRCROOT)/Vendor/**\"); }; }; }; }\n",
+	}
+	res := langtest.Analyze(t, Plugin{}, langtest.Write(t, files))
+	langtest.CheckImports(t, res["App/main.m"], map[string]lang.Target{
+		"#import <Lib/Lib.h>":  {Local: "Vendor/x/Lib/Lib.h"},
+		"#import \"Config.h\"": {Local: "Settings/Config.h"},
+	})
+	delete(files, "App.xcodeproj/project.pbxproj")
+	delete(files, "Settings/App.xcconfig")
+	res = langtest.Analyze(t, Plugin{}, langtest.Write(t, files))
+	langtest.CheckImports(t, res["App/main.m"], map[string]lang.Target{
+		"#import <Lib/Lib.h>":  {Local: "Other/Lib"},
+		"#import \"Config.h\"": {},
+	})
+}

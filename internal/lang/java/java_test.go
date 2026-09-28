@@ -3,7 +3,6 @@ package java
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -95,13 +94,10 @@ typealias Name = String
 val (a, b) = pair
 package object util
 `
-	pkg, names := declarations([]byte(src))
-	if pkg != "com.example.tools" {
-		t.Errorf("package %q, want com.example.tools", pkg)
-	}
-	want := []string{"Box", "Shape", "Registry", "Color", "second", "shout", "Action", "MAX", "Name", "util"}
-	if strings.Join(names, " ") != strings.Join(want, " ") {
-		t.Errorf("names %v, want %v", names, want)
+	got := declared(declarations([]byte(src), true))
+	want := "com.example.tools: Box Shape Registry Color second shout Action MAX Name util"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 

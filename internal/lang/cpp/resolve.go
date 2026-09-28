@@ -17,6 +17,7 @@ type resolver struct {
 	files  map[string]bool     // every project file
 	byBase map[string][]string // file name -> the project files so named
 	db     *compileDB
+	xcode  *xcodePaths
 	pkgs   *packages // what vcpkg and Conan manifests declare
 }
 
@@ -25,7 +26,8 @@ var _ lang.Noter = (*resolver)(nil)
 
 // Implements: REQ-CPP-004
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, byBase: map[string][]string{}, db: readCompileDB(root, all), pkgs: readPackages(all)}
+	r := &resolver{files: map[string]bool{}, byBase: map[string][]string{}, db: readCompileDB(root, all), xcode: readXcode(all),
+		pkgs: readPackages(all)}
 	for _, f := range all {
 		r.files[f.Path] = true
 		base := path.Base(f.Path)
@@ -78,16 +80,24 @@ func (r *resolver) resolve(file string, imp lang.RawImport, external func(name s
 		dirs = append(dirs, path.Dir(file))
 	}
 	dirs = append(dirs, r.db.dirs(file)...)
+	for _, directory := range dirs {
+		if candidate := path.Join(directory, name); r.files[candidate] && !strings.HasPrefix(candidate, "../") {
+			return lang.Target{Local: candidate}
+		}
+	}
+	// Then an Xcode project's header search paths, which may search a whole tree.
+	if found := r.xcode.find(file, name, r.files, r.byBase); found != "" {
+		return lang.Target{Local: found}
+	}
 	// A project's own headers are often included with <>, and without a compilation
 	// database where they live is guessed - but not for a standard or system header
 	// included with <>, which a same-named file somewhere in the project does not
 	// shadow. A quoted one ("net/socket.h") is the project's when it has one.
 	if std == "" || imp.Name == quoted {
-		dirs = append(dirs, conventional...)
-	}
-	for _, d := range dirs {
-		if p := path.Join(d, name); r.files[p] && !strings.HasPrefix(p, "../") {
-			return lang.Target{Local: p}
+		for _, directory := range conventional {
+			if candidate := path.Join(directory, name); r.files[candidate] && !strings.HasPrefix(candidate, "../") {
+				return lang.Target{Local: candidate}
+			}
 		}
 	}
 	if std == "" || imp.Name == quoted {

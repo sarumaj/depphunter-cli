@@ -16,7 +16,9 @@ first, in this order: for `#include "x"`, the includer's directory; the include
 directories (`-I`, `-iquote`, `-isystem`, `-idirafter`, and `/I`,
 `/external:I` of MSVC) of the includer's entry in a `compile_commands.json` at
 the root or in a `build*/` or `cmake-build-*/` directory, or of every entry for
-a file without one; `include/`, `src/` and the root; and last the one project
+a file without one; the header search paths of the Xcode projects holding the
+includer ([REQ-OBJC-015](../objc/REQ-OBJC-015-xcode-header-search-paths.md));
+`include/`, `src/` and the root; and last the one project
 file whose path ends in `/x`, or when several do, the one sharing the most
 leading directories with the includer, if no other shares as many.
 

@@ -14,8 +14,9 @@ verification:
 An `#import` or `#include` that is not an Apple framework's **shall** resolve
 as the C/C++ plugin resolves an include (REQ-CPP-004, REQ-CPP-005): to a
 project file (the includer's directory for a quoted one, a compilation
-database's include path, the conventional directories, a unique file whose
-path ends in it), to the C and C++ standard libraries and system headers, and
+database's include path, an Xcode project's header search paths
+(REQ-OBJC-015), the conventional directories, a unique file whose path ends in
+it), to the C and C++ standard libraries and system headers, and
 otherwise to a pod (REQ-OBJC-006) before a vcpkg or Conan package or a
 `c-external` library. A quoted bare header the project does not have and no
 pod is named after is dropped.
