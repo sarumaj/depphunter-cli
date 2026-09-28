@@ -12,9 +12,10 @@ verification:
 ## Statement
 
 The Scala plugin **shall** resolve an import to the project Scala or Kotlin
-file whose package (Scala's chained clauses joined) and top-level definitions
-name the import's longest prefix, wherever the file sits, and to a Java file as
-the Java plugin does; an import naming a package **shall** resolve as in
+file whose package (Scala's chained clauses joined, or the package block
+holding the definition) and top-level definitions name the import's longest
+prefix, wherever the file sits, and to a Java file as the Java plugin does; an
+import naming a package **shall** resolve as in
 [REQ-KT-003](../kt/REQ-KT-003-sources-by-declared-package.md).
 
 ## Rationale
@@ -32,3 +33,6 @@ its package.
    `package org.acme` and `object Tools`.
 4. `package com.example` followed by `package legacy` declares
    `com.example.legacy`.
+5. `import com.acme.app.A` resolves to the file declaring `package com.acme`
+   and then `package app { class A }`
+   ([REQ-KT-007](../kt/REQ-KT-007-declarations-found-by-nesting.md)).

@@ -16,14 +16,14 @@ import (
 // classes. Their imports - and Java's imports of them - cannot be found by path the
 // way Java's own are, so the resolver reads what each such file declares. It reads
 // text, not a syntax tree: the resolver is rebuilt on every run and must stay cheap,
-// and what it needs sits in plain sight - the package clause at the top of the file,
-// and the definitions that start at its first column.
+// and what it needs sits in plain sight - the package clauses, and the definitions
+// outside every class, object and function body (declscan.go).
 
 // sourceExts are the files whose declarations other files import. Scripts (.kts,
 // .sc) are run, never imported, and are not read.
 var sourceExts = map[string]bool{".kt": true, ".scala": true}
 
-// topLevel matches a definition starting at the first column: modifiers and
+// topLevel matches a top-level line that is a definition: modifiers and
 // annotations, the keyword, type parameters, and a name - for a Kotlin extension
 // function, a receiver and a name (String.shout, List<T>.second).
 var topLevel = regexp.MustCompile(`^(?:(?:@[\w.]+(?:\([^)]*\))?|(?:private|protected)(?:\[\w+\])?|` +
@@ -33,56 +33,11 @@ var topLevel = regexp.MustCompile(`^(?:(?:@[\w.]+(?:\([^)]*\))?|(?:private|prote
 	`(?:fun\s+interface|class|interface|object|trait|enum|typealias|type|fun|def|val|var)\s+` +
 	`(?:<[^>]*>\s*)?([\w.]+(?:<[^>]*>\.\w+)?)`)
 
-// declarations reads a Kotlin or Scala file's package and the names it defines at
-// the top level. Scala's chained package clauses (package com.example, then package
-// app) make one package; a clause after the first definition opens a block that a
-// line scan cannot follow, and is ignored.
-//
-// Implements: REQ-KT-003, REQ-KT-005, REQ-SCALA-003
-func declarations(src []byte) (pkg string, names []string) {
-	var parts []string
-	comment := false
-	for _, line := range strings.Split(string(src), "\n") {
-		line = strings.TrimRight(line, " \t\r")
-		trimmed := strings.TrimSpace(line)
-		if comment {
-			comment = !strings.Contains(trimmed, "*/")
-			continue
-		}
-		if strings.HasPrefix(trimmed, "/*") {
-			comment = !strings.Contains(trimmed[2:], "*/")
-			continue
-		}
-		if line == "" || line != trimmed || strings.HasPrefix(line, "//") {
-			continue // indented lines are members, not top-level definitions
-		}
-		if rest, ok := strings.CutPrefix(line, "package "); ok {
-			rest = strings.TrimSpace(rest)
-			if name, ok := strings.CutPrefix(rest, "object "); ok { // Scala package object
-				if fields := strings.Fields(name); len(fields) > 0 {
-					names = append(names, strings.Trim(fields[0], "{:"))
-				}
-			} else if len(names) == 0 {
-				rest = strings.TrimSpace(strings.TrimRight(rest, ";{:"))
-				parts = append(parts, strings.Join(strings.Fields(rest), ""))
-			}
-			continue
-		}
-		if m := topLevel.FindStringSubmatch(line); m != nil {
-			name := m[1][strings.LastIndex(m[1], ".")+1:]
-			if name != "" && name != "_" {
-				names = append(names, name)
-			}
-		}
-	}
-	return strings.Join(parts, "."), names
-}
-
 // readSource adds a Kotlin or Scala file to the index of what each package declares.
 // A Kotlin file also declares its facade class (utils.kt holds UtilsKt), which is
 // the name Java imports its top-level functions by.
 //
-// Implements: REQ-KT-003, REQ-SCALA-003
+// Implements: REQ-KT-003, REQ-KT-007, REQ-SCALA-003
 func (r *resolver) readSource(f *scan.File) {
 	if f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
 		return
@@ -91,22 +46,44 @@ func (r *resolver) readSource(f *scan.File) {
 	if err != nil {
 		return
 	}
-	pkg, names := declarations(data)
-	if pkg == "" {
-		return // the default package, which no import can name
-	}
-	r.packages[pkg] = append(r.packages[pkg], f.Path)
-	r.filePkg[f.Path] = pkg
-	if ext := path.Ext(f.Path); ext == ".kt" {
-		base := []rune(strings.TrimSuffix(path.Base(f.Path), ext))
-		if len(base) > 0 {
-			base[0] = unicode.ToUpper(base[0])
-			names = append(names, string(base)+"Kt")
+	found := declarations(data, path.Ext(f.Path) == ".scala")
+	var packageNames []string
+	for _, each := range found {
+		if each.name == "" {
+			continue // the default package, which no import can name
+		}
+		packageNames = append(packageNames, each.name)
+		r.packages[each.name] = append(r.packages[each.name], f.Path)
+		names := each.names
+		if extension := path.Ext(f.Path); extension == ".kt" {
+			base := []rune(strings.TrimSuffix(path.Base(f.Path), extension))
+			if len(base) > 0 {
+				base[0] = unicode.ToUpper(base[0])
+				names = append(names, string(base)+"Kt")
+			}
+		}
+		for _, name := range names {
+			r.decls[each.name+"."+name] = append(r.decls[each.name+"."+name], f.Path)
 		}
 	}
-	for _, n := range names {
-		r.decls[pkg+"."+n] = append(r.decls[pkg+"."+n], f.Path)
+	if len(packageNames) > 0 {
+		r.filePkg[f.Path] = commonPackage(packageNames)
 	}
+}
+
+// commonPackage is the package the imports of a file with several package blocks
+// are relative to: the one all its packages lie in.
+func commonPackage(packageNames []string) string {
+	common := strings.Split(packageNames[0], ".")
+	for _, name := range packageNames[1:] {
+		segments := strings.Split(name, ".")
+		count := 0
+		for count < len(common) && count < len(segments) && common[count] == segments[count] {
+			count++
+		}
+		common = common[:count]
+	}
+	return strings.Join(common, ".")
 }
 
 // declared finds the project file an import names through the index: the longest

@@ -12,8 +12,11 @@ verification:
 ## Statement
 
 The plugin reads sources and manifests as text, without Xcode, CocoaPods or
-Carthage: header search paths from an Xcode project or `.xcconfig` files are
-not read, a pod is matched to a header or module by name (a pod whose module
+Carthage: an Xcode project's header search paths (REQ-OBJC-015) apply to every
+file below the project, whatever its target, build configuration or SDK, and a
+setting Xcode defines itself other than the project directory (such as
+`$(BUILT_PRODUCTS_DIR)`) is not expanded; a pod is matched to a header or
+module by name (a pod whose module
 is named unlike it and is not in the table is unresolved), a Swift module no
 manifest declares stays an unresolved SwiftPM package, private spec
 repositories are never fetched, and no vulnerability database covers
