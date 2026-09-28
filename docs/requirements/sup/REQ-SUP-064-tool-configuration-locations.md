@@ -35,7 +35,11 @@ tool looks for it, reading the variables from the machine's environment only:
   `_`).
 - Go: `GOPROXY` from the environment, else from the go env file (`GOENV`,
   else `go/env` in the user configuration directory; none for `GOENV=off`).
-- NuGet: `%APPDATA%\NuGet\NuGet.Config` on Windows.
+- NuGet: `%APPDATA%\NuGet\NuGet.Config` on Windows; then the machine-wide
+  `*.config` files of `NuGet\Config` under `%ProgramFiles(x86)%` (else
+  `%ProgramFiles%`) on Windows, elsewhere under
+  `NUGET_COMMON_APPLICATION_DATA`, else `/Library/Application Support` on
+  macOS and `/etc/opt` on Linux.
 - Composer: `config.json` in the one home Composer takes (`COMPOSER_HOME`;
   `%APPDATA%\Composer` on Windows; else the first existing of
   `$XDG_CONFIG_HOME/composer` or `~/.config/composer`, and `~/.composer`), the

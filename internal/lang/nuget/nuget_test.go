@@ -39,7 +39,7 @@ func TestParseDependencies(t *testing.T) {
 	if !reflect.DeepEqual(deps, want) {
 		t.Errorf("deps\n got %+v\nwant %+v", deps, want)
 	}
-	if w := []Source{{"Main", "https://api.nuget.org/v3/index.json"}, {"Build", "https://feed.example/v3/index.json"}}; !reflect.DeepEqual(sources, w) {
+	if w := []Source{{Group: "Main", URL: "https://api.nuget.org/v3/index.json"}, {Group: "Build", URL: "https://feed.example/v3/index.json"}}; !reflect.DeepEqual(sources, w) {
 		t.Errorf("sources %v", sources)
 	}
 }

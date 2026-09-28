@@ -21,8 +21,8 @@ directory are not expanded; an F# `open` of a namespace declared by a C#
 project is not linked to it (it becomes an unresolved package unless a
 package provides it); what modules a Paket GitHub file declares is unknown
 when `paket-files/` is not on disk; `#r` of an assembly outside the
-repository is dropped; Paket's credentials and `references: strict` are
-not read.
+repository is dropped; Paket's encrypted credential store and
+`references: strict` are not read.
 
 ## Rationale
 

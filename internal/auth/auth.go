@@ -41,6 +41,11 @@ type Store struct {
 	// terraform holds the Terraform registry hosts this machine's CLI configuration
 	// names; see TerraformHost.
 	terraform map[string]bool
+	// scoped holds the credentials that serve one path of a host and no other:
+	// host -> path prefix (ending in "/") -> "user:password". A host many
+	// organizations share - Azure Artifacts' pkgs.dev.azure.com - gets each
+	// organization's credential this way.
+	scoped map[string]map[string]string
 }
 
 // Read collects the credentials from the files and variables the package managers of
@@ -72,11 +77,7 @@ func readMachine(m userconf.Machine) *Store {
 	// sources as well to know which host it is for - which is the whole reason they
 	// are read here rather than fished out of what discover.go already parsed.
 	c.readMaven(m)
-	for _, name := range m.NuGetConfigs() {
-		if data, err := os.ReadFile(name); err == nil {
-			c.readNuGetConfig(data)
-		}
-	}
+	c.readNuGet(m)
 	c.readMachineSources(m, exec.LookPath)
 	return c
 }
@@ -168,59 +169,6 @@ func (c *Store) readMavenSettings(files [][]byte, repos map[string]string) {
 func mavenEncrypted(pass string) bool {
 	i := strings.Index(pass, "{")
 	return i >= 0 && strings.LastIndex(pass, "}") > i+1
-}
-
-// readNuGetConfig takes the credentials a NuGet configuration keeps for its own
-// package sources - Azure Artifacts, a Nexus feed, ProGet - and files them under the
-// host of the source they name.
-//
-// Implements: REQ-AUTH-004, REQ-AUTH-010
-func (c *Store) readNuGetConfig(data []byte) {
-	type entry struct {
-		Key   string `xml:"key,attr"`
-		Value string `xml:"value,attr"`
-	}
-	var doc struct {
-		PackageSources struct {
-			Add []entry `xml:"add"`
-		} `xml:"packageSources"`
-		Credentials struct {
-			// One element per source, named after it, so the shape is not known in
-			// advance: it is read as a list of whatever elements are there.
-			Sources []struct {
-				XMLName xml.Name
-				Add     []entry `xml:"add"`
-			} `xml:",any"`
-		} `xml:"packageSourceCredentials"`
-	}
-	if xml.Unmarshal(data, &doc) != nil {
-		return
-	}
-	urls := map[string]string{}
-	for _, s := range doc.PackageSources.Add {
-		// A source's key is written into the credentials element's tag name, where a
-		// space is not allowed, so NuGet replaces each with "_x0020_".
-		urls[strings.ReplaceAll(s.Key, " ", "_x0020_")] = s.Value
-	}
-	for _, src := range doc.Credentials.Sources {
-		user, pass := "", ""
-		for _, kv := range src.Add {
-			switch strings.ToLower(kv.Key) {
-			case "username":
-				user = expand(kv.Value)
-			// A password stored encrypted is encrypted with a key only Windows holds;
-			// only the cleartext form is any use here.
-			case "cleartextpassword":
-				pass = expand(kv.Value)
-			}
-		}
-		if user == "" || pass == "" {
-			continue
-		}
-		if host := c.hostOf(urls[src.XMLName.Local]); host != "" {
-			c.basic[host] = user + ":" + pass
-		}
-	}
 }
 
 // expand resolves the environment references these files are allowed to hold, so a
@@ -403,6 +351,12 @@ func (c *Store) Apply(req *http.Request) {
 		return
 	}
 	for _, host := range [...]string{req.URL.Host, req.URL.Hostname()} {
+		if pair, ok := scopedPair(c.scoped[host], req.URL.Path); ok {
+			req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(pair)))
+			return
+		}
+	}
+	for _, host := range [...]string{req.URL.Host, req.URL.Hostname()} {
 		if token, ok := c.bearer[host]; ok {
 			req.Header.Set("Authorization", "Bearer "+token)
 			return
@@ -414,6 +368,18 @@ func (c *Store) Apply(req *http.Request) {
 			return
 		}
 	}
+}
+
+// scopedPair is the credential of the longest prefix of path among a host's scoped
+// ones.
+func scopedPair(prefixes map[string]string, path string) (pair string, ok bool) {
+	best := -1
+	for prefix, p := range prefixes {
+		if strings.HasPrefix(path, prefix) && len(prefix) > best {
+			best, pair, ok = len(prefix), p, true
+		}
+	}
+	return pair, ok
 }
 
 // loopback reports whether host is this machine, where plain http leaves nothing on
