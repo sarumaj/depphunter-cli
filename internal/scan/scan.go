@@ -56,6 +56,7 @@ var defaultIgnore = map[string]bool{
 	".zig-cache": true, "zig-cache": true, "zig-out": true, "zig-pkg": true,
 	".cpcache": true, ".shadow-cljs": true, "elm-stuff": true, ".spago": true, "bower_components": true,
 	".crystal": true, ".fake": true, ".dub": true, ".haxelib": true, "compiled": true, ".qlot": true,
+	"nimbledeps": true, "nimcache": true,
 }
 
 func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
@@ -162,7 +163,9 @@ func walkFiles(ctx context.Context, root string) ([]string, error) {
 // Alire's alire/ beside an alire.toml, ocicl's systems/ beside an
 // ocicl.csv, Foundry's lib/, dependencies/ (Soldeer's), out/ and cache/
 // beside a foundry.toml, and Hardhat's artifacts/, cache/ and
-// typechain-types/ beside a hardhat.config.*.
+// typechain-types/ beside a hardhat.config.*, and the packages Atlas clones
+// into deps/ beside a .nimble file or an Atlas configuration (a marker with
+// a wildcard is a glob).
 // Elsewhere an output/, lib/ or packages/ directory may well be source.
 var generatedBeside = map[string][]string{
 	"output": {"spago.yaml", "spago.dhall"},
@@ -185,6 +188,9 @@ var generatedBeside = map[string][]string{
 	"cache":           {"foundry.toml", "hardhat.config.js", "hardhat.config.ts", "hardhat.config.cjs", "hardhat.config.mjs", "hardhat.config.cts", "hardhat.config.mts"},
 	"artifacts":       {"hardhat.config.js", "hardhat.config.ts", "hardhat.config.cjs", "hardhat.config.mjs", "hardhat.config.cts", "hardhat.config.mts"},
 	"typechain-types": {"hardhat.config.js", "hardhat.config.ts", "hardhat.config.cjs", "hardhat.config.mjs", "hardhat.config.cts", "hardhat.config.mts"},
+	// Atlas clones a Nim project's dependencies into deps/ (its atlas.config
+	// in the project or in deps/).
+	"deps": {"*.nimble", "atlas.config", "atlas.workspace", "deps/atlas.config"},
 }
 
 // besideManifest reports whether the directory name in dir is such a directory.
@@ -192,6 +198,15 @@ var generatedBeside = map[string][]string{
 // Implements: REQ-LANG-018
 func besideManifest(name, dir string) bool {
 	for _, m := range generatedBeside[name] {
+		if strings.Contains(m, "*") {
+			entries, _ := os.ReadDir(dir)
+			for _, e := range entries {
+				if ok, _ := path.Match(m, e.Name()); ok {
+					return true
+				}
+			}
+			continue
+		}
 		if _, err := os.Stat(filepath.Join(dir, m)); err == nil {
 			return true
 		}

@@ -55,10 +55,11 @@ the Haxe language server (`haxe-language-server`; `.hx` files), the Ada
 Language Server (`ada_language_server`; `.ads`, `.adb` and `.ada` files),
 racket-langserver (`racket -l racket-langserver`; `.rkt`, `.rktl` and
 `.scrbl` files), cl-lsp (`cl-lsp`; `.lisp`, `.lsp`, `.cl` and `.asd`
-files) and the Nomic Foundation Solidity server or solidity-ls
+files), the Nomic Foundation Solidity server or solidity-ls
 (`nomicfoundation-solidity-language-server --stdio` or `solidity-ls
---stdio`, first installed; `.sol` files), skipping a server that is not
-installed.
+--stdio`, first installed; `.sol` files) and nimlangserver or nimlsp
+(`nimlangserver` or `nimlsp`, first installed; `.nim`, `.nims` and
+`.nimble` files), skipping a server that is not installed.
 
 ## Rationale
 

@@ -2,7 +2,7 @@ package scan
 
 import "testing"
 
-// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001, REQ-JULIA-001, REQ-ZIG-001, REQ-NIX-001, REQ-FORTRAN-001, REQ-HAXE-001, REQ-ADA-001, REQ-RACKET-001, REQ-COMMONLISP-001, REQ-SOLIDITY-001
+// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001, REQ-JULIA-001, REQ-ZIG-001, REQ-NIX-001, REQ-FORTRAN-001, REQ-HAXE-001, REQ-ADA-001, REQ-RACKET-001, REQ-COMMONLISP-001, REQ-SOLIDITY-001, REQ-NIM-001
 func TestLanguageByName(t *testing.T) {
 	for p, want := range map[string]string{
 		"a.go":                           "Go",
@@ -114,6 +114,12 @@ func TestLanguageByName(t *testing.T) {
 		"foundry.toml":                   "Foundry",
 		"remappings.txt":                 "Foundry",
 		"soldeer.lock":                   "Soldeer",
+		"src/shop.nim":                   "Nim",
+		"config.nims":                    "Nim",
+		"shop.nimble":                    "Nim",
+		"nim.cfg":                        "Nim",
+		"nimble.lock":                    "Nimble",
+		"atlas.lock":                     "Atlas",
 		"source/shop/app.d":              "D",
 		"import/shop/cart.di":            "D",
 		"dub.sdl":                        "SDLang",

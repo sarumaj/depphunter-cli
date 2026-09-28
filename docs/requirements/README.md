@@ -143,6 +143,7 @@ The server **shall** ...
 | `racket`     | The Racket plugin: modules, Scribble documents, info.rkt packages and collections, raco packages.       |
 | `commonlisp` | The Common Lisp plugin: sources, ASDF systems, packages, Qlot's qlfile and lock, and ocicl.csv.         |
 | `solidity`   | The Solidity plugin: imports, remappings, git submodules, Soldeer packages and Hardhat's npm packages.  |
+| `nim`        | The Nim plugin: modules, NimScript, .nimble files, nimble.lock, atlas.lock and installed packages.      |
 | `terraform`  | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                    |
 | `proto`      | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.            |
 | `shell`      | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                     |
@@ -364,6 +365,10 @@ requirements of type `limitation` in their scopes:
   commit comes from git's index, and neither a submodule's nor a Soldeer
   package's own imports or dependencies are read beyond a checked-out
   submodule's `.gitmodules`.
+- Nim is read without running the compiler, nimble or Atlas: NimScript is
+  not executed, every `when` branch counts, a configuration's search paths
+  apply to its directory and below, `nimble.develop` is not read, and
+  nothing is asked of the package list (no `--online`).
 - Bun's binary `bun.lockb` is not read: without a `bun.lock` or a `yarn.lock`
   beside it, a Bun project's npm packages keep their declared ranges.
 - pip's keyring is not consulted for credentials.

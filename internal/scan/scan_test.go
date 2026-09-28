@@ -42,7 +42,9 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		"compiled/main_rkt.dep":                                  "((#\"8.12\" racket))\n",
 		"src/compiled/errortrace/main_rkt.dep":                   "((#\"8.12\" racket))\n",
 		".qlot/dists/quicklisp/software/alexandria/package.lisp": "(defpackage :alexandria)\n",
-		"img.bin": "\x00\x01\x02",
+		"nimbledeps/pkgs2/chronos-4.0.3-abc/chronos.nim":         "import chronos/asyncloop\n",
+		"src/nimcache/@mshop.nim.c":                              "/* generated */\n",
+		"img.bin":                                                "\x00\x01\x02",
 	}
 	for p, c := range files {
 		abs := filepath.Join(root, p)
@@ -79,8 +81,9 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 // systems ocicl downloaded, lib/, dependencies/, out/ and cache/ beside a
 // foundry.toml what Foundry and Soldeer installed and forge built, and
 // artifacts/, cache/ and typechain-types/ beside a hardhat.config.* what
-// Hardhat compiled; another output/, lib/, packages/, alire/, systems/,
-// cache/ or artifacts/ directory is kept.
+// Hardhat compiled, and deps/ beside a .nimble file or with Atlas's
+// atlas.config what Atlas cloned; another output/, lib/, packages/, alire/,
+// systems/, cache/, artifacts/ or deps/ directory is kept.
 //
 // Verifies: REQ-LANG-018
 func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
@@ -117,6 +120,11 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 		"hh/typechain-types/index.ts":                           "export {};\n",
 		"site/cache/page.html":                                  "<p>kept</p>\n",
 		"site/artifacts/report.md":                              "# kept\n",
+		"nim/shop.nimble":                                       "version = \"0.1.0\"\n",
+		"nim/deps/malebolgia/malebolgia.nimble":                 "version = \"1.3.2\"\n",
+		"atl/deps/atlas.config":                                 "{\"deps\": \"deps\"}\n",
+		"atl/deps/sat/sat.nim":                                  "proc solve*() = discard\n",
+		"make/deps/app.d":                                       "app.o: app.c\n",
 	} {
 		abs := filepath.Join(root, p)
 		os.MkdirAll(filepath.Dir(abs), 0o755)
@@ -131,7 +139,7 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 		paths = append(paths, f.Path)
 	}
 	want := []string{"app/spago.yaml", "app/src/Main.purs", "cl/ocicl.csv", "crate/alire.toml", "docs/alire/intro.md", "fs/paket.dependencies",
-		"game/systems/physics.lisp", "hh/hardhat.config.ts", "legacy/spago.dhall", "report/output/summary.md", "shop/shard.yml",
+		"game/systems/physics.lisp", "hh/hardhat.config.ts", "legacy/spago.dhall", "make/deps/app.d", "nim/shop.nimble", "report/output/summary.md", "shop/shard.yml",
 		"site/artifacts/report.md", "site/cache/page.html", "sol/foundry.toml", "sol/src/Counter.sol", "tools/lib/helper.cr", "web/packages/app.fs"}
 	if !reflect.DeepEqual(paths, want) {
 		t.Errorf("got %v, want %v", paths, want)

@@ -157,6 +157,11 @@ var Servers = []Server{
 	{Name: "solidity", Open: true, Exts: map[string]string{".sol": "solidity"},
 		Commands: [][]string{{"nomicfoundation-solidity-language-server", "--stdio"}, {"solidity-ls", "--stdio"}}},
 	{Name: "commonlisp", Open: true, Exts: map[string]string{".lisp": "lisp", ".lsp": "lisp", ".cl": "lisp", ".asd": "lisp"}, Commands: [][]string{{"cl-lsp"}}},
+	// nimlangserver (the Nim team's) and nimlsp both answer references for Nim
+	// modules over stdio; nimlangserver starts nimsuggest per project, so a
+	// first answer may take a while.
+	{Name: "nim", Open: true, Exts: map[string]string{".nim": "nim", ".nims": "nim", ".nimble": "nim"},
+		Commands: [][]string{{"nimlangserver"}, {"nimlsp"}}},
 	{Name: "fortran", Open: true, Exts: map[string]string{".f90": "fortran", ".f95": "fortran", ".f03": "fortran", ".f08": "fortran", ".f18": "fortran", ".f": "fortran", ".for": "fortran", ".ftn": "fortran", ".f77": "fortran", ".fpp": "fortran"}, Commands: [][]string{{"fortls"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.

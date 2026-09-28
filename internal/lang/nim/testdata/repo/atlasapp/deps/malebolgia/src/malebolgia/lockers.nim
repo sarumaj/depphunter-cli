@@ -1,0 +1,1 @@
+type Locker* = object
