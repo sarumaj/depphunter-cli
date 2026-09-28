@@ -326,6 +326,10 @@ type Config struct {
 	// py is what this machine's uv, Poetry and PDM configuration names beyond its
 	// sources: indexes and credentials a repository refers to by name.
 	py pythonMachine
+	// rebar3Repos are the Hex repositories this machine's global rebar.config names,
+	// in order; rebar3Replace says they replace hex.pm's (see hexRepositories).
+	rebar3Repos   []string
+	rebar3Replace bool
 }
 
 func New() *Config {
@@ -539,6 +543,9 @@ type candidate struct {
 	// onError moves on to the next candidate after any failure, not only after
 	// "not found" (GOPROXY's "|").
 	onError bool
+	// keyed marks an index that answers only to a key: a private Hex
+	// organization's part of the API.
+	keyed bool
 }
 
 // candidates lists the indexes a package is asked of, in the order they are asked;
@@ -550,7 +557,8 @@ type candidate struct {
 //     registry alone; a registry serves no other crate.
 //   - A Hex package of a private organization (lang.Target.Registry
 //     "hexpm:<organization>") is served by that organization's part of the Hex
-//     API alone.
+//     API alone; a rebar3 project's package by the repositories rebar3 configures,
+//     in its order (see hexRepositories).
 //   - A NuGet package a packageSourceMapping pattern covers is served by the
 //     sources mapped to its most specific pattern alone (possibly none).
 //   - A scoped source that covers the package (an npm scope, a gem's source block, a
@@ -610,7 +618,7 @@ func (c *Config) candidates(eco, pkg, registry string) []candidate {
 		return nil // a registry no configuration defines: Cargo itself would fail
 	}
 	if eco == Hex && registry != "" {
-		return c.hexOrganization(registry)
+		return c.hexRepositories(pkg, registry)
 	}
 	if eco == NuGet {
 		// packageSourceMapping: a package a pattern covers is asked of the
@@ -730,19 +738,48 @@ func Host(index string) string {
 	return u.Host
 }
 
-// hexOrganization is the one candidate for a package of a private Hex organization
-// (registry "hexpm:<organization>"): <api>/repos/<organization> of the Hex API this
-// machine uses - HEX_API_URL's or hex.pm's - as Mix asks it. It never falls back to
-// the public packages: a private package's name is exactly the one a
-// dependency-confusion attack publishes there. Any other repository name is one of
-// Hex's protobuf repositories (a mini_repo, a mirror), which serves no API: no
-// candidate.
+// rebar3Machine is the lang.Target.Registry element that stands for the Hex
+// repositories this machine's rebar3 configures (its global rebar.config), then
+// hex.pm's public one. "*" is no repository's name.
+const rebar3Machine = "*"
+
+// hexRepositories lists the candidates for a Hex package whose lang.Target.Registry
+// names its repositories: one ("hexpm:<organization>", from mix.exs or mix.lock) or
+// several, comma-separated, in the order rebar3 asks them - a rebar3 project's
+// {hex, [{repos, ...}]} and then, unless it replaces them, rebar3Machine. hexpm is
+// hex.pm's public repository, asked as any Hex package is. A private
+// organization's is <api>/repos/<organization> of the Hex API this machine uses -
+// HEX_API_URL's or hex.pm's - as Mix and rebar3 ask it; it needs a key (keyed).
+// Neither Mix nor rebar3 records which of several repositories a package came
+// from, so each is asked in turn, as rebar3 does. Any other repository is one of
+// Hex's protobuf repositories (a mini_repo, a mirror), which serves no API: the
+// list ends there, since what it has cannot be told from what the ones after it
+// have, and a private package's name is exactly the one a dependency-confusion
+// attack publishes on hex.pm.
 //
-// Implements: REQ-SUP-047
-func (c *Config) hexOrganization(registry string) []candidate {
-	org, ok := strings.CutPrefix(registry, "hexpm:")
-	if !ok || !auth.HexOrganization(org) {
-		return nil
+// Implements: REQ-SUP-047, REQ-BEAM-013
+func (c *Config) hexRepositories(pkg, registry string) []candidate {
+	var names []string
+	seen := map[string]bool{}
+	for _, name := range strings.Split(registry, ",") {
+		expand := []string{strings.TrimSpace(name)}
+		if expand[0] == rebar3Machine {
+			// The project's own repositories come first; the machine's replace
+			// hex.pm's only when the project names none.
+			expand = append(slices.Clone(c.rebar3Repos), "hexpm")
+			if c.rebar3Replace && len(names) == 0 {
+				expand = c.rebar3Repos
+			}
+		}
+		for _, n := range expand {
+			if !seen[n] {
+				seen[n] = true
+				names = append(names, n)
+			}
+		}
+	}
+	if len(names) == 1 && names[0] == "hexpm" {
+		return c.candidates(Hex, pkg, "")
 	}
 	api := Source{URL: public[Hex]}
 	for _, s := range c.sources[Hex] {
@@ -751,5 +788,18 @@ func (c *Config) hexOrganization(registry string) []candidate {
 			break
 		}
 	}
-	return []candidate{{url: strings.TrimRight(api.URL, "/") + "/repos/" + org, primary: true, known: c.fetchable(Hex, api)}}
+	var out []candidate
+	for _, name := range names {
+		if name == "hexpm" {
+			out = append(out, c.candidates(Hex, pkg, "")...)
+			continue
+		}
+		org, ok := strings.CutPrefix(name, "hexpm:")
+		if !ok || !auth.HexOrganization(org) {
+			break
+		}
+		out = append(out, candidate{url: strings.TrimRight(api.URL, "/") + "/repos/" + org,
+			primary: len(names) == 1, known: c.fetchable(Hex, api), keyed: true})
+	}
+	return out
 }

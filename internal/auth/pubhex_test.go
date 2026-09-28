@@ -114,3 +114,78 @@ func TestHexKeys(t *testing.T) {
 		}
 	}
 }
+
+// rebar3's hex.config (.config/rebar3/hex.config): an organization's own api_key
+// comes first for it; the user's key is Mix's, else Mix's token, else rebar3's
+// hexpm api_key, else its unexpired $oauth token; only without one does each
+// hexpm:<org> repo_key (Mix's auth_key first) serve its organization, and
+// HEX_REPOS_KEY the others. HEX_API_KEY is over all of them.
+//
+// Verifies: REQ-AUTH-028, REQ-AUTH-020
+func TestRebar3HexKeys(t *testing.T) {
+	saved := now
+	now = func() time.Time { return time.Unix(2000, 0) }
+	t.Cleanup(func() { now = saved })
+	repos := `<<"hexpm:acme">> => #{name => <<"hexpm:acme">>, repo_key => <<"acme-key">>},
+  <<"hexpm:beta">> => #{api_key => <<"beta-api">>},
+  <<"hexpm:gone">> => #{oauth_token => #{access_token => <<"gone">>, expires_at => 1000}},
+  <<"mine">> => #{repo_key => <<"mine-key">>}`
+	for _, tc := range []struct {
+		name, rebar3, mix string
+		vars              map[string]string
+		want              map[string]string
+	}{
+		{"organization keys", "#{" + repos + "}.", "", nil, map[string]string{
+			"https://hex.pm/api/repos/acme/packages/billing": "acme-key",
+			"https://hex.pm/api/repos/beta/packages/x":       "beta-api",
+			"https://hex.pm/api/repos/gone/packages/x":       "",
+			"https://hex.pm/api/repos/other/packages/x":      "",
+			"https://hex.pm/api/packages/jason":              "",
+		}},
+		{"repos key for the others", "#{" + repos + "}.", "", map[string]string{"HEX_REPOS_KEY": "repos-key"}, map[string]string{
+			"https://hex.pm/api/repos/acme/packages/billing": "acme-key",
+			"https://hex.pm/api/repos/other/packages/x":      "repos-key",
+		}},
+		{"hexpm api_key of the user", "#{" + repos + `, <<"hexpm">> => #{api_key => <<"user-key">>}}.`, "", nil, map[string]string{
+			"https://hex.pm/api/repos/acme/packages/billing": "user-key",
+			"https://hex.pm/api/repos/beta/packages/x":       "beta-api",
+			"https://hex.pm/api/repos/other/packages/x":      "user-key",
+			"https://hex.pm/api/packages/jason":              "",
+		}},
+		{"OAuth token of the user", "#{" + repos + `, <<"$oauth">> => #{access_token => <<"user-live">>, expires_at => 3000}}.`, "", nil, map[string]string{
+			"https://hex.pm/api/repos/acme/packages/billing": bearer("user-live"),
+		}},
+		{"hexpm api_key over the OAuth token", "#{" + repos + `, <<"hexpm">> => #{api_key => <<"user-key">>}, <<"$oauth">> => #{access_token => <<"user-live">>, expires_at => 3000}}.`, "", nil, map[string]string{
+			"https://hex.pm/api/repos/acme/packages/billing": "user-key",
+		}},
+		{"expired OAuth token", "#{" + repos + `, <<"$oauth">> => #{access_token => <<"user-old">>, expires_at => 1000}}.`, "", nil, map[string]string{
+			"https://hex.pm/api/repos/acme/packages/billing": "acme-key",
+		}},
+		{"Mix's key first", "#{" + repos + `, <<"hexpm">> => #{api_key => <<"rebar3-key">>}}.`, `{api_key,<<"mix-key">>}.`, nil, map[string]string{
+			"https://hex.pm/api/repos/other/packages/x": "mix-key",
+		}},
+		{"Mix's organization key first", "#{" + repos + "}.", `{'$repos',#{<<"hexpm:acme">> => #{auth_key => <<"mix-acme">>}}}.`, nil, map[string]string{
+			"https://hex.pm/api/repos/acme/packages/billing": "mix-acme",
+		}},
+		{"HEX_API_KEY over all", "#{" + repos + "}.", "", map[string]string{"HEX_API_KEY": "env-key"}, map[string]string{
+			"https://hex.pm/api/repos/beta/packages/x": "env-key",
+			"https://hex.pm/api/repos/acme/packages/x": "env-key",
+		}},
+	} {
+		home := t.TempDir()
+		writeFile(t, filepath.Join(home, ".config", "rebar3", "hex.config"), "%% coding: utf-8\n"+tc.rebar3+"\n")
+		writeFile(t, filepath.Join(home, ".hex", "hex.config"), tc.mix)
+		c := onMachine(t, home, "linux", tc.vars)
+		for u, want := range tc.want {
+			if got := authorization(t, c, u); got != want {
+				t.Errorf("%s: %s: %q, want %q", tc.name, u, got, want)
+			}
+		}
+	}
+	global := t.TempDir()
+	writeFile(t, filepath.Join(global, ".config", "rebar3", "hex.config"), `#{<<"hexpm:acme">> => #{repo_key => <<"moved">>}}.`)
+	c := onMachine(t, t.TempDir(), "linux", map[string]string{"REBAR_GLOBAL_CONFIG_DIR": global})
+	if got := authorization(t, c, "https://hex.pm/api/repos/acme/packages/billing"); got != "moved" {
+		t.Errorf("REBAR_GLOBAL_CONFIG_DIR: %q", got)
+	}
+}

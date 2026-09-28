@@ -111,3 +111,95 @@ func TestHexAPIURL(t *testing.T) {
 		}
 	}
 }
+
+// rebar3's global rebar.config is in .config/rebar3 under REBAR_GLOBAL_CONFIG_DIR,
+// else the home directory; its hex.config there too, under REBAR_CACHE_DIR when
+// that is set and REBAR_GLOBAL_CONFIG_DIR is not, as rebar3 finds it once the
+// project is loaded.
+//
+// Verifies: REQ-SUP-064, REQ-AUTH-028, REQ-BEAM-013
+func TestRebar3Locations(t *testing.T) {
+	home, global, cache := t.TempDir(), t.TempDir(), t.TempDir()
+	for _, tc := range []struct {
+		vars          map[string]string
+		config, hexed string
+	}{
+		{nil, filepath.Join(home, ".config", "rebar3", "rebar.config"), filepath.Join(home, ".config", "rebar3", "hex.config")},
+		{map[string]string{"REBAR_CACHE_DIR": cache}, filepath.Join(home, ".config", "rebar3", "rebar.config"),
+			filepath.Join(cache, ".config", "rebar3", "hex.config")},
+		{map[string]string{"REBAR_CACHE_DIR": cache, "REBAR_GLOBAL_CONFIG_DIR": global},
+			filepath.Join(global, ".config", "rebar3", "rebar.config"), filepath.Join(global, ".config", "rebar3", "hex.config")},
+	} {
+		m := machine(t, home, "linux", tc.vars)
+		if got := m.Rebar3GlobalConfig(); got != tc.config {
+			t.Errorf("%v: rebar.config %s", tc.vars, got)
+		}
+		if got := m.Rebar3HexConfig(); got != tc.hexed {
+			t.Errorf("%v: hex.config %s", tc.vars, got)
+		}
+	}
+	if got := machine(t, "", "linux", nil).Rebar3HexConfig(); got != "" {
+		t.Errorf("no home: %q", got)
+	}
+}
+
+// The repos of a rebar.config's {hex, ...}, in order across its entries; the first
+// entry says whether they replace hex.pm's. Names may be binaries or strings; a
+// map without one and the other options are passed over.
+//
+// Verifies: REQ-BEAM-013
+func TestParseRebar3HexRepos(t *testing.T) {
+	for src, want := range map[string]struct {
+		repos   []string
+		replace bool
+	}{
+		`{hex, [{repos, [#{name => <<"hexpm:acme">>, repo_key => <<"k">>}]}]}.`: {[]string{"hexpm:acme"}, false},
+		`%% global
+{plugins, [rebar3_hex]}.
+{hex, [{doc, #{provider => ex_doc}},
+       {repos, replace, [#{name => <<"hexpm:acme">>}, #{name => "hexpm"}]},
+       {repos, [#{repo_url => <<"x">>}, #{name => <<"hexpm:beta">>}]}]}.`: {[]string{"hexpm:acme", "hexpm", "hexpm:beta"}, true},
+		`{hex, [{repos, [#{name => <<"a">>}]}, {repos, replace, [#{name => <<"b">>}]}]}.`: {[]string{"a", "b"}, false},
+		`{deps, []}.`: {nil, false},
+	} {
+		repos, replace := ParseRebar3HexRepos([]byte(src))
+		if !reflect.DeepEqual(repos, want.repos) || replace != want.replace {
+			t.Errorf("%s: %v %v", src, repos, replace)
+		}
+	}
+}
+
+// rebar3's hex.config, as rebar3 writes it with io_lib:print: one map from a
+// repository name to its keys. hexpm's api_key is the user's key, $oauth the
+// user's token; each repository's api_key, repo_key (else auth_key) and
+// oauth_token are its own; the atom undefined is no key.
+//
+// Verifies: REQ-AUTH-028
+func TestParseRebar3HexConfig(t *testing.T) {
+	got := ParseRebar3HexConfig([]byte(`%% coding: utf-8
+#{<<"$oauth">> =>
+      #{access_token => <<"user-token">>,expires_at => 1893456000,
+        refresh_token => undefined},
+  <<"hexpm">> => #{api_key => <<"user-key">>,repo_key => undefined},
+  <<"hexpm:acme">> => #{name => <<"hexpm:acme">>,repo_key => <<"acme-key">>},
+  <<"hexpm:beta">> => #{api_key => <<"beta-api">>,auth_key => <<"beta-auth">>,
+                        oauth_token => #{access_token => <<"beta-token">>,expires_at => 1}},
+  <<"hexpm:gamma">> => #{api_key => undefined, oauth_token => #{access_token => undefined}}}.
+`))
+	want := HexConfig{
+		APIKey: "user-key",
+		OAuth:  HexToken{Access: "user-token", Expires: 1893456000},
+		Repos: map[string]HexRepo{
+			"hexpm":       {APIKey: "user-key"},
+			"hexpm:acme":  {AuthKey: "acme-key"},
+			"hexpm:beta":  {APIKey: "beta-api", AuthKey: "beta-auth", OAuth: HexToken{Access: "beta-token", Expires: 1}},
+			"hexpm:gamma": {},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v\nwant %+v", got, want)
+	}
+	if got := ParseRebar3HexConfig([]byte("{api_key, <<\"k\">>}.\n")); got.APIKey != "" || len(got.Repos) != 0 {
+		t.Errorf("Mix's hex.config read as rebar3's: %+v", got)
+	}
+}

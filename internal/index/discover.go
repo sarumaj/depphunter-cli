@@ -133,6 +133,9 @@ func (c *Config) machine(m userconf.Machine) {
 	// hex.config's api_url). HEX_MIRROR is not read: a mirror serves the
 	// repository's signed protobuf files, not this API.
 	add(Hex, m.HexAPIURL(), "")
+	// The Hex repositories rebar3 asks, before hex.pm's, for every project: a
+	// rebar3 project's packages are asked of them too (see hexRepositories).
+	c.rebar3Repos, c.rebar3Replace = m.ReadRebar3HexRepos()
 	// The repositories renv restores from instead of those renv.lock records, and the
 	// R profile R reads first, which is where options(repos = ...) usually lives.
 	for _, u := range strings.FieldsFunc(env("RENV_CONFIG_REPOS_OVERRIDE"), func(r rune) bool { return r == ';' || r == ',' }) {

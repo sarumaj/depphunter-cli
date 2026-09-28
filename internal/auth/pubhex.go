@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -68,18 +69,24 @@ const hexPublicAPI = "https://hex.pm/api"
 // now is the clock an OAuth token's expiry is read against; tests set it.
 var now = time.Now
 
-// readHex takes what Mix's Hex authenticates to the Hex API with, for the private
-// organizations' packages (<api>/repos/<organization>/...), the only part of the API
-// that needs it. Sent as Hex sends them - a key as the whole Authorization header, an
-// OAuth token as Bearer - in Hex's own order:
+// readHex takes what Mix's Hex and rebar3 authenticate to the Hex API with, for the
+// private organizations' packages (<api>/repos/<organization>/...), the only part of
+// the API that needs it. Sent as they send them - a key as the whole Authorization
+// header, an OAuth token as Bearer - in their own order:
 //
-//   - HEX_API_KEY, else hex.config's api_key, else the unexpired OAuth token
-//     `mix hex.user auth` stores: the user's, which reaches every organization the
+//   - HEX_API_KEY, which both put before anything a file holds, for every
+//     organization;
+//   - an organization's own api_key in rebar3's hex.config (hexpm:<organization>),
+//     which rebar3 takes before the user's, for that organization's path;
+//   - the user's: Mix's hex.config api_key, else the unexpired OAuth token `mix
+//     hex.user auth` stores, else rebar3's hexpm api_key, else the unexpired token
+//     `rebar3 hex user auth` stores ($oauth) - it reaches every organization the
 //     user belongs to (<api>/repos/);
 //   - only when there is none of those: each hexpm:<organization> repository's
-//     auth_key (or unexpired OAuth token) in hex.config's $repos, as `mix
-//     hex.organization auth <organization> --key KEY` writes it, for that
-//     organization's path, and HEX_REPOS_KEY for the others.
+//     key (Mix's auth_key, else its unexpired OAuth token; then rebar3's repo_key,
+//     as `mix hex.organization auth <organization> --key KEY` and `rebar3 hex
+//     organization auth hexpm:<organization>` write them) for that organization's
+//     path, and HEX_REPOS_KEY for the others.
 //
 // The API is HEX_API_URL, HEX_API or hex.config's api_url, else hex.pm's. A repository
 // with a URL of its own (a mini_repo, HEX_MIRROR) serves Hex's protobuf registry, not
@@ -87,19 +94,24 @@ var now = time.Now
 //
 // Implements: REQ-AUTH-028, REQ-AUTH-020
 func (c *Store) readHex(m userconf.Machine) {
-	cfg := m.ReadHexConfig()
+	mix, rebar3 := m.ReadHexConfig(), m.ReadRebar3HexConfig()
 	api := cmp.Or(m.HexAPIURL(), hexPublicAPI)
 	u, err := url.Parse(strings.TrimRight(strings.TrimSpace(api), "/"))
 	if err != nil || u.Host == "" {
 		return
 	}
 	repos := u.Path + "/repos/"
-	filed := false
-	put := func(prefix string, s secret) {
-		if bearerToken.MatchString(s.value) {
-			c.file(u.Host, prefix, s, true)
-			filed = true
+	filed := map[string]bool{}
+	// put files the first of secrets that is a key or a token under prefix, unless
+	// one is there already; it reports whether one is there now.
+	put := func(prefix string, secrets ...secret) bool {
+		for _, s := range secrets {
+			if !filed[prefix] && bearerToken.MatchString(s.value) {
+				c.file(u.Host, prefix, s, true)
+				filed[prefix] = true
+			}
 		}
+		return filed[prefix]
 	}
 	token := func(t userconf.HexToken) string {
 		if t.Access != "" && (t.Expires == 0 || t.Expires > now().Unix()) {
@@ -107,28 +119,36 @@ func (c *Store) readHex(m userconf.Machine) {
 		}
 		return ""
 	}
-	switch {
-	case bearerToken.MatchString(m.Env("HEX_API_KEY")):
-		put(repos, secret{verbatim: true, value: m.Env("HEX_API_KEY")})
-	case bearerToken.MatchString(cfg.APIKey):
-		put(repos, secret{verbatim: true, value: cfg.APIKey})
-	case token(cfg.OAuth) != "":
-		put(repos, secret{bearer: true, value: token(cfg.OAuth)})
-	default:
-		put(repos, secret{verbatim: true, value: m.Env("HEX_REPOS_KEY")})
-		for name, r := range cfg.Repos {
-			org, ok := strings.CutPrefix(name, "hexpm:")
-			if !ok || !HexOrganization(org) {
-				continue
+	// organizations lists the organizations of a hex.config's repositories.
+	organizations := func(cfg userconf.HexConfig) []string {
+		var out []string
+		for name := range cfg.Repos {
+			if org, ok := strings.CutPrefix(name, "hexpm:"); ok && HexOrganization(org) {
+				out = append(out, org)
 			}
-			if r.AuthKey != "" {
-				put(repos+org+"/", secret{verbatim: true, value: r.AuthKey})
-			} else if t := token(r.OAuth); t != "" {
-				put(repos+org+"/", secret{bearer: true, value: t})
+		}
+		sort.Strings(out)
+		return out
+	}
+	if put(repos, secret{verbatim: true, value: m.Env("HEX_API_KEY")}) {
+		c.notePlain(u)
+		return
+	}
+	for _, org := range organizations(rebar3) {
+		put(repos+org+"/", secret{verbatim: true, value: rebar3.Repos["hexpm:"+org].APIKey})
+	}
+	user := put(repos, secret{verbatim: true, value: mix.APIKey}, secret{bearer: true, value: token(mix.OAuth)},
+		secret{verbatim: true, value: rebar3.APIKey}, secret{bearer: true, value: token(rebar3.OAuth)})
+	if !user {
+		put(repos, secret{verbatim: true, value: m.Env("HEX_REPOS_KEY")})
+		for _, cfg := range []userconf.HexConfig{mix, rebar3} {
+			for _, org := range organizations(cfg) {
+				r := cfg.Repos["hexpm:"+org]
+				put(repos+org+"/", secret{verbatim: true, value: r.AuthKey}, secret{bearer: true, value: token(r.OAuth)})
 			}
 		}
 	}
-	if filed {
+	if len(filed) > 0 {
 		c.notePlain(u)
 	}
 }

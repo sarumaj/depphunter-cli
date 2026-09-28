@@ -66,8 +66,10 @@ type Target struct {
 	// Registry is the alternative registry a package is published to when its
 	// manifest or lock file names one: a Cargo registry's name (`registry =
 	// "corp"`) or its index URL (Cargo.lock's `source = "registry+<url>"`). Only
-	// that registry serves the package (see internal/index). Empty for the
-	// ecosystem's default.
+	// that registry serves the package (see internal/index). For Hex, the
+	// repositories asked in order, comma-separated: "hexpm:acme" for a private
+	// organization's package, a rebar3 project's list ending in "*" for the
+	// machine's. Empty for the ecosystem's default.
 	Registry string
 }
 

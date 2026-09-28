@@ -31,6 +31,22 @@ organization it **shall** not be asked, and the resolution report **shall**
 say that the key is missing. A package of any other repository **shall** be
 asked of no index.
 
+A package whose registry lists several repositories (a rebar3 project's,
+[REQ-BEAM-013](../beam/REQ-BEAM-013-hex-organization-packages.md)) **shall**
+be asked of them in that order, as rebar3 asks them, each only when the ones
+before it do not have the package: an organization's part of the API as
+above, `hexpm` as the public packages, and `*` as the repositories of this
+machine's global `rebar.config`
+([REQ-SUP-064](REQ-SUP-064-tool-configuration-locations.md)) followed by
+`hexpm` (only those repositories when they replace hex.pm's and the project
+names none). A package found in an organization **shall** not be asked of
+any repository after it, the public packages included; an organization this
+machine has no key for, and a repository with no API to ask, **shall** end
+the list, so that nothing after it is asked, and the report **shall** say
+that the key is missing when nothing before the organization had the package.
+A registry of `*` alone on a machine with no rebar3 repositories **shall** be
+asked exactly as a package with no registry.
+
 ## Rationale
 
 `rebar.lock` records no edges and a library commits no lock, so what a Hex
@@ -49,10 +65,20 @@ serve signed protobuf files, not this API.
    key.
 4. Without a key nothing is asked and the report gives the reason; a
    repository other than `hexpm:<organization>` has no index.
+5. A rebar3 package of registry `hexpm:acme,*` on a machine whose global
+   `rebar.config` names `hexpm:beta` is asked of acme, then beta, then the
+   public packages (without the key); found in acme, nothing else is asked,
+   so hex.pm's package of the same name never is.
+6. A global `{repos, replace, [acme]}` keeps the public packages out; without
+   a key for acme, nothing after it is asked and the report says the key is
+   missing; a repository with no API ends the list.
 
 ## Notes
 
 A repository with a URL of its own (a mini_repo, `HEX_MIRROR`) serves Hex's
-signed protobuf registry, not this API, and is not read. A rebar3
-dependency's repository is not read: its organization packages are asked of
-the public packages like any other.
+signed protobuf registry, not this API, and is not read; neither is a
+repository's own `api_url` in a rebar3 `repos` entry (the machine's Hex API
+is used). Asking the repositories in turn mirrors rebar3, which also takes a
+package from the first repository that has it: a package absent from every
+organization is looked for among the public packages, as rebar3 would fetch
+it from there.
