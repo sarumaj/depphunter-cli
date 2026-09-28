@@ -12,7 +12,8 @@ verification:
 ## Statement
 
 The walker **shall** read package-to-package dependencies from
-`package-lock.json` versions 1 to 3, `pnpm-lock.yaml` versions 5 to 9, classic
+`package-lock.json` versions 1 to 3 (and `npm-shrinkwrap.json`, which npm
+reads in its place), `pnpm-lock.yaml` versions 5 to 9, classic
 `yarn.lock`, `bun.lock` (a package installed under another, `a/b`, being
 what `a` requires), `Cargo.lock`, `uv.lock`, `poetry.lock`, `pdm.lock`,
 `composer.lock` (or, without one, `vendor/composer/installed.json`),

@@ -1,6 +1,6 @@
 ---
 id: REQ-SUP-048
-title: R package dependencies from crandb and CRAN-like repositories
+title: R package dependencies from crandb, CRAN-like repositories and Bioconductor
 scope: sup
 type: functional
 priority: must
@@ -22,7 +22,14 @@ of `renv.lock` (each scoped to the packages recorded from it) and the literal
 URLs of `options(repos = ...)` in a project `.Rprofile` are the repository's;
 those of `~/.Rprofile`, `R_PROFILE_USER` and `RENV_CONFIG_REPOS_OVERRIDE` are
 this machine's. CRAN and its known mirrors are never recorded as a
-repository's own index.
+repository's own index. A package of the `bioconductor` island **shall** be
+answered from its Bioconductor release's software repository,
+`https://bioconductor.org/packages/<release>/bioc`, through the same
+`PACKAGES` reader: the release `renv.lock` records
+(`Bioconductor.Version`, the first `renv.lock` in path order that records
+one), else `release`. A dependency that `PACKAGES` lists is a Bioconductor
+package; any other is CRAN's. Every release's repository on
+bioconductor.org is Bioconductor's public index.
 
 ## Rationale
 
@@ -41,3 +48,15 @@ crandb.
    packages.
 3. renv.lock's internal repository serves only the package recorded from it;
    Posit Package Manager is taken for CRAN.
+4. With `Bioconductor.Version` `3.18` in renv.lock, DESeq2 is attributed to
+   and asked of the 3.18 repository, whose `PACKAGES` is fetched once: it
+   depends on S4Vectors and BiocGenerics (Bioconductor) and on Rcpp,
+   RcppArmadillo and ggplot2 (CRAN). Without a valid version the `release`
+   repository is asked.
+
+## Notes
+
+The R version renv.lock records is not mapped to a Bioconductor release:
+each R version is served by two releases. A package of Bioconductor's
+annotation or experiment-data repositories is not asked there; one such
+dependency is taken for CRAN's.

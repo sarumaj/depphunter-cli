@@ -61,6 +61,10 @@ type Client struct {
 	// qlSystems is what each Quicklisp dist's system index lists: one request
 	// per dist version rather than one per project.
 	qlSystems map[string]*qlIndex
+	// qlFailed is each dist whose distinfo or system index could not be read, with
+	// when and why: every project of the dist is answered with that failure until
+	// failRetry has passed, instead of asking the dist again for each one.
+	qlFailed map[string]qlFailure
 	// located is where each package asked about was found (see Located).
 	located map[string]located
 	// rep is the report this run is writing, if anybody is reading it. It is set per
@@ -108,6 +112,7 @@ func NewClient(cfg *Config, dir string, ttl, timeout time.Duration,
 		cpanModules: map[string]string{},
 		juliaDirs:   map[string]map[string]string{},
 		qlSystems:   map[string]*qlIndex{},
+		qlFailed:    map[string]qlFailure{},
 		located:     map[string]located{},
 	}
 }
@@ -385,6 +390,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.hexPackage(ctx, index, t)
 	case CRAN:
 		deps, err = c.cranPackage(ctx, index, t)
+	case Bioconductor:
+		deps, err = c.bioconductorPackage(ctx, index, t)
 	case Hackage:
 		deps, err = c.hackagePackage(ctx, index, t)
 	case TerraformModule:

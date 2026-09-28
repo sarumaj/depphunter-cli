@@ -35,5 +35,5 @@ that a pattern reads without evaluating the build script.
 ## Notes
 
 The build script is not evaluated: dependencies computed in code, or whose
-coordinates are built from variables, are not seen. Gradle lock files
-(`gradle.lockfile`) are not read.
+coordinates are built from variables, are not seen. Gradle lock files pin
+the declared dependencies (REQ-JAVA-013).

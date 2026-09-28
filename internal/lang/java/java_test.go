@@ -205,6 +205,69 @@ netty-buffer = { module = "io.netty:netty-buffer", version = { require = "4.1.11
 	// cSpell: enable
 }
 
+// A Gradle lock puts its version on what the build declares - a dynamic version, a
+// range or none - keeping the declared one as requested; locks that disagree lock
+// nothing, a module only a lock names is not declared by it, and the build script's
+// own classpath locks are not read.
+//
+// Verifies: REQ-JAVA-013
+func TestGradleLockfile(t *testing.T) {
+	// cSpell: disable
+	got := resolveIn(t, Language{}, map[string]string{
+		"build.gradle.kts": `dependencies {
+    implementation("io.ktor:ktor-client-core:2.3.+")
+    implementation("com.squareup.okhttp3:okhttp")
+    implementation("com.fasterxml.jackson.core:jackson-databind:[2.15,3.0)")
+    implementation("commons-io:commons-io:2.16.1")
+    implementation("com.acme:split:1.+")
+    implementation("com.acme:tool")
+}`,
+		"gradle.lockfile": `# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+com.fasterxml.jackson.core:jackson-databind:2.17.2=compileClasspath,runtimeClasspath
+com.squareup.okhttp3:okhttp:4.12.0=compileClasspath,runtimeClasspath
+com.squareup.okio:okio:3.6.0=runtimeClasspath
+commons-io:commons-io:2.16.1=compileClasspath
+io.ktor:ktor-client-core:2.3.12=compileClasspath,runtimeClasspath
+com.acme:split:1.2=compileClasspath
+empty=annotationProcessor
+`,
+		"lib/gradle/dependency-locks/compileClasspath.lockfile":  "# old format\ncom.acme:split:1.3\n",
+		"gradle/dependency-locks/buildscript-classpath.lockfile": "com.acme:tool:9.9\n",
+		"buildscript-gradle.lockfile":                            "com.acme:tool:9.9=classpath\n",
+		"settings-gradle.lockfile":                               "com.acme:tool:9.9=classpath\n",
+	},
+		"io.ktor.client.HttpClient", "okhttp3.OkHttpClient", "com.fasterxml.jackson.databind.ObjectMapper",
+		"org.apache.commons.io.FileUtils", "com.acme.split.Thing", "okio.Buffer", "com.acme.tool.Tool",
+	)
+	checkTargets(t, got, map[string]lang.Target{
+		"io.ktor.client.HttpClient":                   {Ecosystem: "maven", Package: "io.ktor:ktor-client-core", Version: "2.3.12", Requested: "2.3.+", Pinned: true},
+		"okhttp3.OkHttpClient":                        {Ecosystem: "maven", Package: "com.squareup.okhttp3:okhttp", Version: "4.12.0", Pinned: true},
+		"com.fasterxml.jackson.databind.ObjectMapper": {Ecosystem: "maven", Package: "com.fasterxml.jackson.core:jackson-databind", Version: "2.17.2", Requested: "[2.15,3.0)", Pinned: true},
+		"org.apache.commons.io.FileUtils":             {Ecosystem: "maven", Package: "commons-io:commons-io", Version: "2.16.1", Pinned: true},
+		// Two locks disagree: the declared dynamic version stays.
+		"com.acme.split.Thing": {Ecosystem: "maven", Package: "com.acme:split", Version: "1.+"},
+		// Only the build script's classpath locks name it.
+		"com.acme.tool.Tool": {Ecosystem: "maven", Package: "com.acme:tool"},
+		// okio is locked, not declared.
+		"okio.Buffer": {Ecosystem: "maven", Package: "com.squareup.okio:okio", Unresolved: true},
+	})
+	// cSpell: enable
+	for p, want := range map[string]bool{
+		"gradle.lockfile": true, "app/gradle.lockfile": true,
+		"gradle/dependency-locks/runtimeClasspath.lockfile":      true,
+		"gradle/dependency-locks/buildscript-classpath.lockfile": false,
+		"buildscript-gradle.lockfile":                            false,
+		"settings-gradle.lockfile":                               false,
+		"dependency-locks/compileClasspath.lockfile":             false,
+	} {
+		if gradleLockfile(p) != want {
+			t.Errorf("%s: lock %v, want %v", p, !want, want)
+		}
+	}
+}
+
 // A root package goes to the artifact whose group names it, not to an extension
 // named after it; a package the table gives to an undeclared artifact is not taken
 // by a declared one with a shorter prefix.

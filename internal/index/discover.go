@@ -169,6 +169,8 @@ func (c *Config) machine(m userconf.Machine) {
 		}
 	}
 	machineJVM(m, k)
+	machineDub(m, k)
+	machineQuicklisp(m, k)
 	// Julia registries installed in the depots (JULIA_DEPOT_PATH, else ~/.julia)
 	// besides General. JULIA_PKG_SERVER is not read: a package server serves
 	// registries as tarballs, not as the files asked for here.
@@ -206,11 +208,12 @@ func (c *Config) machine(m userconf.Machine) {
 		{filepath.Join(home, ".gemrc"), plain(parseGemrc)},
 		{filepath.Join(home, ".Rprofile"), plain(parseRprofile)},
 		{filepath.Join(home, ".config", "cabal", "config"), plain(parseCabalRepositories)},
-		{filepath.Join(home, ".bazelrc"), plain(parseBazelrc)},
 		{filepath.Join(home, ".cabal", "config"), plain(parseCabalRepositories)},
 	} {
 		read(f.path, f.parse)
 	}
+	// Bazel's user rc and what it imports; %workspace% means no workspace here.
+	readBazelrc(filepath.Join(home, ".bazelrc"), "", "", add, map[string]bool{})
 }
 
 // join is filepath.Join, or "" when dir is: nothing is read under a directory that
@@ -384,6 +387,9 @@ func (c *Config) project(files []*scan.File) {
 			parsePubspecLock(data, add)
 		case base == "renv.lock":
 			parseRenvLock(data, add)
+			if c.biocRelease == "" {
+				c.biocRelease = renvBioconductor(data)
+			}
 		case base == ".rprofile" || base == "rprofile.site":
 			parseRprofile(data, add)
 		case base == "cabal.project" || base == "cabal.project.local":
@@ -395,7 +401,12 @@ func (c *Config) project(files []*scan.File) {
 		case base == "podfile.lock":
 			parsePodfileLock(data, add)
 		case base == ".bazelrc" || strings.HasSuffix(base, ".bazelrc"):
-			parseBazelrc(data, add)
+			root := strings.TrimSuffix(f.Abs, filepath.FromSlash(f.Path))
+			readBazelrc(f.Abs, bazelWorkspace(root, filepath.Dir(f.Abs)), root, add, map[string]bool{})
+		case base == "dub.settings.json":
+			parseDubSettings(data, k)
+		case base == "qlfile":
+			parseQlfile(data, k)
 		case strings.HasPrefix(base, "config-") && strings.HasSuffix(base, ".lua") && path.Base(path.Dir(f.Path)) == ".luarocks":
 			parseLuaRocksConfig(data, add) // what luarocks init writes for the project
 		}
@@ -956,6 +967,22 @@ func parseRenvLock(data []byte, add func(eco, url, scope string)) {
 	}
 }
 
+// renvBioconductor is the Bioconductor release renv.lock records
+// (Bioconductor.Version, "3.18"), whose repositories renv restores the project's
+// Bioconductor packages from; "" when it records none. The first renv.lock in path
+// order that records one sets it for the repository.
+//
+// Implements: REQ-SUP-048
+func renvBioconductor(data []byte) string {
+	var doc struct {
+		Bioconductor struct{ Version string }
+	}
+	if json.Unmarshal(data, &doc) != nil || !biocVersion.MatchString(doc.Bioconductor.Version) {
+		return ""
+	}
+	return doc.Bioconductor.Version
+}
+
 var (
 	rReposArg = regexp.MustCompile(`\brepos\s*=\s*`)
 	rURL      = regexp.MustCompile(`["'](https?://[^"'\s]+)["']`)
@@ -1104,12 +1131,27 @@ func parseJuliaRegistry(data []byte, add func(eco, url, scope string)) {
 // parseBazelrc reads the registries a .bazelrc names (--registry=URL, in any
 // command's section, in order). The Bazel Central Registry itself is the public
 // index, and a file:// registry cannot be asked over the network: neither is added.
+// The file an import or try-import line names is handed to include, where the line
+// stands, so that its registries come in Bazel's order.
 //
 // Implements: REQ-SUP-057
-func parseBazelrc(data []byte, add func(eco, url, scope string)) {
+func parseBazelrc(data []byte, add func(eco, url, scope string), include func(string)) {
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
+			continue
+		}
+		switch {
+		case (fields[0] == "import" || fields[0] == "try-import") && len(fields) > 1:
+			if include != nil {
+				include(strings.Trim(fields[1], `"'`))
+			}
+			continue
+		case fields[0] == "try-import-if-bazel-version" && len(fields) > 2:
+			// The version condition is not evaluated: its registries are read.
+			if include != nil {
+				include(strings.Trim(fields[2], `"'`))
+			}
 			continue
 		}
 		for i, f := range fields {
@@ -1122,6 +1164,212 @@ func parseBazelrc(data []byte, add func(eco, url, scope string)) {
 			}
 			if u = strings.Trim(u, `"'`); ok && strings.HasPrefix(u, "http") && !BazelCentral(u) {
 				add(Bazel, u, "")
+			}
+		}
+	}
+}
+
+// readBazelrc reads a .bazelrc and the files its import and try-import lines name:
+// %workspace% is the workspace's directory (a line using it is skipped when there is
+// none, as for ~/.bazelrc); any other relative path is Bazel's from the directory it
+// runs in, taken to be the workspace's, else - when no such file is there, or there
+// is no workspace - the importing file's directory. within, when set, is the
+// directory an imported file must be in: a repository's .bazelrc does not get a file
+// outside the repository read. A file missing (try-import's case, and import's,
+// which Bazel fails on) or read already is passed over.
+//
+// Implements: REQ-SUP-057
+func readBazelrc(name, workspace, within string, add func(eco, url, scope string), seen map[string]bool) {
+	name = filepath.Clean(name)
+	if seen[name] || len(seen) > 64 {
+		return
+	}
+	seen[name] = true
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return
+	}
+	parseBazelrc(data, add, func(p string) {
+		if strings.Contains(p, "%workspace%") {
+			if workspace == "" {
+				return
+			}
+			p = strings.ReplaceAll(p, "%workspace%", filepath.ToSlash(workspace))
+		}
+		p = filepath.FromSlash(p)
+		if !filepath.IsAbs(p) {
+			rel := p
+			p = filepath.Join(filepath.Dir(name), rel)
+			if workspace != "" {
+				if _, err := os.Stat(filepath.Join(workspace, rel)); err == nil {
+					p = filepath.Join(workspace, rel)
+				}
+			}
+		}
+		if rel, err := filepath.Rel(within, filepath.Clean(p)); within != "" && (err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+			return
+		}
+		readBazelrc(p, workspace, within, add, seen)
+	})
+}
+
+// bazelWorkspace is the Bazel workspace a repository's .bazelrc belongs to: the
+// nearest directory at or above it holding MODULE.bazel, REPO.bazel, WORKSPACE or
+// WORKSPACE.bazel, up to the repository's root, else the root.
+func bazelWorkspace(root, dir string) string {
+	for d := dir; ; d = filepath.Dir(d) {
+		for _, marker := range []string{"MODULE.bazel", "REPO.bazel", "WORKSPACE", "WORKSPACE.bazel"} {
+			if _, err := os.Stat(filepath.Join(d, marker)); err == nil {
+				return d
+			}
+		}
+		if rel, err := filepath.Rel(root, d); err != nil || rel == "." || strings.HasPrefix(rel, "..") || filepath.Dir(d) == d {
+			return root
+		}
+	}
+}
+
+// dubSettings is what a dub settings.json says about registries.
+type dubSettings struct {
+	RegistryURLs []string `json:"registryUrls"`
+	SkipRegistry string   `json:"skipRegistry"`
+}
+
+// machineDub reads the registries dub asks on this machine, in dub's order: those of
+// `DUB_REGISTRY` (`;`-separated), then the `registryUrls` of its settings files, the
+// user's before the system's, each asked before code.dlang.org. The `skipRegistry`
+// of the file with priority that sets one is honoured: `standard` switches
+// code.dlang.org off, `configured` the settings' registries too, `all` every one.
+//
+// Implements: REQ-SUP-060, REQ-SUP-064
+func machineDub(m userconf.Machine, k sink) {
+	var urls []string
+	skip := ""
+	for _, name := range m.DubSettings() {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			continue
+		}
+		var s dubSettings
+		if json.Unmarshal(data, &s) != nil {
+			continue
+		}
+		urls = append(urls, s.RegistryURLs...)
+		if skip == "" {
+			skip = s.SkipRegistry
+		}
+	}
+	if skip != "all" {
+		for _, u := range strings.Split(m.Env("DUB_REGISTRY"), ";") {
+			addDubRegistry(k, u)
+		}
+	}
+	if skip != "all" && skip != "configured" {
+		for _, u := range urls {
+			addDubRegistry(k, u)
+		}
+	}
+	if skip == "standard" || skip == "configured" || skip == "all" {
+		k.off(Dub)
+	}
+}
+
+// parseDubSettings reads a dub settings.json - a package's dub.settings.json, which
+// dub reads for the root package - as machineDub reads the machine's.
+//
+// Implements: REQ-SUP-060
+func parseDubSettings(data []byte, k sink) {
+	var s dubSettings
+	if json.Unmarshal(data, &s) != nil {
+		return
+	}
+	if s.SkipRegistry != "configured" && s.SkipRegistry != "all" {
+		for _, u := range s.RegistryURLs {
+			addDubRegistry(k, u)
+		}
+	}
+	if s.SkipRegistry == "standard" || s.SkipRegistry == "configured" || s.SkipRegistry == "all" {
+		k.off(Dub)
+	}
+}
+
+// addDubRegistry records a dub registry asked before code.dlang.org. Only a registry
+// served over HTTP is: dub's file:// and mvn+ package suppliers have no API to ask,
+// and code.dlang.org is the public index already.
+func addDubRegistry(k sink, u string) {
+	u = strings.TrimSpace(u)
+	if !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
+		return
+	}
+	if strings.TrimRight(u, "/") == public[Dub] {
+		return
+	}
+	k.extra(Dub, u)
+}
+
+// ultralispDist is the dist a qlfile's ultralisp lines install from, as Qlot names
+// it (over HTTPS here).
+const ultralispDist = "https://dist.ultralisp.org/"
+
+// parseQlfile reads the dists a qlfile adds: `dist <url> [version]` and `dist <name>
+// <url> [version]` are asked beside the Quicklisp dist; `ultralisp <project>` names
+// the Ultralisp dist as that project's. The Quicklisp dist itself is the public
+// index.
+//
+// Implements: REQ-SUP-062
+func parseQlfile(data []byte, k sink) {
+	for _, line := range strings.Split(string(data), "\n") {
+		if i := strings.IndexByte(line, '#'); i >= 0 {
+			line = line[:i]
+		}
+		f := strings.Fields(line)
+		if len(f) < 2 {
+			continue
+		}
+		switch strings.ToLower(f[0]) {
+		case "dist":
+			u := f[1]
+			if !strings.Contains(u, "/") && len(f) > 2 {
+				u = f[2] // dist <name> <url>
+			}
+			if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+				if !quicklispDist(u) {
+					k.extra(Quicklisp, u)
+				}
+			}
+		case "ultralisp":
+			if !strings.EqualFold(f[1], ":all") {
+				k.add(Quicklisp, ultralispDist, strings.ToLower(f[1]))
+			}
+		}
+	}
+}
+
+// quicklispDist reports whether a dist URL is the Quicklisp dist itself, over
+// either scheme.
+func quicklispDist(u string) bool {
+	u = strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
+	return u == "beta.quicklisp.org/dist/quicklisp.txt"
+}
+
+// machineQuicklisp reads the dists installed in this machine's Quicklisp: each
+// distinfo.txt's distinfo-subscription-url, where the dist's current version is
+// published, is asked beside the Quicklisp dist.
+//
+// Implements: REQ-SUP-062, REQ-SUP-064
+func machineQuicklisp(m userconf.Machine, k sink) {
+	for _, name := range m.QuicklispDists() {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			key, v, ok := strings.Cut(line, ":")
+			if !ok || strings.TrimSpace(key) != "distinfo-subscription-url" {
+				continue
+			}
+			if v = strings.TrimSpace(v); (strings.HasPrefix(v, "http://") || strings.HasPrefix(v, "https://")) && !quicklispDist(v) {
+				k.extra(Quicklisp, v)
 			}
 		}
 	}

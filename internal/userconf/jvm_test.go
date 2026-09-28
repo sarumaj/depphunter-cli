@@ -93,14 +93,61 @@ func TestCoursierLocations(t *testing.T) {
 	}
 	abs := filepath.Join(dir, "c.properties")
 	for value, want := range map[string][2]string{
-		"host(realm) u:p":                 {"host(realm) u:p", ""},
-		abs:                               {"", abs},
-		"file://" + filepath.ToSlash(abs): {"", abs},
+		"host(realm) u:p":                   {"host(realm) u:p", ""},
+		abs:                                 {"", abs},
+		"file:///etc/coursier/c.properties": {"", "/etc/coursier/c.properties"},
 	} {
 		inline, file := machine(t, home, "linux", map[string]string{"COURSIER_CREDENTIALS": value}).CoursierCredentials()
 		if inline != want[0] || file != want[1] {
 			t.Errorf("%q: %q %q, want %q", value, inline, file, want)
 		}
+	}
+}
+
+// COURSIER_CREDENTIALS names a file by a file: URL the way the JVM reads one: on
+// Windows a drive letter loses the slash before it and a host is a UNC server;
+// elsewhere a host other than localhost names no local file. The platform is
+// pinned both ways: through Platform and New, as depphunter runs, and on the
+// machine directly.
+//
+// Verifies: REQ-AUTH-021
+func TestCoursierCredentialsFileURL(t *testing.T) {
+	saved := Platform
+	t.Cleanup(func() { Platform = saved })
+	for _, tc := range []struct {
+		goos, value, want string
+	}{
+		{"windows", "file:///C:/x", `C:\x`},
+		{"windows", "file:///c:/Users/me/.config/coursier/credentials.properties", `c:\Users\me\.config\coursier\credentials.properties`},
+		{"windows", "file:/C:/x", `C:\x`},
+		{"windows", "file://C:/x", `C:\x`},
+		{"windows", "file:C:/x", `C:\x`},
+		{"windows", "FILE:///D:/My%20Files/c.properties", `D:\My Files\c.properties`},
+		{"windows", "file://localhost/C:/x", `C:\x`},
+		{"windows", "file://server/share/c.properties", `\\server\share\c.properties`},
+		{"windows", `C:\x\c.properties`, `C:\x\c.properties`},
+		{"windows", `\\server\share\c.properties`, `\\server\share\c.properties`},
+		{"linux", "file:///home/me/c.properties", "/home/me/c.properties"},
+		{"linux", "file:/home/me/c.properties", "/home/me/c.properties"},
+		{"linux", "file://localhost/home/me/My%20c.properties", "/home/me/My c.properties"},
+		{"linux", "file://server/share/c.properties", ""},
+		{"darwin", "file:///Users/me/c.properties", "/Users/me/c.properties"},
+	} {
+		Platform = tc.goos
+		env := map[string]string{"COURSIER_CREDENTIALS": tc.value}
+		for _, m := range []Machine{New(t.TempDir(), func(k string) string { return env[k] }), machine(t, t.TempDir(), tc.goos, env)} {
+			if m.GOOS != tc.goos {
+				t.Fatalf("GOOS %s, want %s", m.GOOS, tc.goos)
+			}
+			if inline, file := m.CoursierCredentials(); inline != "" || file != tc.want {
+				t.Errorf("%s %q: inline %q, file %q, want %q", tc.goos, tc.value, inline, file, tc.want)
+			}
+		}
+	}
+	// Anything else is inline credentials.
+	Platform = "linux"
+	if inline, file := machine(t, t.TempDir(), "linux", map[string]string{"COURSIER_CREDENTIALS": "host(realm) u:p"}).CoursierCredentials(); inline != "host(realm) u:p" || file != "" {
+		t.Errorf("inline: %q %q", inline, file)
 	}
 }
 

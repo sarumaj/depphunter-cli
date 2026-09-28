@@ -77,6 +77,11 @@ tool looks for it, reading the variables from the machine's environment only:
   or `true`, else `~/.hex`. rebar3's Hex repositories: the `{hex, [{repos,
   ...}]}` of its global `rebar.config`, `.config/rebar3/rebar.config` under
   `REBAR_GLOBAL_CONFIG_DIR`, else the home directory.
+- dub: `settings.json` in `DUB_HOME`, else in `dub` under `DPATH`, else in
+  `%APPDATA%\dub` on Windows, else in `~/.dub`; then the system's,
+  `%ProgramData%\dub` on Windows, else `/etc/dub` and `/var/lib/dub`.
+- Quicklisp: the `distinfo.txt` of each dist in `~/quicklisp/dists`.
+- Bazel: `~/.bazelrc` and the files it imports.
 
 ## Rationale
 
@@ -112,6 +117,10 @@ fixed `$HOME` paths missed the feed the machine actually uses.
     `HEX_API`, which wins over `hex.config`.
 11. rebar3's global `rebar.config` follows `REBAR_GLOBAL_CONFIG_DIR`, and its
     `hex.config` `REBAR_GLOBAL_CONFIG_DIR`, then `REBAR_CACHE_DIR`.
+12. dub's user settings follow `DUB_HOME`, `DPATH` and `%APPDATA%` (falling
+    through to `~/.dub` on a Windows without it), its system settings
+    `%ProgramData%` or `/etc/dub` and `/var/lib/dub`; `~/quicklisp`'s dists
+    are listed by name.
 
 ## Notes
 
@@ -119,4 +128,6 @@ The locations are found in one place, `internal/userconf`, for index discovery
 and the credential store alike. Gradle's installation-wide `init.d` and
 `-Dgradle.user.home` in `GRADLE_OPTS` are not read. pip's per-interpreter
 `sys.prefix/pip.conf` is not read (the interpreter is not known), nor npm's
-built-in prefix guessed.
+built-in prefix guessed. dub's settings beside its executable
+(`../etc/dub`) and a system `dubHome` are not followed; Roswell's Quicklisp
+(`~/.roswell/lisp/quicklisp`) is not read.

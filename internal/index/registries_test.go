@@ -1478,6 +1478,52 @@ func TestDiscoverReadsBazelrc(t *testing.T) {
 	}
 }
 
+// A .bazelrc's import and try-import lines are followed where they stand:
+// %workspace% is the workspace's directory, another relative path the workspace's
+// or else the importing file's; a missing file, a loop and a file outside the
+// repository are passed over. ~/.bazelrc's imports are this machine's, and it has
+// no workspace.
+//
+// Verifies: REQ-SUP-057
+func TestDiscoverFollowsBazelrcImports(t *testing.T) {
+	files := write(t, map[string]string{
+		"MODULE.bazel": "module(name = \"app\")\n",
+		".bazelrc": "common --registry=https://first.corp.test\n" +
+			"import %workspace%/tools/ci.bazelrc\n" +
+			"try-import %workspace%/user.bazelrc # not in the scan\n" +
+			"try-import missing.bazelrc\n" +
+			"import ../outside.bazelrc\n" +
+			"try-import-if-bazel-version >=7.0.0 %workspace%/tools/seven.rc\n" +
+			"common --registry=https://last.corp.test\n",
+		"tools/ci.bazelrc": "import tools/more.rc\nimport local.rc\n",
+		"tools/more.rc":    "common --registry=https://more.corp.test\ntry-import %workspace%/.bazelrc\n",
+		"tools/local.rc":   "build --registry https://local.corp.test\n",
+		"tools/seven.rc":   "common --registry=https://seven.corp.test\n",
+	})
+	root := strings.TrimSuffix(files[0].Abs, filepath.FromSlash(files[0].Path))
+	os.WriteFile(filepath.Join(root, "user.bazelrc"), []byte("common --registry=https://user.corp.test\n"), 0o644)
+	os.WriteFile(filepath.Join(filepath.Dir(filepath.Clean(root)), "outside.bazelrc"), []byte("common --registry=https://outside.corp.test\n"), 0o644)
+	var got []string
+	for _, s := range Discover(files, env(nil), "").Sources(Bazel) {
+		got = append(got, fmt.Sprintf("%s %v", s.URL, s.Trusted))
+	}
+	want := []string{
+		"https://first.corp.test false", "https://more.corp.test false", "https://local.corp.test false",
+		"https://user.corp.test false", "https://seven.corp.test false", "https://last.corp.test false",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("project registries:\n got %v\nwant %v", got, want)
+	}
+
+	home := t.TempDir()
+	os.WriteFile(filepath.Join(home, ".bazelrc"), []byte("try-import %workspace%.bazelrc.ws\nimport .bazelrc.corp\n"), 0o644)
+	os.WriteFile(filepath.Join(home, ".bazelrc.corp"), []byte("common --registry=https://mirror.corp.test\n"), 0o644)
+	os.WriteFile(filepath.Join(home, ".bazelrc.ws"), []byte("common --registry=https://workspace.corp.test\n"), 0o644)
+	if got := sources(Discover(nil, env(nil), home), Bazel); !reflect.DeepEqual(got, []string{"https://mirror.corp.test"}) {
+		t.Errorf("home: got %v, want the imported mirror alone", got)
+	}
+}
+
 // Verifies: REQ-SUP-058
 func TestElmDependencies(t *testing.T) {
 	var asked []string
@@ -1789,5 +1835,67 @@ iolib iolib.asdf iolib.asdf asdf
 	}
 	if idx, known := New().For(Quicklisp, "alexandria"); idx != "https://beta.quicklisp.org/dist/quicklisp.txt" || !known {
 		t.Errorf("public index %q %v", idx, known)
+	}
+}
+
+// A Bioconductor package is asked of its release's software repository - the
+// release renv.lock records, else the current one - whose PACKAGES is read once; a
+// dependency that PACKAGES does not list is CRAN's.
+//
+// Verifies: REQ-SUP-048
+func TestBioconductorDependencies(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		switch r.URL.Path {
+		case "/3.18/bioc/src/contrib/PACKAGES", "/release/bioc/src/contrib/PACKAGES":
+			w.Write([]byte("Package: DESeq2\nVersion: 1.42.0\nDepends: S4Vectors (>= 0.23.18), R (>= 3.5.0)\nImports: BiocGenerics (>= 0.7.5), methods,\n    ggplot2, Rcpp (>= 0.11.0)\nLinkingTo: Rcpp, RcppArmadillo\n\n" +
+				"Package: S4Vectors\nVersion: 0.40.2\nImports: BiocGenerics\n\nPackage: BiocGenerics\nVersion: 0.48.1\n"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	old := bioconductorPackages
+	bioconductorPackages = srv.URL
+	t.Cleanup(func() { bioconductorPackages = old })
+
+	lock := `{"R": {"Version": "4.3.2", "Repositories": [{"Name": "CRAN", "URL": "https://cloud.r-project.org"}]},
+"Bioconductor": {"Version": "3.18"},
+"Packages": {"DESeq2": {"Package": "DESeq2", "Version": "1.42.0", "Source": "Bioconductor"}}}`
+	cfg := Discover(write(t, map[string]string{"renv.lock": lock}), env(nil), "")
+	if idx, known := cfg.For(Bioconductor, "DESeq2"); idx != srv.URL+"/3.18/bioc" || !known {
+		t.Errorf("attributed to %s (known %v), want the 3.18 release", idx, known)
+	}
+	if !cfg.Public(Bioconductor, srv.URL+"/3.18/bioc") {
+		t.Error("the release's repository is Bioconductor's public index")
+	}
+	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	want := []lang.Target{
+		{Ecosystem: Bioconductor, Package: "BiocGenerics", Version: ">= 0.7.5"},
+		{Ecosystem: CRAN, Package: "Rcpp", Version: ">= 0.11.0"},
+		{Ecosystem: CRAN, Package: "RcppArmadillo"},
+		{Ecosystem: Bioconductor, Package: "S4Vectors", Version: ">= 0.23.18"},
+		{Ecosystem: CRAN, Package: "ggplot2"},
+	}
+	if got := c.Dependencies(lang.Target{Ecosystem: Bioconductor, Package: "DESeq2", Version: "1.42.0", Pinned: true}); !reflect.DeepEqual(got, want) {
+		t.Errorf("DESeq2: got %+v, want %+v", got, want)
+	}
+	if got := c.Dependencies(lang.Target{Ecosystem: Bioconductor, Package: "S4Vectors", Version: "0.40.2", Pinned: true}); !reflect.DeepEqual(got, []lang.Target{{Ecosystem: Bioconductor, Package: "BiocGenerics"}}) {
+		t.Errorf("S4Vectors: got %+v", got)
+	}
+	if want := []string{"/3.18/bioc/src/contrib/PACKAGES"}; !reflect.DeepEqual(asked, want) {
+		t.Errorf("asked %v, want %v", asked, want)
+	}
+
+	// Without a recorded release the current one is asked.
+	asked = nil
+	cfg = Discover(write(t, map[string]string{"renv.lock": `{"Bioconductor": {"Version": "../x"}, "Packages": {}}`}), env(nil), "")
+	c = NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	if got := c.Dependencies(lang.Target{Ecosystem: Bioconductor, Package: "S4Vectors"}); len(got) != 1 {
+		t.Errorf("current release: got %+v", got)
+	}
+	if want := []string{"/release/bioc/src/contrib/PACKAGES"}; !reflect.DeepEqual(asked, want) {
+		t.Errorf("asked %v, want %v", asked, want)
 	}
 }

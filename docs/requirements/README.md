@@ -335,8 +335,7 @@ requirements of type `limitation` in their scopes:
   code is read as written (both branches of `version` blocks count), a
   module of a package dub has not fetched is attributed by a curated table
   or the declared package it spells, every platform's settings count at
-  once, dub's settings (`registryUrls`) are not read, and a string import
-  needs a literal path.
+  once, and a string import needs a literal path.
 - Fortran is read without running the compiler, the C preprocessor, fypp or
   fpm: every `#if` branch counts, fypp templates are not expanded (so
   generated module names are unknown), a module of a package fpm has not

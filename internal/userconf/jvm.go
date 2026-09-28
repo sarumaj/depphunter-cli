@@ -1,6 +1,7 @@
 package userconf
 
 import (
+	"net/url"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -124,14 +125,66 @@ func (m Machine) CoursierCredentials() (inline, file string) {
 	switch {
 	case v == "":
 		return "", join(m.CoursierConfigDir(), "credentials.properties")
-	case strings.HasPrefix(v, "file:"):
-		p := strings.TrimPrefix(strings.TrimPrefix(v, "file:"), "//")
-		return "", filepath.FromSlash(p)
-	case filepath.IsAbs(v), strings.HasPrefix(v, "/"):
+	case len(v) >= 5 && strings.EqualFold(v[:5], "file:"):
+		return "", fileURLPath(v, m.GOOS)
+	case filepath.IsAbs(v), strings.HasPrefix(v, "/"), m.GOOS == "windows" && windowsAbs(v):
 		return "", v
 	}
 	return v, ""
 }
+
+// fileURLPath is the local path a file: URL names on the platform goos, as the JVM
+// reads one (new File(URI)): percent escapes decoded; file:///C:/x, file:/C:/x and
+// the loose file://C:/x are C:\x on Windows, and file://server/share/x is the UNC
+// path \\server\share\x there. Elsewhere only a URL without a host (or with
+// localhost) names a local file. "" when it names none.
+//
+// Implements: REQ-AUTH-021
+func fileURLPath(v, goos string) string {
+	u, err := url.Parse(strings.TrimSpace(v))
+	if err != nil || !strings.EqualFold(u.Scheme, "file") {
+		return ""
+	}
+	p := u.Path
+	if u.Opaque != "" { // file:C:/x
+		if p, err = url.PathUnescape(u.Opaque); err != nil {
+			return ""
+		}
+	}
+	host := u.Host
+	if strings.EqualFold(host, "localhost") {
+		host = ""
+	}
+	if goos != "windows" {
+		if host != "" {
+			return ""
+		}
+		return p
+	}
+	switch {
+	case len(host) == 2 && host[1] == ':' && driveLetter(host[0]):
+		p = host + p // file://C:/x: the drive was taken for a host
+	case host != "":
+		return `\\` + host + strings.ReplaceAll(p, "/", `\`)
+	case len(p) >= 3 && p[0] == '/' && driveLetter(p[1]) && p[2] == ':':
+		p = p[1:]
+	}
+	if p == "" {
+		return ""
+	}
+	return strings.ReplaceAll(p, "/", `\`)
+}
+
+// windowsAbs reports whether a path is absolute on Windows whichever platform reads
+// it: a drive letter with a separator (C:\x, C:/x) or a UNC path.
+func windowsAbs(p string) bool {
+	if strings.HasPrefix(p, `\\`) || strings.HasPrefix(p, "//") {
+		return true
+	}
+	return len(p) >= 3 && driveLetter(p[0]) && p[1] == ':' && (p[2] == '\\' || p[2] == '/')
+}
+
+func driveLetter(c byte) bool { return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' }
 
 // ---------------------------------------------------------------- Gradle
 

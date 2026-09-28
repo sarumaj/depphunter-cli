@@ -24,7 +24,8 @@ type artifact struct {
 	group, name string // name as published: cats-effect_3
 	base        string // name without a Scala binary suffix: cats-effect
 	version     string
-	conflict    bool // declared at different versions
+	requested   string // what the build declared, when a lock put another version in its place
+	conflict    bool   // declared at different versions
 	virtual     bool
 	// rest are the base name's words after those that repeat the group
 	// (spring-boot-autoconfigure in org.springframework.boot: autoconfigure).
@@ -337,7 +338,7 @@ func (r *resolver) artifactOf(spec string, wildcard bool) lang.Target {
 	best, _ := r.best(spec, segments)
 	var t lang.Target
 	if best != nil {
-		t = lang.Target{Ecosystem: ecoMaven, Package: best.key(), Version: best.version, Pinned: pinnedMaven(best.version)}
+		t = lang.Target{Ecosystem: ecoMaven, Package: best.key(), Version: best.version, Requested: best.requested, Pinned: pinnedMaven(best.version)}
 	} else {
 		t = lang.Target{Ecosystem: ecoMaven, Package: guessArtifact(segments, wildcard), Unresolved: true}
 	}
