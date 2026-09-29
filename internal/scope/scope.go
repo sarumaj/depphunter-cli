@@ -18,6 +18,8 @@
 package scope
 
 import (
+	"maps"
+	"slices"
 	"strings"
 
 	"golang.org/x/mod/module"
@@ -49,6 +51,9 @@ type Private struct {
 func New(patterns []string) *Private {
 	p := &Private{byEcosystem: map[string]string{}}
 	var any []string
+	// The same pattern often comes from several places - GOPRIVATE, and GONOPROXY and
+	// GONOSUMDB defaulting to it, or a flag repeating the config file - and is kept once.
+	seen := map[string]bool{}
 	for _, entry := range patterns {
 		for _, pattern := range strings.Split(entry, ",") {
 			pattern = strings.TrimSpace(pattern)
@@ -62,10 +67,16 @@ func New(patterns []string) *Private {
 			if ecosystem, rest, ok := strings.Cut(pattern, ":"); ok && rest != "" && !strings.Contains(ecosystem, "/") && isEcosystem(ecosystem) {
 				// Ids are matched lowercased, so "NPM:" must be stored as "npm:".
 				ecosystem = strings.ToLower(ecosystem)
-				p.byEcosystem[ecosystem] = join(p.byEcosystem[ecosystem], rest)
+				if key := ecosystem + ":" + rest; !seen[key] {
+					seen[key] = true
+					p.byEcosystem[ecosystem] = join(p.byEcosystem[ecosystem], rest)
+				}
 				continue
 			}
-			any = append(any, pattern)
+			if !seen[pattern] {
+				seen[pattern] = true
+				any = append(any, pattern)
+			}
 		}
 	}
 	p.any = strings.Join(any, ",")
@@ -101,8 +112,9 @@ func (p *Private) Match(ecosystem, name string) bool {
 // a repository of public dependencies.
 func (p *Private) Empty() bool { return p == nil || (p.any == "" && len(p.byEcosystem) == 0) }
 
-// Patterns lists what was declared, ecosystem-scoped entries included, for the log
-// line that says what a run considers private.
+// Patterns lists what was declared, each pattern once, ecosystem-scoped entries
+// included and in a fixed order (ecosystems by name), for the log line and the
+// resolution report that say what a run considers private.
 func (p *Private) Patterns() []string {
 	if p == nil {
 		return nil
@@ -111,7 +123,8 @@ func (p *Private) Patterns() []string {
 	if p.any != "" {
 		out = append(out, strings.Split(p.any, ",")...)
 	}
-	for ecosystem, globs := range p.byEcosystem {
+	for _, ecosystem := range slices.Sorted(maps.Keys(p.byEcosystem)) {
+		globs := p.byEcosystem[ecosystem]
 		for _, g := range strings.Split(globs, ",") {
 			out = append(out, ecosystem+":"+g)
 		}
