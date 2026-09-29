@@ -112,6 +112,9 @@ const (
 	// NoteMerged is a package manager that merges the versions several indexes
 	// have, where depphunter takes the first index that has the package.
 	NoteMerged = "merged"
+	// NoteGitUnpinned is a git dependency a lock file names a branch or a tag of
+	// and no commit: it is not pinned.
+	NoteGitUnpinned = "git-unpinned"
 )
 
 // Note is something a resolver or the index client knows about the run that no

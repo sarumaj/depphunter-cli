@@ -21,6 +21,8 @@ npm 7 onwards installs, **shall** be dependency edges (REQ-SUP-009), each
 resolved by the same `node_modules` walk as the package's dependencies; one
 that `peerDependenciesMeta` marks optional **shall** be an edge only where the
 lock installs it.
+A git dependency **shall** be pinned to the commit its `resolved` (v2, v3) or
+`version` (v1) names, from its repository (REQ-JS-019).
 
 ## Rationale
 

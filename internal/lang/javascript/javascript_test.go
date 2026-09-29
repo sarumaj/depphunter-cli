@@ -153,11 +153,11 @@ func TestYarnEntryKeys(t *testing.T) {
 	if err := os.WriteFile(path, []byte(lock), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := readYarnLock([]byte(lock))["lodash@^4.17.0"]; got != "4.17.21" {
+	if got := yarnVersions(readYarnEntries([]byte(lock)))["lodash@^4.17.0"]; got != "4.17.21" {
 		t.Errorf("locked version %q, want 4.17.21", got)
 	}
 	tree := newTree()
-	tree.addYarnTree([]byte(lock))
+	tree.addYarnTree(readYarnEntries([]byte(lock)))
 	if got := tree.locked["lodash"]; got != "4.17.21" {
 		t.Errorf("tree version %q, want 4.17.21", got)
 	}
@@ -381,7 +381,7 @@ func TestQtLinguistTranslationsNotClaimed(t *testing.T) {
 // major version, a GitHub dependency at a commit, an npm alias, a tarball, a
 // workspace entry, trailing commas and a comment.
 //
-// Verifies: REQ-JS-016
+// Verifies: REQ-JS-016, REQ-JS-019
 func TestBunLock(t *testing.T) {
 	npm := func(packageName, version, requested string) lang.Target {
 		return lang.Target{Ecosystem: "npm", Package: packageName, Version: version, Requested: requested, Pinned: true}
@@ -390,9 +390,11 @@ func TestBunLock(t *testing.T) {
 	langtest.CheckImports(t, results["index.js"], map[string]lang.Target{
 		"react":           npm("react", "18.3.1", "^18.2.0"),
 		"@scope/tool/sub": npm("@scope/tool", "1.2.0", "^1.0.0"),
-		// The lock names the commit Bun fetched for the tag package.json asks for.
-		"forge-std": npm("forge-std", "github:foundry-rs/forge-std#1eea5ba", "github:foundry-rs/forge-std#v1.9.4"),
-		"aliased":   npm("aliased", "3.0.1", "npm:real-name@^3.0.0"),
+		// The lock names the commit Bun fetched for the tag package.json asks for,
+		// abbreviated, and the repository it was installed from (REQ-JS-019).
+		"forge-std": {Ecosystem: "npm", Package: "forge-std", Version: "github:foundry-rs/forge-std#1eea5ba",
+			Requested: "github:foundry-rs/forge-std#v1.9.4", Pinned: true, Origin: "https://github.com/foundry-rs/forge-std"},
+		"aliased": npm("aliased", "3.0.1", "npm:real-name@^3.0.0"),
 		// A tarball names no version: the URL package.json gives is all there is.
 		"tarball-pkg": {Ecosystem: "npm", Package: "tarball-pkg", Version: "https://example.com/tarball-pkg-1.0.0.tgz"},
 		"ui":          {Local: "packages/ui"},

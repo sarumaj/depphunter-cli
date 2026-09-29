@@ -23,7 +23,9 @@ an alias such as `c2@npm:c@^2.0.0`, and whether it is a `workspace:`,
 `dependencies`, which, like a classic entry's, give the dependency edges of
 REQ-SUP-009, and their `conditions`, which mark the package's platforms
 (REQ-JS-018); `peerDependencies`, `dependenciesMeta`, `bin` and the
-`__metadata` entry **shall not** be read as dependencies or packages.
+`__metadata` entry **shall not** be read as dependencies or packages. A git
+dependency **shall** be pinned to the commit a classic entry's `resolved` or a
+Berry entry's `resolution` names, from its repository (REQ-JS-019).
 
 ## Rationale
 

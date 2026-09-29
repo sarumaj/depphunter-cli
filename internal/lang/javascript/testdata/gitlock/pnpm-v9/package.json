@@ -1,0 +1,9 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "dependencies": {
+    "corp": "git+ssh://git@git.corp.example/team/corp.git",
+    "dep": "^1.0.0",
+    "pub": "github:acme-oss/pub"
+  }
+}
