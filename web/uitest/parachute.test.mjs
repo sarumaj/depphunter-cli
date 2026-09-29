@@ -63,13 +63,13 @@ function steady(input) {
 
 describe('a canopy in flight', () => {
   // Verifies: REQ-TOOL-073
-  it('settles to a descent of four to five meters a second and a glide of about 2.7', () => {
+  it('settles to a descent of under three meters a second and a glide of about 4', () => {
     const chute = steady({ forward: 0, turn: 0 });
     assert.equal(chute.phase, 'flying');
     const sink = -chute.vy * METERS, forward = Math.hypot(chute.vx, chute.vz);
-    assert.ok(sink >= 4 && sink <= 5, `it sinks at ${sink.toFixed(2)} m/s`);
+    assert.ok(sink >= 2.5 && sink <= 3.2, `it sinks at ${sink.toFixed(2)} m/s`);
     const glide = forward / -chute.vy;
-    assert.ok(glide >= 2.5 && glide <= 3, `it glides ${glide.toFixed(2)} to 1`);
+    assert.ok(glide >= 3.6 && glide <= 4.4, `it glides ${glide.toFixed(2)} to 1`);
     // Settled, not still settling: a second later it is doing the same thing.
     const was = chute.vy;
     fly(chute, 1);
@@ -160,6 +160,24 @@ describe('opening', () => {
   });
 
   // Verifies: REQ-TOOL-072
+  it('comes out of the opening sinking, not climbing, and settles in about three seconds', () => {
+    // A canopy this flat turns the speed the opening leaves it with back into height
+    // unless the surge is bled off (parachute.js SURGE_DRAG): then it climbs out of
+    // the opening and pitches through a descent that swings the view for seconds.
+    for (const vy of [0, -6, -12]) {
+      const chute = thrown(200, vy);
+      let highest = -Infinity, settled = 0;
+      for (let t = 1 / 60; t < 8; t += 1 / 60) {
+        P.stepChute(chute, { forward: 0, turn: 0 }, 1 / 60, FLAT);
+        if (chute.phase === 'flying') highest = Math.max(highest, chute.vy);
+        if (Math.abs(chute.vy + P.TRIM[1].sink) > 0.1) settled = t;
+      }
+      assert.ok(highest < 0.2, `thrown falling at ${vy}, it climbed at ${highest.toFixed(2)} out of the opening`);
+      assert.ok(settled < 3.3, `thrown falling at ${vy}, the descent took ${settled.toFixed(2)}s to settle`);
+    }
+  });
+
+  // Verifies: REQ-TOOL-072
   it('has not finished opening when thrown too close to the ground', () => {
     const touchdown = landing(thrown(2));
     assert.ok(touchdown, 'it never reached the ground');
@@ -193,6 +211,12 @@ describe('the flare, and the ground', () => {
     assert.ok(flared.speed < plain.speed * 0.7, `a flare came in at ${flared.speed.toFixed(2)}, unflared ${plain.speed.toFixed(2)}`);
     assert.ok(flared.vertical < plain.vertical * 0.6, 'the flare did not take the sink out');
     assert.equal(blind().touchdown(flared.speed), 0, 'a good flare still cost something');
+    // ... and the right moment is a window, not an instant: started anywhere from
+    // under a meter to about two and a half meters up, it lands free.
+    for (const height of [0.2, 0.35, 0.5, 0.7]) {
+      const at = flaredFrom(height);
+      assert.equal(blind().touchdown(at.speed), 0, `a flare from ${height} came in at ${at.speed.toFixed(2)}`);
+    }
   });
 
   // Verifies: REQ-TOOL-074
@@ -211,7 +235,7 @@ describe('the flare, and the ground', () => {
     const dive = landing(glidingAt(3), () => ({ forward: 1, turn: 0 }));
     const cost = t => blind().touchdown(t.speed) / 100;
     // Unflared costs a little and a dive on full flight more; neither ends a walk.
-    assert.ok(cost(plain) > 0.02 && cost(plain) < 0.15, `an unflared landing cost ${cost(plain)}`);
+    assert.ok(cost(plain) >= 0.03 && cost(plain) <= 0.08, `an unflared landing cost ${cost(plain)}`);
     assert.ok(cost(dive) > cost(plain) && cost(dive) < 0.3, `a dive cost ${cost(dive)}`);
     // What it costs is the speed, not the height it came from: the same canopy
     // brought down from ten times as high arrives the same and costs the same.

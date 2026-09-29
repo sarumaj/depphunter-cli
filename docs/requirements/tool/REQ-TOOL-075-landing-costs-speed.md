@@ -26,7 +26,7 @@ less of it. The height the canopy was flown down from has nothing to do with it.
 ## Acceptance criteria
 
 1. A well-flared landing costs nothing.
-2. An unflared landing costs between two and fifteen hundredths of the walker,
+2. An unflared landing costs between three and eight hundredths of the walker,
    one on full flight more, and neither depends on the height flown from.
 3. A wall flown into at glide speed costs more than a tenth of the walker.
 4. A landing at the speed of a lethal fall is lethal.

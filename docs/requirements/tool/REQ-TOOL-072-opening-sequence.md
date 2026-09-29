@@ -15,7 +15,8 @@ verification:
 Once thrown, the pilot chute **shall** take 0.3 seconds to drag the canopy out,
 and the canopy **shall** then take about a second to open, spreading from the
 middle cells outwards and snapping past its full size before it settles, with
-its drag growing as it fills; the walker **shall** feel the opening as a jolt. A
+its drag growing as it fills; the walker **shall** feel the opening as a jolt,
+and the canopy **shall** come out of it sinking rather than climbing. A
 canopy that reaches the ground before it has opened **shall** have saved about
 as much as it had time to: its landing is judged mostly as the fall it nearly
 was.
@@ -34,3 +35,5 @@ roof for free.
    of gravity, and the lines give.
 3. A canopy thrown two units above the ground is not open when it arrives, and
    the landing costs within a tenth of the walker of what the fall would have.
+4. Thrown still or into a fall, the canopy never climbs out of the opening and
+   its descent settles to trim within 3.3 seconds of the throw.

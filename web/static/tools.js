@@ -68,7 +68,7 @@
 import * as THREE from './vendor/three.module.min.js';
 
 import { handModel, closeHand, closeFinger, setWrist, loadHands, handsReady } from './hands.js';
-import { NEUTRAL_BRAKE } from './parachute.js';
+import { NEUTRAL_BRAKE, FLARE_TIME } from './parachute.js';
 
 /**
  * One part of a tool. Unlike everything else on the map these are lit: the walk
@@ -1706,9 +1706,12 @@ const parachute = {
   // One descent to a pack, and a while to fold it again: long enough that the jet is
   // still the way to get up there, short enough to be ready by the next roof.
   fuel: { once: true, fills: 12 },
-  // The row has ten digits and eleven tools, so this one has a key of its own: the
-  // one left of 1, which makes the row read the way the top of the keyboard does.
-  key: { code: 'Backquote', label: '`' },
+  // The row has ten digits and eleven tools, so this one has a key of its own: T, a
+  // letter nothing else in walk mode answers to, in reach of the left hand on W A S D
+  // and in the same place on QWERTY, QWERTZ and AZERTY boards. The key left of 1 it
+  // had before is a dead key typing ^ on a German board and a different key again on
+  // a French one.
+  key: { code: 'KeyT', label: 'T' },
   hold: { x: 0.21, y: -0.17, z: -0.52, along: [0.05, 1, 0.26], back: [0.4, -0.3, 1] },
   grip: SWUNG,
   viewmodel() {
@@ -1806,7 +1809,7 @@ const parachute = {
     const flap = vm.getObjectByName('flap');
     if (flap) flap.rotation.x = packed ? 0 : -0.9; // the flap hangs open over an empty tray
     if (!open) return;
-    const flaring = chute.flare >= 0 && chute.flare < 1;
+    const flaring = chute.flare >= 0 && chute.flare < FLARE_TIME;
     const pull = Math.min(1, flaring ? 1 : Math.max(0, chute.brake - NEUTRAL_BRAKE) + Math.max(0, chute.turn) * 0.8);
     vm.position.y -= pull * 0.13;
     vm.position.z += pull * 0.03;

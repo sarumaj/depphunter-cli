@@ -542,18 +542,25 @@ describe('the tool switcher', () => {
     // left, because that is the hand they go in, and the digits are counted along
     // that same list - so the row reads 1 to 0 from left to right rather than
     // 8, 9, 0, 1, 2, which is what assigning them by kind produced. The parachute, the
-    // eleventh, has the key left of 1 and the first slot, so the row still reads the
-    // way the top of the keyboard does.
+    // eleventh, has a key of its own, T, and the first slot, and the digits count on
+    // from the slot after it.
     const row = SWITCH.rowOrder();
     assert.deepEqual(row, [...SECONDARY_IDS, ...PRIMARY_IDS], 'the row is not laid out by hand');
-    assert.deepEqual(row.map(SWITCH.keyFor), ['`', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0']);
-    assert.deepEqual(SECONDARY_IDS.map(SWITCH.keyFor), ['`', '1', '2', '3'], 'the left hand is not `, 1, 2, 3');
+    assert.deepEqual(row.map(SWITCH.keyFor), ['T', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0']);
+    assert.deepEqual(SECONDARY_IDS.map(SWITCH.keyFor), ['T', '1', '2', '3'], 'the left hand is not T, 1, 2, 3');
     assert.deepEqual(PRIMARY_IDS.map(SWITCH.keyFor), ['4', '5', '6', '7', '8', '9', '0']);
 
     // And every key gets back the tool whose slot wears it.
     const numbered = row.filter(id => !TOOLS[id].key);
     for (const id of numbered) assert.equal(SWITCH.toolForKey(`Digit${SWITCH.keyFor(id)}`), id);
-    assert.equal(SWITCH.toolForKey('Backquote'), 'parachute');
+    assert.equal(SWITCH.toolForKey('KeyT'), 'parachute');
+    // ... and walk mode keeps every one of those keys from the map, which would
+    // otherwise act on it as well: a key it does not own never reaches the walker.
+    const owns = code => WALK.Walker.prototype.owns.call({ active: true }, { code, key: '' });
+    for (const id of row) {
+      const code = TOOLS[id].key?.code ?? `Digit${SWITCH.keyFor(id)}`;
+      assert.ok(owns(code), `walk mode does not own ${code}, the key for ${id}`);
+    }
     // Ten numbered slots is exactly ten digits, which is the only reason the numbering
     // can be this simple; a tool past the tenth has to bring a key of its own rather
     // than take a digit another one already wears.
@@ -564,13 +571,13 @@ describe('the tool switcher', () => {
     // string and +'' is nought, so an unguarded lookup answers Q with the 0 key -
     // which would have put a nail gun in the hunting hand instead of walking the
     // carried row, and only while somebody was reaching for something else.
-    for (const code of ['KeyQ', 'KeyE', 'KeyR', 'KeyW', 'Escape', 'Enter', 'Space', 'Digit', 'DigitX', 'Quote', 'Backslash']) {
+    for (const code of ['KeyQ', 'KeyE', 'KeyR', 'KeyW', 'Escape', 'Enter', 'Space', 'Digit', 'DigitX', 'Quote', 'Backslash', 'Backquote', 'KeyY', 'KeyZ']) {
       assert.equal(SWITCH.toolForKey(code), undefined, `${code} picked a tool`);
     }
 
     // A carried tool answers to its key and to Q, its own key first because that is
     // what its slot shows.
-    assert.deepEqual(SWITCH.keysFor('parachute'), ['`', 'Q']);
+    assert.deepEqual(SWITCH.keysFor('parachute'), ['T', 'Q']);
     assert.deepEqual(SWITCH.keysFor('grapple'), ['1', 'Q']);
     assert.deepEqual(SWITCH.keysFor(PRIMARY_IDS[0]), ['4']);
   });

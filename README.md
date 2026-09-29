@@ -87,19 +87,20 @@ browser.
   again by itself. The **parachute** is the way down that is flown: `F` off a
   roof or out of the jet throws the pilot chute, and about a second later the
   canopy is open over the walker — a ram-air wing on its lines, lit like
-  anything held, swinging the view as the walker swings under it. It has its
-  own speed and heading: `A` and `D` steer, banking and sinking faster in the
-  turn, `W` and `S` trim it faster and steeper or slower and sinking a little
-  more, and `Space` flares it. A landing under it costs how fast the walker
-  arrives rather than how far they came, so a flare begun about two meters up
-  lands for nothing, one begun too high stalls, and a wall flown into costs
-  what arriving at that speed would. Thrown too low, it is still opening at the
-  ground and the landing is judged mostly as the fall it nearly was. Its tank is
-  the pack: spent whole when it is thrown and repacked on the ground, with the
-  canopy draped where it came down fading as it is, and putting it away while
-  it is open cuts it loose to drift off and leaves the walker falling. It is
-  the eleventh tool and the digits number ten, so it has the key left of `1`
-  and the first slot in the row. One tool of each
+  anything held, swinging the view as the walker swings under it. It comes
+  down at under three meters a second and about four units forward for every
+  one down, and it has its own speed and heading: `A` and `D` steer, banking
+  and sinking faster in the turn, `W` and `S` trim it faster and steeper or
+  slower and sinking a little more, and `Space` flares it. A landing under it
+  costs how fast the walker arrives rather than how far they came, so a flare
+  begun about two meters up lands for nothing, one begun too high stalls, and a
+  wall flown into costs what arriving at that speed would. Thrown too low, it is
+  still opening at the ground and the landing is judged mostly as the fall it
+  nearly was. Its tank is the pack: spent whole when it is thrown and repacked
+  on the ground, with the canopy draped where it came down fading as it is, and
+  putting it away while it is open cuts it loose to drift off and leaves the
+  walker falling. It is the eleventh tool and the digits number ten, so it has a
+  key of its own, `T`, and the first slot in the row. One tool of each
   kind is carried at a time, one to a hand — the primary in the right, the
   secondary in the left — so the map can be flown over and its bugs netted
   without putting either down. A click uses the right hand, and `F`, `C` or the
@@ -748,7 +749,7 @@ In walk mode:
 |-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Mouse                   | look. The pointer is captured at the reticle; `Esc` releases it and a click on the map captures it again. Where it cannot be captured at all — a frame that withholds the pointer lock — walk mode reports this once, and a click then uses the tool rather than requesting the lock again                                                                                                                                                                                                                                                                                                                 |
 | `R`                     | the tool wheel: every tool at once, the primary ones down its right side and the secondary ones down its left, with an empty left hand at the bottom. Hold `R`, point with the mouse and release; or tap `R` to leave it up and take what is under the cursor with `R`, `Enter` or a click. `Esc`, the right button, or releasing with the cursor still in the middle changes nothing. While it is up the walker is held where they stand and the city behind it is blurred: nothing moves them, spends a tank or bites them, so changing hands costs no time. Pointing at a tool already in hand keeps it |
-| `` ` `` `1` `2` `3`     | select a secondary tool, or press the same key again to put it down. Only one is carried at a time. The parachute has `` ` ``, the key left of `1`, because the ten digits are taken                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `T` `1` `2` `3`         | select a secondary tool, or press the same key again to put it down. Only one is carried at a time. The parachute has `T`, because the ten digits are taken                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `4` … `0`               | select a primary tool                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `E`                     | the next primary tool, cycling. The right hand is never empty                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `Q`                     | the next secondary tool, and after the last of them an empty left hand — which is how the walker comes down out of the air or steps off the water deliberately. Five presses return to the starting state                                                                                                                                                                                                                                                                                                                                                                                                  |

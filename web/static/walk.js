@@ -219,8 +219,8 @@ const KEYS = new Set([
   'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyE', 'KeyQ', 'KeyF', 'Enter',
   'Escape', 'KeyV', 'KeyM', 'KeyR', 'KeyH',
   // Every tool's digit: the digits count along the row, 1 to 9 and then 0 for the
-  // tenth (switcher.js) - and the parachute's key of its own, the one left of 1.
-  'Digit0', ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`), 'Backquote',
+  // tenth (switcher.js) - and the parachute's key of its own, T (tools.js).
+  'Digit0', ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`), 'KeyT',
 ]);
 
 // Planet curvature, by the character typed rather than the key's place on the board:
