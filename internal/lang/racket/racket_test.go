@@ -357,7 +357,7 @@ func TestTruncated(t *testing.T) {
 		extractSource(source, ".scrbl")
 		extractSource(append([]byte("#lang at-exp racket\n"), source...), ".rkt")
 		readInfo(source)
-		if d := time.Since(start); d > 5*time.Second {
+		if d := time.Since(start); d > langtest.TimeLimit(5*time.Second) {
 			t.Errorf("%q x %d: %v", unit, len(source)/len(unit), d)
 		}
 	}

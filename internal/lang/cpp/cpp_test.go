@@ -260,7 +260,7 @@ func TestGeneratedTables(t *testing.T) {
 	if err != nil || len(extraction.Imports) != 1 || len(extraction.Symbols) != 1 || extraction.Symbols[0].Name != "x_getmsgdef" {
 		t.Fatalf("got %+v, %v", extraction, err)
 	}
-	if d := time.Since(start); d > 2*time.Second {
+	if d := time.Since(start); d > langtest.TimeLimit(2*time.Second) {
 		t.Errorf("took %v", d)
 	}
 }

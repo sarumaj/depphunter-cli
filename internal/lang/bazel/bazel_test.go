@@ -319,6 +319,69 @@ func TestClaims(t *testing.T) {
 	}
 }
 
+// Recent pnpm writes a document locking pnpm itself before the project's lock
+// in pnpm-lock.yaml: the npm hub takes its versions from the last document. The
+// first document's packages carry `libc` as a scalar, as pnpm writes it.
+//
+// Verifies: REQ-BAZEL-009
+func TestPnpmPackageManagerDocument(t *testing.T) {
+	root := langtest.Write(t, map[string]string{
+		"MODULE.bazel": `bazel_dep(name = "aspect_rules_js", version = "2.0.1")
+npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm")
+npm.npm_translate_lock(name = "npm", pnpm_lock = "//:pnpm-lock.yaml")
+use_repo(npm, "npm")
+`,
+		"BUILD.bazel": `js_library(name = "app", deps = ["@npm//lodash", "@npm//pnpm"])` + "\n",
+		"pnpm-lock.yaml": `---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies: {}
+    packageManagerDependencies:
+      pnpm:
+        specifier: 12.6.0
+        version: 12.6.0
+
+packages:
+
+  '@pnpm/exe.linux-x64@12.6.0':
+    resolution: {integrity: sha512-x}
+    cpu: [x64]
+    os: [linux]
+    libc: glibc
+
+  pnpm@12.6.0:
+    resolution: {integrity: sha512-p}
+
+---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    dependencies:
+      lodash:
+        specifier: ^4.17.0
+        version: 4.17.21
+
+packages:
+
+  lodash@4.17.21:
+    resolution: {integrity: sha512-l}
+`,
+	})
+	results := langtest.Analyze(t, Plugin{}, root)
+	imports := langtest.Imports(t, results["BUILD.bazel"])
+	if got, want := imports["@npm//lodash"], (lang.Target{Ecosystem: "npm", Package: "lodash", Version: "4.17.21", Pinned: true}); got != want {
+		t.Errorf("@npm//lodash = %+v, want %+v", got, want)
+	}
+	if got := imports["@npm//pnpm"]; got.Version != "" || got.Pinned {
+		t.Errorf("the package manager's own lock pinned @npm//pnpm: %+v", got)
+	}
+}
+
 // Verifies: REQ-BAZEL-004
 func TestLabels(t *testing.T) {
 	for s, want := range map[string]label{
