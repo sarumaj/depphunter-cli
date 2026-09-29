@@ -1097,13 +1097,14 @@ Java, Kotlin, Scala and Clojure builds (Maven, Gradle without its lock files,
 sbt, tools.deps and Leiningen), Bazel modules (a lock file since Bazel 7.2
 records versions only), Puppet modules r10k has not installed, Racket packages
 (raco keeps no lock file), Wally packages no `wally.lock` records, Buf Schema
-Registry modules (`buf.lock` is a flat list) and CUE modules missing from cue's
+Registry modules (`buf.lock` is a flat list), CUE modules missing from cue's
 module cache on this machine (`$CUE_CACHE_DIR`, else `cue` in the user's cache
-directory) — require `--online`, described below; the PowerShell Gallery, vcpkg,
-Conan 2 (whose lock is a flat list), Bioconductor packages no lock records,
-Swift packages that SwiftPM has not checked out under `.build`
-(`Package.resolved` is flat as well) and Terraform modules fetched from git or
-an archive are not resolved beyond the first level at present. Content a CMake
+directory) and Swift registry packages SwiftPM has not checked out under
+`.build` (`Package.resolved` is a flat list) — require `--online`, described
+below; the PowerShell Gallery, vcpkg, Conan 2 (whose lock is a flat list),
+Bioconductor packages no lock records, Swift packages from git repositories
+that SwiftPM has not checked out and Terraform modules fetched from git or an
+archive are not resolved beyond the first level at present. Content a CMake
 build fetches is not resolved beyond the first level either, nor are Carthage
 dependencies not checked out into `Carthage/Checkouts/` (`Cartfile.resolved` is
 flat) and Zig packages Zig has not fetched into `zig-pkg/` or its global cache
@@ -1169,8 +1170,10 @@ CRAN and Posit Package Manager (each serving the packages recorded from it),
 `RENV_CONFIG_REPOS_OVERRIDE`; the `repository` stanzas of `cabal.project` and
 of cabal's own configuration (`~/.cabal/config`, `~/.config/cabal/config`,
 `CABAL_CONFIG`, `CABAL_DIR`) other than Hackage itself; a `Podfile`'s `source`
-lines and the spec repositories of `Podfile.lock` (each serving the pods
-installed from it) other than CocoaPods' own; the `rocks_servers` of a
+lines (asked in order) and the spec repositories of `Podfile.lock` (each
+serving the pods installed from it) other than CocoaPods' own, and the spec
+repositories cloned in `~/.cocoapods/repos`; the registries of SwiftPM's
+`registries.json`, the user's and the repository's; the `rocks_servers` of a
 project's `.luarocks/config-5.x.lua`, of `~/.luarocks/config-5.x.lua` and of
 `LUAROCKS_CONFIG` other than luarocks.org; the registries of `DUB_REGISTRY`,
 of dub's `settings.json` (`registryUrls`) and of a `dub.settings.json`, asked
@@ -1235,6 +1238,8 @@ and platform paths:
 | r10k       | `/etc/puppetlabs/r10k/r10k.yaml`, else `/etc/r10k.yaml`: `forge: baseurl` and `authorization_token`                                                                                                                                                                                                                                                                                                                                             |
 | cue        | `CUE_REGISTRY`; `logins.json` in `CUE_CONFIG_DIR`, else `cue` in the user configuration directory                                                                                                                                                                                                                                                                                                                                               |
 | buf        | `BUF_TOKEN`; the netrc entries `buf registry login` writes                                                                                                                                                                                                                                                                                                                                                                                      |
+| CocoaPods  | `CP_REPOS_DIR`, else `repos` below `CP_HOME_DIR`, else `~/.cocoapods/repos`: each spec repository, a git clone by its `origin` remote or a CDN source by its `.url`                                                                                                                                                                                                                                                                             |
+| SwiftPM    | `registries.json` in `~/Library/org.swift.swiftpm/configuration` on macOS when it is there, else in `configuration` below `$XDG_CONFIG_HOME/swiftpm` or `~/.swiftpm`; the netrc for `swift package-registry login` (the keychain is not read)                                                                                                                                                                                                   |
 
 Nothing is read from the repository through these variables' defaults; they
 only say where this machine's own files are.
@@ -1262,6 +1267,8 @@ default or is asked **beside** it:
 | CPAN                          | cpanm's `--mirror` list under `--mirror-only` or `--from`, asked in order, MetaCPAN only when a public CPAN mirror is on it                                                                                                                                                                                                | `PERL_CARTON_MIRROR`                                                                                                                                                                                                                                                                                                             |
 | opam                          | the repositories of the opam switch, asked in its order of priority, opam-repository only when it is one of them; a dune-workspace `lock_dir`'s `repositories`, likewise                                                                                                                                                   | a dune-workspace's `repository` stanzas when no `lock_dir` lists any                                                                                                                                                                                                                                                             |
 | Alire                         | alr's indexes, asked by priority, the community index only when it is one of them                                                                                                                                                                                                                                          | —                                                                                                                                                                                                                                                                                                                                |
+| CocoaPods                     | a Podfile's `source` lines, asked in its order, the CDN only when it is one of them (or none is listed)                                                                                                                                                                                                                    | —                                                                                                                                                                                                                                                                                                                                |
+| SwiftPM                       | nothing: there is no public registry                                                                                                                                                                                                                                                                                       | — (a package is asked of the one registry `registries.json` maps its scope to, else of the default registry)                                                                                                                                                                                                                     |
 | crates.io                     | `[source.crates-io] replace-with` (followed to the end of the chain)                                                                                                                                                                                                                                                       | —                                                                                                                                                                                                                                                                                                                                |
 | npm and every other ecosystem | the first unscoped source found (npm's `registry`, then Yarn's `npmRegistryServer`, `~/.yarnrc`'s `registry` and Bun's `[install] registry`)                                                                                                                                                                               | —                                                                                                                                                                                                                                                                                                                                |
 
@@ -1337,6 +1344,32 @@ any installed registry, General's files are read from GitHub.
 archives by tree hash (`/registries`, `/registry/<uuid>/<hash>`), and the
 copy it installed in the depot is what is read.
 
+CocoaPods' spec repositories are read the same way. Each git clone in
+CocoaPods' repos directory (`pod repo add`; `CP_REPOS_DIR`, else
+`~/.cocoapods/repos`) is read in place of the repository its `origin` remote
+names — compared as CocoaPods compares them, without case, `.git` or a
+trailing slash — so a company's private spec repository answers from the disk,
+whatever host serves it, and a clone of the trunk repository answers before
+the CDN is asked; the CDN source's own directory (`~/.cocoapods/repos/trunk`)
+answers with the version lists and podspecs CocoaPods already downloaded. A
+clone is read as CocoaPods lays it out: below `Specs/` or its root, sharded as
+its `CocoaPods-version.yml` says, a `.podspec.json` or a Ruby `.podspec`
+(whose `dependency` lines are read without running Ruby). A clone is no index
+of its own: the pods are asked of the repositories the Podfile lists, in its
+order, and a repository the project names that this machine has a clone of is
+trusted, since this machine uses it already. A git spec repository without a
+clone is not read (a `no-copy` note says so) and the next one is asked.
+
+A Swift registry package (`.package(id: "scope.name")`) is asked of the
+registry SwiftPM's `registries.json` maps its scope to, else of the default
+registry (`[default]`) — the repository's file (in `.swiftpm/configuration`
+beside its `Package.swift`) over the user's, scope by scope, as SwiftPM merges
+them. A registry only the
+repository's file names is marked **⚠ index** and not asked until it is
+vouched for, whatever credential this machine holds for its host; one the
+user's file names too is trusted. A package named by its repository's URL is
+asked of no registry.
+
 Five kinds of source are **authoritative** and have no fallback: a scoped source
 that covers the package (an npm `@scope:registry`, a Gemfile `source` block, a
 pubspec's `hosted:` server, a Python package pinned to an index by uv's
@@ -1409,7 +1442,8 @@ ecosystems whose graph is held outside the repository:
 | Bioconductor           | `<bioconductor.org/packages>/<release>/bioc/src/contrib/PACKAGES`, the release `renv.lock` records (`Bioconductor.Version`), else `release` (read once)                                                                           | `Depends`, `Imports` and `LinkingTo`; one the same `PACKAGES` lacks is CRAN's                                    |
 | Hackage                | `<server>/package/<name>/preferred`, then `/package/<name>-<version>/<name>.cabal` (or newest)                                                                                                                                    | its libraries' `build-depends`, without GHC's own packages                                                       |
 | Terraform modules      | `<modules.v1>/<namespace>/<name>/<provider>/versions` (service discovery off the public registry)                                                                                                                                 | the providers and registry modules of the version asked for, or the newest its constraint allows                 |
-| CocoaPods              | `<cdn>/Specs/<a>/<b>/<c>/<pod>/<version>/<pod>.podspec.json` (newest: the shard's version list)                                                                                                                                   | its and its default subspecs' `dependencies`                                                                     |
+| CocoaPods              | `<cdn>/Specs/<a>/<b>/<c>/<pod>/<version>/<pod>.podspec.json` (newest: the shard's version list); a clone in `~/.cocoapods/repos` instead (any host; `.podspec.json` or `.podspec`)                                                | its and its default subspecs' `dependencies`                                                                     |
+| SwiftPM registry       | `<registry>/<scope>/<name>` for the releases, then `<registry>/<scope>/<name>/<version>/Package.swift` (the registry `registries.json` maps the scope to)                                                                         | its `.package(id:)` and `.package(url:)` dependencies                                                            |
 | LuaRocks               | `<server>/<rock>-<version>.rockspec`, versions from `<server>/manifest-5.1.zip` (read once)                                                                                                                                       | its run-time `dependencies`, without `lua`                                                                       |
 | CPAN                   | MetaCPAN's `<api>/v1/release/<AUTHOR>/<name>` (as `cpanfile.snapshot` records) or `/_search` for a pinned version, else `/v1/release/<distribution>`; `/v1/module/<module>` per dependency; a mirror's 02packages first           | its run-time requirements as distributions, without perl's own modules                                           |
 | opam                   | `<repository>/packages/<name>/<name>.<version>/opam`, from opam's copy of the repository, else over HTTP; for a range, the newest version admitted, listed by the copy (opam-repository: GitHub's contents API)                   | its `depends`, without the compiler and what only tests or documentation need                                    |
@@ -1511,14 +1545,17 @@ written for and to no other.
 | `BUF_TOKEN`, the netrc entry `buf registry login` writes    | a Buf Schema Registry token per host (a bare `BUF_TOKEN` for buf.build only)                                   |
 | cue's `logins.json` (`CUE_CONFIG_DIR`)                      | the tokens `cue login` stores, per registry host, over Docker's                                                |
 | r10k's `r10k.yaml`                                          | `forge: authorization_token`, for the paths of `forge: baseurl`                                                |
+| the netrc entry `swift package-registry login` writes       | a registry's token (Bearer, as the user's `registries.json` says) or user and password                         |
 | the index URL itself                                        | `https://user:password@host/simple`, as a private pip or Cargo mirror is set                                   |
 
 Between them these cover Nexus, Artifactory, Azure Artifacts, ProGet, GitHub
 Packages, Harbor, GHCR, a private crate registry, a private Terraform
 registry, Private Packagist, Satis, Repman and GitLab's Composer registry,
 Gemfury and the commercial gem servers Bundler is pointed at, private pub
-servers, Hex organizations, a private Puppet Forge, Buf Schema Registry or CUE
-registry.
+servers, Hex organizations, a private Puppet Forge, Buf Schema Registry, CUE
+registry or Swift package registry. What SwiftPM keeps in the macOS keychain
+(its default there) is not read: log in with `--disable-keychain` to keep the
+credential in the netrc.
 
 Each file is looked for where its tool looks for it; see
 [Configuration locations](#configuration-locations).
@@ -1846,8 +1883,9 @@ The report records six things:
   key (`forbidden`, an organization key without `api:read`); and a NuGet
   package no `packageSourceMapping` pattern covers, which NuGet itself would
   not restore (`unmapped`); a CPAN release MetaCPAN does not describe
-  (`no-release`); an opam repository, Alire index or Julia registry only
-  git serves, with no copy on this machine (`no-copy`); and a Bazel registry
+  (`no-release`); an opam repository, Alire index, Julia registry or
+  CocoaPods spec repository only git serves, with no copy on this machine
+  (`no-copy`); and a Bazel registry
   a `.bazelrc` names a credential helper for, which is not run
   (`helper-not-run`); and
 - **the questions nothing answered** — every package for which no answer was
@@ -3358,7 +3396,10 @@ an Xcode project's `xcshareddata/swiftpm`) pins the packages it holds, and a
 module's files see each other's declarations without imports, the type names
 a file uses connect it to the file of its module, or of a project module it
 imports, that declares them. A module no SwiftPM manifest provides may be a pod
-or a Carthage framework: an app's Podfile or Cartfile is read for it too.
+or a Carthage framework: an app's Podfile or Cartfile is read for it too. A
+registry package (`.package(id: "mona.LinkedList")`) is named by its identity;
+with `--online`, `--resolve-depth` reads its `Package.swift` from the registry
+SwiftPM's `registries.json` maps its scope to.
 Swift is read by a small scanner: the tree-sitter grammar failed on about one
 file in seven and spent up to three seconds on each of them.
 
@@ -3378,7 +3419,9 @@ module spelling (`libPhoneNumber_iOS`), without a platform suffix
 `GRDB.swift`'s); a header found in a committed `Pods/` directory is its pod's,
 not the project's. A `pod` line's subspec (`Firebase/Analytics`) is its pod,
 `:path` pods are the project's own directories, and `Podfile.lock` gives every
-pod's version and what it depends on. `Cartfile` entries are the Carthage
+pod's version and what it depends on; with `--online`, a pod the lock does
+not cover is read from the CDN or from a clone of its spec repository in
+`~/.cocoapods/repos`. `Cartfile` entries are the Carthage
 island, named by repository as Swift packages are (`github.com/Mantle/Mantle`)
 and pinned by `Cartfile.resolved`; `--resolve-depth` follows the `Cartfile` of
 each dependency checked out into `Carthage/Checkouts/`. Classes, categories

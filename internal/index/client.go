@@ -493,6 +493,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		dependencies, err = c.bufModule(ctx, index, t)
 	case CUE:
 		dependencies, err = c.cueModule(ctx, index, t)
+	case SwiftPM:
+		dependencies, err = c.swiftPackage(ctx, index, t)
 	case Maven:
 		if !strings.Contains(t.Package, ":") {
 			// A name without an artifact cannot be asked: a POM is addressed by

@@ -239,12 +239,13 @@ requirements of type `limitation` in their scopes:
   applications, and a require of an undeclared gem is named by heuristics.
 - Swift is read without running SwiftPM or Xcode: an Xcode project's targets
   are not read (module directories are guessed by name), `Package.resolved`
-  has no package-to-package edges without a checkout, and type references are
-  matched by name by a scanner that does not type-check.
+  has no package-to-package edges without a checkout or a registry, and type
+  references are matched by name by a scanner that does not type-check.
 - Objective-C is read without Xcode or CocoaPods: an Xcode project's header
   search paths apply to every file below it whatever its target, pods are
-  matched to headers and modules by name, private spec repositories are never
-  fetched, and no vulnerability database covers CocoaPods or Carthage.
+  matched to headers and modules by name, a private spec repository is read
+  only from its clone on this machine, and no vulnerability database covers
+  CocoaPods or Carthage.
 - Dart is read without running pub: generated files that are not committed are
   not seen, and `pubspec.lock` has no package-to-package edges, so only
   `--online` walks past the first level.

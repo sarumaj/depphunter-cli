@@ -18,8 +18,9 @@ setting Xcode defines itself other than the project directory (such as
 `$(BUILT_PRODUCTS_DIR)`) is not expanded; a pod is matched to a header or
 module by name (a pod whose module
 is named unlike it and is not in the table is unresolved), a Swift module no
-manifest declares stays an unresolved SwiftPM package, private spec
-repositories are never fetched, and no vulnerability database covers
+manifest declares stays an unresolved SwiftPM package, a private spec
+repository is read only from its clone on this machine (REQ-SUP-074), never
+fetched, and no vulnerability database covers
 CocoaPods or Carthage by name and version: only a pod or a Carthage
 dependency checked out at a full git commit on a public forge is asked about,
 by that commit (REQ-FND-026).

@@ -120,3 +120,51 @@ func TestJuliaDepots(t *testing.T) {
 		}
 	}
 }
+
+// CocoaPods' spec repositories are in CP_REPOS_DIR, else repos below
+// CP_HOME_DIR, else ~/.cocoapods/repos. SwiftPM's user registries.json is in
+// ~/Library/org.swift.swiftpm/configuration on macOS when it is there, else in
+// configuration below $XDG_CONFIG_HOME/swiftpm or ~/.swiftpm.
+//
+// Verifies: REQ-SUP-064
+func TestCocoaPodsAndSwiftPMLocations(t *testing.T) {
+	home, directory, xdg := t.TempDir(), t.TempDir(), t.TempDir()
+	for _, testCase := range []struct {
+		variables map[string]string
+		want      string
+	}{
+		{nil, filepath.Join(home, ".cocoapods", "repos")},
+		{map[string]string{"CP_HOME_DIR": directory}, filepath.Join(directory, "repos")},
+		{map[string]string{"CP_HOME_DIR": xdg, "CP_REPOS_DIR": directory}, directory},
+	} {
+		if got := machine(t, home, "linux", testCase.variables).CocoaPodsRepositories(); got != testCase.want {
+			t.Errorf("%v: got %s, want %s", testCase.variables, got, testCase.want)
+		}
+	}
+	dot := filepath.Join(home, ".swiftpm", "configuration", "registries.json")
+	library := filepath.Join(home, "Library", "org.swift.swiftpm", "configuration", "registries.json")
+	for _, testCase := range []struct {
+		goos      string
+		variables map[string]string
+		want      string
+	}{
+		{"linux", nil, dot},
+		{"windows", nil, dot},
+		{"linux", map[string]string{"XDG_CONFIG_HOME": xdg}, filepath.Join(xdg, "swiftpm", "configuration", "registries.json")},
+		{"darwin", nil, dot},
+	} {
+		if got := machine(t, home, testCase.goos, testCase.variables).SwiftPMRegistries(); got != testCase.want {
+			t.Errorf("%s %v: got %s, want %s", testCase.goos, testCase.variables, got, testCase.want)
+		}
+	}
+	touch(t, library)
+	if got := machine(t, home, "darwin", map[string]string{"XDG_CONFIG_HOME": xdg}).SwiftPMRegistries(); got != library {
+		t.Errorf("darwin with the idiomatic file: got %s", got)
+	}
+	if got := machine(t, home, "linux", nil).SwiftPMRegistries(); got != dot {
+		t.Errorf("linux ignores ~/Library: got %s", got)
+	}
+	if m := machine(t, "", "linux", nil); m.CocoaPodsRepositories() != "" || m.SwiftPMRegistries() != "" {
+		t.Error("no home, no paths")
+	}
+}

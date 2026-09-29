@@ -179,6 +179,8 @@ func (c *Config) machine(m userconf.Machine) {
 	machineAlire(m, k)
 	machineJulia(m, k)
 	machineR10K(m, k)
+	c.machineCocoaPods(m)
+	read(m.SwiftPMRegistries(), parseSwiftRegistries)
 	parseCUERegistry(environment("CUE_REGISTRY"), k)
 	if home == "" {
 		return
@@ -323,6 +325,7 @@ func (c *Config) project(files []*scan.File) {
 	// anything else names a NuGet feed, so a feed both name stays this machine's.
 	c.applyNuGet(projectNuGet(ordered))
 	python := c.projectPython(ordered)
+	projectSwiftPM(ordered, k)
 	for _, f := range ordered {
 		base := strings.ToLower(path.Base(f.Path))
 		if base == "nuget.config" {
@@ -384,7 +387,7 @@ func (c *Config) project(files []*scan.File) {
 		case base == "config.toml" && strings.HasSuffix(path.Dir(f.Path), ".cargo"):
 			parseCargoConfig(data, k)
 		case f.Path == "Podfile" || strings.HasSuffix(f.Path, "/Podfile"):
-			parsePodfile(data, add)
+			parsePodfile(data, k)
 		case base == "podfile.lock":
 			parsePodfileLock(data, add)
 		case base == ".bazelrc" || strings.HasSuffix(base, ".bazelrc"):
@@ -1044,17 +1047,25 @@ func parseCabalRepositories(data []byte, add func(ecosystem, url, scope string))
 var podSource = regexp.MustCompile(`(?m)^\s*source[\s(]+['"]([^'"]+)['"]`)
 
 // parsePodfile reads the spec repositories a Podfile's `source` lines name. CocoaPods
-// asks each of them for every pod, in order, so a private one is recorded for all of
-// them: the repository cannot say which pods it holds, and naming a company's pod to
-// the public CDN is what the private patterns exist to prevent. CocoaPods' own
-// repository is the public index and is not recorded.
+// asks them for every pod, in the Podfile's order, and no other: the trunk only
+// where it is listed, or when nothing is. A private one is recorded for every pod,
+// since the repository cannot say which pods it holds, and naming a company's pod
+// to the public CDN is what the private patterns exist to prevent. CocoaPods' own
+// repository is the public CDN wherever it is listed.
 //
-// Implements: REQ-SUP-015, REQ-SUP-051
-func parsePodfile(data []byte, add func(ecosystem, url, scope string)) {
+// Implements: REQ-SUP-015, REQ-SUP-051, REQ-SUP-074
+func parsePodfile(data []byte, k sink) {
+	listed, trunk := false, false
 	for _, m := range podSource.FindAllSubmatch(data, -1) {
-		if u := string(m[1]); !CocoaPodsTrunk(u) {
-			add(CocoaPods, u, "")
+		u := string(m[1])
+		if CocoaPodsTrunk(u) {
+			u, trunk = publicIndex(CocoaPods), true
 		}
+		k.put(CocoaPods, Source{URL: u, Kind: Listed})
+		listed = true
+	}
+	if listed && !trunk {
+		k.off(CocoaPods)
 	}
 }
 

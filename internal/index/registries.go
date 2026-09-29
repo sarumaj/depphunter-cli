@@ -1416,48 +1416,53 @@ func splitChallenge(parameters string) []string {
 // those of its default subspecs (all subspecs when none is named), without test
 // specs and the pod's own subspecs; "= 1.2.3" is the bare, pinned version.
 //
-// Implements: REQ-SUP-051
+// A spec repository cloned on this machine is read from the clone instead
+// (cocoapodsCopy), the trunk's too, and a file the directory of a CDN source
+// holds is read from there before the CDN is asked. A git spec repository with
+// no clone cannot be read, and passes the question on.
+//
+// Implements: REQ-SUP-051, REQ-SUP-074
 func (c *Client) cocoapodsPod(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
+	local := c.config.podCopy(index)
+	if local.local != "" && !local.cdn {
+		return cocoapodsCopy(local.local, t)
+	}
+	if local.local == "" && !c.config.Public(CocoaPods, index) && podGit(index) {
+		c.noPodCopy(index)
+		return nil, fmt.Errorf("%w: %s has no clone on this machine", errAbsent, index)
+	}
 	sum := md5.Sum([]byte(t.Package))
 	h := hex.EncodeToString(sum[:])
 	shard := []string{h[0:1], h[1:2], h[2:3]}
 	base := strings.TrimRight(index, "/")
+	read := func(elements []string, media string) ([]byte, error) {
+		if data, ok := podCached(local.local, elements...); ok {
+			return data, nil
+		}
+		escaped := make([]string, len(elements))
+		for i, e := range elements {
+			escaped[i] = url.PathEscape(e)
+		}
+		return c.accept(ctx, base+"/"+strings.Join(escaped, "/"), media)
+	}
 	version := strings.TrimSpace(t.Version)
 	if !lang.Pinned(version) {
-		body, err := c.accept(ctx, base+"/all_pods_versions_"+strings.Join(shard, "_")+".txt", "text/plain")
+		body, err := read([]string{"all_pods_versions_" + strings.Join(shard, "_") + ".txt"}, "text/plain")
 		if err != nil {
 			return nil, err
 		}
-		constraint := version
-		version = ""
-		newest := ""
+		var versions []string
 		for _, line := range strings.Split(string(body), "\n") {
 			fields := strings.Split(strings.TrimSpace(line), "/")
-			if fields[0] != t.Package {
-				continue
-			}
-			for _, v := range fields[1:] {
-				if strings.Contains(v, "-") {
-					continue // a pre-release
-				}
-				if newest == "" || compareVersions(v, newest) > 0 {
-					newest = v
-				}
-				// CocoaPods' operators are Terraform's: ~>, >=, <, =, !=.
-				if terraformAllows(constraint, v) && (version == "" || compareVersions(v, version) > 0) {
-					version = v
-				}
+			if fields[0] == t.Package {
+				versions = append(versions, fields[1:]...)
 			}
 		}
-		if version == "" {
-			version = newest
-		}
-		if version == "" {
+		if version = podVersion(version, versions); version == "" {
 			return nil, nil
 		}
 	}
-	escape := url.PathEscape(t.Package)
-	body, err := c.get(ctx, base+"/Specs/"+strings.Join(shard, "/")+"/"+escape+"/"+url.PathEscape(version)+"/"+escape+".podspec.json")
+	body, err := read(append(append([]string{"Specs"}, shard...), t.Package, version, t.Package+".podspec.json"), "application/json")
 	if err != nil {
 		return nil, err
 	}
@@ -1465,34 +1470,7 @@ func (c *Client) cocoapodsPod(ctx context.Context, index string, t lang.Target) 
 	if err := json.Unmarshal(body, &spec); err != nil {
 		return nil, err
 	}
-	seen := map[string]bool{}
-	var out []dependency
-	walk := func(s podSpec) {
-		for _, name := range slices.Sorted(maps.Keys(s.Dependencies)) {
-			root, _, _ := strings.Cut(name, "/")
-			if root == t.Package || seen[root] {
-				continue
-			}
-			seen[root] = true
-			requirement := strings.Join(s.Dependencies[name], ", ")
-			if v, ok := strings.CutPrefix(requirement, "= "); ok && lang.Pinned(v) {
-				requirement = v
-			}
-			out = append(out, dependency{Name: root, Version: requirement})
-		}
-	}
-	walk(spec)
-	defaults := map[string]bool{}
-	for _, d := range spec.defaults() {
-		defaults[d] = true
-	}
-	for _, subspec := range spec.Subspecs {
-		if len(defaults) == 0 || defaults[subspec.Name] {
-			walk(subspec)
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out, nil
+	return podDependencies(spec, t.Package), nil
 }
 
 // podSpec is the part of a podspec.json read for dependencies.

@@ -241,6 +241,29 @@ func dependencies(source string) []dependency {
 	return out
 }
 
+// PackageDependency is one package a manifest depends on, for the index client:
+// a registry package by its identity (ID, scope.name) or a package in a
+// repository by its URL, with its requirement as the plugin shows it
+// ("1.2.3", "2.60.0..<3.0.0", "branch main").
+type PackageDependency struct {
+	ID, URL, Requirement string
+}
+
+// ManifestDependencies reads the packages a Package.swift depends on, as the
+// plugin reads its own manifests: `.package(id:)` and `.package(url:)`; a local
+// `.package(path:)` is no package another machine could fetch and is left out.
+//
+// Implements: REQ-SUP-075
+func ManifestDependencies(source string) []PackageDependency {
+	var out []PackageDependency
+	for _, d := range dependencies(stripComments(source)) {
+		if d.id != "" || d.url != "" {
+			out = append(out, PackageDependency{ID: d.id, URL: d.url, Requirement: d.requirement})
+		}
+	}
+	return out
+}
+
 var rangeRequirement = regexp.MustCompile(`^"([^"]+)"\s*(\.\.<|\.\.\.)\s*"([^"]+)"$`)
 
 // requirement reads a package's version requirement from its arguments: from:,
