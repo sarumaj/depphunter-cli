@@ -32,7 +32,14 @@ registry this machine's npm, Yarn or Bun configuration names, and only for
 that registry's path
 ([REQ-AUTH-025](REQ-AUTH-025-npm-path-scoped-credentials.md)). A token, ident
 or password written out, one only a fallback fills, and a user:password in a
-repository registry URL **shall** be discarded.
+repository registry URL **shall** be discarded. A repository `.yarnrc.yml`
+**shall** be read merged with those of the directories above it up to the
+top of the checkout, as Yarn merges them
+([REQ-SUP-079](../sup/REQ-SUP-079-configuration-files-above-the-analyzed-directory.md)),
+and a credential lent from it **shall** go only with the requests Yarn sends
+it with (without `npmAlwaysAuth`, those for scoped packages;
+[REQ-AUTH-024](REQ-AUTH-024-yarn-and-bun-credentials.md)); it **shall not**
+be lent for a registry this machine already holds a credential for.
 
 The same **shall** hold for a Python index the repository names
 ([REQ-AUTH-026](REQ-AUTH-026-python-tool-credentials.md)): this machine's
@@ -68,7 +75,9 @@ user's say-so, or this machine's own configuration of that host, decides.
 5. A repository `.yarnrc.yml` `${VAR}` token or ident and a `bunfig.toml`
    `$VAR` password are lent to a vouched registry or one on the host of a
    machine registry, and to nothing else; a written-out token, a fallback and
-   a written-out URL password are not; a machine token for the host is kept.
+   a written-out URL password are not; a machine token for the host is kept,
+   for a scope's packages too; a token of a nested `.yarnrc.yml` goes to the
+   registry a file above it names.
 6. A repository uv, Poetry or PDM index gets this machine's credential of its
    name, and a `Pipfile` or PDM `${VAR}` URL credential is lent, only when
    vouched for or on the host of a machine uv index, Poetry repository or PDM

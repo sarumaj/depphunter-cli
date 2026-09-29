@@ -4,21 +4,26 @@ import (
 	"maps"
 	"net/url"
 	"os"
+	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/npmconf"
+	"github.com/sarumaj/depphunter-cli/internal/scan"
 	"github.com/sarumaj/depphunter-cli/internal/userconf"
 )
 
 // machineYarnBun reads the registries of this machine's Yarn and Bun
 // configuration, after npm's (whose registry, when it names one, stays the
-// replacement asked): Yarn Berry's file in the home directory, with
-// YARN_NPM_REGISTRY_SERVER over its npmRegistryServer and ${VAR} references
-// resolved from the environment; Yarn 1's ~/.yarnrc; Bun's global bunfig, with
-// $VAR resolved. Each names a default registry and the registry of each scope.
+// replacement asked): Yarn Berry's files (userconf.YarnConfigs: those of the
+// directories above the analyzed one outside its checkout, then the home
+// directory's, merged key by key), with YARN_NPM_REGISTRY_SERVER over their
+// npmRegistryServer and ${VAR} references resolved from the environment; Yarn 1's
+// ~/.yarnrc; Bun's global bunfig, with $VAR resolved. Each names a default registry
+// and the registry of each scope.
 //
-// Implements: REQ-SUP-015, REQ-SUP-064
+// Implements: REQ-SUP-015, REQ-SUP-064, REQ-SUP-079
 func machineYarnBun(m userconf.Machine, k sink) {
 	read := func(name string) []byte {
 		if name == "" {
@@ -27,10 +32,14 @@ func machineYarnBun(m userconf.Machine, k sink) {
 		data, _ := os.ReadFile(name)
 		return data
 	}
-	berry, _ := npmconf.ParseYarnrc(read(m.YarnUserConfig()))
-	if v := m.Environment("YARN_NPM_REGISTRY_SERVER"); v != "" {
-		berry.Registry.URL = v
+	var files [][]byte
+	for _, name := range m.YarnConfigs() {
+		if data := read(name); data != nil {
+			files = append(files, data)
+		}
 	}
+	berry, _ := npmconf.MergeYarnrc(files)
+	berry.YarnEnvironment(m.Environment)
 	addNpmSettings(berry, k.add, func(v string) string {
 		out, ok := npmconf.Interpolate(v, m.Environment)
 		if !ok {
@@ -74,25 +83,79 @@ func (c *Config) yarnRCFilename() string {
 	return c.m.YarnRCFilename()
 }
 
-// projectYarnrc records the registries of a repository's .yarnrc.yml, and lends
-// the credentials it binds to them whose secret is this machine's: an
-// npmAuthToken or npmAuthIdent that is exactly ${NAME} (or ${NAME:-fallback}
-// with NAME set) - see lendNpm. A token or identifier written out, or one only its
-// fallback fills, is the repository's and is discarded.
+// yarnFiles are a repository's Yarn Berry files, by directory ("." for the root):
+// those the scan found (.yarnrc.yml, or the name YARN_RC_FILENAME gives them) and
+// those of the directories between the analyzed directory and the top of its
+// checkout (userconf.Machine.DirectoriesAbove), which are the repository's too.
+type yarnFiles struct {
+	scanned map[string][]byte
+	// above are the files of the checkout's directories above the analyzed one,
+	// closest first.
+	above [][]byte
+}
+
+// readYarnFiles collects a repository's Yarn Berry files.
+func (c *Config) readYarnFiles(files []*scan.File) yarnFiles {
+	y := yarnFiles{scanned: map[string][]byte{}}
+	for _, f := range files {
+		if c.isYarnrc(f) {
+			if data, err := os.ReadFile(f.AbsolutePath); err == nil {
+				y.scanned[path.Dir(f.Path)] = data
+			}
+		}
+	}
+	repository, _ := c.m.DirectoriesAbove()
+	for _, directory := range repository {
+		if data, err := os.ReadFile(filepath.Join(directory, c.yarnRCFilename())); err == nil {
+			y.above = append(y.above, data)
+		}
+	}
+	return y
+}
+
+// isYarnrc reports whether a scanned file is a Yarn Berry configuration file.
+func (c *Config) isYarnrc(f *scan.File) bool {
+	base := strings.ToLower(path.Base(f.Path))
+	return base == ".yarnrc.yml" || base == strings.ToLower(c.yarnRCFilename())
+}
+
+// chain is the configuration Yarn takes for a package in directory: the files of
+// directory and of each directory above it, closest first, up to the checkout's top.
+func (y yarnFiles) chain(directory string) [][]byte {
+	var out [][]byte
+	for d := directory; ; d = path.Dir(d) {
+		if data, ok := y.scanned[d]; ok {
+			out = append(out, data)
+		}
+		if d == "." {
+			break
+		}
+	}
+	return append(out, y.above...)
+}
+
+// projectYarnrc records the registries of the Yarn Berry configuration a
+// repository gives the packages of directory - its .yarnrc.yml merged key by key
+// with those of the directories above it in the repository (yarnFiles.chain) - and
+// lends the credentials it binds to them whose secret is this machine's: an
+// npmAuthToken or npmAuthIdent that is exactly ${NAME} (or ${NAME:-fallback} with
+// NAME set) - see lendNpm - each with the packages Yarn sends it with (see
+// npmconf.Settings.YarnCredentials). A token or identifier written out, or one
+// only its fallback fills, is the repository's and is discarded.
 //
-// Implements: REQ-SUP-015, REQ-AUTH-023
-func (c *Config) projectYarnrc(data []byte, add func(ecosystem, url, scope string)) {
-	s, ok := npmconf.ParseYarnrc(data)
+// Implements: REQ-SUP-015, REQ-AUTH-023, REQ-SUP-079
+func (c *Config) projectYarnrc(files [][]byte, add func(ecosystem, url, scope string)) {
+	s, ok := npmconf.MergeYarnrc(files)
 	if !ok {
 		return
 	}
 	addNpmSettings(s, add, nil)
-	for _, e := range s.Credentials(npmconf.YarnDefault) {
+	for _, e := range s.YarnCredentials(nil) {
 		if token, ok := c.secretOf(e.Token); ok {
-			c.lendNpm(e.URL, true, token)
+			c.lendNpm(e.URL, e.Packages, true, token)
 		} else if identifier, ok := c.secretOf(e.Ident); ok {
 			if pair, ok := (npmconf.Entry{Ident: identifier}).Basic(); ok {
-				c.lendNpm(e.URL, false, pair)
+				c.lendNpm(e.URL, e.Packages, false, pair)
 			}
 		}
 	}
@@ -112,14 +175,14 @@ func (c *Config) projectBunfig(data []byte, add func(ecosystem, url, scope strin
 	addNpmSettings(s, add, nil)
 	for _, e := range s.Credentials(npmconf.BunDefault) {
 		if token, ok := c.secretOf(e.Token); ok {
-			c.lendNpm(e.URL, true, token)
+			c.lendNpm(e.URL, "", true, token)
 		} else if pass, ok := c.secretOf(e.Password); ok && e.Username != "" {
 			user := e.Username
 			if name, _ := npmconf.Reference(user); name != "" {
 				user = c.m.Environment(name)
 			}
 			if user != "" {
-				c.lendNpm(e.URL, false, user+":"+pass)
+				c.lendNpm(e.URL, "", false, user+":"+pass)
 			}
 		}
 	}
@@ -138,12 +201,13 @@ func (c *Config) secretOf(v string) (string, bool) {
 }
 
 // lendNpm hands the credential store a credential for a registry the repository
-// names, when this machine vouches for it: the user did with --trust-index, or
+// names, sent with the requests packages allows (see auth.Store.LendRegistry),
+// when this machine vouches for it: the user did with --trust-index, or
 // this machine's own npm, Yarn or Bun configuration names a registry on its host.
 // Anything else would let the repository choose where this machine's secret goes.
 //
 // Implements: REQ-AUTH-023
-func (c *Config) lendNpm(registry string, bearer bool, value string) {
+func (c *Config) lendNpm(registry, packages string, bearer bool, value string) {
 	if value == "" || c.credentials == nil || strings.Contains(registry, "$") {
 		return
 	}
@@ -152,6 +216,6 @@ func (c *Config) lendNpm(registry string, bearer bool, value string) {
 		return
 	}
 	if c.vouched(NPM, registry, u) {
-		c.credentials.LendRegistry(registry, bearer, value)
+		c.credentials.LendRegistry(registry, packages, bearer, value)
 	}
 }

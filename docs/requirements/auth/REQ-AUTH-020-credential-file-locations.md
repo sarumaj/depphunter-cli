@@ -18,9 +18,10 @@ environment:
 - npm: the global npmrc, then the user's (`npm_config_userconfig`, else
   `~/.npmrc`), then `npm_config_//<host>/:<field>` variables in any case, each
   key replacing the same key before it.
-- Yarn Berry and Bun: the home `.yarnrc.yml` (named by `YARN_RC_FILENAME`)
-  with the `YARN_NPM_*` variables over it, and Bun's global bunfig
-  ([REQ-AUTH-024](REQ-AUTH-024-yarn-and-bun-credentials.md)).
+- Yarn Berry and Bun: the Yarn files of the directories above the analyzed
+  one outside its checkout (named by `YARN_RC_FILENAME`) and the home
+  `.yarnrc.yml`, merged, with the `YARN_NPM_*` variables over them, and Bun's
+  global bunfig ([REQ-AUTH-024](REQ-AUTH-024-yarn-and-bun-credentials.md)).
 - netrc: `NETRC`; else `~/_netrc` on Windows when it exists; else `~/.netrc`;
   for Go proxies only when `GOAUTH` (the environment's, else the go env
   file's) lets the go command send it
@@ -35,8 +36,8 @@ environment:
 - Cargo: `credentials` (else `credentials.toml`) and `config` (else
   `config.toml`) in `CARGO_HOME`, else `~/.cargo`, and the registries
   `CARGO_REGISTRIES_<NAME>_INDEX` defines.
-- NuGet: `%APPDATA%\NuGet\NuGet.Config` on Windows, and the machine-wide
-  files index discovery reads
+- NuGet: the files index discovery reads, from the `nuget.config` files
+  above the analyzed checkout to the machine-wide files
   ([REQ-SUP-064](../sup/REQ-SUP-064-tool-configuration-locations.md)).
 - Composer: the same single home index discovery reads.
 - Maven: `~/.m2/settings.xml`, then `conf/settings.xml` under `MAVEN_HOME`,

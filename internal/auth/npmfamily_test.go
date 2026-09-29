@@ -12,7 +12,9 @@ func bearer(token string) string { return "Bearer " + token }
 // Yarn Berry's home configuration: a scope's token goes to the scope's registry, an
 // npmRegistries entry's ident to its registry (and its path only), the top-level
 // token to the default registry; ${VAR} and ${VAR:-fallback} come from the
-// machine's environment, and a value naming an unset variable is dropped.
+// machine's environment, and a value naming an unset variable is dropped. Without
+// npmAlwaysAuth, a registry's credential goes only with the requests for scoped
+// packages, as Yarn sends it.
 //
 // Verifies: REQ-AUTH-024
 func TestYarnBerryCredentials(t *testing.T) {
@@ -29,21 +31,26 @@ npmScopes:
 npmRegistries:
   "https://reg.corp/npm":
     npmAuthIdent: "builder:${REG_PASS}"
+    npmAlwaysAuth: true
   "//lab.corp/api/v4/projects/7/packages/npm":
     npmAuthToken: tok7
+    npmAlwaysAuth: "1"
   "https://b64.corp":
     npmAuthIdent: `+base64.StdEncoding.EncodeToString([]byte("u:p"))+`
 `)
 	c := Read(home, bundlerEnvironment(t, map[string]string{"ACME_TOKEN": "acme-secret", "REG_PASS": "pw"}))
 	for u, want := range map[string]string{
 		"https://npm.acme.corp/@acme%2fui/1.0.0":                    bearer("acme-secret"),
+		"https://npm.acme.corp/left-pad/1.0.0":                      "",
 		"https://reg.corp/npm/left-pad/1.0.0":                       basicHeader("builder:pw"),
 		"https://reg.corp/elsewhere":                                "",
 		"https://lab.corp/api/v4/projects/7/packages/npm/x/1.0.0":   bearer("tok7"),
 		"https://lab.corp/api/v4/projects/8/packages/npm/x/1.0.0":   "",
-		"https://b64.corp/x":                                        basicHeader("u:p"),
-		"https://registry.yarnpkg.com/react/1.0.0":                  bearer("top-fallback"),
-		"https://registry.npmjs.org/react/1.0.0":                    bearer("top-fallback"),
+		"https://b64.corp/@s%2fx":                                   basicHeader("u:p"),
+		"https://b64.corp/x":                                        "",
+		"https://registry.yarnpkg.com/@types%2fnode/1.0.0":          bearer("top-fallback"),
+		"https://registry.npmjs.org/@types%2fnode/1.0.0":            bearer("top-fallback"),
+		"https://registry.yarnpkg.com/react/1.0.0":                  "",
 		"https://gone.corp/@gone%2fx/1.0.0":                         "",
 		"https://unrelated.corp/api/v4/projects/7/packages/npm/x/1": "",
 	} {
@@ -53,22 +60,27 @@ npmRegistries:
 	}
 }
 
-// YARN_NPM_REGISTRY_SERVER, YARN_NPM_AUTH_TOKEN and YARN_NPM_AUTH_IDENT replace the
-// top level of the home file, and YARN_RC_FILENAME names that file.
+// YARN_NPM_REGISTRY_SERVER, YARN_NPM_AUTH_TOKEN, YARN_NPM_AUTH_IDENT and
+// YARN_NPM_ALWAYS_AUTH replace the top level of the home file. YARN_RC_FILENAME
+// does not rename the home file: Yarn reads the home's .yarnrc.yml whatever it
+// says. YARN_NPM_SCOPES is not read: Yarn refuses a map from the environment.
 //
 // Verifies: REQ-AUTH-024, REQ-AUTH-020
 func TestYarnEnvironmentCredentials(t *testing.T) {
 	home := t.TempDir()
-	writeFile(t, filepath.Join(home, ".ci-yarnrc.yml"), "npmRegistryServer: https://file.corp\nnpmAuthToken: from-file\n")
+	writeFile(t, filepath.Join(home, ".ci-yarnrc.yml"), "npmRegistryServer: https://file.corp\nnpmAuthToken: from-file\nnpmAlwaysAuth: true\n")
 	c := Read(home, bundlerEnvironment(t, map[string]string{
 		"YARN_RC_FILENAME":         ".ci-yarnrc.yml",
 		"YARN_NPM_REGISTRY_SERVER": "https://env.corp/npm/",
 		"YARN_NPM_AUTH_TOKEN":      "from-env",
+		"YARN_NPM_ALWAYS_AUTH":     "true",
+		"YARN_NPM_SCOPES":          `{"acme":{"npmRegistryServer":"https://scopes.corp","npmAuthToken":"x"}}`,
 	}))
 	for u, want := range map[string]string{
-		"https://env.corp/npm/react/1.0.0": bearer("from-env"),
-		"https://env.corp/other":           "",
-		"https://file.corp/react":          "",
+		"https://env.corp/npm/react/1.0.0":  bearer("from-env"),
+		"https://env.corp/other":            "",
+		"https://file.corp/react":           "",
+		"https://scopes.corp/@acme%2fx/1.0": "",
 	} {
 		if got := authorization(t, c, u); got != want {
 			t.Errorf("%s: %q, want %q", u, got, want)
@@ -78,8 +90,11 @@ func TestYarnEnvironmentCredentials(t *testing.T) {
 		"YARN_NPM_REGISTRY_SERVER": "https://ident.corp",
 		"YARN_NPM_AUTH_IDENT":      "ci:secret",
 	}))
-	if got := authorization(t, c, "https://ident.corp/react"); got != basicHeader("ci:secret") {
+	if got := authorization(t, c, "https://ident.corp/@a%2fb"); got != basicHeader("ci:secret") {
 		t.Errorf("ident: %q", got)
+	}
+	if got := authorization(t, c, "https://ident.corp/react"); got != "" {
+		t.Errorf("ident without YARN_NPM_ALWAYS_AUTH, unscoped: %q", got)
 	}
 }
 
@@ -153,7 +168,7 @@ func TestNpmPathScopedTokens(t *testing.T) {
 func TestNpmrcWinsOverYarnAndBun(t *testing.T) {
 	home := t.TempDir()
 	writeFile(t, filepath.Join(home, ".npmrc"), "//npm.corp/:_authToken=npm\n")
-	writeFile(t, filepath.Join(home, ".yarnrc.yml"), "npmRegistries:\n  https://npm.corp:\n    npmAuthToken: yarn\n  https://yarn.corp:\n    npmAuthToken: yarn\n")
+	writeFile(t, filepath.Join(home, ".yarnrc.yml"), "npmRegistries:\n  https://npm.corp:\n    npmAuthToken: yarn\n    npmAlwaysAuth: true\n  https://yarn.corp:\n    npmAuthToken: yarn\n    npmAlwaysAuth: true\n")
 	writeFile(t, filepath.Join(home, ".bunfig.toml"), "[install]\nregistry = { url = \"https://yarn.corp\", token = \"bun\" }\n")
 	c := Read(home, bundlerEnvironment(t, nil))
 	if got := authorization(t, c, "https://npm.corp/x"); got != bearer("npm") {

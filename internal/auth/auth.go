@@ -91,8 +91,19 @@ func (s secret) header() string {
 //
 // Implements: REQ-AUTH-014
 func Read(home string, environment func(string) string) *Store {
+	return ReadFor(home, "", environment)
+}
+
+// ReadFor is Read for the analysis of directory: the configuration files some tools
+// look for in every directory above a project (Yarn Berry's, NuGet's) are read too,
+// in the directories above directory that lie outside its checkout
+// (userconf.Machine.DirectoriesAbove), as this machine's.
+//
+// Implements: REQ-AUTH-014, REQ-SUP-079
+func ReadFor(home, directory string, environment func(string) string) *Store {
 	m := userconf.New(home, environment)
 	m.Environ = environ
+	m.Directory = directory
 	return readMachine(m)
 }
 

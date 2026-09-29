@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -34,6 +35,11 @@ type Machine struct {
 	Environment func(string) string
 	GOOS        string
 	Environ     func() []string
+	// Directory is the directory being analyzed, "" for none. The configuration
+	// files some tools look for in every directory above a project are this
+	// machine's in the directories above it that lie outside its checkout (see
+	// DirectoriesAbove).
+	Directory string
 }
 
 // New is the machine depphunter runs on.
@@ -231,10 +237,34 @@ func (m Machine) YarnRCFilename() string {
 	return ".yarnrc.yml"
 }
 
-// YarnUserConfig is Yarn Berry's configuration in the home directory.
+// YarnUserConfig is Yarn Berry's configuration in the home directory, which Yarn
+// reads as .yarnrc.yml whatever name YARN_RC_FILENAME gives the files of the
+// directories above a project.
 //
 // Implements: REQ-SUP-064
-func (m Machine) YarnUserConfig() string { return join(m.Home, m.YarnRCFilename()) }
+func (m Machine) YarnUserConfig() string { return join(m.Home, ".yarnrc.yml") }
+
+// YarnConfigs are this machine's Yarn Berry configuration files, closest first, as
+// Yarn finds them for a project in Directory: the file YARN_RC_FILENAME names (else
+// .yarnrc.yml) in each directory above Directory that lies outside its checkout
+// (DirectoriesAbove), then the home directory's .yarnrc.yml, which Yarn reads last
+// when the walk did not already reach it. Yarn merges them key by key, the closest
+// file winning.
+//
+// Implements: REQ-SUP-064, REQ-SUP-079
+func (m Machine) YarnConfigs() []string {
+	_, above := m.DirectoriesAbove()
+	var out []string
+	for _, directory := range above {
+		if name := filepath.Join(directory, m.YarnRCFilename()); isFile(name) {
+			out = append(out, name)
+		}
+	}
+	if home := m.YarnUserConfig(); home != "" && !slices.Contains(out, home) {
+		out = append(out, home)
+	}
+	return out
+}
 
 // YarnClassicConfig is Yarn 1's ~/.yarnrc.
 //
@@ -423,20 +453,90 @@ func (m Machine) GoEnvironment(key string) string {
 // NuGetConfigs are the user's NuGet.Config files: %APPDATA%\NuGet\NuGet.Config on
 // Windows; elsewhere (and on a Windows without %APPDATA%)
 // ~/.nuget/NuGet/NuGet.Config, and ~/.config/NuGet/NuGet.Config where older Mono
-// tooling keeps it.
+// tooling keeps it. They are followed by NuGet's additional user files, every
+// *.config (and elsewhere than on Windows *.Config) in the config directory beside
+// the user's NuGet.Config, other than a NuGet.Config, in name order - after the
+// user's file, as NuGet reads them.
 //
 // Implements: REQ-SUP-064
 func (m Machine) NuGetConfigs() []string {
-	if f := join(m.Environment("APPDATA"), "NuGet", "NuGet.Config"); f != "" && m.GOOS == "windows" {
-		return []string{f}
-	}
-	if m.Home == "" {
+	var out []string
+	directory := join(m.Environment("APPDATA"), "NuGet")
+	switch {
+	case directory != "" && m.GOOS == "windows":
+		out = []string{filepath.Join(directory, "NuGet.Config")}
+	case m.Home == "":
 		return nil
+	default:
+		directory = filepath.Join(m.Home, ".nuget", "NuGet")
+		out = []string{filepath.Join(directory, "NuGet.Config"), filepath.Join(m.Home, ".config", "NuGet", "NuGet.Config")}
 	}
-	return []string{
-		filepath.Join(m.Home, ".nuget", "NuGet", "NuGet.Config"),
-		filepath.Join(m.Home, ".config", "NuGet", "NuGet.Config"),
+	return append(out, m.nugetAdditionalConfigs(filepath.Join(directory, "config"))...)
+}
+
+// nugetAdditionalConfigs are the additional user files of NuGet in directory: on
+// Windows every *.config without regard to case, elsewhere *.config and *.Config;
+// never a NuGet.Config; sorted the way NuGet sorts them (ordinally, on Windows
+// without regard to case).
+func (m Machine) nugetAdditionalConfigs(directory string) []string {
+	entries, _ := os.ReadDir(directory)
+	windows := m.GOOS == "windows"
+	var out []string
+	for _, e := range entries {
+		name := e.Name()
+		extension := filepath.Ext(name)
+		switch {
+		case e.IsDir():
+		case windows && (!strings.EqualFold(extension, ".config") || strings.EqualFold(name, "NuGet.Config")):
+		case !windows && (extension != ".config" && extension != ".Config" || name == "NuGet.Config"):
+		default:
+			out = append(out, name)
+		}
 	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if windows {
+			return strings.ToUpper(out[i]) < strings.ToUpper(out[j])
+		}
+		return out[i] < out[j]
+	})
+	for i, name := range out {
+		out[i] = filepath.Join(directory, name)
+	}
+	return out
+}
+
+// NuGetConfigIn is the nuget.config NuGet reads in a directory it walks through,
+// "" when there is none: on Windows NuGet.Config in any case; elsewhere the first
+// that exists of nuget.config, NuGet.config and NuGet.Config.
+//
+// Implements: REQ-SUP-079
+func (m Machine) NuGetConfigIn(directory string) string {
+	names := []string{"nuget.config", "NuGet.config", "NuGet.Config"}
+	if m.GOOS == "windows" {
+		names = []string{"NuGet.Config"}
+	}
+	for _, name := range names {
+		if path := filepath.Join(directory, name); isFile(path) {
+			return path
+		}
+	}
+	return ""
+}
+
+// NuGetConfigsAbove are the nuget.config files of the directories above Directory
+// that lie outside its checkout (DirectoriesAbove), closest first: NuGet reads them
+// after a project's own and before the user's NuGet.Config.
+//
+// Implements: REQ-SUP-079
+func (m Machine) NuGetConfigsAbove() []string {
+	_, above := m.DirectoriesAbove()
+	var out []string
+	for _, directory := range above {
+		if name := m.NuGetConfigIn(directory); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // NuGetMachineConfigs are NuGet's machine-wide configuration files, farther than the

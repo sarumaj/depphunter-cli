@@ -65,6 +65,15 @@ func (d *Discoverer) Discover(files []*scan.File) *Config {
 	return d.config
 }
 
+// Root names the directory being analyzed, before the first Discover: the
+// configuration files Yarn and NuGet look for in every directory above a project
+// are then read in the directories above it - as this machine's outside its
+// checkout, as the repository's between it and the checkout's top
+// (userconf.Machine.DirectoriesAbove).
+//
+// Implements: REQ-SUP-079
+func (d *Discoverer) Root(directory string) { d.m.Directory = directory }
+
 // machine reads the configuration of whoever is running depphunter: environment first,
 // then the files their package managers read, each found where that package manager
 // finds it (internal/userconf).
@@ -115,11 +124,13 @@ func (c *Config) machine(m userconf.Machine) {
 	read(m.CargoFile("config"), func(data []byte, k sink) { cargoConfig(data, k, cargoEnvironment) })
 	// Composer's global configuration, in the one home Composer takes.
 	read(join(m.ComposerHome(), "config.json"), parseComposer)
-	// NuGet: the user's NuGet.Config, then the machine-wide ones, the same the
-	// credentials are read from, so a feed with a password is also a feed. They
-	// are merged with the repository's nuget.config files (see applyNuGet).
+	// NuGet: the nuget.config files of the directories above the analyzed one
+	// outside its checkout, the user's NuGet.Config and additional files, then the
+	// machine-wide ones, the same the credentials are read from, so a feed with a
+	// password is also a feed. They are merged with the repository's nuget.config
+	// files (see applyNuGet).
 	c.m, c.nugetMachine = m, nil
-	for _, name := range append(m.NuGetConfigs(), m.NuGetMachineConfigs()...) {
+	for _, name := range slices.Concat(m.NuGetConfigsAbove(), m.NuGetConfigs(), m.NuGetMachineConfigs()) {
 		if data, err := os.ReadFile(name); err == nil {
 			if f, ok := nuget.ParseConfig(data); ok {
 				c.nugetMachine = append(c.nugetMachine, f)
@@ -311,13 +322,21 @@ func (c *Config) project(files []*scan.File) {
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Path < ordered[j].Path })
 	// The repository's nuget.config files are merged with this machine's before
 	// anything else names a NuGet feed, so a feed both name stays this machine's.
-	c.applyNuGet(projectNuGet(ordered))
+	c.applyNuGet(append(projectNuGet(ordered), c.nugetAbove()...))
 	python := c.projectPython(ordered)
 	projectSwiftPM(ordered, k)
 	c.projectConan(ordered, k)
+	yarn := c.readYarnFiles(ordered)
+	if _, ok := yarn.scanned["."]; !ok && len(yarn.above) > 0 {
+		c.projectYarnrc(yarn.chain("."), add)
+	}
 	for _, f := range ordered {
 		base := strings.ToLower(path.Base(f.Path))
 		if base == "nuget.config" {
+			continue
+		}
+		if c.isYarnrc(f) {
+			c.projectYarnrc(yarn.chain(path.Dir(f.Path)), add)
 			continue
 		}
 		data, err := os.ReadFile(f.AbsolutePath)
@@ -330,8 +349,6 @@ func (c *Config) project(files []*scan.File) {
 		switch {
 		case base == ".npmrc":
 			parseNpmrc(data, add)
-		case base == ".yarnrc.yml" || base == strings.ToLower(c.yarnRCFilename()):
-			c.projectYarnrc(data, add)
 		case base == ".yarnrc":
 			addNpmSettings(npmconf.ParseYarnClassic(data), add, nil)
 		case base == "bunfig.toml":
