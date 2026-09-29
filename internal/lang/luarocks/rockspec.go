@@ -189,23 +189,32 @@ func ReadManifest(source []byte) map[string][]string {
 
 // Servers reads the rocks servers a LuaRocks configuration file names
 // (rocks_servers = { "https://…", { "https://mirror", "https://other" } }), in
-// order, a group's first entry first.
-func Servers(source []byte) []string {
-	c := Eval(source)
-	var out []string
-	var walk func(v Value)
-	walk = func(v Value) {
+// order: each entry a group of one server's mirrors, a lone string a group of
+// one. set reports whether the file assigns rocks_servers at all.
+func Servers(source []byte) (groups [][]string, set bool) {
+	servers, ok := Eval(source).Globals["rocks_servers"]
+	if !ok || servers.Kind != TableValue {
+		return nil, false
+	}
+	var walk func(v Value, group *[]string)
+	walk = func(v Value, group *[]string) {
 		switch v.Kind {
 		case StringValue:
-			out = append(out, v.Text)
+			*group = append(*group, v.Text)
 		case TableValue:
 			for _, e := range v.Table.List {
-				walk(e)
+				walk(e, group)
 			}
 		}
 	}
-	walk(c.Globals["rocks_servers"])
-	return out
+	for _, entry := range servers.Table.List {
+		var group []string
+		walk(entry, &group)
+		if len(group) > 0 {
+			groups = append(groups, group)
+		}
+	}
+	return groups, true
 }
 
 // Compare orders two LuaRocks versions ("1.10.0-1" after "1.9.2-3"). A revision

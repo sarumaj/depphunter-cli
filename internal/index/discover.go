@@ -141,35 +141,26 @@ func (c *Config) machine(m userconf.Machine) {
 	c.rebar3Repositories, c.rebar3Replace = m.ReadRebar3HexRepositories()
 	// The repositories renv restores from instead of those renv.lock records, and the
 	// R profile R reads first, which is where options(repos = ...) usually lives.
-	for _, u := range strings.FieldsFunc(environment("RENV_CONFIG_REPOS_OVERRIDE"), func(r rune) bool { return r == ';' || r == ',' }) {
-		if k, v, ok := strings.Cut(u, "="); ok && !strings.Contains(k, "/") {
-			u = v // CRAN=https://...
+	if override := environment("RENV_CONFIG_REPOS_OVERRIDE"); strings.TrimSpace(override) != "" {
+		var repositories []string
+		for _, u := range strings.FieldsFunc(override, func(r rune) bool { return r == ';' || r == ',' }) {
+			if k, v, ok := strings.Cut(u, "="); ok && !strings.Contains(k, "/") {
+				u = v // CRAN=https://...
+			}
+			repositories = append(repositories, u)
 		}
-		if u = strings.TrimSpace(u); !CRANMirror(u) {
-			add(CRAN, u, "")
-		}
+		addRRepositories(repositories, true, k)
 	}
 	if p := environment("R_PROFILE_USER"); p != "" {
 		if data, err := os.ReadFile(p); err == nil {
-			parseRprofile(data, add)
+			parseRprofile(data, k)
 		}
 	}
-	// cabal's configuration: CABAL_CONFIG names the file, CABAL_DIR the directory
-	// holding it; else ~/.config/cabal/config (XDG) or ~/.cabal/config below.
-	if f := environment("CABAL_CONFIG"); f != "" {
-		if data, err := os.ReadFile(f); err == nil {
-			parseCabalRepositories(data, add)
-		}
-	} else if directory := environment("CABAL_DIR"); directory != "" {
-		if data, err := os.ReadFile(filepath.Join(directory, "config")); err == nil {
-			parseCabalRepositories(data, add)
-		}
-	}
-	// The LuaRocks configuration file LUAROCKS_CONFIG names replaces the user's.
-	if f := environment("LUAROCKS_CONFIG"); f != "" {
-		if data, err := os.ReadFile(f); err == nil {
-			parseLuaRocksConfig(data, add)
-		}
+	// cabal's configuration, the one file cabal-install reads.
+	read(m.CabalConfig(), func(data []byte, k sink) { c.machineCabal(data, k) })
+	// The user's LuaRocks configuration, per Lua version.
+	for _, name := range m.LuaRocksConfigs() {
+		read(name, parseLuaRocksConfig)
 	}
 	machineJVM(m, k)
 	machineDub(m, k)
@@ -189,19 +180,12 @@ func (c *Config) machine(m userconf.Machine) {
 	if home == "" {
 		return
 	}
-	for _, v := range []string{"5.1", "5.2", "5.3", "5.4"} {
-		if data, err := os.ReadFile(filepath.Join(home, ".luarocks", "config-"+v+".lua")); err == nil {
-			parseLuaRocksConfig(data, add)
-		}
-	}
 	for _, f := range []struct {
 		path  string
 		parse func([]byte, sink)
 	}{
 		{filepath.Join(home, ".gemrc"), plain(parseGemrc)},
-		{filepath.Join(home, ".Rprofile"), plain(parseRprofile)},
-		{filepath.Join(home, ".config", "cabal", "config"), plain(parseCabalRepositories)},
-		{filepath.Join(home, ".cabal", "config"), plain(parseCabalRepositories)},
+		{filepath.Join(home, ".Rprofile"), parseRprofile},
 	} {
 		read(f.path, f.parse)
 	}
@@ -381,14 +365,14 @@ func (c *Config) project(files []*scan.File) {
 		case base == "pubspec.lock":
 			parsePubspecLock(data, add)
 		case base == "renv.lock":
-			parseRenvLock(data, add)
+			parseRenvLock(data, k)
 			if c.biocRelease == "" {
 				c.biocRelease = renvBioconductor(data)
 			}
 		case base == ".rprofile" || base == "rprofile.site":
-			parseRprofile(data, add)
+			parseRprofile(data, k)
 		case base == "cabal.project" || base == "cabal.project.local":
-			parseCabalRepositories(data, add)
+			c.projectCabal(data, k)
 		case base == "config.toml" && strings.HasSuffix(path.Dir(f.Path), ".cargo"):
 			parseCargoConfig(data, k)
 		case f.Path == "Podfile" || strings.HasSuffix(f.Path, "/Podfile"):
@@ -413,7 +397,7 @@ func (c *Config) project(files []*scan.File) {
 		case base == "wally.toml":
 			parseWallyManifest(data, k)
 		case strings.HasPrefix(base, "config-") && strings.HasSuffix(base, ".lua") && path.Base(path.Dir(f.Path)) == ".luarocks":
-			parseLuaRocksConfig(data, add) // what luarocks init writes for the project
+			parseLuaRocksConfig(data, k) // what luarocks init writes for the project
 		}
 	}
 }
@@ -563,12 +547,22 @@ func cargoConfig(data []byte, k sink, environment map[string]string) {
 // parsePaketSources reads the NuGet feeds paket.dependencies names in its `source`
 // lines (every group's). A directory source is no index, and nuget.org (Paket
 // projects often still name its retired v2 API) is the public index already.
+// Paket asks only the sources the file lists - never this machine's NuGet.Config
+// feeds, nor nuget.org unless it is listed - so a file whose sources (in any
+// group) leave nuget.org out switches it off.
 //
-// Implements: REQ-FSHARP-010
+// Implements: REQ-FSHARP-010, REQ-SUP-063
 func parsePaketSources(data []byte, k sink) {
 	_, sources := nuget.ParseDependencies(data)
+	official := false
 	for _, s := range sources {
+		if _, isOfficial, ok := nugetFeed(s.URL); ok && isOfficial {
+			official = true
+		}
 		addNuGetFeed(s.URL, k)
+	}
+	if len(sources) > 0 && !official {
+		k.off(NuGet)
 	}
 }
 
@@ -936,12 +930,14 @@ func parsePubspecLock(data []byte, add func(ecosystem, url, scope string)) {
 	}
 }
 
-// parseRenvLock reads the repositories renv.lock records (R.Repositories, by name) and
-// scopes each to the packages installed from it. CRAN and its mirrors, Posit Package
-// Manager's included, are the public index and are not recorded.
+// parseRenvLock reads the repositories renv.lock records (R.Repositories), which
+// renv restores from as R asks them (see addRRepositories), and scopes each to the
+// packages installed from it by name. CRAN and its mirrors, Posit Package Manager's
+// included, are the public index and scope nothing; a Bioconductor repository is
+// the Bioconductor index's.
 //
-// Implements: REQ-SUP-015, REQ-SUP-048
-func parseRenvLock(data []byte, add func(ecosystem, url, scope string)) {
+// Implements: REQ-SUP-015, REQ-SUP-048, REQ-SUP-063
+func parseRenvLock(data []byte, k sink) {
 	var doc struct {
 		R struct {
 			Repositories []struct{ Name, URL string }
@@ -952,8 +948,15 @@ func parseRenvLock(data []byte, add func(ecosystem, url, scope string)) {
 		return
 	}
 	repositories := map[string]string{}
+	var listed []string
 	for _, r := range doc.R.Repositories {
 		repositories[r.Name] = r.URL
+		if !strings.Contains(strings.ToLower(r.Name), "bioc") {
+			listed = append(listed, r.URL)
+		}
+	}
+	if len(listed) > 0 {
+		addRRepositories(listed, true, k)
 	}
 	names := slices.Sorted(maps.Keys(doc.Packages))
 	for _, key := range names {
@@ -967,7 +970,7 @@ func parseRenvLock(data []byte, add func(ecosystem, url, scope string)) {
 			if name == "" {
 				name = key
 			}
-			add(CRAN, u, name)
+			k.add(CRAN, u, name)
 		}
 	}
 }
@@ -989,65 +992,144 @@ func renvBioconductor(data []byte) string {
 }
 
 var (
-	rRepositoriesArgument = regexp.MustCompile(`\brepos\s*=\s*`)
-	rURL                  = regexp.MustCompile(`["'](https?://[^"'\s]+)["']`)
+	rRepositoriesArgument = regexp.MustCompile("(?:\\brepos|[\"'`]repos[\"'`])\\s*=\\s*")
+	rArgumentName         = regexp.MustCompile("^(?:[A-Za-z.][A-Za-z0-9._]*|\"[^\"]*\"|'[^']*'|`[^`]*`)\\s*=\\s*")
 )
 
-// parseRprofile reads the literal repository URLs of options(repos = ...) in an R
-// profile: repos = "url" or repos = c(CRAN = "url", internal = "url").
+// parseRprofile reads the repositories of options(repos = ...) in an R profile:
+// repos = "url" or repos = c(CRAN = "url", internal = "url"). R asks every one of
+// them, in order, and no other (see addRRepositories). A value that extends a list
+// it does not spell out - c(getOption("repos"), internal = "url") - adds its
+// literal repositories beside CRAN instead.
 //
 // Implements: REQ-SUP-015, REQ-SUP-048
-func parseRprofile(data []byte, add func(ecosystem, url, scope string)) {
+func parseRprofile(data []byte, k sink) {
 	source := string(data)
 	for _, span := range rRepositoriesArgument.FindAllStringIndex(source, -1) {
-		rest := source[span[1]:]
-		end := len(rest)
-		if strings.HasPrefix(rest, "c(") {
-			depth := 0
-			for i, r := range rest {
-				if r == '(' {
-					depth++
-				} else if r == ')' {
-					if depth--; depth == 0 {
-						end = i + 1
-						break
-					}
-				}
-			}
-		} else if i := strings.IndexAny(rest, ",)\n"); i >= 0 {
-			end = i
+		repositories, complete := rRepositoryValue(source[span[1]:])
+		addRRepositories(repositories, complete, k)
+	}
+}
+
+// rRepositoryValue reads the value of one repos argument: the repositories it names
+// in order, and whether that is all of them - a string, or c() of strings, named or
+// not - rather than a list with parts that are not literals.
+func rRepositoryValue(value string) (repositories []string, complete bool) {
+	if text, _, ok := rString(value); ok {
+		return []string{text}, true
+	}
+	if !strings.HasPrefix(value, "c(") {
+		return nil, false
+	}
+	complete = true
+	rest := value[2:]
+	for {
+		rest = strings.TrimLeft(rest, " \t\r\n")
+		if strings.HasPrefix(rest, ")") {
+			return repositories, complete
 		}
-		for _, m := range rURL.FindAllStringSubmatch(rest[:end], -1) {
-			if !CRANMirror(m[1]) {
-				add(CRAN, m[1], "")
-			}
+		argument := rArgumentName.ReplaceAllString(rest, "")
+		text, after, ok := rString(argument)
+		if !ok {
+			// Not a literal: skip to the next argument at this depth.
+			complete = false
+			after = rSkipArgument(argument)
+		} else {
+			repositories = append(repositories, text)
+		}
+		rest = strings.TrimLeft(after, " \t\r\n")
+		switch {
+		case strings.HasPrefix(rest, ","):
+			rest = rest[1:]
+		case strings.HasPrefix(rest, ")"):
+			return repositories, complete
+		default:
+			return repositories, false // cut off, or not R
 		}
 	}
 }
 
-// parseCabalRepositories reads the repository stanzas of a cabal configuration or
-// cabal.project ("repository name" with an indented "url:"). Hackage itself is the
-// public index and is not recorded; any other repository (a mirror, head.hackage, a
-// company's) serves every package, as cabal asks each configured repository.
-//
-// Implements: REQ-SUP-015, REQ-SUP-049
-func parseCabalRepositories(data []byte, add func(ecosystem, url, scope string)) {
-	in := false
-	for _, line := range strings.Split(string(data), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
-			continue
-		}
-		if line[0] != ' ' && line[0] != '\t' {
-			in = strings.HasPrefix(trimmed, "repository ")
-			continue
-		}
-		if k, v, ok := strings.Cut(trimmed, ":"); in && ok && strings.EqualFold(strings.TrimSpace(k), "url") {
-			if u := strings.TrimSpace(v); u != "" && !HackageItself(u) {
-				add(Hackage, u, "")
+// rString reads the R string literal value starts with, and what follows it.
+func rString(value string) (text, rest string, ok bool) {
+	if value == "" || value[0] != '"' && value[0] != '\'' {
+		return "", value, false
+	}
+	end := strings.IndexByte(value[1:], value[0])
+	if end < 0 {
+		return "", value, false
+	}
+	return value[1 : end+1], value[end+2:], true
+}
+
+// rSkipArgument is what follows one argument of a call: the text from the comma or
+// closing parenthesis that ends it, nesting and strings skipped.
+func rSkipArgument(value string) string {
+	depth := 0
+	for i := 0; i < len(value); i++ {
+		switch character := value[i]; character {
+		case '"', '\'':
+			if end := strings.IndexByte(value[i+1:], character); end >= 0 {
+				i += end + 1
+			}
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth == 0 {
+				return value[i:]
+			}
+			depth--
+		case ',':
+			if depth == 0 {
+				return value[i:]
 			}
 		}
 	}
+	return ""
+}
+
+// addRRepositories records an R repository list as R asks it: available.packages
+// reads every repository, in order, and nothing else, so a complete list is Listed
+// entry by entry and switches CRAN off when it does not name it. CRAN, any of its
+// mirrors and Posit Package Manager's copy, and the "@CRAN@" placeholder, stand for
+// the public index; a Bioconductor repository is left to the Bioconductor index,
+// and a local one (file:) cannot be asked. The repositories of a list that is not
+// complete are asked beside CRAN. When two repositories hold one package, R keeps
+// the higher version (the first on a tie); depphunter asks them in order and takes
+// the first that has it.
+//
+// Implements: REQ-SUP-048, REQ-SUP-063
+func addRRepositories(repositories []string, complete bool, k sink) {
+	cran := false
+	for _, u := range repositories {
+		u = strings.TrimSpace(u)
+		switch {
+		case u == "@CRAN@" || CRANMirror(u):
+			u, cran = publicIndex(CRAN), true
+		case bioconductorHost(u):
+			continue
+		case !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://"):
+			continue
+		}
+		switch {
+		case complete:
+			k.put(CRAN, Source{URL: u, Kind: Listed})
+		case u != publicIndex(CRAN):
+			k.extra(CRAN, u)
+		}
+	}
+	if complete && !cran {
+		k.off(CRAN)
+	}
+}
+
+// bioconductorHost reports whether an R repository is one of Bioconductor's.
+func bioconductorHost(repository string) bool {
+	u, err := url.Parse(strings.TrimSpace(repository))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "bioconductor.org" || strings.HasSuffix(host, ".bioconductor.org")
 }
 
 // podSource matches a Podfile's `source 'url'` line.
@@ -1098,16 +1180,35 @@ func parsePodfileLock(data []byte, add func(ecosystem, url, scope string)) {
 	}
 }
 
-// parseLuaRocksConfig reads the rocks servers of a LuaRocks configuration file
-// (rocks_servers, in order). luarocks.org itself is the public index and is not
-// recorded.
+// parseLuaRocksConfig reads the rocks servers of a LuaRocks configuration file.
+// rocks_servers replaces the default list (luarocks.org and its mirrors) outright,
+// and LuaRocks searches every server on it, so each is Listed in order and
+// luarocks.org is switched off when the list does not name it. The entries of a
+// group are mirrors of one server, the next asked when one fails. LuaRocks keeps
+// the newest version any server has; depphunter asks in order and takes the
+// first server that has an admitted one. A local server (a directory, file:)
+// cannot be asked.
 //
-// Implements: REQ-SUP-052
-func parseLuaRocksConfig(data []byte, add func(ecosystem, url, scope string)) {
-	for _, s := range luarocks.Servers(data) {
-		if !LuaRocksItself(s) {
-			add(LuaRocks, s, "")
+// Implements: REQ-SUP-052, REQ-SUP-063
+func parseLuaRocksConfig(data []byte, k sink) {
+	groups, set := luarocks.Servers(data)
+	if !set {
+		return
+	}
+	public := false
+	for _, group := range groups {
+		for i, u := range group {
+			switch {
+			case LuaRocksItself(u):
+				u, public = publicIndex(LuaRocks), true
+			case !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://"):
+				continue
+			}
+			k.put(LuaRocks, Source{URL: u, Kind: Listed, OnError: i < len(group)-1})
 		}
+	}
+	if !public {
+		k.off(LuaRocks)
 	}
 }
 

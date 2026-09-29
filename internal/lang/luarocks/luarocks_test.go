@@ -146,13 +146,19 @@ repository = {
 	if want := map[string][]string{"penlight": {"1.14.0-3"}, "lua-cjson": {"2.1.0.10-1"}}; !reflect.DeepEqual(m, want) {
 		t.Errorf("manifest %v", m)
 	}
-	s := Servers([]byte(`rocks_servers = {
+	s, set := Servers([]byte(`rocks_servers = {
    { "https://rocks.corp.test/", "https://mirror.corp.test" },
    "https://luarocks.org",
 }
 local_by_default = true`))
-	if want := []string{"https://rocks.corp.test/", "https://mirror.corp.test", "https://luarocks.org"}; !reflect.DeepEqual(s, want) {
-		t.Errorf("servers %v", s)
+	if want := [][]string{{"https://rocks.corp.test/", "https://mirror.corp.test"}, {"https://luarocks.org"}}; !set || !reflect.DeepEqual(s, want) {
+		t.Errorf("servers %v (set %v)", s, set)
+	}
+	if s, set := Servers([]byte(`rocks_servers = {}`)); !set || len(s) != 0 {
+		t.Errorf("an empty list: %v (set %v)", s, set)
+	}
+	if _, set := Servers([]byte(`local_by_default = true`)); set {
+		t.Error("a file without rocks_servers sets it")
 	}
 }
 

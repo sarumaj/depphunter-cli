@@ -228,3 +228,67 @@ func (m Machine) ConanHome() string {
 	}
 	return ""
 }
+
+// ---------------------------------------------------------------- cabal and LuaRocks
+
+// CabalConfig is the configuration file cabal-install reads: `CABAL_CONFIG`, else
+// config in `CABAL_DIR`, else ~/.cabal/config when ~/.cabal exists and the XDG
+// file does not (an installation from before cabal 3.10), else config in the
+// cabal directory of $XDG_CONFIG_HOME or ~/.config. On Windows both are
+// %APPDATA%\cabal\config.
+//
+// Implements: REQ-SUP-064
+func (m Machine) CabalConfig() string {
+	if name := m.Environment("CABAL_CONFIG"); name != "" {
+		return name
+	}
+	if directory := m.Environment("CABAL_DIR"); directory != "" {
+		return filepath.Join(directory, "config")
+	}
+	if m.GOOS == "windows" {
+		if appData := m.Environment("APPDATA"); appData != "" {
+			return filepath.Join(appData, "cabal", "config")
+		}
+	}
+	xdg := join(m.xdgConfigHome(), "cabal", "config")
+	if legacy := join(m.Home, ".cabal"); legacy != "" && isDirectory(legacy) && !isFile(xdg) {
+		return filepath.Join(legacy, "config")
+	}
+	return xdg
+}
+
+// luaVersions are the Lua versions whose LuaRocks configuration is read: which one
+// a project's rocks are installed for is not known here.
+var luaVersions = []string{"5.1", "5.2", "5.3", "5.4"}
+
+// LuaRocksConfigs are the user configuration files LuaRocks reads, one per Lua
+// version: the file `LUAROCKS_CONFIG_5_x`, else `LUAROCKS_CONFIG`, names when it
+// exists; else config-5.x.lua in $XDG_CONFIG_HOME/luarocks (~/.config) when that
+// exists, else in ~/.luarocks; on Windows in %APPDATA%\luarocks. Each file
+// replaces the rocks_servers of the system's.
+//
+// Implements: REQ-SUP-064
+func (m Machine) LuaRocksConfigs() []string {
+	var out []string
+	for _, version := range luaVersions {
+		name := "config-" + version + ".lua"
+		candidates := []string{
+			m.Environment("LUAROCKS_CONFIG_" + strings.ReplaceAll(version, ".", "_")),
+			m.Environment("LUAROCKS_CONFIG"),
+		}
+		if appData := m.Environment("APPDATA"); m.GOOS == "windows" && appData != "" {
+			candidates = append(candidates, filepath.Join(appData, "luarocks", name))
+		} else {
+			candidates = append(candidates, join(m.xdgConfigHome(), "luarocks", name), join(m.Home, ".luarocks", name))
+		}
+		for _, candidate := range candidates {
+			if candidate != "" && isFile(candidate) {
+				if !slices.Contains(out, candidate) {
+					out = append(out, candidate)
+				}
+				break
+			}
+		}
+	}
+	return out
+}

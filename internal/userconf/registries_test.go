@@ -196,3 +196,71 @@ func TestConanHome(t *testing.T) {
 		t.Errorf("no home: %s", got)
 	}
 }
+
+// cabal-install reads one configuration file: CABAL_CONFIG, else CABAL_DIR's, else
+// ~/.cabal/config while ~/.cabal exists and the XDG one does not, else the XDG one;
+// %APPDATA%\cabal\config on Windows.
+//
+// Verifies: REQ-SUP-064
+func TestCabalConfig(t *testing.T) {
+	home, xdg, appData := t.TempDir(), t.TempDir(), t.TempDir()
+	if got, want := machine(t, home, "linux", nil).CabalConfig(), filepath.Join(home, ".config", "cabal", "config"); got != want {
+		t.Errorf("default: got %s, want %s", got, want)
+	}
+	for _, testCase := range []struct {
+		goos      string
+		variables map[string]string
+		want      string
+	}{
+		{"linux", map[string]string{"CABAL_CONFIG": "/etc/cabal.config", "CABAL_DIR": "/opt/cabal"}, "/etc/cabal.config"},
+		{"linux", map[string]string{"CABAL_DIR": "/opt/cabal"}, filepath.Join("/opt/cabal", "config")},
+		{"windows", map[string]string{"APPDATA": appData}, filepath.Join(appData, "cabal", "config")},
+		{"linux", map[string]string{"XDG_CONFIG_HOME": xdg}, filepath.Join(xdg, "cabal", "config")},
+	} {
+		if got := machine(t, home, testCase.goos, testCase.variables).CabalConfig(); got != testCase.want {
+			t.Errorf("%s %v: got %s, want %s", testCase.goos, testCase.variables, got, testCase.want)
+		}
+	}
+	// ~/.cabal from an older installation wins until the XDG file exists.
+	touch(t, filepath.Join(home, ".cabal", "config"))
+	if got, want := machine(t, home, "linux", nil).CabalConfig(), filepath.Join(home, ".cabal", "config"); got != want {
+		t.Errorf("legacy: got %s, want %s", got, want)
+	}
+	touch(t, filepath.Join(home, ".config", "cabal", "config"))
+	if got, want := machine(t, home, "linux", nil).CabalConfig(), filepath.Join(home, ".config", "cabal", "config"); got != want {
+		t.Errorf("both: got %s, want %s", got, want)
+	}
+	if got := machine(t, "", "linux", nil).CabalConfig(); got != "" {
+		t.Errorf("no home: %s", got)
+	}
+}
+
+// LuaRocks reads, per Lua version, the file LUAROCKS_CONFIG_5_x or
+// LUAROCKS_CONFIG names when it exists, else the XDG one, else ~/.luarocks's;
+// %APPDATA%\luarocks's on Windows.
+//
+// Verifies: REQ-SUP-064
+func TestLuaRocksConfigs(t *testing.T) {
+	home, appData := t.TempDir(), t.TempDir()
+	named := filepath.Join(t.TempDir(), "luarocks.lua")
+	touch(t, named)
+	touch(t, filepath.Join(home, ".luarocks", "config-5.1.lua"))
+	touch(t, filepath.Join(home, ".luarocks", "config-5.4.lua"))
+	touch(t, filepath.Join(home, ".config", "luarocks", "config-5.4.lua"))
+	touch(t, filepath.Join(appData, "luarocks", "config-5.3.lua"))
+	for _, testCase := range []struct {
+		goos      string
+		variables map[string]string
+		want      []string
+	}{
+		{"linux", nil, []string{filepath.Join(home, ".luarocks", "config-5.1.lua"), filepath.Join(home, ".config", "luarocks", "config-5.4.lua")}},
+		{"linux", map[string]string{"LUAROCKS_CONFIG": named}, []string{named}},
+		{"linux", map[string]string{"LUAROCKS_CONFIG_5_4": named, "LUAROCKS_CONFIG": filepath.Join(home, "missing.lua")},
+			[]string{filepath.Join(home, ".luarocks", "config-5.1.lua"), named}},
+		{"windows", map[string]string{"APPDATA": appData}, []string{filepath.Join(appData, "luarocks", "config-5.3.lua")}},
+	} {
+		if got := machine(t, home, testCase.goos, testCase.variables).LuaRocksConfigs(); !reflect.DeepEqual(got, testCase.want) {
+			t.Errorf("%s %v: got %v, want %v", testCase.goos, testCase.variables, got, testCase.want)
+		}
+	}
+}

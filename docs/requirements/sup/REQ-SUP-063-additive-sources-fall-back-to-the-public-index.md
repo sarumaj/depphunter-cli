@@ -14,29 +14,39 @@ verification:
 The system **shall** model each unscoped index source as either replacing the
 ecosystem's public default or being asked beside it, as the package manager
 does: pip's `extra-index-url` (`PIP_EXTRA_INDEX_URL`, `pip.conf`,
-requirements files), a supplemental Poetry source, a uv index that is not
+requirements files), a uv index that is not
 the default, a Pipfile source after the first and a PDM source not named
 `pypi`, the repositories of a POM, a Gradle script, an sbt build, a
 Clojure manifest, an active Maven settings profile and the Gradle, Clojure,
 Leiningen and sbt user configuration, a Maven mirror of a repository other
 than `central`, `*` and `external:*`,
-Composer repositories and NuGet feeds are asked beside it; `index-url`, a
+Composer repositories, NuGet feeds (Paket's included), cabal repositories
+other than Hackage and the literal repositories of an R `repos` value that
+extends one it does not spell out are asked beside it; `index-url`, a
 default uv index, a Pipfile's first source, a PDM source named `pypi`, a
 Maven mirror of `central`, a
 Maven mirror of `*` (which also stands in for every repository asked beside
 Central), Cargo's `replace-with` and every other ecosystem's unscoped source
 replace it (so does a Maven settings profile or Clojure repository with the
-id `central`); `GOPROXY`, `COURSIER_REPOSITORIES`, sbt's repositories file
-under `-Dsbt.override.build.repos=true` and Poetry's default and primary
-sources are ordered lists that replace it.
+id `central`, and a cabal repository named `hackage.haskell.org`);
+`GOPROXY`, `COURSIER_REPOSITORIES`, sbt's repositories file under
+`-Dsbt.override.build.repos=true`, Poetry's default and primary sources, R's
+`repos` option, `renv.lock`'s repositories and `RENV_CONFIG_REPOS_OVERRIDE`
+([REQ-SUP-048](REQ-SUP-048-cran-metadata.md)), cabal's
+`active-repositories` ([REQ-SUP-049](REQ-SUP-049-hackage-package-descriptions.md))
+and LuaRocks' `rocks_servers`
+([REQ-SUP-052](REQ-SUP-052-luarocks-rockspecs.md)) are ordered lists that
+replace it. Poetry's supplemental (and legacy secondary) sources are asked
+after the primary index.
 
 For each package the index client **shall** ask the sources beside the public
 default first, in the order found, then the public default or the source that
 replaces it (every entry of an ordered list, `GOPROXY`'s or Poetry's, in
-order), and **shall** move on to the
+order), then the supplemental sources, and **shall** move on to the
 next index only when one answers that it does not have the package (HTTP 404
 or 410, or an answer that does not list it), or after any failure of a
-`GOPROXY` entry followed by `|`. Any other failure **shall** end the question.
+`GOPROXY` entry followed by `|` or of a LuaRocks mirror with another after it
+in its group. Any other failure **shall** end the question.
 
 A scoped source covering the package, the NuGet sources a
 `packageSourceMapping` pattern maps the package to
@@ -55,8 +65,13 @@ pattern **shall not** be asked of a public index at any position of the list.
 
 Composer's `"packagist.org": false`, a NuGet configuration that leaves
 nuget.org out (a `<clear/>` no closer entry for nuget.org follows, or a
-disabled nuget.org), and a set `GOPROXY` **shall** switch the public default off;
-`GOPROXY` entries after `direct` or `off` are not reached.
+disabled nuget.org), a `paket.dependencies` whose sources leave nuget.org out
+([REQ-FSHARP-010](../fsharp/REQ-FSHARP-010-paket-feeds.md)), a Poetry
+project with a primary source or a source named PyPI, an R repository list
+without CRAN, a cabal configuration listing repositories without Hackage, a
+`rocks_servers` list without luarocks.org, and a set `GOPROXY` **shall**
+switch the public default off; `GOPROXY` entries after `direct` or `off` are
+not reached.
 
 ## Rationale
 
@@ -95,12 +110,16 @@ plants.
 9. A package matching a private pattern that the extra index lacks is not
    asked of the public index.
 10. Of two Poetry primary sources, the second answers what the first lacks,
-    and PyPI is not asked.
+    and PyPI is not asked; a supplemental source is asked after them (after
+    PyPI when no source is primary).
+11. Of two R repositories, two cabal repositories (a company one and Hackage)
+    and two rocks servers, the second answers what the first lacks.
 
 ## Notes
 
 Before anything is asked, a package is attributed to its scoped source, its
 registry, the replacing source or the public default; with `--online` the map
-then shows the index that answered (Client.Located). Repository sources of
-other ecosystems (R `repos`, cabal repositories, LuaRocks `rocks_servers`,
-Podfile sources) still replace the public default.
+then shows the index that answered (Client.Located). Where a package manager
+merges the versions of several indexes (R keeps the highest, cabal and
+LuaRocks the newest, Poetry's primary sources are all searched), the first
+index in the order above that has the package answers.

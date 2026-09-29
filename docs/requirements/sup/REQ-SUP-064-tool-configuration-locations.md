@@ -76,6 +76,14 @@ tool looks for it, reading the variables from the machine's environment only:
 - Dart: `pub-tokens.json` in `%APPDATA%\dart` on Windows,
   `~/Library/Application Support/dart` on macOS, else
   `$XDG_CONFIG_HOME/dart` (`~/.config/dart`).
+- cabal: the one configuration file cabal-install reads: `CABAL_CONFIG`,
+  else `config` in `CABAL_DIR`, else `~/.cabal/config` while `~/.cabal`
+  exists and the XDG file does not, else `$XDG_CONFIG_HOME/cabal/config`
+  (`~/.config/cabal/config`); `%APPDATA%\cabal\config` on Windows.
+- LuaRocks: per Lua version (5.1 to 5.4), the file `LUAROCKS_CONFIG_5_x`, else
+  `LUAROCKS_CONFIG`, names when it exists; else `config-5.x.lua` in
+  `$XDG_CONFIG_HOME/luarocks` (`~/.config/luarocks`) when it exists, else in
+  `~/.luarocks`; in `%APPDATA%\luarocks` on Windows.
 - Hex: `HEX_API_URL`, then `HEX_API`, then the `api_url` of `hex.config` in
   `HEX_HOME`, else `$XDG_CONFIG_HOME/hex` (`~/.config/hex`) under `MIX_XDG=1`
   or `true`, else `~/.hex`. rebar3's Hex repositories: the `{hex, [{repos,
@@ -181,6 +189,11 @@ fixed `$HOME` paths missed the feed the machine actually uses.
     `%AppData%` on Windows; PSResourceGet's and PowerShellGet's repository
     files follow `%LOCALAPPDATA%`, macOS's application support directory,
     `XDG_DATA_HOME` and `XDG_CACHE_HOME`.
+19. cabal's configuration follows `CABAL_CONFIG`, `CABAL_DIR`, an existing
+    `~/.cabal` without an XDG file, `XDG_CONFIG_HOME` and `%APPDATA%`;
+    LuaRocks' follows `LUAROCKS_CONFIG_5_x` over `LUAROCKS_CONFIG` (a named
+    file that does not exist falling through), `XDG_CONFIG_HOME` and
+    `%APPDATA%`.
 
 ## Notes
 
@@ -190,4 +203,6 @@ and the credential store alike. Gradle's installation-wide `init.d` and
 `sys.prefix/pip.conf` is not read (the interpreter is not known), nor npm's
 built-in prefix guessed. dub's settings beside its executable
 (`../etc/dub`) and a system `dubHome` are not followed; Roswell's Quicklisp
-(`~/.roswell/lisp/quicklisp`) is not read.
+(`~/.roswell/lisp/quicklisp`) is not read. LuaRocks' system-wide
+configuration (under its installation prefix) and R's `Rprofile.site` of the
+R installation are not read.

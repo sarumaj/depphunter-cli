@@ -600,7 +600,11 @@ func (c *Client) cranPackage(ctx context.Context, index string, t lang.Target) (
 		if err != nil {
 			return nil, err
 		}
-		return packages[t.Package], nil
+		dependencies, ok := packages[t.Package]
+		if !ok {
+			return nil, errAbsent // the next repository R lists may have it
+		}
+		return dependencies, nil
 	}
 	base := strings.TrimRight(crandbAPI, "/") + "/" + url.PathEscape(t.Package)
 	var body []byte
@@ -773,7 +777,7 @@ func (c *Client) hackagePackage(ctx context.Context, index string, t lang.Target
 		}
 	}
 	if version == "" {
-		return nil, nil
+		return nil, errAbsent // no normal release here: another repository may have one
 	}
 	id := url.PathEscape(t.Package + "-" + version)
 	body, err = c.accept(ctx, base+id+"/"+url.PathEscape(t.Package)+".cabal", "text/plain")
@@ -1519,7 +1523,7 @@ func (c *Client) luarocksRock(ctx context.Context, index string, t lang.Target) 
 			constraint = "== " + version
 		}
 		if version = luarocks.Newest(versions[strings.ToLower(t.Package)], constraint); version == "" {
-			return nil, nil // not on this server, or nothing it serves is allowed
+			return nil, errAbsent // not on this server, or nothing it serves is allowed: the next may have it
 		}
 	}
 	body, err := c.accept(ctx, base+"/"+url.PathEscape(strings.ToLower(t.Package)+"-"+version)+".rockspec", "text/plain, */*")

@@ -42,10 +42,9 @@ config: `BUNDLE_USER_CONFIG`, `$BUNDLE_USER_HOME/config` or
 `~/.gemrc`, pub's `PUB_HOSTED_URL`, the Hex API of `HEX_API_URL`, `HEX_API`
 or the `api_url` of Hex's `hex.config`, R's
 `RENV_CONFIG_REPOS_OVERRIDE` and the `options(repos = ...)` of `~/.Rprofile`
-and `R_PROFILE_USER`, and the `repository` stanzas of cabal's configuration
-(`CABAL_CONFIG`, `$CABAL_DIR/config`, `~/.config/cabal/config`,
-`~/.cabal/config`), and the `rocks_servers` of LuaRocks' configuration
-(`LUAROCKS_CONFIG`, `~/.luarocks/config-5.x.lua`).
+and `R_PROFILE_USER`, the `repository` stanzas and `active-repositories` of the
+configuration file cabal reads, and the `rocks_servers` of LuaRocks' user
+configuration.
 
 The system **shall** read index configuration from the repository: `.npmrc`,
 `.yarnrc.yml` (or the name `YARN_RC_FILENAME` gives it), `.yarnrc`,
@@ -71,12 +70,12 @@ it; a repository's `.bundle/config` is not read,
 the GEM remotes of
 `Gemfile.lock`, the `hosted:` servers of a `pubspec.yaml` or
 `pubspec_overrides.yaml` (each serving its package), the servers other than
-pub.dev that `pubspec.lock` resolved packages from, the repositories other than
-CRAN of `renv.lock` (each serving the packages recorded from it), the
-`options(repos = ...)` of `.Rprofile` and `Rprofile.site`, the `repository`
-stanzas other than Hackage of `cabal.project` and `cabal.project.local`, and the
-`rocks_servers` other than luarocks.org of a project's
-`.luarocks/config-5.x.lua`.
+pub.dev that `pubspec.lock` resolved packages from, the repositories of
+`renv.lock` (the ones other than CRAN also serving the packages recorded from
+them), the `options(repos = ...)` of `.Rprofile` and `Rprofile.site`, the
+`repository` stanzas other than Hackage and the `active-repositories` of
+`cabal.project` and `cabal.project.local`, and the `rocks_servers` of a
+project's `.luarocks/config-5.x.lua`.
 
 ## Rationale
 
