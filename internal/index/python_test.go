@@ -66,35 +66,48 @@ explicit = true
 }
 
 // A directory's uv.toml replaces the [tool.uv] indexes of the pyproject.toml beside
-// it; that pyproject.toml's [tool.uv.sources] still pins, against uv.toml's
-// indexes or this machine's (an index this machine names staying trusted).
-// Without uv.toml, or under UV_NO_CONFIG, the pyproject.toml's indexes are read.
+// it. That pyproject.toml's [tool.uv.sources] still pins, as uv lowers it: against
+// the indexes uv's variables name (such an index staying trusted), then the
+// pyproject.toml's own [[tool.uv.index]] entries - never a uv.toml's, the user's
+// included, which uv refuses to resolve a pin against. Without uv.toml, or under
+// UV_NO_CONFIG, the pyproject.toml's indexes are read.
 //
 // Verifies: REQ-SUP-066
 func TestUVTomlOverPyproject(t *testing.T) {
 	home := t.TempDir()
 	put(t, filepath.Join(home, ".config", "uv", "uv.toml"), "[[index]]\nname = \"torch\"\nurl = \"https://torch.corp/whl\"\nexplicit = true\n")
 	files := write(t, map[string]string{
-		"svc/uv.toml": "[[index]]\nname = \"corp\"\nurl = \"https://uvtoml.corp/simple\"\ndefault = true\n",
-		"svc/pyproject.toml": "[[tool.uv.index]]\nname = \"corp\"\nurl = \"https://ignored.corp/simple\"\n\n" +
-			"[tool.uv.sources]\nacme = { index = \"corp\" }\ntorch = { index = \"torch\" }\nnone = { index = \"missing\" }\n",
+		"svc/uv.toml": "[[index]]\nname = \"corp\"\nurl = \"https://uvtoml.corp/simple\"\ndefault = true\n\n" +
+			"[[index]]\nname = \"only-in-uv-toml\"\nurl = \"https://only.corp/simple\"\n",
+		"svc/pyproject.toml": "[[tool.uv.index]]\nname = \"corp\"\nurl = \"https://masked.corp/simple\"\n\n" +
+			"[tool.uv.sources]\nacme = { index = \"corp\" }\ntorch = { index = \"torch\" }\nnone = { index = \"missing\" }\n" +
+			"other = { index = \"only-in-uv-toml\" }\nshadowed = { index = \"env\" }\n\n" +
+			"[[tool.uv.index]]\nname = \"env\"\nurl = \"https://shadowed.corp/simple\"\n",
 		"lib/pyproject.toml": "[[tool.uv.index]]\nname = \"lib\"\nurl = \"https://lib.corp/simple\"\n",
 	})
-	c := discoverOn(home, "linux", nil)
+	c := discoverOn(home, "linux", map[string]string{"UV_INDEX": "env=https://env.corp/simple"})
 	c.project(files)
 	got := strings.Join(sources(c, PyPI), ", ")
-	want := "https://lib.corp/simple?, acme https://uvtoml.corp/simple?, torch https://torch.corp/whl, https://uvtoml.corp/simple?"
+	want := "https://env.corp/simple, https://lib.corp/simple?, acme https://masked.corp/simple?, shadowed https://env.corp/simple, " +
+		"https://uvtoml.corp/simple?, https://only.corp/simple?"
 	if got != want {
 		t.Errorf("sources\n got %s\nwant %s", got, want)
 	}
-	if got := order(c, PyPI, "torch", ""); !slices.Equal(got, []string{"https://torch.corp/whl"}) {
-		t.Errorf("torch asked of %v", got)
+	for packageName, wantOrder := range map[string][]string{
+		"torch":    {"https://env.corp/simple", "https://lib.corp/simple?", "https://only.corp/simple?", "https://uvtoml.corp/simple?"},
+		"acme":     {"https://masked.corp/simple?"},
+		"shadowed": {"https://env.corp/simple"},
+	} {
+		if got := order(c, PyPI, packageName, ""); !slices.Equal(got, wantOrder) {
+			t.Errorf("%s asked of %v, want %v", packageName, got, wantOrder)
+		}
 	}
 
 	c = discoverOn(home, "linux", map[string]string{"UV_NO_CONFIG": "1"})
 	c.project(files)
 	got = strings.Join(sources(c, PyPI), ", ")
-	want = "https://lib.corp/simple?, https://ignored.corp/simple?, acme https://ignored.corp/simple?"
+	want = "https://lib.corp/simple?, https://masked.corp/simple?, https://shadowed.corp/simple?, acme https://masked.corp/simple?, " +
+		"shadowed https://shadowed.corp/simple?"
 	if got != want {
 		t.Errorf("UV_NO_CONFIG\n got %s\nwant %s", got, want)
 	}

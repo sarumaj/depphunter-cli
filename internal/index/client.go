@@ -74,6 +74,8 @@ type Client struct {
 	// conanTokens are the tokens Conan remotes handed out for this machine's
 	// logins, asked for once per remote (see conanGet).
 	conanTokens memo[string]
+	// flatPages are the files of each Python flat index, read once (see pypiFlat).
+	flatPages memo[[]simpleFile]
 	// qlSystems is what each Quicklisp dist's system index lists: one request
 	// per dist version rather than one per project.
 	qlSystems map[string]*qlIndex
@@ -238,6 +240,12 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 		c.locate(t, untrusted, false)
 		c.report(l)
 		return nil
+	}
+	// Implements: REQ-SUP-066, REQ-TRC-017
+	if t.Ecosystem == PyPI && len(asked) > 1 {
+		if why := c.config.pythonMerges(); why != "" {
+			c.note(trace.NoteMerged, why)
+		}
 	}
 	if t.Ecosystem == Bazel {
 		for _, k := range asked {
@@ -789,10 +797,14 @@ func (c *Client) npmPackage(ctx context.Context, index string, t lang.Target) ([
 
 // pypiDistribution reads requires-dist from the JSON API. An index that has no JSON
 // API - it answers 404, or something that is not JSON - is read through the Simple
-// API instead (pypiSimple); PyPI itself has the JSON API, and is not asked twice.
+// API instead (pypiSimple); PyPI itself has the JSON API, and is not asked twice. A
+// flat index is read as the page or directory of files it is (pypiFlat).
 //
 // Implements: REQ-SUP-023, REQ-SUP-067
 func (c *Client) pypiDistribution(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
+	if page, local := c.config.pythonFlat(index); page != "" {
+		return c.pypiFlat(ctx, page, local, t)
+	}
 	host := strings.TrimSuffix(strings.TrimSuffix(index, "/simple"), "/simple/")
 	url := fmt.Sprintf("%s/pypi/%s/json", host, t.Package)
 	if lang.Pinned(t.Version) {

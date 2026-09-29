@@ -15,11 +15,11 @@ The system **shall** model each unscoped index source as either replacing the
 ecosystem's public default or being asked beside it, as the package manager
 does: pip's `extra-index-url` (`PIP_EXTRA_INDEX_URL`, `pip.conf`,
 requirements files), a uv index that is not
-the default, a Pipfile source after the first and a PDM source not named
-`pypi`, the repositories of a POM, a Gradle script, an sbt build, a
-Clojure manifest, an active Maven settings profile and the Gradle, Clojure,
-Leiningen and sbt user configuration, a Maven mirror of a repository other
-than `central`, `*` and `external:*`,
+the default and a uv `find-links` location, a Pipfile source after the first
+and a PDM source not named `pypi`, the repositories of a POM, a Gradle
+script, an sbt build, a Clojure manifest, an active Maven settings profile
+and the Gradle, Clojure, Leiningen and sbt user configuration, a Maven
+mirror of a repository other than `central`, `*` and `external:*`,
 Composer repositories, NuGet feeds (Paket's included), cabal repositories
 other than Hackage and the literal repositories of an R `repos` value that
 extends one it does not spell out are asked beside it; `index-url`, a
@@ -36,8 +36,11 @@ id `central`, and a cabal repository named `hackage.haskell.org`);
 `active-repositories` ([REQ-SUP-049](REQ-SUP-049-hackage-package-descriptions.md))
 and LuaRocks' `rocks_servers`
 ([REQ-SUP-052](REQ-SUP-052-luarocks-rockspecs.md)) are ordered lists that
-replace it. Poetry's supplemental (and legacy secondary) sources are asked
-after the primary index.
+replace it. Poetry's supplemental (and legacy secondary) sources, and the PDM
+sources after PyPI under `respect-source-order`, are asked after the primary
+index. A repository's uv indexes are asked before this machine's `uv.toml`
+ones, as uv reads them
+([REQ-SUP-066](REQ-SUP-066-python-tool-indexes.md)).
 
 For each package the index client **shall** ask the sources beside the public
 default first, in the order found, then the public default or the source that
@@ -48,7 +51,8 @@ or 410, or an answer that does not list it), or after any failure of a
 `GOPROXY` entry followed by `|` or of a LuaRocks mirror with another after it
 in its group. Any other failure **shall** end the question.
 
-A scoped source covering the package, the NuGet sources a
+A scoped source covering the package, the PDM sources that include it
+(`include_packages`, all of them in order), the NuGet sources a
 `packageSourceMapping` pattern maps the package to
 ([REQ-SUP-065](REQ-SUP-065-nuget-configuration-layers-and-source-mapping.md)),
 a Cargo alternative registry, and the
@@ -62,6 +66,10 @@ A source only the repository names and that nobody vouched for **shall** be
 skipped rather than asked, and a package that no index the client may ask has
 **shall** be attributed to it and marked. A package matching a private
 pattern **shall not** be asked of a public index at any position of the list.
+
+A PDM source that excludes a package (`exclude_packages`) **shall not** be
+asked for it; when it is the source replacing PyPI, PyPI **shall not** be
+asked for it either.
 
 Composer's `"packagist.org": false`, a NuGet configuration that leaves
 nuget.org out (a `<clear/>` no closer entry for nuget.org follows, or a
@@ -121,5 +129,7 @@ Before anything is asked, a package is attributed to its scoped source, its
 registry, the replacing source or the public default; with `--online` the map
 then shows the index that answered (Client.Located). Where a package manager
 merges the versions of several indexes (R keeps the highest, cabal and
-LuaRocks the newest, Poetry's primary sources are all searched), the first
-index in the order above that has the package answers.
+LuaRocks the newest, Poetry's primary sources are all searched, PDM without
+`respect-source-order`, uv under `unsafe-best-match` or with `find-links`),
+the first index in the order above that has the package answers; for the
+Python tools the report says so.

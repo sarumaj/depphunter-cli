@@ -47,9 +47,22 @@ type Index struct {
 	Name, URL string
 	Kind      Kind
 	// Include are PDM's include_packages patterns: the packages matching one are
-	// asked of this index alone.
-	Include            []string
+	// asked of the indexes that include them alone. Exclude are its
+	// exclude_packages patterns: the packages matching one are never asked of this
+	// index (unless it includes them too).
+	Include, Exclude   []string
 	Username, Password string
+	// Flat is a flat index: an HTML page or a local directory listing
+	// distribution files, not the Simple API (uv's format = "flat", its
+	// find-links, UV_FIND_LINKS).
+	Flat bool
+	// FindLinks marks a flat location of uv's find-links (or UV_FIND_LINKS),
+	// whose files uv adds to what every index has rather than asking it in turn.
+	FindLinks bool
+	// File is the uv.toml this machine's index was read from ("" for one a
+	// variable names): uv puts a project's own indexes before those of the user's
+	// and the system's files.
+	File string
 }
 
 // Settings are what one file says: its indexes in order, and the index each pinned
@@ -59,8 +72,15 @@ type Settings struct {
 	Pins    map[string]string
 	// NoImplicitPyPI says PyPI is asked only where an index of the file names it:
 	// Poetry drops its implicit PyPI source when the file declares a primary
-	// source or PyPI itself.
+	// source or PyPI itself, uv when an explicit index is also the default.
 	NoImplicitPyPI bool
+	// IndexStrategy is uv's index-strategy as written: first-index (uv's
+	// default), unsafe-first-match or unsafe-best-match; "" when not set.
+	IndexStrategy string
+	// PDMSources says the file declares PDM sources, and RespectSourceOrder that
+	// PDM asks them in order ([tool.pdm.resolution] respect-source-order) rather
+	// than merging the versions they all have.
+	PDMSources, RespectSourceOrder bool
 }
 
 // Named is the index of the given name ("" and false for none). uv and PDM compare
@@ -102,7 +122,7 @@ func EnvironmentName(name string) string {
 // ---------------------------------------------------------------- uv
 
 type uvIndex struct {
-	Name, URL         string
+	Name, URL, Format string
 	Default, Explicit bool
 }
 
@@ -110,15 +130,19 @@ type uvOptions struct {
 	Index         []uvIndex
 	IndexURL      string   `toml:"index-url"`
 	ExtraIndexURL []string `toml:"extra-index-url"`
+	FindLinks     []string `toml:"find-links"`
+	IndexStrategy string   `toml:"index-strategy"`
 	Sources       map[string]any
 }
 
 // UV reads uv's index settings out of a uv.toml, or (pyproject) out of the
 // [tool.uv] table of a pyproject.toml: the [[index]] entries in order (default =
-// true replacing PyPI, explicit = true serving only the packages pinned to it), the
-// legacy index-url and extra-index-url, and - in a pyproject.toml - the packages
-// [tool.uv.sources] pins to an index by name ({ index = "name" }, or a list of such
-// entries with markers).
+// true replacing PyPI, explicit = true serving only the packages pinned to it, both
+// doing both, format = "flat" a flat index), the legacy index-url and
+// extra-index-url, the find-links locations (flat, asked beside PyPI),
+// index-strategy, and - in a pyproject.toml - the packages [tool.uv.sources] pins
+// to an index by name ({ index = "name" }, or a list of such entries with
+// markers).
 func UV(data []byte, pyproject bool) (Settings, bool) {
 	var o uvOptions
 	if pyproject {
@@ -130,7 +154,7 @@ func UV(data []byte, pyproject bool) (Settings, bool) {
 	} else if _, err := toml.Decode(string(data), &o); err != nil {
 		return Settings{}, false
 	}
-	var s Settings
+	s := Settings{IndexStrategy: strings.ToLower(strings.TrimSpace(o.IndexStrategy))}
 	if o.IndexURL != "" {
 		s.Indexes = append(s.Indexes, Index{URL: o.IndexURL, Kind: Default})
 	}
@@ -139,13 +163,17 @@ func UV(data []byte, pyproject bool) (Settings, bool) {
 		switch {
 		case i.Explicit:
 			kind = Explicit
+			s.NoImplicitPyPI = s.NoImplicitPyPI || i.Default
 		case i.Default:
 			kind = Default
 		}
-		s.Indexes = append(s.Indexes, Index{Name: i.Name, URL: i.URL, Kind: kind})
+		s.Indexes = append(s.Indexes, Index{Name: i.Name, URL: i.URL, Kind: kind, Flat: strings.EqualFold(i.Format, "flat")})
 	}
 	for _, u := range o.ExtraIndexURL {
 		s.Indexes = append(s.Indexes, Index{URL: u})
+	}
+	for _, u := range o.FindLinks {
+		s.Indexes = append(s.Indexes, Index{URL: u, Flat: true, FindLinks: true})
 	}
 	if !pyproject {
 		return s, true
@@ -176,7 +204,8 @@ func UV(data []byte, pyproject bool) (Settings, bool) {
 
 // UVEnvironment reads uv's index variables, the first to win first: UV_DEFAULT_INDEX (or
 // the legacy UV_INDEX_URL) replacing PyPI, then the space-separated UV_INDEX (and
-// the legacy UV_EXTRA_INDEX_URL) asked beside it. An entry of either may be
+// the legacy UV_EXTRA_INDEX_URL) asked beside it, then the comma-separated
+// UV_FIND_LINKS (flat, asked beside it). An entry of the first two may be
 // name=url.
 func UVEnvironment(environment func(string) string) []Index {
 	var out []Index
@@ -196,22 +225,69 @@ func UVEnvironment(environment func(string) string) []Index {
 	add(environment("UV_INDEX_URL"), Default)
 	add(environment("UV_INDEX"), Extra)
 	add(environment("UV_EXTRA_INDEX_URL"), Extra)
+	for _, e := range strings.Split(environment("UV_FIND_LINKS"), ",") {
+		if e = strings.TrimSpace(e); e != "" {
+			out = append(out, Index{URL: e, Flat: true, FindLinks: true})
+		}
+	}
 	return out
 }
 
 // UVMachine are the indexes this machine's uv configuration names, the one
-// that wins first: UV_DEFAULT_INDEX, UV_INDEX_URL, UV_INDEX and UV_EXTRA_INDEX_URL,
-// then the user's uv.toml and the system's (userconf UVConfigFiles).
+// that wins first: UV_DEFAULT_INDEX, UV_INDEX_URL, UV_INDEX, UV_EXTRA_INDEX_URL and
+// UV_FIND_LINKS, then the user's uv.toml and the system's (userconf
+// UVConfigFiles), each with its File. A flat index given as a relative path is
+// taken relative to the file that names it, or for a variable to the analyzed
+// directory (m.Directory; left out without one).
 func UVMachine(m userconf.Machine) []Index {
-	out := UVEnvironment(m.Environment)
+	var out []Index
+	for _, i := range UVEnvironment(m.Environment) {
+		if i.URL = localPath(i.URL, i.Flat, m.Directory); i.URL != "" {
+			out = append(out, i)
+		}
+	}
 	for _, f := range m.UVConfigFiles() {
 		if data, err := os.ReadFile(f); err == nil {
 			if s, ok := UV(data, false); ok {
-				out = append(out, s.Indexes...)
+				for _, i := range s.Indexes {
+					i.File = f
+					if i.URL = localPath(i.URL, i.Flat, filepath.Dir(f)); i.URL != "" {
+						out = append(out, i)
+					}
+				}
 			}
 		}
 	}
 	return out
+}
+
+// UVMachineStrategy is uv's index-strategy as this machine sets it:
+// UV_INDEX_STRATEGY, and the first of the user's and the system's uv.toml that sets
+// one. A repository's own setting comes between the two (see Settings).
+func UVMachineStrategy(m userconf.Machine) (variable, file string) {
+	variable = strings.ToLower(strings.TrimSpace(m.Environment("UV_INDEX_STRATEGY")))
+	for _, f := range m.UVConfigFiles() {
+		if data, err := os.ReadFile(f); err == nil {
+			if s, ok := UV(data, false); ok && s.IndexStrategy != "" {
+				return variable, s.IndexStrategy
+			}
+		}
+	}
+	return variable, ""
+}
+
+// localPath is where a flat index given as a path is, relative ones taken from
+// directory ("" when there is none). URLs, and indexes that are not flat, are
+// kept as written.
+func localPath(location string, flat bool, directory string) string {
+	location = strings.TrimSpace(location)
+	switch {
+	case !flat || strings.Contains(location, "://") || strings.HasPrefix(location, "file:") || filepath.IsAbs(location):
+		return location
+	case directory == "":
+		return ""
+	}
+	return filepath.Join(directory, filepath.FromSlash(location))
 }
 
 // UVCredential is what UV_INDEX_<NAME>_USERNAME and UV_INDEX_<NAME>_PASSWORD hold
@@ -443,18 +519,28 @@ func PipfileLock(data []byte) (Settings, bool) {
 // PDMPyPI is the name of PDM's default index: a source of that name replaces PyPI.
 const PDMPyPI = "pypi"
 
+// pdmSource is one [[tool.pdm.source]] entry.
+type pdmSource struct {
+	Name, URL, Type    string
+	Username, Password string
+	Include            []string `toml:"include_packages"`
+	Exclude            []string `toml:"exclude_packages"`
+}
+
 // PDM reads the [[tool.pdm.source]] entries of a pyproject.toml: one named "pypi"
 // replaces PyPI, every other is asked beside it, and a find_links source is no
-// index. include_packages is kept (Index.Include); exclude_packages is not read.
+// index; include_packages and exclude_packages are kept (Index.Include,
+// Index.Exclude). PDM merges the versions all its sources have; under
+// [tool.pdm.resolution] respect-source-order it asks them in order instead, PyPI
+// first unless a source named pypi takes its place: the sources after PyPI are
+// then Supplemental, the ones before it asked beside it.
 func PDM(data []byte) (Settings, bool) {
 	var doc struct {
 		Tool struct {
 			PDM struct {
-				Source []struct {
-					Name, URL, Type string
-					Username        string
-					Password        string
-					Include         []string `toml:"include_packages"`
+				Source     []pdmSource
+				Resolution struct {
+					RespectSourceOrder bool `toml:"respect-source-order"`
 				}
 			} `toml:"pdm"`
 		}
@@ -462,17 +548,23 @@ func PDM(data []byte) (Settings, bool) {
 	if _, err := toml.Decode(string(data), &doc); err != nil {
 		return Settings{}, false
 	}
-	var s Settings
-	for _, source := range doc.Tool.PDM.Source {
+	pdm := doc.Tool.PDM
+	s := Settings{RespectSourceOrder: pdm.Resolution.RespectSourceOrder}
+	afterPyPI := s.RespectSourceOrder && !slices.ContainsFunc(pdm.Source, func(source pdmSource) bool { return source.Name == PDMPyPI })
+	for _, source := range pdm.Source {
 		if source.Type != "" && source.Type != "index" {
 			continue
 		}
+		s.PDMSources = true
 		kind := Extra
-		if source.Name == PDMPyPI {
-			kind = Default
+		switch {
+		case source.Name == PDMPyPI:
+			kind, afterPyPI = Default, s.RespectSourceOrder
+		case afterPyPI:
+			kind = Supplemental
 		}
 		s.Indexes = append(s.Indexes, Index{Name: source.Name, URL: source.URL, Kind: kind, Include: source.Include,
-			Username: source.Username, Password: source.Password})
+			Exclude: source.Exclude, Username: source.Username, Password: source.Password})
 	}
 	return s, true
 }
@@ -502,9 +594,22 @@ func PDMConfig(data []byte) (Settings, bool) {
 			continue
 		}
 		s.Indexes = append(s.Indexes, Index{Name: name, URL: stringField(t, "url"),
-			Username: stringField(t, "username"), Password: stringField(t, "password")})
+			Username: stringField(t, "username"), Password: stringField(t, "password"),
+			Include: stringList(t, "include_packages"), Exclude: stringList(t, "exclude_packages")})
 	}
 	return s, true
+}
+
+// stringList is a TOML array of strings, its other elements left out.
+func stringList(m map[string]any, k string) []string {
+	var out []string
+	values, _ := m[k].([]any)
+	for _, v := range values {
+		if text, ok := v.(string); ok {
+			out = append(out, text)
+		}
+	}
+	return out
 }
 
 // PDMMachine is this machine's PDM configuration: the global config.toml

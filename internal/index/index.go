@@ -369,6 +369,19 @@ type Source struct {
 	// cabalName is the name of a cabal repository stanza, by which
 	// active-repositories names it (see cabalCandidates).
 	cabalName string
+	// include marks a scoped source made of a PDM include_packages pattern: a
+	// package several sources include is asked of all of them (see candidates).
+	include bool
+	// exclude are a PDM source's exclude_packages patterns: the packages it is
+	// never asked for.
+	exclude []string
+	// flatPage is a Python flat index as written, its trailing slash kept (the
+	// base of the page's relative links): an HTML page or a directory listing
+	// distribution files (see pypiFlat). "" for any other source.
+	flatPage string
+	// uvFile marks an index of this machine's uv.toml files: uv puts what a
+	// project's own configuration names before it (see uvFirst).
+	uvFile bool
 }
 
 // Config is the index configuration of one analysis: what this machine knows, and
@@ -433,6 +446,9 @@ type Config struct {
 	// cabal configuration and the repository's cabal.project files name, nil
 	// where none does (see cabalCandidates).
 	cabalMachine, cabalProject []string
+	// pythonProject is what the repository's uv and PDM files say about how
+	// their indexes are searched (see pythonMerges).
+	pythonProject pythonProject
 }
 
 func New() *Config {
@@ -531,6 +547,7 @@ func (c *Config) Add(ecosystem string, s Source) {
 // forgetProject drops what the repository declared, before it is read again.
 func (c *Config) forgetProject() {
 	c.clojure, c.biocRelease, c.cpanArchives, c.conanLocks, c.cabalProject = false, "", nil, nil, nil
+	c.pythonProject = pythonProject{}
 	c.bazelHelpers = slices.DeleteFunc(c.bazelHelpers, func(h bazelHelper) bool { return h.project })
 	for ecosystem, origin := range c.off {
 		if origin == OriginProject {
@@ -700,15 +717,20 @@ type candidate struct {
 //   - A scoped source that covers the package (an npm scope, a gem's source block, a
 //     pubspec's hosted server) serves it alone. It is authoritative: a package
 //     missing from it is not looked for on the public index, which is what a
-//     dependency-confusion attack would plant it on.
+//     dependency-confusion attack would plant it on. A package PDM sources
+//     include (include_packages) is served by all of them, in order (see
+//     included).
 //   - Otherwise the additive sources come first, in the order found (the machine's,
-//     then the repository's), and the primary index last: the first Replace source,
+//     then the repository's, whose uv indexes go before this machine's uv.toml
+//     ones: see uvFirst), and the primary index last: the first Replace source,
 //     every Listed one in order, or the public default (with Clojars after Maven
 //     Central for a Clojure project) unless it is switched off. A ReplaceAll source
 //     leaves the additive ones out. Asking the organization's own index first is
 //     what Maven and Composer do, and it keeps the name of a package that index has
 //     from being sent to the public one at all. The supplemental sources come
-//     after the primary index, in the order found.
+//     after the primary index, in the order found. A source that excludes the
+//     package (PDM's exclude_packages) is left out; when it is the replacement,
+//     the public default is not asked either.
 //
 // A source the repository names is listed like any other, with known false: the
 // client does not ask it, but reports it when nothing it could ask had the package.
@@ -800,6 +822,9 @@ func (c *Config) candidates(ecosystem, packageName, registry string) []candidate
 	}
 	for _, s := range c.sources[ecosystem] {
 		if ecosystem != Julia && s.Scope != "" && s.Registry == "" && matches(ecosystem, s.Scope, packageName) {
+			if s.include {
+				return c.included(ecosystem, packageName)
+			}
 			return one(s)
 		}
 	}
@@ -810,6 +835,14 @@ func (c *Config) candidates(ecosystem, packageName, registry string) []candidate
 			continue
 		}
 		k := candidate{url: s.URL, known: c.fetchable(ecosystem, s), onError: s.OnError}
+		if excluded(ecosystem, s, packageName) {
+			// PDM's exclude_packages: the source is never asked for the package.
+			// A replacement that excludes it still keeps the public default out.
+			if chosen == nil && (s.Kind == Replace || s.Kind == Listed) {
+				chosen = &c.sources[ecosystem][i]
+			}
+			continue
+		}
 		switch s.Kind {
 		case Additive:
 			additive = append(additive, k)
