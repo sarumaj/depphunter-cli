@@ -327,6 +327,8 @@ export class Panel {
         return h('div', { class: 'stats' },
           stat(n.version || '-', n.floating ? 'version (floating)' : 'version'),
           n.requested ? stat(n.requested, 'requested') : null,
+          // Implements: REQ-JS-018
+          n.platform ? stat(n.platform, 'installs on') : null,
           stat(fmt.format(n.importers), 'importing files'),
           stat(n.parentNode?.name || '', 'ecosystem'),
           // Implements: REQ-PY-015

@@ -100,6 +100,13 @@ type Node struct {
 	//
 	// Implements: REQ-FND-026
 	Git string `json:"git,omitempty"`
+	// Platform is the platforms a package installs on where it installs on some
+	// only, "os=linux & cpu=x64" (lang.Target.Platform): one of the binaries a
+	// package ships per platform, a dependency of the platform it names rather
+	// than of every install.
+	//
+	// Implements: REQ-JS-018
+	Platform string `json:"platform,omitempty"`
 }
 
 // Implements: REQ-MOD-006

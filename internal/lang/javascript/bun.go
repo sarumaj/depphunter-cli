@@ -49,6 +49,7 @@ type bunEntry struct {
 	parent       string   // the key before the name: "" when hoisted
 	version      string   // what pins it, "" when nothing does (a workspace, link, tarball)
 	dependencies []string // what it requires
+	platform     string   // the platforms it installs on, "os=linux & cpu=x64"; "" for every one
 }
 
 // readBunLock decodes a bun.lock, tolerating the trailing commas Bun writes
@@ -81,6 +82,8 @@ func (lock *bunLock) entries() map[string]bunEntry {
 		for _, el := range tuple[1:] {
 			var info struct {
 				Dependencies, OptionalDependencies map[string]string
+				// A single platform is a string, several an array.
+				OS, CPU, Libc platformList
 			}
 			if len(el) > 0 && el[0] == '{' && json.Unmarshal(el, &info) == nil {
 				for _, m := range []map[string]string{info.Dependencies, info.OptionalDependencies} {
@@ -88,6 +91,7 @@ func (lock *bunLock) entries() map[string]bunEntry {
 						e.dependencies = append(e.dependencies, dependency)
 					}
 				}
+				e.platform = platformCondition(info.OS, info.CPU, info.Libc)
 				break
 			}
 		}
@@ -218,6 +222,8 @@ func (t *tree) addBunTree(entries map[string]bunEntry) {
 	for _, key := range keys {
 		e := entries[key]
 		t.add(e.name, e.dependencies...)
+		// Implements: REQ-JS-018
+		t.addPlatform([]string{e.name}, e.platform)
 		if e.parent == "" {
 			continue
 		}

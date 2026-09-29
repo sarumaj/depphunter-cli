@@ -28,4 +28,5 @@ package.
 3. With `--resolve-depth -1` and no network, a JavaScript project's lock file
    (`package-lock.json`, `yarn.lock` classic or Berry, `pnpm-lock.yaml`)
    yields exactly the `depends` edges between npm packages that the lock
-   records, between package names.
+   records, between package names, and from a package to the directory of a
+   workspace package it depends on.

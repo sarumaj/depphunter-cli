@@ -65,6 +65,7 @@ snapshots:
     dependencies:
       d: 2.0.0
       e: 1.0.0(d@2.0.0)
+      ws-lib: link:packages/ws
 
   b@1.0.0:
     dependencies:
