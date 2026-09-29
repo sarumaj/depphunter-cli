@@ -114,6 +114,19 @@ tool looks for it, reading the variables from the machine's environment only:
   `remotes.json`, `credentials.json` and the `auth_remote.py` plugin
   ([REQ-SUP-076](REQ-SUP-076-conan-remotes.md),
   [REQ-AUTH-035](../auth/REQ-AUTH-035-conan-remote-logins.md)).
+- GitHub CLI: `hosts.yml` in `GH_CONFIG_DIR`, else `gh` below
+  `XDG_CONFIG_HOME`, else `%AppData%\GitHub CLI` on Windows, else
+  `~/.config/gh`; `GITHUB_API_URL` and `GH_HOST`
+  ([REQ-SUP-077](REQ-SUP-077-github-actions-files.md),
+  [REQ-AUTH-036](../auth/REQ-AUTH-036-github-tokens.md)).
+- PowerShell: PSResourceGet's `PSResourceGet/PSResourceRepository.xml` in
+  .NET's local application data directory (`%LOCALAPPDATA%` on Windows,
+  `~/Library/Application Support` on macOS when the file is there, else
+  `$XDG_DATA_HOME` or `~/.local/share`), and PowerShellGet 2's
+  `PSRepositories.xml` below `%LOCALAPPDATA%` on Windows
+  (`Microsoft\Windows\PowerShell\PowerShellGet`), else in
+  `powershell/PowerShellGet` below `$XDG_CACHE_HOME` or `~/.cache`
+  ([REQ-SUP-078](REQ-SUP-078-powershell-repositories.md)).
 
 ## Rationale
 
@@ -164,6 +177,10 @@ fixed `$HOME` paths missed the feed the machine actually uses.
     SwiftPM's `registries.json` is macOS's idiomatic one when it exists, else
     below `XDG_CONFIG_HOME` or `~/.swiftpm`.
 17. Conan's home follows `CONAN_HOME`, `~` expanded, a relative one refused.
+18. gh's `hosts.yml` follows `GH_CONFIG_DIR`, `XDG_CONFIG_HOME` and
+    `%AppData%` on Windows; PSResourceGet's and PowerShellGet's repository
+    files follow `%LOCALAPPDATA%`, macOS's application support directory,
+    `XDG_DATA_HOME` and `XDG_CACHE_HOME`.
 
 ## Notes
 

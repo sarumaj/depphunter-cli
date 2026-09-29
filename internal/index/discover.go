@@ -182,6 +182,9 @@ func (c *Config) machine(m userconf.Machine) {
 	c.machineCocoaPods(m)
 	read(m.SwiftPMRegistries(), parseSwiftRegistries)
 	read(join(m.ConanHome(), "remotes.json"), parseConanRemotes)
+	machineActions(m, k)
+	read(m.PSResourceGetRepositories(), parsePSResourceRepositories)
+	read(m.PowerShellGetRepositories(), parsePowerShellGetRepositories)
 	parseCUERegistry(environment("CUE_REGISTRY"), k)
 	if home == "" {
 		return

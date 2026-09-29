@@ -398,6 +398,9 @@ func cacheKey(t lang.Target, index string) string {
 	if t.Ecosystem == Conan && t.Registry != "" {
 		key += "|" + t.Registry // the user, channel and revision name another recipe
 	}
+	if t.Ecosystem == Actions && t.Registry != "" {
+		key += "|" + t.Registry // another action or workflow of the same repository
+	}
 	return key
 }
 
@@ -422,11 +425,12 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		// Implements: REQ-SUP-072
 		return answer{source: trace.NoAnswer, reason: trace.ReasonPlugin}, nil
 	}
-	if (t.Ecosystem == Go || t.Ecosystem == CUE || t.Ecosystem == Conan) && t.Version == "" ||
+	if (t.Ecosystem == Go || t.Ecosystem == CUE || t.Ecosystem == Conan || t.Ecosystem == Actions) && t.Version == "" ||
 		t.Ecosystem == Opam && !opam.ExactVersion(t.Version) && c.unlisted(Opam, index) ||
 		t.Ecosystem == Alire && !alireExact(t.Version) && (!ada.ValidConstraint(t.Version) || c.unlisted(Alire, index)) {
 		// A module proxy serves a go.mod for one version, a CUE registry a
-		// module.cue; without one there is no document to ask for. An opam repository or Alire index served over HTTP
+		// module.cue, GitHub an action.yml at one reference; without one there
+		// is no document to ask for. An opam repository or Alire index served over HTTP
 		// that cannot list its versions has none for a range either. Said here
 		// rather than deeper down so the report can say it, instead of recording
 		// an empty answer that looks like "no dependencies".
@@ -506,6 +510,10 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		dependencies, err = c.swiftPackage(ctx, index, t)
 	case Conan:
 		dependencies, err = c.conanRecipe(ctx, index, t)
+	case Actions:
+		dependencies, err = c.actionDependencies(ctx, index, t)
+	case PowerShell:
+		dependencies, err = c.powershellModule(ctx, index, t)
 	case Maven:
 		if !strings.Contains(t.Package, ":") {
 			// A name without an artifact cannot be asked: a POM is addressed by
@@ -876,6 +884,13 @@ func (d dependency) registry(from lang.Target) string {
 	case from.Ecosystem == Conan:
 		// A recipe's requirement names its user, channel and revision.
 		return d.Registry
+	case from.Ecosystem == Actions:
+		// An action's path inside its repository.
+		return d.Registry
+	case from.Ecosystem == PowerShell:
+		// PowerShellGet installs a module's dependencies from the repository it
+		// installs the module from.
+		return from.Registry
 	case from.Ecosystem != Cargo:
 		return ""
 	case d.Registry == "":
@@ -908,6 +923,19 @@ func (d dependency) Pinned(ecosystem string) bool {
 	if ecosystem == Conan {
 		// A reference's version is one version; a range is bracketed.
 		return d.Version != "" && !strings.HasPrefix(d.Version, "[")
+	}
+	if ecosystem == Actions {
+		return lang.Commit(d.Version) // a tag can be moved to other code
+	}
+	if ecosystem == OCI {
+		// A tag is republished at will; only a digest pins an image, as
+		// oci.Image reads a reference.
+		return strings.Contains(d.Version, ":")
+	}
+	if ecosystem == PowerShell {
+		// The Gallery writes one version as "[1.2.3]" (a bare version is one
+		// version too, as PowerShellGet reads it); a range is not one.
+		return powershellExact(d.Version) != ""
 	}
 	if ecosystem == Wally {
 		// A bare version is a caret range in Wally; "=1.2.3" is one release.

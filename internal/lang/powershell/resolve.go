@@ -47,6 +47,9 @@ func newResolver(all []*scan.File) *resolver {
 		if extension != ".psd1" && extension != ".psm1" {
 			continue
 		}
+		if psDependFile(f.Path) {
+			continue // a list of what to install, not a module
+		}
 		name := strings.ToLower(strings.TrimSuffix(path.Base(f.Path), path.Ext(f.Path)))
 		if _, seen := r.modules[name]; !seen || extension == ".psd1" { // the manifest represents a module
 			r.modules[name] = f.Path
@@ -72,7 +75,7 @@ func requiredValue(manifest string) string {
 	return valueAt(manifest[span[1]:])
 }
 
-// Implements: REQ-PS-001, REQ-PS-007, REQ-PS-008, REQ-PS-010
+// Implements: REQ-PS-001, REQ-PS-007, REQ-PS-008, REQ-PS-010, REQ-PS-012
 func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	reference := rawImport.Module
 	if rawImport.Name == referencePath || looksLikePath(reference) {
@@ -99,11 +102,16 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		}
 	}
 	if how, ok := strings.CutPrefix(rawImport.Name, referenceRequires); ok {
-		// "=<version>" is a minimum (ModuleVersion), "==<version>" one version.
+		// "=<version>" is a minimum (ModuleVersion) or a NuGet range, "==<version>"
+		// one version; what follows a NUL is the repository an install names.
+		how, repository, _ := strings.Cut(how, "\x00")
 		v := strings.TrimPrefix(how, "=")
 		exact := strings.HasPrefix(v, "=")
 		v = strings.TrimPrefix(v, "=")
-		return lang.Target{Ecosystem: ecosystemGallery, Package: reference, Version: v, Pinned: exact && lang.Pinned(v)}
+		return lang.Target{
+			Ecosystem: ecosystemGallery, Package: reference, Version: v, Pinned: exact && lang.Pinned(v),
+			Registry: repository,
+		}
 	}
 	return lang.Target{Ecosystem: ecosystemGallery, Package: reference, Unresolved: true}
 }

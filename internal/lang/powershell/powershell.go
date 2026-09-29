@@ -35,7 +35,7 @@ const (
 type Plugin struct{}
 
 func (Plugin) Name() string { return "powershell" }
-func (Plugin) Version() int { return 2 }
+func (Plugin) Version() int { return 3 }
 func (Plugin) Claims(f *scan.File) bool {
 	switch strings.ToLower(path.Ext(f.Path)) {
 	case ".ps1", ".psm1", ".psd1":
@@ -43,6 +43,18 @@ func (Plugin) Claims(f *scan.File) bool {
 	}
 	return false
 }
+
+// Class tells a PSDepend requirements file (requirements.psd1, *.depend.psd1) from
+// a module manifest (lang.Classifier): Extract reads the two differently.
+//
+// Implements: REQ-PS-012
+func (Plugin) Class(f *scan.File) string {
+	if psDependFile(f.Path) {
+		return "psdepend"
+	}
+	return ""
+}
+
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
 		{ID: ecosystemGallery, Name: "PowerShell Gallery"},
@@ -65,7 +77,7 @@ var (
 // Words that look like method headers inside class bodies but are statements.
 var keywords = map[string]bool{"if": true, "elseif": true, "foreach": true, "for": true, "while": true, "switch": true, "until": true, "catch": true, "return": true, "throw": true}
 
-// Implements: REQ-PS-005, REQ-PS-006
+// Implements: REQ-PS-005, REQ-PS-006, REQ-PS-012
 func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
@@ -97,7 +109,11 @@ func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 			}
 		}
 	}
-	if strings.EqualFold(path.Ext(f.Path), ".psd1") {
+	if psDependFile(f.Path) {
+		for _, r := range psDependReferences(string(source)) {
+			add(r.spec, r.module, r.how, r.line)
+		}
+	} else if strings.EqualFold(path.Ext(f.Path), ".psd1") {
 		text := stripComments(string(source))
 		for _, span := range manifestKey.FindAllStringSubmatchIndex(text, -1) {
 			key := text[span[2]:span[3]]
@@ -123,7 +139,7 @@ type reference struct{ spec, module, how string }
 // commandReferences reads the dependencies a single command expresses.
 var assignment = regexp.MustCompile(`^\$[\w:]+(?:\.\w+)*\s*[+]?=\s*`)
 
-// Implements: REQ-PS-001, REQ-PS-002, REQ-PS-003
+// Implements: REQ-PS-001, REQ-PS-002, REQ-PS-003, REQ-PS-012
 func commandReferences(text string) []reference {
 	// $psGet = Import-Module PowerShellGet -PassThru
 	fields := psFields(assignment.ReplaceAllString(text, ""))
@@ -141,6 +157,8 @@ func commandReferences(text string) []reference {
 			out = append(out, reference{"Import-Module " + name, name, referenceModule})
 		}
 		return out
+	case "install-module", "install-psresource", "save-module", "save-psresource":
+		return installReferences(fields[0], fields[1:])
 	case ".", "&":
 		target := unquote(fields[1])
 		switch strings.ToLower(path.Ext(target)) {

@@ -37,7 +37,9 @@ JSON (`notes`). At least these **shall** be noted:
   `luarocks.lock` and Gleam's `manifest.toml`;
 - a Hex organization this machine has no key for, and one whose API refused
   the key sent (403)
-  ([REQ-SUP-047](../sup/REQ-SUP-047-hex-api.md));
+  ([REQ-SUP-047](../sup/REQ-SUP-047-hex-api.md)), and a GitHub API that
+  refused to answer (403 or 429, its limit without a token)
+  ([REQ-SUP-077](../sup/REQ-SUP-077-github-actions-files.md));
 - a NuGet package no `packageSourceMapping` pattern covers while a mapping is
   in force, which NuGet itself would not restore
   ([REQ-SUP-065](../sup/REQ-SUP-065-nuget-configuration-layers-and-source-mapping.md));

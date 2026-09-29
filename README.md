@@ -953,7 +953,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Maven               | a plain version, `[1.2.3]`, `gradle.lockfile` (and Gradle 6's `gradle/dependency-locks/*.lockfile`)                                                                                                                                   | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, dynamic `1.+` and `latest.*`, unexpanded `${…}`                                                                 |
 | NuGet               | an exact version, `[1.2.3]`, Paket's `= 1.2.3`, `paket.lock`, `packages.lock.json`                                                                                                                                                    | wildcards (`2.*`) and ranges, Paket's `~>` and `>=`, no version in Paket or `#r`                                                                          |
 | Paket remote files  | `paket.lock`'s commit, a commit in `paket.dependencies`                                                                                                                                                                               | a branch, tag or tag range, no ref, every HTTP file                                                                                                       |
-| PowerShell Gallery  | `RequiredVersion`                                                                                                                                                                                                                     | `ModuleVersion`, which is a minimum                                                                                                                       |
+| PowerShell Gallery  | `RequiredVersion` (a manifest, `#Requires`, `Install-Module`), a bare `Install-PSResource -Version` or PSDepend version                                                                                                               | `ModuleVersion` and `-MinimumVersion`, which are minimums; a NuGet range; `latest`                                                                        |
 | GitHub Actions      | a full commit SHA                                                                                                                                                                                                                     | tags, branches, or no ref                                                                                                                                 |
 | GitLab CI includes  | a commit                                                                                                                                                                                                                              | tags, branches, templates, remote includes, or no ref                                                                                                     |
 | Container images    | an `@sha256:` digest                                                                                                                                                                                                                  | tags                                                                                                                                                      |
@@ -1100,10 +1100,11 @@ records versions only), Puppet modules r10k has not installed, Racket packages
 Registry modules (`buf.lock` is a flat list), CUE modules missing from cue's
 module cache on this machine (`$CUE_CACHE_DIR`, else `cue` in the user's cache
 directory), Swift registry packages SwiftPM has not checked out under
-`.build` (`Package.resolved` is a flat list) and Conan packages no Conan 1
-lock records (a Conan 2 `conan.lock` is a flat list) — require `--online`,
-described below; the PowerShell Gallery, vcpkg,
-Bioconductor packages no lock records, Swift packages from git repositories
+`.build` (`Package.resolved` is a flat list), Conan packages no Conan 1 lock
+records (a Conan 2 `conan.lock` is a flat list), the actions and reusable
+workflows of other repositories that a GitHub workflow names, and PowerShell
+Gallery modules — require `--online`, described below; vcpkg, Bioconductor
+packages no lock records, Swift packages from git repositories
 that SwiftPM has not checked out and Terraform modules fetched from git or an
 archive are not resolved beyond the first level at present. Content a CMake
 build fetches is not resolved beyond the first level either, nor are Carthage
@@ -1176,7 +1177,9 @@ serving the pods installed from it) other than CocoaPods' own, and the spec
 repositories cloned in `~/.cocoapods/repos`; the registries of SwiftPM's
 `registries.json`, the user's and the repository's; the remotes of Conan's
 `remotes.json`, in this machine's Conan home and in the home a repository's
-`.conanrc` names; the `rocks_servers` of a
+`.conanrc` names; the GitHub instances `GITHUB_API_URL`, `GH_HOST` and the
+GitHub CLI's `hosts.yml` name; the repositories PSResourceGet and
+PowerShellGet register; the `rocks_servers` of a
 project's `.luarocks/config-5.x.lua`, of `~/.luarocks/config-5.x.lua` and of
 `LUAROCKS_CONFIG` other than luarocks.org; the registries of `DUB_REGISTRY`,
 of dub's `settings.json` (`registryUrls`) and of a `dub.settings.json`, asked
@@ -1244,6 +1247,8 @@ and platform paths:
 | CocoaPods  | `CP_REPOS_DIR`, else `repos` below `CP_HOME_DIR`, else `~/.cocoapods/repos`: each spec repository, a git clone by its `origin` remote or a CDN source by its `.url`                                                                                                                                                                                                                                                                             |
 | SwiftPM    | `registries.json` in `~/Library/org.swift.swiftpm/configuration` on macOS when it is there, else in `configuration` below `$XDG_CONFIG_HOME/swiftpm` or `~/.swiftpm`; the netrc for `swift package-registry login` (the keychain is not read)                                                                                                                                                                                                   |
 | Conan      | `CONAN_HOME` (a leading `~` being the home directory), else `~/.conan2`: `remotes.json`, `credentials.json` (the environment variables its template names substituted) and `extensions/plugins/auth_remote.py` (found, not run); `CONAN_LOGIN_USERNAME[_<REMOTE>]`, `CONAN_PASSWORD[_<REMOTE>]`                                                                                                                                                 |
+| GitHub     | `GITHUB_API_URL`, `GH_HOST`, `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`; the GitHub CLI's `hosts.yml` in `GH_CONFIG_DIR`, else `gh` below `XDG_CONFIG_HOME`, else `%AppData%\GitHub CLI` on Windows, else `~/.config/gh` (a token gh keeps in the keyring is not read)                                                                                                                                        |
+| PowerShell | PSResourceGet's `PSResourceGet/PSResourceRepository.xml` in `%LOCALAPPDATA%` on Windows, `~/Library/Application Support` on macOS when it is there, else `$XDG_DATA_HOME` (`~/.local/share`); PowerShellGet 2's `PSRepositories.xml` in `%LOCALAPPDATA%\Microsoft\Windows\PowerShell\PowerShellGet` on Windows, else `powershell/PowerShellGet` below `$XDG_CACHE_HOME` (`~/.cache`)                                                            |
 
 Nothing is read from the repository through these variables' defaults; they
 only say where this machine's own files are.
@@ -1274,6 +1279,8 @@ default or is asked **beside** it:
 | CocoaPods                     | a Podfile's `source` lines, asked in its order, the CDN only when it is one of them (or none is listed)                                                                                                                                                                                                                    | —                                                                                                                                                                                                                                                                                                                                |
 | SwiftPM                       | nothing: there is no public registry                                                                                                                                                                                                                                                                                       | — (a package is asked of the one registry `registries.json` maps its scope to, else of the default registry)                                                                                                                                                                                                                     |
 | Conan                         | `remotes.json`'s remotes, asked in its order, ConanCenter only when it is one of them (or there is no `remotes.json`); a remote's `allowed_packages` limit what it is asked for                                                                                                                                            | —                                                                                                                                                                                                                                                                                                                                |
+| GitHub Actions                | nothing: api.github.com is always asked last                                                                                                                                                                                                                                                                               | the GitHub instances of `GITHUB_API_URL`, `GH_HOST` and `hosts.yml`, asked first                                                                                                                                                                                                                                                 |
+| PowerShell Gallery            | the repositories PSResourceGet registers, asked by priority, and PowerShellGet 2's; the Gallery only when one of them is it (or nothing is registered)                                                                                                                                                                     | — (an install naming `-Repository` is asked of that repository alone)                                                                                                                                                                                                                                                            |
 | crates.io                     | `[source.crates-io] replace-with` (followed to the end of the chain)                                                                                                                                                                                                                                                       | —                                                                                                                                                                                                                                                                                                                                |
 | npm and every other ecosystem | the first unscoped source found (npm's `registry`, then Yarn's `npmRegistryServer`, `~/.yarnrc`'s `registry` and Bun's `[install] registry`)                                                                                                                                                                               | —                                                                                                                                                                                                                                                                                                                                |
 
@@ -1391,6 +1398,25 @@ Conan resolves it, against the remote's search, and a package the repository's
 `conan.lock` pins is asked about, and answered, at the lock's version and
 recipe revision.
 
+A GitHub action or reusable workflow (`owner/repo[/path]@ref`) names no host:
+an Enterprise Server runs the one it holds and, with GitHub Connect, falls back
+to github.com's. It is asked of the GitHub instances this machine works with
+first — the one `GITHUB_API_URL` names (on a runner of that instance), the one
+`GH_HOST` names and every other host of the GitHub CLI's `hosts.yml`, each at
+its REST API (`<host>/api/v3`, `api.<name>.ghe.com`) — and then of github.com;
+an organization's own action (`--private 'actions:acme/*'`) is never named to
+github.com. A repository cannot name an instance.
+
+A PowerShell module is asked of the repositories this machine registers, as
+PowerShell's installers ask them: PSResourceGet's (`PSResourceRepository.xml`)
+by priority, then by name, then PowerShellGet 2's (`PSRepositories.xml`) in
+their order; the Gallery only when one of them is it, or when neither file
+exists. A local repository and a container registry are not asked. An
+`Install-Module` or `Install-PSResource` naming `-Repository`, or a PSDepend
+dependency naming its `Repository`, is asked of that repository alone, by the
+name it was registered under, and so are the module's dependencies, as
+PowerShellGet installs them from the same repository.
+
 Five kinds of source are **authoritative** and have no fallback: a scoped source
 that covers the package (an npm `@scope:registry`, a Gemfile `source` block, a
 pubspec's `hosted:` server, a Python package pinned to an index by uv's
@@ -1466,6 +1492,8 @@ ecosystems whose graph is held outside the repository:
 | CocoaPods              | `<cdn>/Specs/<a>/<b>/<c>/<pod>/<version>/<pod>.podspec.json` (newest: the shard's version list); a clone in `~/.cocoapods/repos` instead (any host; `.podspec.json` or `.podspec`)                                                | its and its default subspecs' `dependencies`                                                                     |
 | SwiftPM registry       | `<registry>/<scope>/<name>` for the releases, then `<registry>/<scope>/<name>/<version>/Package.swift` (the registry `registries.json` maps the scope to)                                                                         | its `.package(id:)` and `.package(url:)` dependencies                                                            |
 | Conan                  | `<remote>/v2/conans/<name>/<version>/<user>/<channel>/latest`, then `.../revisions/<revision>/files/conanfile.py`; a range from `<remote>/v2/conans/search?q=<name>/*`                                                            | the recipe's `requires`, pinned as `conan.lock` pins them                                                        |
+| GitHub Actions         | `<api>/repos/<owner>/<repo>/contents/<path>/action.yml?ref=<ref>` (then `action.yaml`; a reusable workflow's own file), raw.githubusercontent.com for github.com without a token                                                  | a composite action's steps, a Docker action's image (or its Dockerfile's `FROM`), a reusable workflow's jobs     |
+| PowerShell Gallery     | `<repository>/Packages(Id='<name>',Version='<version>')`, else `<repository>/FindPackagesById()?id='<name>'` (NuGet v2 OData; a NuGet v3 feed as NuGet's)                                                                         | its `Dependencies` (the manifest's `RequiredModules`)                                                            |
 | LuaRocks               | `<server>/<rock>-<version>.rockspec`, versions from `<server>/manifest-5.1.zip` (read once)                                                                                                                                       | its run-time `dependencies`, without `lua`                                                                       |
 | CPAN                   | MetaCPAN's `<api>/v1/release/<AUTHOR>/<name>` (as `cpanfile.snapshot` records) or `/_search` for a pinned version, else `/v1/release/<distribution>`; `/v1/module/<module>` per dependency; a mirror's 02packages first           | its run-time requirements as distributions, without perl's own modules                                           |
 | opam                   | `<repository>/packages/<name>/<name>.<version>/opam`, from opam's copy of the repository, else over HTTP; for a range, the newest version admitted, listed by the copy (opam-repository: GitHub's contents API)                   | its `depends`, without the compiler and what only tests or documentation need                                    |
@@ -1511,7 +1539,7 @@ to the page, and each request carries the credential this machine holds for
 its own URL — the index's for a file below the index's path, none for a file
 on a host or path it has none for.
 
-The PowerShell Gallery is not queried. Every Maven package on the map names its
+Every Maven package on the map names its
 artifact (`com.google.guava:guava`, `cheshire:cheshire`), so its POM is read,
 whichever plugin placed it there; only a Bazel hub target that no artifact
 list names is not asked about. Clojars, where Clojure's libraries are
@@ -1569,6 +1597,7 @@ written for and to no other.
 | r10k's `r10k.yaml`                                          | `forge: authorization_token`, for the paths of `forge: baseurl`                                                |
 | the netrc entry `swift package-registry login` writes       | a registry's token (Bearer, as the user's `registries.json` says) or user and password                         |
 | Conan's `credentials.json`, `CONAN_LOGIN_USERNAME`          | a remote's user and password, for its token (below)                                                            |
+| `GH_TOKEN`, `GITHUB_TOKEN`, gh's `hosts.yml`                | a GitHub host's token, for its REST API alone (below)                                                          |
 | the index URL itself                                        | `https://user:password@host/simple`, as a private pip or Cargo mirror is set                                   |
 
 Between them these cover Nexus, Artifactory, Azure Artifacts, ProGet, GitHub
@@ -1592,6 +1621,20 @@ the token it answers with is sent as a Bearer token from then on. Conan's
 `helper-not-run`, when a remote wants a login this machine does not hold), and
 the tokens `conan remote login` keeps in the home's `.conan.db` database are
 not read.
+
+A GitHub REST API gets the token the GitHub CLI would send it, and no other
+host does: github.com's API `GH_TOKEN`, else `GITHUB_TOKEN`, else the
+`oauth_token` of github.com in `hosts.yml`; an Enterprise Server's
+`GH_ENTERPRISE_TOKEN`, else `GITHUB_ENTERPRISE_TOKEN`, else its own entry of
+`hosts.yml` — on a runner of that instance (`GITHUB_API_URL`) its
+`GITHUB_TOKEN`, which then does not go to github.com — sent to its `/api/v3/`
+paths alone. Without a token for api.github.com, a github.com action's files
+are read from raw.githubusercontent.com, which serves public repositories
+without the API's limit of 60 requests an hour (`--explain` notes the limit,
+`forbidden`, when the API refuses). A token gh keeps in the system's keyring,
+its default, is not read, and `gh auth token` is not run. PowerShell
+repositories are sent the credentials this machine holds for their hosts; the
+SecretManagement vault entries a registration names are not read.
 
 Each file is looked for where its tool looks for it; see
 [Configuration locations](#configuration-locations).
@@ -1916,7 +1959,8 @@ The report records six things:
   (`lock-flat`); a lock the scan left out as git-ignored that was read from
   disk, so it reflects this checkout's last install (`lock-ignored`); a Hex
   organization with no key on this machine (`no-key`) or whose API refused the
-  key (`forbidden`, an organization key without `api:read`); and a NuGet
+  key (`forbidden`, an organization key without `api:read`), or a GitHub API
+  that refused to answer (`forbidden`, its limit without a token); and a NuGet
   package no `packageSourceMapping` pattern covers, which NuGet itself would
   not restore (`unmapped`); a CPAN release MetaCPAN does not describe
   (`no-release`); an opam repository, Alire index, Julia registry or
@@ -1988,7 +2032,12 @@ alongside the packages:
 - **GitHub Actions**: each step's `uses:`, reusable workflows (`jobs.<id>.uses`),
   and a composite action's own steps. A `./path` resolves to the `action.yml` or
   workflow inside this repository, so a local action's own dependencies chain
-  on.
+  on. With `--online`, an action or reusable workflow of another repository is
+  read at the reference the workflow names (see
+  [Package indexes](#package-indexes)): a composite action's steps, a Docker
+  action's image and a reusable workflow's jobs are its dependencies. A
+  repository used at several paths (`actions/cache/save`,
+  `actions/cache/restore`) is one package, read at the first path met.
 - **GitLab CI**: every `include:` form - `local`, `project` (with `ref` and
   `file`), `template`, `remote` and `component` - plus the includes a bridge job
   triggers.
@@ -3186,7 +3235,7 @@ The JSON and GraphML exports include the reference edges.
 | Common Lisp                | `.asd` `defsystem` components (modules and `:pathname`) and `:depends-on` (local `.asd`, secondary and package-inferred systems, the implementation, else the Quicklisp project), `defpackage` `:use`/`:import-from`/`:local-nicknames`, `in-package` and `pkg:sym` to the file defining the package or the declared system it belongs to, `ql:quickload`, `asdf:load-system`, `require`, `load`; `qlfile`, `qlfile.lock` and `ocicl.csv` entries                                                                                                  | Quicklisp projects, Common Lisp built-ins                                                                            |
 | Solidity                   | `import` in every form to files by relative path, the remappings of `foundry.toml` and `remappings.txt` (with contexts) and those Foundry and Soldeer infer, npm packages a `package.json` declares, else the project's root; libraries under `lib/` (git submodules by `.gitmodules`, pinned by the recorded commit) and `dependencies/` (Soldeer, pinned by `soldeer.lock`); `foundry.toml` remappings and dependencies, `remappings.txt`, `soldeer.lock` and `.gitmodules` entries                                                              | Soldeer packages, Git submodules, npm                                                                                |
 | Nim                        | `import`, `from`, `include` (`std/[a, b]`, `pkg/x`, every `when` branch) to files beside the importer, under the package's `srcDir` and `nim.cfg`/`config.nims` `--path`s; std modules to the standard library (Nim's own `lib/` in its repository); else the nimble package whose installed files (`nimbledeps/`, Atlas's `deps/`, `nimble.paths`, `~/.nimble`) have the module, else the requirement its first segment names; `.nimble` `requires`, `taskRequires`, `bin`, `nimble.lock` and `atlas.lock` entries                                | Nimble packages, Nim standard library                                                                                |
-| PowerShell                 | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                                                                                                                  | PowerShell Gallery, built-in modules                                                                                 |
+| PowerShell                 | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`), `Install-Module` and `Install-PSResource` commands, PSDepend files (`requirements.psd1`, `*.depend.psd1`)                                                                                                                                                                                                                                                       | PowerShell Gallery, built-in modules                                                                                 |
 | CI pipelines               | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                                                       | GitHub Actions, GitLab CI, Container images                                                                          |
 | Protocol Buffers           | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the `-I` roots build scripts give protoc, the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                        | Buf Schema Registry, Protobuf well-known types                                                                       |
 | Terraform / OpenTofu       | `module` sources to local directories, registry and remote modules; `required_providers`, `provider` blocks and resource type prefixes to providers, pinned by `.terraform.lock.hcl`; references to what other files of the module declare; `file()`/`templatefile()` paths; Terragrunt `source`, `dependency` and `find_in_parent_folders()`                                                                                                                                                                                                      | Terraform modules, Terraform providers                                                                               |
