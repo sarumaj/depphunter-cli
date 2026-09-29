@@ -167,3 +167,40 @@ func (m Machine) CUEConfigDirectory() string {
 	}
 	return join(m.ConfigDirectory(), "cue")
 }
+
+// ---------------------------------------------------------------- CocoaPods and SwiftPM
+
+// CocoaPodsRepositories is the directory holding CocoaPods' spec repositories,
+// one directory each (`pod repo add` clones a git one there): `CP_REPOS_DIR`,
+// else repos below `CP_HOME_DIR`, else ~/.cocoapods/repos.
+//
+// Implements: REQ-SUP-064
+func (m Machine) CocoaPodsRepositories() string {
+	if directory := m.Environment("CP_REPOS_DIR"); directory != "" {
+		return directory
+	}
+	if directory := m.Environment("CP_HOME_DIR"); directory != "" {
+		return filepath.Join(directory, "repos")
+	}
+	return join(m.Home, ".cocoapods", "repos")
+}
+
+// SwiftPMRegistries is the user's registries.json, which `swift package-registry
+// set --global` writes: in the configuration directory SwiftPM calls
+// idiomatic, ~/Library/org.swift.swiftpm/configuration on macOS; else (and on
+// macOS when that has none, as before SwiftPM 5.6) configuration below
+// $XDG_CONFIG_HOME/swiftpm when XDG_CONFIG_HOME is set, else below ~/.swiftpm.
+//
+// Implements: REQ-SUP-064
+func (m Machine) SwiftPMRegistries() string {
+	if m.GOOS == "darwin" {
+		if idiomatic := join(m.Home, "Library", "org.swift.swiftpm", "configuration", "registries.json"); idiomatic != "" && isFile(idiomatic) {
+			return idiomatic
+		}
+	}
+	directory := join(m.Home, ".swiftpm")
+	if xdg := m.Environment("XDG_CONFIG_HOME"); xdg != "" {
+		directory = filepath.Join(xdg, "swiftpm")
+	}
+	return join(directory, "configuration", "registries.json")
+}

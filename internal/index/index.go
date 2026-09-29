@@ -389,6 +389,9 @@ type Config struct {
 	// distribution's release was installed from ("<dist> <version>" ->
 	// A/AU/AUTHOR/Dist-1.23.tar.gz), which names the release's author.
 	cpanArchives map[string]string
+	// podRepositories are the spec repositories in CocoaPods' repos directory:
+	// the copies on this machine's disk of the ones a Podfile names (podCopy).
+	podRepositories []podRepository
 }
 
 func New() *Config {
@@ -566,7 +569,12 @@ func (c *Config) origin(s Source) string {
 //
 // Implements: REQ-SUP-019, REQ-SUP-042
 func (c *Config) fetchable(ecosystem string, s Source) bool {
-	return s.Trusted || s.URL == c.publicURL(ecosystem) || c.trusted[s.URL]
+	return s.Trusted || s.URL == c.publicURL(ecosystem) || c.trusted[s.URL] ||
+		// The repository names an index this machine's own configuration names
+		// too: a spec repository cloned here, a registry the user's
+		// registries.json maps.
+		// Implements: REQ-SUP-074, REQ-SUP-075
+		ecosystem == CocoaPods && c.podCopy(s.URL).local != "" || ecosystem == SwiftPM && c.machineNames(SwiftPM, s.URL)
 }
 
 // For reports which index a package is attributed to, and whether anything here
@@ -664,6 +672,9 @@ type candidate struct {
 func (c *Config) candidates(ecosystem, packageName, registry string) []candidate {
 	if ecosystem == OCI {
 		return c.ociCandidates(packageName, "")
+	}
+	if ecosystem == SwiftPM {
+		return c.swiftCandidates(packageName)
 	}
 	if ecosystem == TerraformModule {
 		// A module address carries its registry's host when it is not the public

@@ -385,3 +385,32 @@ func TestClaims(t *testing.T) {
 		}
 	}
 }
+
+// A registry package's manifest gives the index client its registry and
+// repository dependencies with their requirements; a local path dependency and a
+// commented-out one are left out.
+//
+// Verifies: REQ-SUP-075
+func TestManifestDependencies(t *testing.T) {
+	source := `// swift-tools-version:5.9
+import PackageDescription
+let package = Package(
+    name: "LinkedList",
+    dependencies: [
+        .package(id: "mona.Collections", from: "1.2.0"),
+        .package(id: "acme.Exact", exact: "2.0.1"),
+        .package(url: "https://github.com/apple/swift-nio.git", "2.60.0"..<"3.0.0"),
+        .package(path: "../Local"),
+        // .package(id: "gone.Package", from: "1.0.0"),
+    ]
+)
+`
+	want := []PackageDependency{
+		{ID: "mona.Collections", Requirement: "1.2.0..<2.0.0"},
+		{ID: "acme.Exact", Requirement: "2.0.1"},
+		{URL: "https://github.com/apple/swift-nio.git", Requirement: "2.60.0..<3.0.0"},
+	}
+	if got := ManifestDependencies(source); !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v\nwant %+v", got, want)
+	}
+}

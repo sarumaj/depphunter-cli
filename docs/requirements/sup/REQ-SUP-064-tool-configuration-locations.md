@@ -102,6 +102,13 @@ tool looks for it, reading the variables from the machine's environment only:
   `logins.json` in `CUE_CONFIG_DIR`, else `cue` in the platform's
   configuration directory
   ([REQ-AUTH-032](../auth/REQ-AUTH-032-cue-logins.md)).
+- CocoaPods: its spec repositories in `CP_REPOS_DIR`, else `repos` below
+  `CP_HOME_DIR`, else `~/.cocoapods/repos`
+  ([REQ-SUP-074](REQ-SUP-074-cocoapods-spec-repository-clones.md)).
+- SwiftPM: `registries.json` in `~/Library/org.swift.swiftpm/configuration`
+  on macOS when it is there, else in `configuration` below
+  `$XDG_CONFIG_HOME/swiftpm` or `~/.swiftpm`
+  ([REQ-SUP-075](REQ-SUP-075-swiftpm-registries.md)).
 
 ## Rationale
 
@@ -148,6 +155,9 @@ fixed `$HOME` paths missed the feed the machine actually uses.
     an empty entry being `~/.julia`, each listed once.
 15. cue's configuration directory follows `CUE_CONFIG_DIR`, and r10k's files
     are read under the system root only.
+16. CocoaPods' repos directory follows `CP_REPOS_DIR` and `CP_HOME_DIR`;
+    SwiftPM's `registries.json` is macOS's idiomatic one when it exists, else
+    below `XDG_CONFIG_HOME` or `~/.swiftpm`.
 
 ## Notes
 

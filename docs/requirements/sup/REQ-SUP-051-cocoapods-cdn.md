@@ -23,15 +23,19 @@ the root spec's and its default subspecs' dependencies (all subspecs' when it
 names none), without test specs and the pod's own subspecs, `= x` as a pinned
 version. A Podfile's `source` lines and Podfile.lock's `SPEC REPOS` are the
 repository's spec repositories: one the lock names serves the pods installed
-from it, one only the Podfile names serves every pod. CocoaPods' own repository
-(the CDN, `github.com/CocoaPods/Specs`, the lock's `trunk`) is never recorded as
-the repository's own.
+from it; the Podfile's serve every pod, asked in the Podfile's order, and the
+CDN is asked only where the Podfile lists it or when it lists none. CocoaPods'
+own repository (the CDN, `github.com/CocoaPods/Specs`, the lock's `trunk`)
+stands for the CDN wherever it is named, never for a repository of the
+project's own. A spec repository cloned on this machine is read from the clone
+(REQ-SUP-074).
 
 ## Rationale
 
 The CDN is what CocoaPods itself reads since 1.8; a private spec repository is
-a git repository no HTTP question can be put to, and a pod named to the public
-CDN that lives in one is a disclosure (REQ-SUP-038).
+a git repository no HTTP question can be put to (only its clone can be read),
+and a pod named to the public CDN that lives in one is a disclosure
+(REQ-SUP-038).
 
 ## Acceptance criteria
 
@@ -41,5 +45,5 @@ CDN that lives in one is a disclosure (REQ-SUP-038).
    pre-release 2.0.0-beta.1.
 2. A pod the lock installed from `https://github.com/acme/Specs.git` is
    looked up there (untrusted, so not asked); AFNetworking from `trunk` is
-   the CDN's; a Podfile naming only a private repository besides the CDN makes
-   it every pod's index.
+   the CDN's; a Podfile naming a private repository before the CDN makes it
+   every pod's first index, the CDN the second.

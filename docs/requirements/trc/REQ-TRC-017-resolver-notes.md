@@ -44,10 +44,12 @@ JSON (`notes`). At least these **shall** be noted:
 - a CPAN release MetaCPAN does not describe: a pinned version it has no
   release of, or a mirror's distribution
   ([REQ-SUP-053](../sup/REQ-SUP-053-metacpan-releases.md));
-- an opam repository, Alire index or Julia registry only git serves, with no
-  copy on this machine ([REQ-SUP-054](../sup/REQ-SUP-054-opam-repository-files.md),
+- an opam repository, Alire index, Julia registry or CocoaPods spec
+  repository only git serves, with no copy on this machine
+  ([REQ-SUP-054](../sup/REQ-SUP-054-opam-repository-files.md),
   [REQ-SUP-061](../sup/REQ-SUP-061-alire-community-index.md),
-  [REQ-SUP-055](../sup/REQ-SUP-055-julia-registry-files.md));
+  [REQ-SUP-055](../sup/REQ-SUP-055-julia-registry-files.md),
+  [REQ-SUP-074](../sup/REQ-SUP-074-cocoapods-spec-repository-clones.md));
 - a Bazel registry a `.bazelrc` names a credential helper for, which is not
   run ([REQ-BAZEL-011](../bazel/REQ-BAZEL-011-read-without-bazel.md)).
 
