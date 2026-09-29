@@ -96,6 +96,12 @@ tool looks for it, reading the variables from the machine's environment only:
 - Julia: the depots of `JULIA_DEPOT_PATH` (`;`-separated on Windows, else
   `:`-separated; an empty entry the default depot, `~` the home directory),
   else `~/.julia` ([REQ-SUP-055](REQ-SUP-055-julia-registry-files.md)).
+- r10k: `/etc/puppetlabs/r10k/r10k.yaml`, else `/etc/r10k.yaml`
+  ([REQ-SUP-069](REQ-SUP-069-puppet-forge-releases.md)).
+- cue: `CUE_REGISTRY` ([REQ-SUP-073](REQ-SUP-073-cue-registry-module-files.md));
+  `logins.json` in `CUE_CONFIG_DIR`, else `cue` in the platform's
+  configuration directory
+  ([REQ-AUTH-032](../auth/REQ-AUTH-032-cue-logins.md)).
 
 ## Rationale
 
@@ -140,6 +146,8 @@ fixed `$HOME` paths missed the feed the machine actually uses.
     the Windows home.
 14. Julia's depots follow `JULIA_DEPOT_PATH` with the platform's separator,
     an empty entry being `~/.julia`, each listed once.
+15. cue's configuration directory follows `CUE_CONFIG_DIR`, and r10k's files
+    are read under the system root only.
 
 ## Notes
 

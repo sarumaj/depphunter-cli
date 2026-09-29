@@ -23,8 +23,8 @@ is asked about in OSV by that commit (REQ-FND-026).
 
 Git submodules are a git mechanism, not a Solidity one, so their island is
 named for git and other languages may share it. OSV has no Solidity
-ecosystem; Soldeer's registry API is not reachable from here and says
-nothing about dependencies.
+ecosystem; Soldeer's registry API says nothing about dependencies
+(REQ-SOLIDITY-011).
 
 ## Acceptance criteria
 

@@ -77,7 +77,9 @@ type Target struct {
 	// repositories asked in order, comma-separated: "hexpm:acme" for a private
 	// organization's package, a rebar3 project's list ending in "*" for the
 	// machine's. For Julia, the package's UUID, by which Pkg looks it up in every
-	// registry. Empty for the ecosystem's default.
+	// registry. For Wally, the registry a package's manifest names for its
+	// dependencies. For the Buf Schema Registry, "plugin" marks a remote plugin,
+	// which is not a module. Empty for the ecosystem's default.
 	Registry string
 }
 

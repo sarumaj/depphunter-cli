@@ -91,6 +91,23 @@ const (
 	// dist's system index (systems.txt) lists every system with its
 	// dependencies as one text file.
 	Quicklisp = "quicklisp"
+	// PuppetForge is the puppet plugin's island of Forge modules, named by their
+	// slug (author-name); the Forge's v3 API serves each release's metadata.json.
+	PuppetForge = "puppet-forge"
+	// Racket is the racket plugin's island of raco packages; a package catalog
+	// serves each package's entry, with its dependencies, as a Racket datum.
+	Racket = "raco"
+	// Wally is the lua plugin's island of Wally (Roblox) packages, named
+	// scope/name; a registry is a git repository of one file per package, each
+	// line a version's manifest.
+	Wally = "wally"
+	// Buf is the proto plugin's island of Buf Schema Registry modules (and remote
+	// plugins), named host/owner/module: the host is the registry that serves the
+	// module (see candidates).
+	Buf = "buf"
+	// CUE is the cue plugin's island of modules; a CUE registry is an OCI
+	// registry holding each module version's module.cue beside its archive.
+	CUE = "cue"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -135,6 +152,17 @@ var public = map[string]string{
 	// The Quicklisp dist's current distinfo; a dated version's is beside it
 	// (quicklisp/<version>/distinfo.txt).
 	Quicklisp: "https://beta.quicklisp.org/dist/quicklisp.txt",
+	// The Forge's API host; forgeapi.puppetlabs.com is its old name.
+	PuppetForge: "https://forgeapi.puppet.com",
+	// The catalog raco asks for new packages (a release's own catalog serves only
+	// the packages bundled with it).
+	Racket: "https://pkgs.racket-lang.org",
+	// The registry wally.toml names by default, a GitHub repository read as
+	// files (see wallyFiles).
+	Wally: "https://github.com/UpliftGames/wally-index",
+	Buf:   "https://buf.build",
+	// The registry cue asks unless CUE_REGISTRY says otherwise.
+	CUE: "https://registry.cue.works",
 }
 
 // Clojars is the Maven repository Clojure's libraries are published to. Leiningen,
@@ -647,8 +675,33 @@ func (c *Config) candidates(ecosystem, packageName, registry string) []candidate
 				known: c.trusted[registry] || c.trusted[host] || c.credentials.TerraformHost(host)}}
 		}
 	}
+	if ecosystem == Buf {
+		// A module is named with the registry that serves it
+		// (buf.example.com/acme/payments): a host other than buf.build is that
+		// host's registry, known when this machine's buf credentials name it.
+		// Implements: REQ-SUP-072
+		if host, _, _ := strings.Cut(packageName, "/"); host != "" && !strings.EqualFold(host, Host(public[Buf])) {
+			registry := "https://" + strings.ToLower(host)
+			return []candidate{{url: registry, primary: true,
+				known: c.trusted[registry] || c.trusted[host] || c.credentials.BufToken(host) != ""}}
+		}
+	}
 	one := func(s Source) []candidate {
 		return []candidate{{url: s.URL, primary: true, known: c.fetchable(ecosystem, s)}}
+	}
+	if ecosystem == Wally && registry != "" {
+		// A package's dependencies come from the registry its manifest names,
+		// which is the one wally.toml names or, for a dependency, its parent's
+		// (lang.Target.Registry). A registry nothing here configures is known only
+		// when it is the public one or the user vouched for it.
+		// Implements: REQ-SUP-071
+		want := wallyRegistry(registry)
+		for _, s := range c.sources[ecosystem] {
+			if s.Scope == "" && wallyRegistry(s.URL) == want {
+				return one(s)
+			}
+		}
+		return one(Source{URL: want})
 	}
 	if ecosystem == Cargo && registry != "" {
 		// A crate from a named registry, by name (Cargo.toml) or by index URL
@@ -758,6 +811,9 @@ func matches(ecosystem, scope, packageName string) bool {
 		// A Maven package is group:artifact; the scope is a group prefix.
 		group, _, _ := strings.Cut(packageName, ":")
 		return group == scope || strings.HasPrefix(group, scope+".")
+	case CUE:
+		// A CUE_REGISTRY module prefix matches whole path elements.
+		return packageName == scope || strings.HasPrefix(packageName, scope+"/")
 	case PyPI:
 		// Names compare as PEP 503 normalizes them; a PDM include_packages
 		// pattern is a glob.

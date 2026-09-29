@@ -144,3 +144,26 @@ func (m Machine) JuliaDepots() []string {
 	}
 	return out
 }
+
+// ---------------------------------------------------------------- Puppet and CUE
+
+// R10KConfigs lists the r10k configuration files r10k reads when it is not given
+// one, in its order: /etc/puppetlabs/r10k/r10k.yaml, then the older /etc/r10k.yaml
+// (the first that exists is the one r10k uses).
+//
+// Implements: REQ-SUP-064
+func (m Machine) R10KConfigs() []string {
+	return []string{system("etc", "puppetlabs", "r10k", "r10k.yaml"), system("etc", "r10k.yaml")}
+}
+
+// CUEConfigDirectory is where cue keeps its configuration (logins.json):
+// `CUE_CONFIG_DIR`, else cue in the platform's configuration directory
+// (os.UserConfigDir).
+//
+// Implements: REQ-SUP-064
+func (m Machine) CUEConfigDirectory() string {
+	if directory := m.Environment("CUE_CONFIG_DIR"); directory != "" {
+		return directory
+	}
+	return join(m.ConfigDirectory(), "cue")
+}

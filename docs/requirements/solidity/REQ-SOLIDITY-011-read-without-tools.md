@@ -20,7 +20,11 @@ index (without git it is unknown and the submodule floats); what a
 submodule's checkout imports is not read (its files are never the
 project's); a Soldeer package's own dependencies are read only from what
 Soldeer installed at the top of `dependencies/` (not its nested
-`dependencies/`), and nothing is asked of Soldeer's registry.
+`dependencies/`), and nothing is asked of Soldeer's registry: its API
+(`api.soldeer.xyz/api/v1/revision`, `/api/v2/project`) describes projects and
+revisions and serves each revision as a zip archive, with no dependency data,
+and an archive (several megabytes for a library) is not downloaded to read
+the `foundry.toml` or `soldeer.lock` inside it.
 
 ## Rationale
 

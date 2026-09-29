@@ -39,8 +39,8 @@ func TestImportsAndBufModules(t *testing.T) {
 	imports := map[string]map[string]lang.Target{
 		"v1/buf.work.yaml": {"proto/": local("v1/proto"), "third_party/": local("v1/third_party")},
 		"v1/buf.gen.yaml": {
-			"buf.build/protocolbuffers/go:v1.31.0": {Ecosystem: ecoBuf, Package: "buf.build/protocolbuffers/go", Version: "v1.31.0", Pinned: true},
-			"buf.build/grpc/go":                    {Ecosystem: ecoBuf, Package: "buf.build/grpc/go", Floating: true},
+			"buf.build/protocolbuffers/go:v1.31.0": {Ecosystem: ecoBuf, Package: "buf.build/protocolbuffers/go", Version: "v1.31.0", Pinned: true, Registry: remotePlugin},
+			"buf.build/grpc/go":                    {Ecosystem: ecoBuf, Package: "buf.build/grpc/go", Floating: true, Registry: remotePlugin},
 		},
 		"v1/proto/buf.yaml": {
 			"buf.build/googleapis/googleapis":                 googleV1,
@@ -74,7 +74,7 @@ func TestImportsAndBufModules(t *testing.T) {
 			"buf.build/grpc-ecosystem/grpc-gateway": {Ecosystem: ecoBuf, Package: "buf.build/grpc-ecosystem/grpc-gateway", Version: "4c5ba75caaf84e928b7137ae5c18c26a", Pinned: true},
 		},
 		"v2/buf.gen.yaml": {
-			"buf.build/protocolbuffers/go:v1.34.1": {Ecosystem: ecoBuf, Package: "buf.build/protocolbuffers/go", Version: "v1.34.1", Pinned: true},
+			"buf.build/protocolbuffers/go:v1.34.1": {Ecosystem: ecoBuf, Package: "buf.build/protocolbuffers/go", Version: "v1.34.1", Pinned: true, Registry: remotePlugin},
 			"api/":                                 local("v2/api"),
 			"buf.build/acme/other:main":            {Ecosystem: ecoBuf, Package: "buf.build/acme/other", Version: "main"},
 		},

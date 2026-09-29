@@ -178,6 +178,8 @@ func (c *Config) machine(m userconf.Machine) {
 	machineOpam(m, k)
 	machineAlire(m, k)
 	machineJulia(m, k)
+	machineR10K(m, k)
+	parseCUERegistry(environment("CUE_REGISTRY"), k)
 	if home == "" {
 		return
 	}
@@ -396,6 +398,10 @@ func (c *Config) project(files []*scan.File) {
 			c.readCPANSnapshot(data)
 		case base == "dune-workspace":
 			parseDuneWorkspace(data, k)
+		case f.Path == "Puppetfile" || strings.HasSuffix(f.Path, "/Puppetfile"):
+			parsePuppetfileForge(data, k)
+		case base == "wally.toml":
+			parseWallyManifest(data, k)
 		case strings.HasPrefix(base, "config-") && strings.HasSuffix(base, ".lua") && path.Base(path.Dir(f.Path)) == ".luarocks":
 			parseLuaRocksConfig(data, add) // what luarocks init writes for the project
 		}

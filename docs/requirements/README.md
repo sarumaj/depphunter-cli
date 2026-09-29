@@ -265,9 +265,10 @@ requirements of type `limitation` in their scopes:
   versions resolve, and no vulnerability database covers Terraform modules or
   providers.
 - Protocol Buffers are read without protoc or buf: build scripts' `-I` flags
-  are read as text, so a root computed at run time is not known, and the Buf
-  Schema Registry is not asked about a module's dependencies; no
-  vulnerability database covers its modules.
+  are read as text, so a root computed at run time is not known, a module's
+  dependencies on another registry (federation) are left out of `--online`'s
+  answer, and no vulnerability database covers the Buf Schema Registry's
+  modules.
 - Shell scripts are read without running them: only paths the file itself
   determines are followed (not loops over globs, `eval` or variables set in
   another file), the working directory is guessed, and packages installed with
@@ -361,8 +362,8 @@ requirements of type `limitation` in their scopes:
   `info.rkt` is not evaluated, raco keeps no lock file (only a checksum or a
   git commit pins), a collection no file of the repository has is
   attributed by the base collections, a curated table and the declared
-  packages' names, and neither the package catalog nor installed packages
-  are read (no `--online`, no `--resolve-depth`).
+  packages' names, installed packages are not read, and `--online` asks the
+  public catalog only (the installation's configured catalogs are not read).
 - Common Lisp is read without running a Lisp or ASDF: macros are not
   expanded, `.asd` code is not evaluated, reader conditionals keep both
   branches, `~/quicklisp` is not read, and a package no file of the
@@ -374,7 +375,8 @@ requirements of type `limitation` in their scopes:
   is followed for `lib/<dep>/src` and one nested level only, a submodule's
   commit comes from git's index, neither a submodule's nor a Soldeer
   package's own imports are read, and their dependencies only from a
-  checked-out submodule's `.gitmodules` and what Soldeer installed.
+  checked-out submodule's `.gitmodules` and what Soldeer installed (Soldeer's
+  registry has no dependency data, and its archives are not downloaded).
 - Nim is read without running the compiler, nimble or Atlas: NimScript is not
   executed, every `when` branch counts, a configuration's search paths apply
   to its directory and below, a `nimble.develop` path outside the repository
@@ -384,13 +386,14 @@ requirements of type `limitation` in their scopes:
   registry to ask (no `--online`).
 - CUE is read without running `cue`: a package's files in parent
   directories are not linked, build attributes are not evaluated, module
-  dependencies' own dependencies are read only from the local module
-  cache, and the central registry is not asked (no `--online`).
+  dependencies' own dependencies are read from the local module cache or,
+  with `--online`, a registry (not one a `file:` or `inline:` CUE_REGISTRY
+  configures).
 - Dhall is read without running `dhall`: remote imports are not fetched
   or followed, `env:` imports are dropped, and there is no registry to ask.
 - Puppet is read without compiling a catalog: class names from variables
-  and Hiera are not followed, only r10k's install directory is read, and
-  the Forge is not asked (no `--online`).
+  and Hiera are not followed, and only r10k's install directory is read
+  (`--online` asks the Forge).
 - Rego is read without OPA: data documents and bundles are not linked and
   references through variables are not followed.
 - Shaders are read without a shader compiler or engine: preprocessor and

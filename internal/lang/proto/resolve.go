@@ -224,7 +224,8 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		return dependency{name: rawImport.Module, lock: &l}.target()
 	case kindPlugin:
 		name, version := moduleReference(rawImport.Module)
-		return lang.Target{Ecosystem: ecoBuf, Package: name, Version: version, Pinned: lang.Pinned(version), Floating: version == ""}
+		return lang.Target{Ecosystem: ecoBuf, Package: name, Version: version, Pinned: lang.Pinned(version), Floating: version == "",
+			Registry: remotePlugin}
 	}
 	return r.resolveImport(file, rawImport.Module)
 }

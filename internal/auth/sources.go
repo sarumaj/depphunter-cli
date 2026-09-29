@@ -446,6 +446,8 @@ func (c *Store) readMachineSources(m userconf.Machine, lookPath func(string) (st
 	c.readPython(m)
 	c.readPub(m)
 	c.readHex(m)
+	c.readBuf(m)
+	c.readR10K(m)
 	// The first file to hold a registry's credential is the one used, so they are
 	// read from the last to the first, each over the one before.
 	files := m.ContainerAuthFiles()
@@ -454,4 +456,6 @@ func (c *Store) readMachineSources(m userconf.Machine, lookPath func(string) (st
 			c.readDockerConfig(data, lookPath)
 		}
 	}
+	// cue sends its own login to a registry before Docker's credential for it.
+	c.readCUE(m)
 }

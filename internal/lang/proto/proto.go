@@ -29,6 +29,9 @@ import (
 const (
 	ecoBuf       = "buf"          // Buf Schema Registry modules and plugins
 	ecosystemStd = "protobuf-std" // the protos protoc and buf ship
+	// remotePlugin is the lang.Target.Registry of a remote plugin: the index
+	// client asks the registry about modules, and a plugin is not one.
+	remotePlugin = "plugin"
 )
 
 // The kinds of file, as Class names them.
