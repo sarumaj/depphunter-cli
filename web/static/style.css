@@ -419,6 +419,14 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .w-slot[data-tool="grapple"] i { border-bottom-color: transparent; }
 #walk-hud .w-slot[data-tool="jetpack"] i { border: none; clip-path: polygon(50% 0, 100% 100%, 50% 72%, 0 100%); background: currentColor; }
 #walk-hud .w-slot[data-tool="skimmers"] i { border-radius: 50% / 30%; height: 8px; width: 16px; }
+/* A canopy: a dome with its lines gathered under it. */
+#walk-hud .w-slot[data-tool="parachute"] i {
+  width: 16px; height: 12px; border: none; border-radius: 0;
+  background:
+    radial-gradient(ellipse 8px 5px at 50% 100%, transparent 5.5px, currentColor 6px, currentColor 7px, transparent 7.5px) top / 100% 6px no-repeat,
+    linear-gradient(to bottom right, transparent calc(50% - 0.75px), currentColor calc(50% - 0.75px), currentColor calc(50% + 0.75px), transparent calc(50% + 0.75px)) 2px 5px / 6px 7px no-repeat,
+    linear-gradient(to bottom left, transparent calc(50% - 0.75px), currentColor calc(50% - 0.75px), currentColor calc(50% + 0.75px), transparent calc(50% + 0.75px)) 8px 5px / 6px 7px no-repeat;
+}
 
 /* Held (M33): the street is waiting on something else - a panel being read, a menu,
    the toolbar over it - so it is softened and whatever took the mouse away is what
@@ -578,7 +586,7 @@ main { position: relative; flex: 1; min-height: 0; }
   opacity: 1; color: var(--text); background: var(--surface);
   border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent);
 }
-/* Names live in the hub rather than out on the rim: eleven of them around a circle
+/* Names live in the hub rather than out on the rim: twelve of them around a circle
    this size overlap at the top and bottom, and the one being pointed at is the only
    one anybody is reading. */
 #walk-hud .w-wheel .w-slot .w-slot-name { display: none; }

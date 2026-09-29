@@ -137,7 +137,7 @@
         <div class="w-target" hidden></div>
         <div class="w-keys"><kbd>W A S D</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump
           · <kbd>Click</kbd> right hand (hold to keep firing) · <kbd>F</kbd>/<kbd>C</kbd> left hand
-          · hold <kbd>R</kbd> the tool wheel · <kbd>E</kbd>/<kbd>Q</kbd> next right/left · <kbd>1</kbd>…<kbd>0</kbd> pick
+          · hold <kbd>R</kbd> the tool wheel · <kbd>E</kbd>/<kbd>Q</kbd> next right/left · <kbd>`</kbd> <kbd>1</kbd>…<kbd>0</kbd> pick
           · <kbd>B</kbd> backpack · <kbd>H</kbd> hands away · hold <kbd>Right</kbd> scope
           · <kbd>?</kbd> everything else · <kbd>M</kbd> back to the map</div>
       </div>
@@ -233,7 +233,7 @@
         <tr><th>G</th><td>Open the photographs the camera has taken. They are kept for the session only, so the ones worth having are saved from there, one at a time, as PNG files. From the street each one can also be put up on the camera and looked at there.</td></tr>
         <tr><th>Legend click</th><td>Hide or show a language.</td></tr>
         <tr><th>Pins</th><td>A marker stands over every building the scanners reported something on, in the color of the worst of them and taller the more there are. Point at one for the tally, or select it to read them.</td></tr>
-        <tr><th>The figure</th><td>Where you were last standing in walk mode, facing the direction you faced. <kbd>V</kbd> puts you back there.</td></tr>
+        <tr><th>The figure</th><td>Where you were last standing in walk mode, facing the direction you faced — or hanging, under a canopy, if you left under one. <kbd>V</kbd> puts you back there.</td></tr>
       </table>
 
       <h2>Walk mode (V)</h2>
@@ -243,14 +243,14 @@
       <table>
         <tr><th>Mouse</th><td>Look around. The pointer is captured at the reticle; <kbd>Esc</kbd> releases it and a click on the map captures it again. Where it cannot be captured at all, dragging looks around instead.</td></tr>
         <tr><th>W A S D</th><td>Move; the arrow keys do the same and also turn. <kbd>Shift</kbd> runs, for as long as your wind holds.</td></tr>
-        <tr><th>Space</th><td>Jump, which costs a little wind. While flying, ascend.</td></tr>
+        <tr><th>Space</th><td>Jump, which costs a little wind. While flying, ascend; under a parachute, flare.</td></tr>
         <tr><th>Click</th><td>Use the tool in your right hand. Holding the button down keeps the nail gun and the extinguisher firing; every other tool takes one shot per click.</td></tr>
         <tr><th>F or C</th><td>Use the tool in your left hand. The middle mouse button does the same. While flying, <kbd>C</kbd> descends instead, and <kbd>F</kbd> is the throttle.</td></tr>
         <tr><th>R</th><td>The tool wheel, which is every tool at once, laid out the way you carry them and numbered the same way the row along the bottom is: the hunt’s row down the right side, what carries you down the left, and an empty left hand at the bottom of it. Hold <kbd>R</kbd>, point at one with the mouse and let go; or tap <kbd>R</kbd> to leave the wheel up and take what is under the cursor with <kbd>R</kbd> again, <kbd>Enter</kbd> or a click. <kbd>Esc</kbd> or the right button backs out and changes nothing, and so does letting go while the cursor is still in the middle. While it is up you are held where you stand and the city behind it is blurred — nothing moves you, spends a tank or bites you, so changing hands costs no time. Pointing at something already in your hands keeps it — the bare hand at the bottom left is how you put a carried tool down.</td></tr>
-        <tr><th>1 2 3</th><td>Take out a secondary tool, or press the same key again to put it down. Only one is carried at a time.</td></tr>
+        <tr><th>` 1 2 3</th><td>Take out a secondary tool, or press the same key again to put it down. Only one is carried at a time. The parachute has the key left of <kbd>1</kbd>, since the ten digits are taken.</td></tr>
         <tr><th>4 … 0</th><td>Take out a primary tool.</td></tr>
         <tr><th>E</th><td>The next primary tool, round and round. Your right hand is never empty.</td></tr>
-        <tr><th>Q</th><td>The next secondary tool, and after the last of them an empty left hand — which is how you come down out of the air or step off the water on purpose. Four presses brings you back to where you started.</td></tr>
+        <tr><th>Q</th><td>The next secondary tool, and after the last of them an empty left hand — which is how you come down out of the air or step off the water on purpose. Five presses bring you back to where you started.</td></tr>
         <tr><th>H</th><td>Put both hands away, or take them out again. This is only the drawing of them: both still work, and what they throw then leaves from your eye.</td></tr>
         <tr><th>Hold right button</th><td>Look through the scope. The tracking dart is the tool this is meant for.</td></tr>
         <tr><th>Enter</th><td>Show the details of whatever the reticle is on, as a second hit would. The street softens around the building, which stays in focus. The pointer is released for reading; a click on the map resumes walking.</td></tr>
@@ -285,7 +285,8 @@
         <tr><th>Grapple gun</th><td>Fired with <kbd>F</kbd> or <kbd>C</kbd>. The hook flies at the building you are looking at and the line pulls you up its facade and onto the roof. Its claw closes on the top of a wall: aim at the parapet, because a hook that strikes more than two stories below the roof's edge glances off and comes back on the line. From up there, aiming over the edge at anything lower makes the same shot the way down. <kbd>Space</kbd> cuts the line.</td></tr>
         <tr><th>Jet backpack</th><td>Carrying it is flying, for as long as its tank lasts. The view leans into your turns, and levels out again when you straighten up or land. <kbd>W</kbd> and <kbd>S</kbd> then move along the direction you are looking — look down and press <kbd>W</kbd> to dive — while <kbd>Space</kbd> and <kbd>C</kbd> go straight up and down. <kbd>F</kbd> opens the throttle for a burst of speed. Putting it away is how you come back down.</td></tr>
         <tr><th>Water skimmers</th><td>Carrying them makes the surface of the water walkable, so the bay becomes a street and you pass beneath the bridges rather than over them. Putting them away over deep water leaves you in it, and so does letting them waterlog.</td></tr>
-        <tr><th>Fuel</th><td>The jet backpack and the water skimmers both run on a tank. It empties only while the tool is doing its work — while the jet is holding you off the ground, while the water is the only thing under the skimmers — and fills again whenever it is not, so neither is a way of getting everywhere. The gauge beside the health bar shows what is left in whichever you are carrying. A tool that runs out stops there and stays stopped until its tank has filled back to a quarter; then it works again by itself, in your hand or not.</td></tr>
+        <tr><th>Parachute</th><td>A canopy on your back, for getting down off a roof or out of the jet. <kbd>F</kbd> (or <kbd>C</kbd>, or the middle button) throws the pilot chute, and about a second later the canopy is open — so it has to be thrown from well up: too close to the ground and it is still opening when you arrive, which is a fall like any other. Under it, <kbd>A</kbd> and <kbd>D</kbd> (or the arrows) steer, banking and sinking faster in the turn; <kbd>W</kbd> lets the toggles up for a faster, steeper line and <kbd>S</kbd> holds them down, slow and sinking a little more. You swing under it and the view goes with you, and the mouse still looks around. What the landing costs is how fast you arrive, not how far you came: <kbd>Space</kbd> flares, trading speed for lift, and a flare begun about two meters up puts you down for nothing — begun too high it runs out and stalls, and you come down harder than without it. Flying into a wall costs what arriving at that speed would. On the ground the canopy comes down in front of you and is repacked, which takes a few seconds before it can be thrown again; the gauge beside the health bar shows how far along that is. Putting it away while it is open cuts it loose: it flies off on its own, and you fall.</td></tr>
+        <tr><th>Fuel</th><td>The jet backpack and the water skimmers both run on a tank (the parachute's is its pack, spent at once and repacked on the ground). It empties only while the tool is doing its work — while the jet is holding you off the ground, while the water is the only thing under the skimmers — and fills again whenever it is not, so neither is a way of getting everywhere. The gauge beside the health bar shows what is left in whichever you are carrying. A tool that runs out stops there and stays stopped until its tank has filled back to a quarter; then it works again by itself, in your hand or not.</td></tr>
       </table>
 
       <h2>The hunt</h2>

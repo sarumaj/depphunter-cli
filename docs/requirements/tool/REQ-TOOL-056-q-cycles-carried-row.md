@@ -22,4 +22,4 @@ down.
 
 ## Acceptance criteria
 
-1. `Q` pressed four times from empty comes back to empty.
+1. `Q` pressed five times from empty comes back to empty.

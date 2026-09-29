@@ -61,7 +61,7 @@ func (u UI) Validate() error {
 				// The primary tools, which hunt, and then the secondary ones, which
 				// carry the walker (web/static/tools.js).
 				"rod", "net", "camera", "bubbles", "extinguisher", "dart", "nailer",
-				"grapple", "jetpack", "skimmers")
+				"parachute", "grapple", "jetpack", "skimmers")
 		}(),
 	)
 }

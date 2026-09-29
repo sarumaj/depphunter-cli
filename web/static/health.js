@@ -31,6 +31,17 @@ const MAX_CATCH = 150;   // as far as catching can raise it
 // survive what nobody would.
 // Implements: REQ-WALK-027
 const SAFE_FALL = 0.9, LETHAL_FALL = 5;
+// A landing under a canopy is judged on how fast it arrives rather than how far it
+// came, in units a second (parachute.js says what speed a landing is judged at). A
+// stand-up landing is free - about four meters a second, which a good flare comes in
+// under - and from there it costs a share that grows with the speed, up to all of it
+// at the speed a LETHAL_FALL arrives at under walk mode's gravity of 13 (walk.js).
+// So a canopy flown onto the ground without a flare costs a little, and one flown into
+// it at full speed or into a wall costs a good deal. That is stricter than a fall that
+// arrived as fast would be, on purpose: under a canopy there is always a way to
+// arrive slower, and the flare is it.
+// Implements: REQ-TOOL-075
+const SAFE_TOUCHDOWN = 1.2, LETHAL_TOUCHDOWN = Math.sqrt(2 * 13 * LETHAL_FALL);
 // A bite, by what the finding it came from was called. Several of any of them are
 // survivable, which is the point: being bitten is a reason to swing at what is biting
 // you rather than a thing that happens once and ends the walk.
@@ -133,8 +144,39 @@ export class Health {
    * Implements: REQ-WALK-027
    */
   fall(height) {
+    return this.take(Health.fallShare(height));
+  }
+
+  /** The share of the walker a drop of `height` takes. */
+  static fallShare(height) {
     if (!(height > SAFE_FALL)) return 0;
-    const share = Math.min(1, (height - SAFE_FALL) / (LETHAL_FALL - SAFE_FALL));
+    return Math.min(1, (height - SAFE_FALL) / (LETHAL_FALL - SAFE_FALL));
+  }
+
+  /** The share of the walker a canopy landing at `speed` takes. */
+  static touchdownShare(speed) {
+    if (!(speed > SAFE_TOUCHDOWN)) return 0;
+    return Math.min(1, (speed - SAFE_TOUCHDOWN) / (LETHAL_TOUCHDOWN - SAFE_TOUCHDOWN));
+  }
+
+  /**
+   * What a landing under a canopy costs: arriving at `speed`, with the canopy `open`
+   * that far (1 once it has finished opening). One that had not finished is judged
+   * partly as the fall it nearly was - `drop`, the height a fall would have come down
+   * from to arrive as fast - in proportion to how much of it was not yet open, so a
+   * canopy thrown too low saves about as much as it had time to. Returns what was
+   * taken, like fall().
+   *
+   * Implements: REQ-TOOL-075, REQ-TOOL-072
+   */
+  touchdown(speed, open = 1, drop = 0) {
+    const k = Math.min(1, Math.max(0, open));
+    return this.take(k * Health.touchdownShare(speed) + (1 - k) * Health.fallShare(drop));
+  }
+
+  /** Takes a share of the walker, at least a point of it if any, and says how much. */
+  take(share) {
+    if (!(share > 0)) return 0;
     const damage = Math.max(1, Math.round(share * this.max));
     this.hurt(damage);
     return damage;

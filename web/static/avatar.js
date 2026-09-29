@@ -17,13 +17,15 @@ const MAX = 5;     // nor bigger, however far the map is pulled away
 const GHOST = 0.3; // how strongly it shows through what stands in front of it
 
 let parts = null;
+let canopyParts = null;
 
 export class Avatar {
   constructor(scene) {
     this.scene = scene;
     this.group = new THREE.Group();
     this.group.visible = false;
-    this.stance = null; // {x, z, feet, yaw}
+    this.stance = null; // {x, z, feet, yaw, canopy}
+    this.canopy = [];   // the canopy over the figure, for a walker who left under one
     this.zoom = 0;      // the zoom the current scale was worked out for
     this.materials = [];
     scene.scene.add(this.group);
@@ -42,6 +44,7 @@ export class Avatar {
     }
     if (!this.group.children.length) this.build(color);
     else if (color && this.color !== color) this.paint(color);
+    for (const mesh of this.canopy) mesh.visible = !!stance.canopy;
     this.group.position.set(stance.x, stance.feet, stance.z);
     this.group.rotation.y = stance.yaw;
     this.zoom = 0; // the figure is sized for the camera, which may have moved
@@ -67,8 +70,14 @@ export class Avatar {
   // A figure a unit tall, facing -z, and the same figure again behind whatever hides
   // it. Two meshes, not two scenes: the faint one is drawn first and the solid one
   // over it, so where nothing is in the way only the solid one is seen.
+  //
+  // A walker who left the street hanging under a parachute is drawn under one: the
+  // canopy is a second pair of meshes over the figure, in the same two materials, shown
+  // only while the stance says so.
+  // Implements: REQ-TOOL-079
   build(color) {
     parts ||= geometry();
+    canopyParts ||= canopyGeometry();
     this.color = color;
     for (const ghost of [true, false]) {
       const material = this.scene.bendable(new THREE.MeshBasicMaterial({
@@ -80,6 +89,12 @@ export class Avatar {
       mesh.renderOrder = ghost ? 8 : 9;
       this.materials.push(material);
       this.group.add(mesh);
+      const canopy = new THREE.Mesh(canopyParts, material);
+      canopy.frustumCulled = false;
+      canopy.renderOrder = mesh.renderOrder;
+      canopy.visible = !!this.stance?.canopy;
+      this.canopy.push(canopy);
+      this.group.add(canopy);
     }
   }
 
@@ -91,6 +106,7 @@ export class Avatar {
   clear() {
     for (const m of this.materials) m.dispose();
     this.materials = [];
+    this.canopy = [];
     this.group.clear();
   }
 
@@ -115,4 +131,23 @@ function geometry() {
   // One buffer: they share a material and never move apart, so there is nothing to
   // be had from keeping them as four draws.
   return mergeGeometries([body, head, ring, arrow]);
+}
+
+// The canopy, at the figure's scale: an arched wing over its head, as wide as the
+// figure is tall and a little over, with a line down from each tip to the shoulders.
+function canopyGeometry() {
+  const arc = 1.1, radius = 1.4;
+  const wing = new THREE.TorusGeometry(radius, 0.09, 6, 18, arc)
+    .rotateZ(Math.PI / 2 - arc / 2) // the arch centered over the head
+    .scale(1, 1, 4)                 // its tube drawn out into a chord
+    .translate(0, 2.35 - radius, 0);
+  const lines = [-1, 1].map(side => {
+    const tip = new THREE.Vector3(side * radius * Math.sin(arc / 2), 2.35 - radius + radius * Math.cos(arc / 2) - 0.05, 0);
+    const shoulder = new THREE.Vector3(side * 0.16, 0.6, 0);
+    const run = new THREE.Vector3().subVectors(tip, shoulder);
+    const line = new THREE.CylinderGeometry(0.025, 0.025, run.length(), 5);
+    line.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), run.clone().normalize()));
+    return line.translate((tip.x + shoulder.x) / 2, (tip.y + shoulder.y) / 2, 0);
+  });
+  return mergeGeometries([wing, ...lines]);
 }

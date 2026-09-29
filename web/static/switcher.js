@@ -1,7 +1,7 @@
 // How a walker changes what is in their hands.
 //
-// Walk mode carries two tools at once - one in each hand - out of a bag of ten, and
-// the row along the bottom of the HUD is ten slots wide. A row that wide is read by
+// Walk mode carries two tools at once - one in each hand - out of a bag of eleven, and
+// the row along the bottom of the HUD is eleven slots wide. A row that wide is read by
 // counting along it, and counting along it is the one thing nobody does in the middle
 // of a chase. So there are three ways in, and they are meant for three different
 // moments:
@@ -33,8 +33,12 @@
 // lays out and the list the digits count along, so the row reads 1 to 0 from left to
 // right and a tool's key is wherever it is drawn. Changing the layout renumbers the
 // keys with it, which is the only arrangement in which the two cannot drift apart.
+//
+// Ten digits number ten tools. The eleventh, the parachute, has a key of its own
+// instead (tools.js `key`): the one left of 1, and its slot is the first in the row,
+// so the row still reads the way the top of the keyboard does - ` then 1 to 0.
 
-import { PRIMARY_IDS, SECONDARY_IDS, toolFor } from './tools.js';
+import { TOOLS, PRIMARY_IDS, SECONDARY_IDS, toolFor } from './tools.js';
 
 /** The left hand holding nothing, which is a choice on the wheel like any tool. */
 export const EMPTY = 'none';
@@ -65,30 +69,37 @@ export function cycle(ring, current, directory = 1) {
  */
 export const rowOrder = () => [...SECONDARY_IDS, ...PRIMARY_IDS];
 
+/** The row without the tools that have a key of their own: what the digits count along. */
+const numbered = () => rowOrder().filter(id => !TOOLS[id].key);
+
 /**
- * The digit a slot wears: its place in the row, 1 upwards, with the tenth on 0 the
- * way a shooter numbers a tenth slot. Ten slots is exactly ten digits, which is the
- * only reason this can be as simple as counting.
+ * The key a slot wears: a tool's own key if it has one, and otherwise its place along
+ * the numbered row, 1 upwards, with the tenth on 0 the way a shooter numbers a tenth
+ * slot. Ten numbered slots is exactly ten digits, which is the only reason this can
+ * be as simple as counting.
  *
- * Implements: REQ-TOOL-054
+ * Implements: REQ-TOOL-054, REQ-TOOL-070
  */
 export const keyFor = id => {
-  const at = rowOrder().indexOf(id);
+  if (TOOLS[id]?.key) return TOOLS[id].key.label;
+  const at = numbered().indexOf(id);
   return at < 0 ? '' : String((at + 1) % 10);
 };
 
 /**
- * The tool a number key picks, or undefined for every key that is not one.
+ * The tool a key picks - a digit, or a tool's own key - or undefined for every key
+ * that is neither.
  *
  * The guard is the whole of it: this is asked about every key the walker presses, and
  * `'KeyQ'.slice(5)` is an empty string, which +coerces to nought - so without it, Q
  * would come through here as the 0 key and put a nail gun in the hunting hand instead
  * of walking the carried row.
  *
- * Implements: REQ-TOOL-054
+ * Implements: REQ-TOOL-054, REQ-TOOL-070
  */
 export const toolForKey = code =>
-  /^Digit[0-9]$/.test(code) ? rowOrder()[(+code.slice(5) + 9) % 10] : undefined;
+  /^Digit[0-9]$/.test(code) ? numbered()[(+code.slice(5) + 9) % 10]
+    : rowOrder().find(id => TOOLS[id].key?.code === code);
 
 /**
  * Every key that picks a tool directly, for the help and for what a slot says: its
@@ -109,7 +120,7 @@ export const FACE = 320, RING = 112, HUB = 58;
  * top and running clockwise the way a conic gradient does.
  *
  * The two halves are sized by what is in them rather than cut to a common angle: the
- * hunt's seven share the right half and the carried three and the empty hand share
+ * hunt's seven share the right half and the carried four and the empty hand share
  * the left. So the wedges differ in width between the halves and the halves are what
  * the eye reads, which is the point.
  *
@@ -152,8 +163,8 @@ function saysOf(id) {
 
 /**
  * The wheel itself. It is built once, on the first open, and then only moved: a
- * wheel rebuilt every time it comes up would drop the browser's work on eleven
- * gradients and eleven labels into the middle of whatever the walker was doing.
+ * wheel rebuilt every time it comes up would drop the browser's work on twelve
+ * gradients and twelve labels into the middle of whatever the walker was doing.
  *
  * It draws nothing about the world and decides nothing about the walker. What it is
  * pointing at is `pick`, and who reads it and what they do about it is walk.js's
