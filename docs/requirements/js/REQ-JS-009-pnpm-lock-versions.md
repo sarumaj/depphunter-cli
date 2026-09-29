@@ -16,7 +16,9 @@ v9) per importer, applying each importer's versions to the package directory the
 importer names, **shall** drop the peer-dependency suffix `(…)` from a version,
 and **shall** ignore `link:` entries. Where the file holds several YAML
 documents, as recent pnpm writes one locking the package manager itself
-before the project's, the last document **shall** be the project's lock.
+before the project's, the last document **shall** be the project's lock. A git
+dependency **shall** be pinned to the commit its package's `resolution` names,
+from its repository (REQ-JS-019).
 
 ## Rationale
 

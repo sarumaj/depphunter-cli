@@ -2,11 +2,13 @@ package javascript
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/tidwall/jsonc"
@@ -113,13 +115,16 @@ func newResolver(all []*scan.File) *resolver {
 			}
 			var lock packageLock
 			if readJSON(f.AbsolutePath, &lock) == nil {
+				r.noteUnpinned(f.Path, lock.pinGit(r.tree))
 				r.addLock(directory, lock.versions())
 				r.tree.addPackageLockTree(&lock)
 			}
 		case "yarn.lock":
 			if data, err := os.ReadFile(f.AbsolutePath); err == nil {
-				yarn[directory] = newYarnDescriptors(readYarnLock(data))
-				r.tree.addYarnTree(data)
+				entries := readYarnEntries(data)
+				r.noteUnpinned(f.Path, unpinnedGit(entries))
+				yarn[directory] = newYarnDescriptors(yarnVersions(entries))
+				r.tree.addYarnTree(entries)
 			}
 		case "pnpm-lock.yaml":
 			data, err := os.ReadFile(f.AbsolutePath)
@@ -240,7 +245,31 @@ func (r *resolver) resolve(spec, from string) lang.Target {
 	t, declared := r.declared(packageName, directory)
 	t.Ecosystem, t.Package, t.Unresolved = ecosystemNPM, packageName, !declared
 	t.Platform = r.tree.platform[packageName] // Implements: REQ-JS-018
+	t.Origin = r.gitOrigin(t)
 	return t
+}
+
+// gitOrigin is the repository a package the project declares was installed from,
+// where it is a git dependency: the one the lock file that pins it records, or,
+// with no lock file pinning it, the one the declared range names
+// ("github:owner/repo#main").
+//
+// Implements: REQ-JS-019
+func (r *resolver) gitOrigin(t lang.Target) string {
+	if t.Pinned {
+		return r.tree.origin(t.Package, t.Version)
+	}
+	repository, _, _ := gitSource(t.Version)
+	return repository
+}
+
+// noteUnpinned reports the git dependencies a lock file names no commit for.
+//
+// Implements: REQ-JS-019, REQ-TRC-017
+func (r *resolver) noteUnpinned(file string, names []string) {
+	if len(names) > 0 {
+		r.Note(file, trace.NoteGitUnpinned, unpinnedNote(names))
+	}
 }
 
 // svelteKit resolves SvelteKit's $lib alias to src/lib beside the nearest
@@ -466,36 +495,6 @@ func (r *resolver) addLock(directory string, versions map[string]string) {
 	}
 }
 
-// readYarnLock maps "name@range" descriptors to versions. Both the classic format
-// (`"a@^1", a@^1.2:` / `  version "1.2.3"`) and Berry's YAML (`"a@npm:^1":` /
-// `  version: 1.2.3`) are line-oriented enough to read the same way.
-//
-// Implements: REQ-JS-008
-func readYarnLock(data []byte) map[string]string {
-	out := map[string]string{}
-	var keys []string
-	for _, line := range strings.Split(string(data), "\n") {
-		switch {
-		case line == "" || strings.HasPrefix(line, "#"):
-		case !strings.HasPrefix(line, " ") && strings.HasSuffix(line, ":"):
-			keys = keys[:0]
-			for _, k := range strings.Split(strings.TrimSuffix(line, ":"), ",") {
-				keys = append(keys, strings.Trim(strings.TrimSpace(k), `"`))
-			}
-		// The key has to be "version" itself: a dependency named version-guard, one
-		// level deeper inside the entry, starts with the same letters.
-		case !strings.HasPrefix(line, "    "):
-			if k, v := yarnField(line); k == "version" && v != "" {
-				for _, key := range keys {
-					out[key] = v
-				}
-				keys = keys[:0]
-			}
-		}
-	}
-	return out
-}
-
 // yarnField reads one "key value" line of a yarn.lock. The classic format writes
 // `version "1.2.3"`, Berry writes `version: 1.2.3`; both may quote the value.
 func yarnField(line string) (key, value string) {
@@ -555,19 +554,75 @@ type pnpmLock struct {
 	Importers        map[string]pnpmDependencies `yaml:"importers"`
 	// The dependency edges. v5 to v8 keep them under "packages", v9 moved them to
 	// "snapshots"; both key entries by name and version.
-	Packages map[string]struct {
-		Name, Version        string
-		Dependencies         map[string]string `yaml:"dependencies"`
-		OptionalDependencies map[string]string `yaml:"optionalDependencies"`
-		// The platforms the package installs on, from its manifest.
-		OS   platformList `yaml:"os"`
-		CPU  platformList `yaml:"cpu"`
-		Libc platformList `yaml:"libc"`
-	} `yaml:"packages"`
+	Packages  map[string]pnpmPackage `yaml:"packages"`
 	Snapshots map[string]struct {
 		Dependencies         map[string]string `yaml:"dependencies"`
 		OptionalDependencies map[string]string `yaml:"optionalDependencies"`
 	} `yaml:"snapshots"`
+}
+
+// pnpmPackage is one entry of pnpm-lock.yaml's "packages".
+type pnpmPackage struct {
+	// Set where the key does not say: v5 and v6 for a package from outside the
+	// registry, whose key is where it came from.
+	Name, Version        string
+	Dependencies         map[string]string `yaml:"dependencies"`
+	OptionalDependencies map[string]string `yaml:"optionalDependencies"`
+	// The platforms the package installs on, from its manifest.
+	OS   platformList `yaml:"os"`
+	CPU  platformList `yaml:"cpu"`
+	Libc platformList `yaml:"libc"`
+	// Where it was fetched from: {commit, repo, type: git} for a git repository,
+	// {tarball} for an archive, which GitHub's are of a commit.
+	Resolution struct{ Commit, Repo, Type, Tarball string } `yaml:"resolution"`
+}
+
+// git reads the entry as a git dependency: the repository (without
+// credentials) and the commit it was fetched at.
+//
+// Implements: REQ-JS-019
+func (p pnpmPackage) git() (repository, commit string, ok bool) {
+	if p.Resolution.Type == "git" && p.Resolution.Repo != "" {
+		repository, _, ok = gitSource("git+" + strings.TrimPrefix(p.Resolution.Repo, "git+"))
+		if strings.HasPrefix(p.Resolution.Repo, "git@") { // scp form: no scheme to add
+			repository, ok = p.Resolution.Repo, true
+		}
+		if lang.Commit(p.Resolution.Commit) {
+			commit = strings.ToLower(p.Resolution.Commit)
+		}
+		return repository, commit, ok
+	}
+	return gitSource(p.Resolution.Tarball)
+}
+
+// keyed is the package a "packages" or "snapshots" key names, at the version the
+// lock installs, and for a git dependency the repository it came from, the
+// version being the commit.
+func (lock *pnpmLock) keyed(key string) (name, version, repository string) {
+	name, version = pnpmKey(key)
+	p, found := lock.Packages[key]
+	if found && p.Name != "" { // v5 spells them out instead of packing them into the key
+		name, version = p.Name, p.Version
+	}
+	if repository, commit, ok := p.git(); found && ok {
+		return name, commit, repository
+	}
+	return name, version, ""
+}
+
+// gitReference reads a dependency reference as a git dependency: the package
+// and commit it installs, and the repository. A reference names the entry of
+// "packages" it installs: its key (v5, v6), or the key without the name (v9).
+func (lock *pnpmLock) gitReference(alias, reference string) (name, commit, repository string, ok bool) {
+	reference, _, _ = strings.Cut(reference, "(")
+	for _, key := range []string{reference, "/" + reference, alias + "@" + reference} {
+		if _, found := lock.Packages[key]; found {
+			name, commit, repository = lock.keyed(key)
+			return name, commit, repository, repository != ""
+		}
+	}
+	repository, commit, ok = gitSource(reference)
+	return alias, commit, repository, ok
 }
 
 // readPnpmLock decodes a pnpm-lock.yaml. Recent pnpm (vite locks with pnpm 12)
@@ -601,7 +656,12 @@ func (lock *pnpmLock) versions() map[string]map[string]string {
 		m := map[string]string{}
 		for _, d := range []map[string]any{section.OptionalDependencies, section.DevDependencies, section.Dependencies} {
 			for name, v := range d {
-				if version := pnpmVersion(pnpmReference(v)); version != "" {
+				// Implements: REQ-JS-019
+				if _, commit, _, git := lock.gitReference(name, pnpmReference(v)); git {
+					if commit != "" {
+						m[name] = commit
+					}
+				} else if version := pnpmVersion(pnpmReference(v)); version != "" {
 					m[name] = version
 				}
 			}
@@ -661,7 +721,8 @@ type packageLock struct {
 type lockPath struct {
 	Name                 string // the real package's, where the path is an alias
 	Version              string
-	Link                 bool // a symlink to a workspace (or file:) directory
+	Resolved             string // where it was fetched from: a tarball, or a git repository at a commit
+	Link                 bool   // a symlink to a workspace (or file:) directory
 	Dependencies         map[string]string
 	OptionalDependencies map[string]string
 	// npm 7 onwards installs peer dependencies, and records them here; an optional
@@ -676,10 +737,61 @@ type lockPath struct {
 
 // lockV1 is one package-lock.json v1 dependency, and those installed inside it.
 type lockV1 struct {
-	Version      string
+	Version      string // a git dependency's is its repository at a commit, as Resolved
+	Resolved     string
 	Optional     bool
 	Requires     map[string]string
 	Dependencies map[string]*lockV1
+}
+
+// pinGit turns every git dependency of the lock into its commit: the version of
+// its path (v2 and v3 write the repository's package.json version there, and the
+// repository and commit as "resolved"; v1 writes them as the version), and the
+// repository it came from, recorded in t. It returns the names of those the lock
+// names no commit for, which are not pinned.
+//
+// Implements: REQ-JS-019
+func (lock *packageLock) pinGit(t *tree) (unpinned []string) {
+	note := func(name string) {
+		if !slices.Contains(unpinned, name) {
+			unpinned = append(unpinned, name)
+		}
+	}
+	for key, p := range lock.Packages {
+		alias := lockName(key)
+		if alias == "" || p.Link {
+			continue
+		}
+		repository, commit, ok := gitSource(cmp.Or(p.Resolved, p.Version))
+		if !ok {
+			continue
+		}
+		p.Version = commit
+		lock.Packages[key] = p
+		t.addGit([]string{cmp.Or(p.Name, alias), alias}, commit, repository)
+		if commit == "" {
+			note(cmp.Or(p.Name, alias))
+		}
+	}
+	var walk func(map[string]*lockV1)
+	walk = func(dependencies map[string]*lockV1) {
+		for name, d := range dependencies {
+			if d == nil {
+				continue
+			}
+			if repository, commit, ok := gitSource(cmp.Or(d.Version, d.Resolved)); ok {
+				d.Version = commit
+				t.addGit([]string{name}, commit, repository)
+				if commit == "" {
+					note(name)
+				}
+			}
+			walk(d.Dependencies)
+		}
+	}
+	walk(lock.Dependencies)
+	slices.Sort(unpinned)
+	return unpinned
 }
 
 // versions returns the top-level package versions.
@@ -742,6 +854,7 @@ func (p *Packages) Package(spec, file string) (lang.Target, bool) {
 		return lang.Target{}, false
 	}
 	t.Ecosystem, t.Package = ecosystemNPM, packageName
+	t.Origin = p.r.gitOrigin(t)
 	return t, true
 }
 

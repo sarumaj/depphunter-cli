@@ -1,0 +1,22 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "app",
+      "dependencies": {
+        "corp": "git+ssh://git@git.corp.example/team/corp.git",
+        "dep": "^1.0.0",
+        "pub": "github:acme-oss/pub",
+      },
+    },
+  },
+  "packages": {
+    "corp": ["corp@git+ssh://git@git.corp.example/team/corp.git#9e4d2b7a1c8f3e6d0b5a9c2e7f1d4b8a3c6e0f92", {}, "9e4d2b7a1c8f3e6d0b5a9c2e7f1d4b8a3c6e0f92"],
+
+    "dep": ["dep@1.0.0", "", {}, "sha512-AAAA"],
+
+    "pub": ["pub@git+https://github.com/acme-oss/pub.git#3b8f1e6a9d2c4b7e0f5a8c1d6e9b2f4a7c0d3e5f", { "dependencies": { "dep": "^1.0.0", "tr": "gitlab:acme-oss/tr" } }, "3b8f1e6a9d2c4b7e0f5a8c1d6e9b2f4a7c0d3e5f"],
+
+    "tr": ["tr@git+https://gitlab.com/acme-oss/tr.git#6c1a9f4e2d7b0c5a8e3f6d1b9c4a7e2f5d0b8c3a", {}, "6c1a9f4e2d7b0c5a8e3f6d1b9c4a7e2f5d0b8c3a"],
+  }
+}

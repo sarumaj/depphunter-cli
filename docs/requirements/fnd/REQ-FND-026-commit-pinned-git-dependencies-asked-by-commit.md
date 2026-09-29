@@ -25,7 +25,9 @@ opam, Clojure and Julia git dependencies, mix, rebar3 and Gleam git
 dependencies, PureScript git packages, Puppet git modules, Bazel
 `git_override` and `git_repository`), from a shard's
 `<version>+git.commit.<sha>`, from an npm `github:owner/repo#<sha>` or
-`git+<url>#<sha>` version, from Composer's `dev-<branch>#<sha>`, and from the
+`git+<url>#<sha>` version and the git dependencies of `package-lock.json`,
+`yarn.lock`, `pnpm-lock.yaml` and `bun.lock`, whose version is the commit
+(REQ-JS-019), from Composer's `dev-<branch>#<sha>`, and from the
 checkout a plugin records beside a version that shows something else: a
 Bundler `GIT` section's revision, a Cargo.lock `git+…#<sha>` source, a
 Python direct reference `@ git+<url>@<sha>`, a composer.lock branch
@@ -67,13 +69,17 @@ not publish; a commit of a repository on the organization's own host does.
    pattern matches are not asked about by commit.
 4. An advisory returned for a Swift package's name and version and, under an
    alias, for its commit is one finding.
+5. In every npm, Yarn, pnpm and Bun lock format, a git dependency on GitHub
+   and a transitive one on GitLab are asked about by their commits alone, and
+   one on a company host is asked about in no way; a private pattern naming
+   the GitHub repository keeps its commit back too.
 
 ## Notes
 
 A shortened commit could match another repository's commit, so it is not a
-pin anybody can be asked about: Bun's `bun.lock` git resolutions and a Nix
+pin anybody can be asked about: Bun's `bun.lock` GitHub resolutions and a Nix
 tarball input without a locked commit are not asked about by commit. Nor are
-an npm package-lock or yarn.lock git dependency whose version is a release, a
+a git dependency a lock file names a branch or tag of and no commit, a
 git submodule with a relative URL (on the superproject's host), a Racket
 package pinned by its catalog's checksum, a GitHub Actions or GitLab CI
 reference (the host may be GitHub Enterprise or the instance), and Go

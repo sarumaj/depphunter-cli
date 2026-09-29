@@ -867,6 +867,7 @@ The commit is read from:
 | a version that is a full commit                                     | Carthage, Zig, Paket GitHub and git files, CMake `FetchContent`, Terraform git module sources, SwiftPM revisions, git submodules, jsonnet-bundler, dub, fpm, nimble, haxelib, Alire, Quicklisp, Soldeer, CocoaPods, Bazel `git_override`/`git_repository`, Puppet git modules, PureScript git packages, and the git dependencies of mix, rebar3, Gleam, CRAN remotes, Hackage, opam, Clojure and Julia |
 | `<version>+git.commit.<sha>`                                        | Crystal shards                                                                                                                                                                                                                                                                                                                                                                                         |
 | `github:owner/repo#<sha>`, `git+<url>#<sha>`                        | npm                                                                                                                                                                                                                                                                                                                                                                                                    |
+| the commit a lock file records for a git dependency                 | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` and `bun.lock`                                                                                                                                                                                                                                                                                                                                      |
 | `dev-<branch>#<sha>`, and a composer.lock branch's source reference | Composer                                                                                                                                                                                                                                                                                                                                                                                               |
 | the lock's `GIT` section revision                                   | Bundler                                                                                                                                                                                                                                                                                                                                                                                                |
 | the Cargo.lock source `git+<url>#<sha>`                             | Cargo                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -880,13 +881,13 @@ plugin found on a public forge (a repository elsewhere is recorded as the
 package's origin and makes it private). Nothing a `--private` pattern or
 `GOPRIVATE` matches, by package name or by repository, is sent. A package that
 is private only because it was installed from a public repository instead of an
-index (a mix git dependency, a Bundler `GIT` gem) is asked about by its commit
-alone, never by its name and version, and a version that is itself a git
-reference is not sent as a version. A shortened commit (Bun's seven digits) is
-not a pin OSV can be asked about. What a commit matched is reported by
-**OSV (git commit)**, with the fixed commit of the advisory's range for that
-repository; an advisory the package's name and version already returned, under
-its id or an alias, is shown once.
+index (a mix git dependency, a Bundler `GIT` gem, an npm git dependency) is
+asked about by its commit alone, never by its name and version, and a version
+that is itself a git reference is not sent as a version. A shortened commit
+(Bun's seven digits) is not a pin OSV can be asked about. What a commit matched
+is reported by **OSV (git commit)**, with the fixed commit of the advisory's
+range for that repository; an advisory the package's name and version already
+returned, under its id or an alias, is shown once.
 
 Floating packages are not queried, since they resolve to a different version
 on the next installation. Answers are cached for six hours. `--no-vulns`
@@ -964,7 +965,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Ecosystem           | pinned by                                                                                                                                                                                                                             | floats on                                                                                                                                                 |
 |---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Go modules          | the version in `go.mod`, which the build selects; a script's `go install x@v1.2.3`                                                                                                                                                    | — (a `require` always names a version); a script's `@latest` or `@v1.2`                                                                                   |
-| npm                 | `package-lock.json` (or `npm-shrinkwrap.json`), `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` (a git dependency by its commit), an exact `1.2.3`                                                                                          | any range, including `1.2`, which denotes 1.2.x; a tarball URL; only `bun.lockb`                                                                          |
+| npm                 | `package-lock.json` (or `npm-shrinkwrap.json`), `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` (in each, a git dependency by the commit it names), an exact `1.2.3`                                                                        | any range, including `1.2`, which denotes 1.2.x; a tarball URL; a git dependency locked to a branch or tag only; only `bun.lockb`                         |
 | crates.io           | `Cargo.lock`, a script's `cargo install x@1.2.3`                                                                                                                                                                                      | the manifest alone, where `"1.2.3"` denotes `^1.2.3`                                                                                                      |
 | PyPI                | `index-url`, `PIP_INDEX_URL`, `-i`; a uv index with `default = true`, `UV_DEFAULT_INDEX`; Poetry's default and primary sources, asked in order; a `Pipfile`'s first source; a PDM source or `[pypi]` url named `pypi`, `PDM_PYPI_URL` | `extra-index-url`, `PIP_EXTRA_INDEX_URL`; any other uv index, `UV_INDEX`; a supplemental Poetry source; a `Pipfile`'s other sources; any other PDM source |
 | Maven               | a plain version, `[1.2.3]`, `gradle.lockfile` (and Gradle 6's `gradle/dependency-locks/*.lockfile`)                                                                                                                                   | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, dynamic `1.+` and `latest.*`, unexpanded `${…}`                                                                 |
@@ -1098,7 +1099,13 @@ like ship as one optional dependency per platform, all of which a lock file
 lists — stays in the graph, and its node's `platform` (Yarn Berry's
 `conditions`, or the `os`, `cpu` and `libc` that npm, pnpm and Bun copy into
 the lock) says where, as `os=linux & cpu=x64`; the side panel shows it as
-"installs on".
+"installs on". A git dependency (`github:owner/repo`, `git+ssh://…`), whether
+the project or a package needs it, is pinned to the commit its lock file
+records, which is its version; the repository, without any token its URL
+holds, is its origin, so the registry is not asked about it (see
+[Findings](#findings) for what the vulnerability database is asked). One the
+lock names only a branch or a tag of is not pinned, and the resolution report
+notes it (`git-unpinned`).
 
 A Python package that no lock file gives edges for (`Pipfile.lock` records none)
 falls back to the installed environment (see [Languages](#languages)).
@@ -2053,7 +2060,9 @@ The report records six things:
   a `.bazelrc` names a credential helper for, or a Conan remote that wants a
   login only Conan's `auth_remote.py` plugin could supply, which is not run
   (`helper-not-run`); a Python package asked of several indexes while uv or
-  PDM is configured to merge their versions (`merged`); and
+  PDM is configured to merge their versions (`merged`); a `package-lock.json`
+  or `yarn.lock` git dependency locked to a branch or tag, not a commit
+  (`git-unpinned`); and
 - **the questions nothing answered** — every package for which no answer was
   obtained, with the reason: no lock file covers it; its index is named only by
   the repository; it is private and its index is the public one; the proxy

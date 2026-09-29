@@ -1,0 +1,43 @@
+lockfileVersion: '6.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+dependencies:
+  corp:
+    specifier: git+ssh://git@git.corp.example/team/corp.git
+    version: git.corp.example/team/corp/9e4d2b7a1c8f3e6d0b5a9c2e7f1d4b8a3c6e0f92
+  dep:
+    specifier: ^1.0.0
+    version: 1.0.0
+  pub:
+    specifier: github:acme-oss/pub
+    version: github.com/acme-oss/pub/3b8f1e6a9d2c4b7e0f5a8c1d6e9b2f4a7c0d3e5f
+
+packages:
+
+  /dep@1.0.0:
+    resolution: {integrity: sha512-AAAA}
+    dev: false
+
+  git.corp.example/team/corp/9e4d2b7a1c8f3e6d0b5a9c2e7f1d4b8a3c6e0f92:
+    resolution: {commit: 9e4d2b7a1c8f3e6d0b5a9c2e7f1d4b8a3c6e0f92, repo: git+ssh://git@git.corp.example/team/corp.git, type: git}
+    name: corp
+    version: 2.0.0
+    dev: false
+
+  github.com/acme-oss/pub/3b8f1e6a9d2c4b7e0f5a8c1d6e9b2f4a7c0d3e5f:
+    resolution: {tarball: https://codeload.github.com/acme-oss/pub/tar.gz/3b8f1e6a9d2c4b7e0f5a8c1d6e9b2f4a7c0d3e5f}
+    name: pub
+    version: 3.1.0
+    dependencies:
+      dep: 1.0.0
+      tr: gitlab.com/acme-oss/tr/6c1a9f4e2d7b0c5a8e3f6d1b9c4a7e2f5d0b8c3a
+    dev: false
+
+  gitlab.com/acme-oss/tr/6c1a9f4e2d7b0c5a8e3f6d1b9c4a7e2f5d0b8c3a:
+    resolution: {commit: 6c1a9f4e2d7b0c5a8e3f6d1b9c4a7e2f5d0b8c3a, repo: https://gitlab.com/acme-oss/tr.git, type: git}
+    name: tr
+    version: 0.1.0
+    dev: false

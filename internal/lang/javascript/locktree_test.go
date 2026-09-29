@@ -190,7 +190,7 @@ d@^2.0.0:
   version "2.0.0"
 `
 	tree := newTree()
-	tree.addYarnTree([]byte(lock))
+	tree.addYarnTree(readYarnEntries([]byte(lock)))
 	for key, want := range map[string]map[string]string{
 		"a@1.0.0":  {"d": "2.0.0"},
 		"c@2.0.0":  {"d": "1.0.0"},
@@ -261,7 +261,7 @@ func TestPlatformConditions(t *testing.T) {
   linkType: hard
 `
 	tree := newTree()
-	tree.addYarnTree([]byte(lock))
+	tree.addYarnTree(readYarnEntries([]byte(lock)))
 	want := map[string]string{"@esbuild/linux-x64": "os=linux & cpu=x64", "@esbuild/win32-x64": "os=win32 & cpu=x64"}
 	if !reflect.DeepEqual(tree.platform, want) {
 		t.Errorf("platforms %v, want %v", tree.platform, want)

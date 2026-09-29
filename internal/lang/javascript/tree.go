@@ -40,12 +40,17 @@ type tree struct {
 	// file says it installs on some only: the binaries a package such as esbuild
 	// ships per platform, each an optional dependency every install lists.
 	platform map[string]string
+	// "name@version" -> the repository a git dependency was installed from, where
+	// the version is the commit a lock file checked out ("name@" where it names
+	// none).
+	git map[string]string
 }
 
 func newTree() *tree {
 	return &tree{
 		dependencies: map[string]map[string]bool{}, locked: map[string]string{}, nested: map[string]string{},
 		exact: map[string]map[string]string{}, local: map[string]map[string]bool{}, platform: map[string]string{},
+		git: map[string]string{},
 	}
 }
 
@@ -198,6 +203,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			// It is in a lock file, which is what pins an npm package.
 			Pinned:   version != "",
 			Platform: r.tree.platform[dependency],
+			Origin:   r.tree.origin(dependency, version), // Implements: REQ-JS-019
 		})
 	}
 	// What the lock resolves to a directory of the project is that workspace
@@ -381,13 +387,11 @@ func (t *tree) addPnpmTree(doc *pnpmLock) {
 	}
 	for _, key := range slices.Sorted(maps.Keys(doc.Packages)) {
 		p := doc.Packages[key]
-		name, version := pnpmKey(key)
-		if p.Name != "" { // v5 spells them out instead of packing them into the key
-			name, version = p.Name, p.Version
-		}
+		name, version, repository := doc.keyed(key)
 		if version != "" {
 			t.locked[name] = version
 		}
+		t.addGit([]string{name}, version, repository) // Implements: REQ-JS-019
 		// Implements: REQ-JS-018
 		t.addPlatform([]string{name}, platformCondition(p.OS, p.CPU, p.Libc))
 		// v9 keeps the edges in "snapshots": "packages" says nothing about them.
@@ -397,7 +401,7 @@ func (t *tree) addPnpmTree(doc *pnpmLock) {
 	}
 	for _, key := range slices.Sorted(maps.Keys(doc.Snapshots)) {
 		s := doc.Snapshots[key]
-		name, version := pnpmKey(key)
+		name, version, _ := doc.keyed(key)
 		add(name, version, s.Dependencies, s.OptionalDependencies)
 	}
 	// A package the project itself imports under an alias ("c2": "npm:c@^2") is
@@ -433,6 +437,9 @@ func (lock *pnpmLock) reference(alias, v string) (name, version string, ok bool)
 	case startsWithDigit(v):
 		v, _, _ = strings.Cut(v, "_") // v5's peer suffix
 		return alias, v, true
+	}
+	if name, commit, _, git := lock.gitReference(alias, v); git {
+		return name, commit, true
 	}
 	for _, key := range []string{v, "/" + v} {
 		if p, ok := lock.Packages[key]; ok && p.Name != "" {
@@ -487,6 +494,12 @@ type yarnEntry struct {
 	// Berry's platform conditions, "os=linux & cpu=x64": the entry is installed
 	// only where they hold.
 	conditions string
+	// Classic's record of what it downloaded: a registry tarball, or a git
+	// repository at a commit.
+	resolved string
+	// The repository a git dependency was fetched from; its version is then the
+	// commit, "" where the entry names none.
+	repository string
 }
 
 // readYarnEntries reads a yarn.lock's entries. Classic writes `version "1.2.3"`
@@ -523,13 +536,59 @@ func readYarnEntries(data []byte) []*yarnEntry {
 				e.version = v
 			case "resolution":
 				e.resolution = v
+			case "resolved":
+				e.resolved = v
 			case "conditions": // "conditions: os=linux & cpu=x64", spaces and all
 				_, condition, _ := strings.Cut(trimmed, ":")
 				e.conditions = strings.Trim(strings.TrimSpace(condition), `"`)
 			}
 		}
 	}
+	for _, e := range entries {
+		e.pinGit()
+	}
 	return entries
+}
+
+// pinGit reads the entry as a git dependency where it is one: Berry's resolution
+// ("x@https://github.com/o/r.git#commit=<sha>") or classic's resolved URL names
+// the repository and the commit, which stands for the version (the one of the
+// repository's package.json).
+//
+// Implements: REQ-JS-019
+func (e *yarnEntry) pinGit() {
+	_, source := splitIdentifier(e.resolution)
+	if repository, commit, ok := gitSource(cmp.Or(source, e.resolved)); ok {
+		e.repository, e.version = repository, commit
+	}
+}
+
+// yarnVersions maps each descriptor of a yarn.lock's entries ("name@range") to
+// the version it resolved to.
+//
+// Implements: REQ-JS-008
+func yarnVersions(entries []*yarnEntry) map[string]string {
+	out := map[string]string{}
+	for _, e := range entries {
+		for _, d := range e.descriptors {
+			if e.version != "" {
+				out[d] = e.version
+			}
+		}
+	}
+	return out
+}
+
+// unpinnedGit names the git dependencies of a yarn.lock whose entries name no
+// commit.
+func unpinnedGit(entries []*yarnEntry) []string {
+	var out []string
+	for _, e := range entries {
+		if name, _ := e.identifier(); e.repository != "" && e.version == "" && !slices.Contains(out, name) {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // yarnDependency reads one line of a dependency block: `dep "^1"`, `dep: ^1`,
@@ -633,8 +692,7 @@ func yarnProtocol(versionRange string) bool {
 // the package gets.
 //
 // Implements: REQ-SUP-009, REQ-JS-008
-func (t *tree) addYarnTree(data []byte) {
-	entries := readYarnEntries(data)
+func (t *tree) addYarnTree(entries []*yarnEntry) {
 	byDescriptor := map[string]*yarnEntry{}
 	for _, e := range entries {
 		for _, d := range e.descriptors {
@@ -662,6 +720,7 @@ func (t *tree) addYarnTree(data []byte) {
 		}
 		// Implements: REQ-JS-018
 		t.addPlatform(names, e.conditions)
+		t.addGit(names, e.version, e.repository) // Implements: REQ-JS-019
 		dependencies := map[string]string{}
 		for _, d := range e.dependencies {
 			switch dependency := find(d[0], d[1]); {

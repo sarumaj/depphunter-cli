@@ -1,6 +1,7 @@
 package javascript
 
 import (
+	"cmp"
 	"encoding/json"
 	"path"
 	"sort"
@@ -50,6 +51,7 @@ type bunEntry struct {
 	version      string   // what pins it, "" when nothing does (a workspace, link, tarball)
 	dependencies []string // what it requires
 	platform     string   // the platforms it installs on, "os=linux & cpu=x64"; "" for every one
+	repository   string   // the repository of a git or GitHub dependency
 }
 
 // readBunLock decodes a bun.lock, tolerating the trailing commas Bun writes
@@ -78,7 +80,14 @@ func (lock *bunLock) entries() map[string]bunEntry {
 		if name == "" {
 			continue
 		}
-		e := bunEntry{name: name, parent: parent, version: bunVersion(bunResolution(identifier))}
+		resolution := bunResolution(identifier)
+		e := bunEntry{name: name, parent: parent, version: bunVersion(resolution)}
+		// A git dependency's resolution names its repository and, for a git URL, the
+		// full commit, which is its version; a GitHub one's commit is abbreviated.
+		// Implements: REQ-JS-019
+		if repository, commit, ok := gitSource(resolution); ok {
+			e.repository, e.version = repository, cmp.Or(commit, e.version)
+		}
 		for _, el := range tuple[1:] {
 			var info struct {
 				Dependencies, OptionalDependencies map[string]string
@@ -224,6 +233,7 @@ func (t *tree) addBunTree(entries map[string]bunEntry) {
 		t.add(e.name, e.dependencies...)
 		// Implements: REQ-JS-018
 		t.addPlatform([]string{e.name}, e.platform)
+		t.addGit([]string{e.name}, e.version, e.repository) // Implements: REQ-JS-019
 		if e.parent == "" {
 			continue
 		}
