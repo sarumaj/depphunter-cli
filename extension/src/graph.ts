@@ -113,6 +113,16 @@ export interface GraphNode {
    * Implements: REQ-FND-026
    */
   git?: string;
+
+  /**
+   * Platform is the platforms a package installs on where it installs on some
+   * only, "os=linux & cpu=x64" (lang.Target.Platform): one of the binaries a
+   * package ships per platform, a dependency of the platform it names rather
+   * than of every install.
+   *
+   * Implements: REQ-JS-018
+   */
+  platform?: string;
 }
 
 /**

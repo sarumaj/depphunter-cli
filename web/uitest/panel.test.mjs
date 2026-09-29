@@ -127,7 +127,7 @@ const GRAPH = {
     packageNode('gostd', 'go/parser'),
     { id: 'e:npm', kind: 'ecosystem', name: 'npm' },
     packageNode('npm', 'a', { version: '1.2.3', requested: '^1.2', index: 'https://registry.npmjs.org/' }),
-    packageNode('npm', 'b'), packageNode('npm', 'c'), packageNode('npm', 'd'), packageNode('npm', 'x'), packageNode('npm', 'y'),
+    packageNode('npm', 'b', { version: '0.21.5', platform: 'os=linux & cpu=x64' }), packageNode('npm', 'c'), packageNode('npm', 'd'), packageNode('npm', 'x'), packageNode('npm', 'y'),
   ],
   edges: [
     { from: 'f:internal/lang/golang/golang.go', to: 'p:gostd:go/parser', kind: 'import' },
@@ -288,6 +288,14 @@ describe('the numbers for a node with no source', () => {
     });
     show('e:npm');
     assert.deepEqual(stats(), { packages: '6' });
+  });
+
+  // Verifies: REQ-JS-018
+  it('says which platforms a platform binary installs on', () => {
+    show('p:npm:b');
+    assert.deepEqual(stats(), {
+      version: '0.21.5', 'installs on': 'os=linux & cpu=x64', 'importing files': '0', ecosystem: 'npm',
+    });
   });
 });
 

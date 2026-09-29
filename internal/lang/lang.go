@@ -81,6 +81,11 @@ type Target struct {
 	// dependencies. For the Buf Schema Registry, "plugin" marks a remote plugin,
 	// which is not a module. Empty for the ecosystem's default.
 	Registry string
+	// Platform is the platforms a package installs on where a lock file says it
+	// installs on some only, written as Yarn Berry writes conditions: "os=linux &
+	// cpu=x64". A package ships such binaries per platform as optional
+	// dependencies, which every install lists and each platform installs one of.
+	Platform string
 }
 
 type Resolver interface {

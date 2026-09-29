@@ -1089,7 +1089,16 @@ loads: `node_modules/a/node_modules/b` before the hoisted `node_modules/b`, the
 `yarn.lock` entry whose descriptors hold the dependent's range, the version
 `pnpm-lock.yaml` names. A dependency under an alias (`npm:real@^1`) is the real
 package; workspace, `portal:`, `link:` and `file:` dependencies are the
-project's own and add no package.
+project's own and add no package: one on a workspace package of the project
+(also a name the locks install only as that workspace) is an edge to the
+workspace's directory. The peer dependencies npm 7 and later install are edges
+of `package-lock.json` too, an optional one only when it is installed. A
+package that installs on some platforms only — the binaries esbuild and its
+like ship as one optional dependency per platform, all of which a lock file
+lists — stays in the graph, and its node's `platform` (Yarn Berry's
+`conditions`, or the `os`, `cpu` and `libc` that npm, pnpm and Bun copy into
+the lock) says where, as `os=linux & cpu=x64`; the side panel shows it as
+"installs on".
 
 A Python package that no lock file gives edges for (`Pipfile.lock` records none)
 falls back to the installed environment (see [Languages](#languages)).

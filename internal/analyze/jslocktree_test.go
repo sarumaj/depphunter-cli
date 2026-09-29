@@ -16,17 +16,19 @@ import (
 // same graph: the nested (or duplicate) d@2 that a loads is the version d's
 // node takes, aliases reach the real package (h) or keep the name the project
 // imports (c2), and neither the workspace, the Berry portal nor an optional
-// package the install left out becomes an npm node. The fixtures are the
-// JavaScript plugin's testdata/locktree.
+// package the install left out becomes an npm node: a's dependency on the
+// workspace ws-lib is an edge to its directory. fsevents, macOS only, says so;
+// npm's peer dependencies are edges. The fixtures are the JavaScript plugin's
+// testdata/locktree.
 //
-// Verifies: REQ-SUP-009, REQ-SUP-013
+// Verifies: REQ-SUP-009, REQ-SUP-013, REQ-MOD-010, REQ-JS-004, REQ-JS-007, REQ-JS-018
 func TestJavaScriptLockTreesOffline(t *testing.T) {
 	for _, c := range []struct {
-		directory string
-		fsevents  bool
+		directory                  string
+		fsevents, workspace, peers bool
 	}{
-		{"npm-v3", false}, {"npm-v1", false}, {"berry", true},
-		{"pnpm-v9", true}, {"pnpm-v6", true}, {"pnpm-v5", true},
+		{"npm-v3", true, true, true}, {"npm-v1", false, true, false}, {"berry", true, true, false},
+		{"pnpm-v9", true, true, false}, {"pnpm-v6", true, false, false}, {"pnpm-v5", true, false, false},
 	} {
 		t.Run(c.directory, func(t *testing.T) {
 			root := "../lang/javascript/testdata/locktree/" + c.directory
@@ -42,10 +44,22 @@ func TestJavaScriptLockTreesOffline(t *testing.T) {
 				wantNodes["fsevents"] = "2.3.3"
 				wantEdges = append(wantEdges, "b>fsevents")
 			}
+			if c.workspace {
+				wantEdges = append(wantEdges, "a>"+graph.DirectoryID("packages/ws"))
+			}
+			if c.peers {
+				wantEdges = append(wantEdges, "b>e", "e>d")
+			}
 			nodes := map[string]string{}
 			for _, n := range g.Nodes {
 				if n.Kind == graph.KindPackage {
 					nodes[n.Name] = n.Version
+					if want := map[bool]string{true: "os=darwin"}[n.Name == "fsevents"]; n.Platform != want {
+						t.Errorf("%s: platform %q, want %q", n.Name, n.Platform, want)
+					}
+				}
+				if n.Kind == graph.KindDirectory && n.Transitive {
+					t.Errorf("directory %s marked transitive", n.ID)
 				}
 			}
 			if !reflect.DeepEqual(nodes, wantNodes) {

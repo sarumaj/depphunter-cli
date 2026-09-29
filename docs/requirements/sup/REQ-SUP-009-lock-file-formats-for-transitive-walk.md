@@ -29,11 +29,15 @@ Node finds walking up from the requiring package's own path
 `dependencies` read as the same paths); in `yarn.lock` the entry whose
 descriptors contain the dependency's `name@range` (also as `name@npm:range`,
 and for a `patch:` range the range it patches); in `pnpm-lock.yaml` the
-version the entry names. A package installed under an alias (`"c2":
+version the entry names; npm 7's peer dependencies are edges too
+(REQ-JS-007). A package installed under an alias (`"c2":
 "npm:c@^2"`) **shall** be reached as the real package, and one the project
 imports under an alias **shall** have the real package's dependencies. A
 workspace, `portal:`, `link:` or `file:` dependency **shall not** become a
-package, and neither shall an optional dependency the install left out. Where
+package, and neither shall an optional dependency the install left out; one
+naming a workspace package of the project **shall** be an edge to its
+directory (REQ-JS-004). A package installed on some platforms only **shall**
+stay, marked with them (REQ-JS-018). Where
 one name is installed at several versions, its node **shall** keep the edges
 of every copy.
 
@@ -52,4 +56,4 @@ shape, so the walk needs nothing but the repository.
    `yarn.lock` and `pnpm-lock.yaml` v5, v6 and v9 gives, for a package whose
    dependency is installed twice (a nested copy and a hoisted one), the
    version of the copy that package loads, and the same `--resolve-depth -1`
-   graph, with aliases, patches, workspaces and portals as stated.
+   graph, with aliases, patches, workspaces, portals and platforms as stated.

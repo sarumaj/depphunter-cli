@@ -409,7 +409,7 @@ func TestBunLock(t *testing.T) {
 // TestBunLockTree checks the edges --resolve-depth follows out of bun.lock, and
 // that a package installed under its dependent answers for that dependent.
 //
-// Verifies: REQ-SUP-009, REQ-JS-016
+// Verifies: REQ-SUP-009, REQ-JS-004, REQ-JS-016, REQ-JS-018
 func TestBunLockTree(t *testing.T) {
 	r, err := (Plugin{}).Resolver("testdata/bun", langtest.Files(t, "testdata/bun"))
 	if err != nil {
@@ -426,14 +426,25 @@ func TestBunLockTree(t *testing.T) {
 	pinned := func(packageName, version string) lang.Target {
 		return lang.Target{Ecosystem: "npm", Package: packageName, Version: version, Pinned: true}
 	}
+	onPlatform := func(t lang.Target, platform string) lang.Target {
+		t.Platform = platform
+		return t
+	}
 	for _, c := range []struct {
 		packageName string
 		want        map[string]lang.Target
 	}{
 		// ui's react 17 adds object-assign to the one react node.
 		{"react", map[string]lang.Target{"loose-envify": pinned("loose-envify", "1.4.0"), "object-assign": pinned("object-assign", "4.1.1")}},
-		// @scope/dep 1.0.3 sits under @scope/tool; the hoisted one is 2.1.0.
-		{"@scope/tool", map[string]lang.Target{"@scope/dep": pinned("@scope/dep", "1.0.3"), "loose-envify": pinned("loose-envify", "1.4.0")}},
+		// @scope/dep 1.0.3 sits under @scope/tool; the hoisted one is 2.1.0. Each
+		// platform's binary says which platform it installs on.
+		{"@scope/tool", map[string]lang.Target{
+			"@scope/dep": pinned("@scope/dep", "1.0.3"), "loose-envify": pinned("loose-envify", "1.4.0"),
+			"@scope/tool-darwin-arm64": onPlatform(pinned("@scope/tool-darwin-arm64", "1.2.0"), "os=darwin & cpu=arm64"),
+			"@scope/tool-linux-x64":    onPlatform(pinned("@scope/tool-linux-x64", "1.2.0"), "os=linux & cpu=x64 & libc=glibc"),
+		}},
+		// ui is a workspace: the lock installs nothing of the name from npm.
+		{"@scope/dep", map[string]lang.Target{"": {Local: "packages/ui"}}},
 		{"loose-envify", map[string]lang.Target{"js-tokens": pinned("js-tokens", "4.0.0")}},
 		{"tarball-pkg", map[string]lang.Target{"js-tokens": pinned("js-tokens", "4.0.0")}},
 		{"forge-std", map[string]lang.Target{}},

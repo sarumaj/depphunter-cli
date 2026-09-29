@@ -16,7 +16,11 @@ enclosing `package-lock.json` (formats v1 to v3) records for the package's
 top-level installation, keeping the range as the requested specifier, and
 **shall** treat that version as pinned. `npm-shrinkwrap.json` **shall** be
 read the same way and, as npm does, in place of a `package-lock.json` in the
-same directory.
+same directory. The `peerDependencies` of a v2 or v3 `packages` entry, which
+npm 7 onwards installs, **shall** be dependency edges (REQ-SUP-009), each
+resolved by the same `node_modules` walk as the package's dependencies; one
+that `peerDependenciesMeta` marks optional **shall** be an edge only where the
+lock installs it.
 
 ## Rationale
 
@@ -31,3 +35,6 @@ are shown.
    `npm-shrinkwrap.json` locking react at `18.3.1` gives `18.3.1`, chalk
    keeps its range, and the shrinkwrap's edges are what `--resolve-depth`
    walks; another directory's `package-lock.json` still answers there.
+3. In the npm v3 lock tree fixture, `e`'s peer `d` is an edge to the hoisted
+   `d@1.0.0`, `b`'s optional peer `e` (installed) is an edge, and `e`'s
+   optional peer `not-installed` adds nothing.

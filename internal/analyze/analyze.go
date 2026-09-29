@@ -328,6 +328,16 @@ func (b *builder) expand(ctx context.Context, transitive lang.Transitive, plugin
 				if id == "" || id == from {
 					continue
 				}
+				// A directory or file of the project (a workspace package an npm
+				// package depends on) is on the map already, and its own imports
+				// are what it needs: it gets the edge and is not asked about.
+				// Implements: REQ-MOD-010, REQ-JS-004
+				if dependency.Local != "" {
+					before := len(b.g.Edges)
+					b.edge(from, id, graph.EdgeDepends, 0)
+					edges += len(b.g.Edges) - before
+					continue
+				}
 				if !known {
 					b.nodes[id].Transitive = true
 					added++
@@ -369,7 +379,10 @@ func (b *builder) ask(ctx context.Context, transitive lang.Transitive, level []s
 					if dependencies[a].Ecosystem != dependencies[c].Ecosystem {
 						return dependencies[a].Ecosystem < dependencies[c].Ecosystem
 					}
-					return dependencies[a].Package < dependencies[c].Package
+					if dependencies[a].Package != dependencies[c].Package {
+						return dependencies[a].Package < dependencies[c].Package
+					}
+					return dependencies[a].Local < dependencies[c].Local
 				})
 				answers[i] = dependencies
 			}
@@ -485,6 +498,10 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 	}
 	if n.Git == "" {
 		n.Git = t.Git
+	}
+	// Implements: REQ-JS-018
+	if n.Platform == "" {
+		n.Platform = t.Platform
 	}
 	if n.Requested == "" {
 		n.Requested = t.Requested

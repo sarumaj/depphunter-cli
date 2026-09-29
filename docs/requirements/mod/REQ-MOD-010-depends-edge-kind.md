@@ -11,8 +11,9 @@ verification:
 
 ## Statement
 
-An edge from a package node to a package node it depends on **shall** have the
-kind `depends`, distinct from `import`.
+An edge from a package node to a package node it depends on, or to the
+directory node of a workspace package of the project it depends on
+(REQ-JS-004), **shall** have the kind `depends`, distinct from `import`.
 
 ## Rationale
 
@@ -25,3 +26,5 @@ importing a package a count of files.
    kind `depends`.
 2. An edge from a file node to a package node keeps the kind `import`.
 3. The UI's count of a package's importers does not include `depends` edges.
+4. An npm package's dependency on a workspace package is a `depends` edge to
+   the workspace's directory node, which is not marked transitive.

@@ -1,7 +1,10 @@
 package javascript
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -120,14 +123,17 @@ func newResolver(all []*scan.File) *resolver {
 			}
 		case "pnpm-lock.yaml":
 			data, err := os.ReadFile(f.AbsolutePath)
-			var lock pnpmLock
-			if err != nil || yaml.Unmarshal(data, &lock) != nil {
+			if err != nil {
+				continue
+			}
+			lock, err := readPnpmLock(data)
+			if err != nil {
 				continue
 			}
 			for importer, versions := range lock.versions() {
 				r.addLock(path.Join(directory, importer), versions)
 			}
-			r.tree.addPnpmTree(&lock)
+			r.tree.addPnpmTree(lock)
 		case "bun.lockb":
 			// Implements: REQ-JS-017, REQ-TRC-017
 			if !r.files[path.Join(directory, "bun.lock")] && !r.files[path.Join(directory, "yarn.lock")] {
@@ -233,6 +239,7 @@ func (r *resolver) resolve(spec, from string) lang.Target {
 	}
 	t, declared := r.declared(packageName, directory)
 	t.Ecosystem, t.Package, t.Unresolved = ecosystemNPM, packageName, !declared
+	t.Platform = r.tree.platform[packageName] // Implements: REQ-JS-018
 	return t
 }
 
@@ -552,11 +559,36 @@ type pnpmLock struct {
 		Name, Version        string
 		Dependencies         map[string]string `yaml:"dependencies"`
 		OptionalDependencies map[string]string `yaml:"optionalDependencies"`
+		// The platforms the package installs on, from its manifest.
+		OS   platformList `yaml:"os"`
+		CPU  platformList `yaml:"cpu"`
+		Libc platformList `yaml:"libc"`
 	} `yaml:"packages"`
 	Snapshots map[string]struct {
 		Dependencies         map[string]string `yaml:"dependencies"`
 		OptionalDependencies map[string]string `yaml:"optionalDependencies"`
 	} `yaml:"snapshots"`
+}
+
+// readPnpmLock decodes a pnpm-lock.yaml. Recent pnpm (vite locks with pnpm 12)
+// may write a document of its own before the project's: the lock of the package
+// manager itself and of its config dependencies, whose packages are none of the
+// project's. The project's lock is the last document.
+//
+// Implements: REQ-JS-009
+func readPnpmLock(data []byte) (*pnpmLock, error) {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	lock := &pnpmLock{}
+	for {
+		var document pnpmLock
+		switch err := decoder.Decode(&document); {
+		case errors.Is(err, io.EOF):
+			return lock, nil
+		case err != nil:
+			return nil, err
+		}
+		lock = &document
+	}
 }
 
 // versions returns versions per importer (a directory relative to the lockfile,
@@ -632,6 +664,14 @@ type lockPath struct {
 	Link                 bool // a symlink to a workspace (or file:) directory
 	Dependencies         map[string]string
 	OptionalDependencies map[string]string
+	// npm 7 onwards installs peer dependencies, and records them here; an optional
+	// one is installed only when something else needs it.
+	PeerDependencies     map[string]string
+	PeerDependenciesMeta map[string]struct{ Optional bool }
+	// The platforms the package installs on, copied from its manifest: set on
+	// the binaries a package ships per platform, which the lock lists for every
+	// platform whichever one it was written on.
+	OS, CPU, Libc platformList
 }
 
 // lockV1 is one package-lock.json v1 dependency, and those installed inside it.

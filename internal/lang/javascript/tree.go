@@ -2,12 +2,15 @@ package javascript
 
 import (
 	"cmp"
+	"encoding/json"
 	"maps"
 	"net/url"
 	"path"
 	"slices"
 	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
@@ -30,12 +33,19 @@ type tree struct {
 	// paths of package-lock.json, yarn.lock's descriptors and pnpm's exact versions
 	// each name the copy, where the name alone stands for only one of them.
 	exact map[string]map[string]string
+	// package -> the names it depends on that a lock file resolves to a directory
+	// of the project (a workspace, a link, a portal) rather than to a package.
+	local map[string]map[string]bool
+	// package -> the platforms it installs on, "os=linux & cpu=x64", where a lock
+	// file says it installs on some only: the binaries a package such as esbuild
+	// ships per platform, each an optional dependency every install lists.
+	platform map[string]string
 }
 
 func newTree() *tree {
 	return &tree{
 		dependencies: map[string]map[string]bool{}, locked: map[string]string{}, nested: map[string]string{},
-		exact: map[string]map[string]string{},
+		exact: map[string]map[string]string{}, local: map[string]map[string]bool{}, platform: map[string]string{},
 	}
 }
 
@@ -53,6 +63,90 @@ func (t *tree) add(packageName string, dependencies ...string) {
 			m[d] = true
 		}
 	}
+}
+
+// addLocal records that each of names depends on the project's own dependency.
+func (t *tree) addLocal(names []string, dependency string) {
+	for _, n := range names {
+		if n == "" || dependency == "" {
+			continue
+		}
+		if t.local[n] == nil {
+			t.local[n] = map[string]bool{}
+		}
+		t.local[n][dependency] = true
+	}
+}
+
+// addPlatform records the platforms each of names installs on; the first lock
+// file to say keeps it.
+func (t *tree) addPlatform(names []string, condition string) {
+	for _, n := range names {
+		if _, ok := t.platform[n]; !ok && n != "" && condition != "" {
+			t.platform[n] = condition
+		}
+	}
+}
+
+// platformList is a manifest's os, cpu or libc field as a lock file copies it:
+// a list, or a single value written without one (pnpm writes `libc: glibc`,
+// Bun `"os": "darwin"`). Any other shape says nothing about the platform, and
+// must not cost the lock file the rest of what it says.
+type platformList []string
+
+func (l *platformList) UnmarshalJSON(data []byte) error {
+	var one string
+	if json.Unmarshal(data, &one) == nil {
+		*l = platformList{one}
+	} else if json.Unmarshal(data, (*[]string)(l)) != nil {
+		*l = nil
+	}
+	return nil
+}
+
+func (l *platformList) UnmarshalYAML(node *yaml.Node) error {
+	var one string
+	if node.Kind == yaml.ScalarNode && node.Decode(&one) == nil {
+		*l = platformList{one}
+	} else if node.Decode((*[]string)(l)) != nil {
+		*l = nil
+	}
+	return nil
+}
+
+// platformCondition writes the os, cpu and libc lists of a package's manifest
+// (as package-lock.json, pnpm-lock.yaml and bun.lock copy them) as Yarn Berry
+// writes a yarn.lock entry's conditions: "os=linux & cpu=x64", a list of several
+// values "(os=darwin | os=linux)", a negated value "!os=win32".
+//
+// Implements: REQ-JS-018
+func platformCondition(operatingSystems, processors, cLibraries []string) string {
+	var fields []string
+	for _, field := range []struct {
+		name   string
+		values []string
+	}{{"os", operatingSystems}, {"cpu", processors}, {"libc", cLibraries}} {
+		var tokens []string
+		for _, raw := range field.values {
+			value := strings.TrimLeft(raw, "!")
+			if value == "" {
+				continue
+			}
+			prefix := ""
+			if (len(raw)-len(value))%2 == 1 {
+				prefix = "!"
+			}
+			tokens = append(tokens, prefix+field.name+"="+value)
+		}
+		switch len(tokens) {
+		case 0:
+		case 1:
+			fields = append(fields, tokens[0])
+		default:
+			fields = append(fields, "("+strings.Join(tokens, " | ")+")")
+		}
+	}
+	return strings.Join(fields, " & ")
 }
 
 // addExact records what one copy of a package loads, under each name it is
@@ -93,11 +187,28 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 		if !ok {
 			version = r.tree.locked[dependency]
 		}
+		// A name no lock file installs from a registry, which a workspace package
+		// of the project has: npm, pnpm, Yarn and Bun all link that one.
+		if directory, ok := r.byName[dependency]; ok && version == "" {
+			out = append(out, lang.Target{Local: directory})
+			continue
+		}
 		out = append(out, lang.Target{
 			Ecosystem: ecosystemNPM, Package: dependency, Version: version,
 			// It is in a lock file, which is what pins an npm package.
-			Pinned: version != "",
+			Pinned:   version != "",
+			Platform: r.tree.platform[dependency],
 		})
+	}
+	// What the lock resolves to a directory of the project is that workspace
+	// package's, where the project has one of the name; a link out of the
+	// project, or to a directory the scan left out, is nothing on the map.
+	//
+	// Implements: REQ-JS-004
+	for dependency := range r.tree.local[t.Package] {
+		if directory, ok := r.byName[dependency]; ok && !r.tree.dependencies[t.Package][dependency] {
+			out = append(out, lang.Target{Local: directory})
+		}
 	}
 	return out
 }
@@ -134,32 +245,54 @@ func (t *tree) addPackageLockTree(lock *packageLock) {
 			continue // the project, a workspace, or a link to one: local, not npm's
 		}
 		name := cmp.Or(p.Name, alias)
+		names := []string{name, alias} // a package imported as "c2" is that node
 		if p.Version != "" && !seen[name] {
 			seen[name] = true
 			t.locked[name] = p.Version
 		}
+		t.addPlatform(names, platformCondition(p.OS, p.CPU, p.Libc))
 		dependencies := map[string]string{}
-		for i, m := range []map[string]string{p.Dependencies, p.OptionalDependencies} {
-			for dependency := range m {
-				found, ok := installed(paths, key, dependency)
-				switch {
-				case ok && found.Link:
-				case ok:
-					dependencies[cmp.Or(found.Name, dependency)] = found.Version
-				case i == 0: // missing from the lock: the name is all there is
-					if _, have := dependencies[dependency]; !have {
-						dependencies[dependency] = ""
-					}
-				} // an optional dependency missing is one this install left out
-			}
+		for dependency, optional := range p.requirements() {
+			found, ok := installed(paths, key, dependency)
+			switch {
+			case ok && found.Link: // a workspace (or a file: directory) linked in
+				t.addLocal(names, dependency)
+			case ok:
+				dependencies[cmp.Or(found.Name, dependency)] = found.Version
+			case !optional: // missing from the lock: the name is all there is
+				if _, have := dependencies[dependency]; !have {
+					dependencies[dependency] = ""
+				}
+			} // an optional dependency missing is one this install left out
 		}
-		for _, n := range []string{name, alias} { // a package imported as "c2" is that node
+		for _, n := range names {
 			for dependency := range dependencies {
 				t.add(n, dependency)
 			}
 		}
-		t.addExact([]string{name, alias}, p.Version, dependencies)
+		t.addExact(names, p.Version, dependencies)
 	}
+}
+
+// requirements are the names the package at p needs, each true when an install
+// may leave it out: its dependencies and optional dependencies, and the peer
+// dependencies npm 7 onwards installs beside it, optional where
+// peerDependenciesMeta says so. A name listed twice is required if either says.
+//
+// Implements: REQ-JS-007
+func (p lockPath) requirements() map[string]bool {
+	out := map[string]bool{}
+	add := func(m map[string]string, optional func(string) bool) {
+		for dependency := range m {
+			if have, ok := out[dependency]; !ok || have {
+				out[dependency] = optional(dependency)
+			}
+		}
+	}
+	add(p.Dependencies, func(string) bool { return false })
+	add(p.OptionalDependencies, func(string) bool { return true })
+	add(p.PeerDependencies, func(dependency string) bool { return p.PeerDependenciesMeta[dependency].Optional })
+	return out
 }
 
 // installed finds the copy of dependency that the package installed at from loads:
@@ -231,7 +364,9 @@ func (t *tree) addPnpmTree(doc *pnpmLock) {
 		dependencies := map[string]string{}
 		for _, m := range lists {
 			for alias, v := range m {
-				if dependency, version, ok := doc.reference(alias, v); ok {
+				if strings.HasPrefix(v, "link:") || strings.HasPrefix(v, "file:") {
+					t.addLocal([]string{name}, alias) // a workspace package, or a directory
+				} else if dependency, version, ok := doc.reference(alias, v); ok {
 					dependencies[dependency] = version
 					if dependency != alias {
 						aliases[[2]string{alias, dependency}] = version
@@ -253,6 +388,8 @@ func (t *tree) addPnpmTree(doc *pnpmLock) {
 		if version != "" {
 			t.locked[name] = version
 		}
+		// Implements: REQ-JS-018
+		t.addPlatform([]string{name}, platformCondition(p.OS, p.CPU, p.Libc))
 		// v9 keeps the edges in "snapshots": "packages" says nothing about them.
 		if len(doc.Snapshots) == 0 {
 			add(name, version, p.Dependencies, p.OptionalDependencies)
@@ -347,6 +484,9 @@ type yarnEntry struct {
 	descriptors         []string
 	version, resolution string
 	dependencies        [][2]string // name, range
+	// Berry's platform conditions, "os=linux & cpu=x64": the entry is installed
+	// only where they hold.
+	conditions string
 }
 
 // readYarnEntries reads a yarn.lock's entries. Classic writes `version "1.2.3"`
@@ -383,6 +523,9 @@ func readYarnEntries(data []byte) []*yarnEntry {
 				e.version = v
 			case "resolution":
 				e.resolution = v
+			case "conditions": // "conditions: os=linux & cpu=x64", spaces and all
+				_, condition, _ := strings.Cut(trimmed, ":")
+				e.conditions = strings.Trim(strings.TrimSpace(condition), `"`)
 			}
 		}
 	}
@@ -517,14 +660,20 @@ func (t *tree) addYarnTree(data []byte) {
 				t.locked[n] = e.version
 			}
 		}
+		// Implements: REQ-JS-018
+		t.addPlatform(names, e.conditions)
 		dependencies := map[string]string{}
 		for _, d := range e.dependencies {
 			switch dependency := find(d[0], d[1]); {
 			case dependency != nil:
 				if n, local := dependency.identifier(); !local {
 					dependencies[n] = dependency.version
+				} else {
+					t.addLocal(names, n)
 				}
-			case !yarnLocal(d[1]):
+			case yarnLocal(d[1]):
+				t.addLocal(names, d[0])
+			default:
 				if _, have := dependencies[d[0]]; !have {
 					dependencies[d[0]] = ""
 				}

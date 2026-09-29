@@ -21,7 +21,8 @@ Berry entries **shall** be read with their `resolution` (the real package of
 an alias such as `c2@npm:c@^2.0.0`, and whether it is a `workspace:`,
 `portal:`, `link:` or `file:` package of the project) and their
 `dependencies`, which, like a classic entry's, give the dependency edges of
-REQ-SUP-009; `peerDependencies`, `dependenciesMeta`, `bin` and the
+REQ-SUP-009, and their `conditions`, which mark the package's platforms
+(REQ-JS-018); `peerDependencies`, `dependenciesMeta`, `bin` and the
 `__metadata` entry **shall not** be read as dependencies or packages.
 
 ## Rationale
@@ -39,4 +40,6 @@ tells which one the project uses.
 4. In a Berry lock, `b`'s dependency `d: ^1.0.0` resolves to the entry keyed
    `d@npm:^1.0.0`, a `patch:` dependency whose entry is keyed with a locator
    to the entry of the range it patches, and `h-alias: "npm:h@^1.0.0"` to the
-   package `h`; `portal:` and `workspace:` dependencies add no edge.
+   package `h`; a `workspace:` dependency is an edge to the workspace's
+   directory (REQ-JS-004) and a `portal:` one outside the project adds no
+   edge.
