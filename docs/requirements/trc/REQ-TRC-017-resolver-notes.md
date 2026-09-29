@@ -51,7 +51,10 @@ JSON (`notes`). At least these **shall** be noted:
   [REQ-SUP-055](../sup/REQ-SUP-055-julia-registry-files.md),
   [REQ-SUP-074](../sup/REQ-SUP-074-cocoapods-spec-repository-clones.md));
 - a Bazel registry a `.bazelrc` names a credential helper for, which is not
-  run ([REQ-BAZEL-011](../bazel/REQ-BAZEL-011-read-without-bazel.md)).
+  run ([REQ-BAZEL-011](../bazel/REQ-BAZEL-011-read-without-bazel.md)), and a
+  Conan remote that wants a login this machine does not hold while Conan's
+  `auth_remote.py` plugin could supply one, which is not run
+  ([REQ-AUTH-035](../auth/REQ-AUTH-035-conan-remote-logins.md)).
 
 ## Rationale
 

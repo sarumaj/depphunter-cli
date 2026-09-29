@@ -181,6 +181,7 @@ func (c *Config) machine(m userconf.Machine) {
 	machineR10K(m, k)
 	c.machineCocoaPods(m)
 	read(m.SwiftPMRegistries(), parseSwiftRegistries)
+	read(join(m.ConanHome(), "remotes.json"), parseConanRemotes)
 	parseCUERegistry(environment("CUE_REGISTRY"), k)
 	if home == "" {
 		return
@@ -326,6 +327,7 @@ func (c *Config) project(files []*scan.File) {
 	c.applyNuGet(projectNuGet(ordered))
 	python := c.projectPython(ordered)
 	projectSwiftPM(ordered, k)
+	c.projectConan(ordered, k)
 	for _, f := range ordered {
 		base := strings.ToLower(path.Base(f.Path))
 		if base == "nuget.config" {
@@ -399,6 +401,8 @@ func (c *Config) project(files []*scan.File) {
 			parseQlfile(data, k)
 		case base == "cpanfile.snapshot":
 			c.readCPANSnapshot(data)
+		case base == "conan.lock":
+			c.readConanLock(data)
 		case base == "dune-workspace":
 			parseDuneWorkspace(data, k)
 		case f.Path == "Puppetfile" || strings.HasSuffix(f.Path, "/Puppetfile"):

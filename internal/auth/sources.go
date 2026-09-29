@@ -459,4 +459,5 @@ func (c *Store) readMachineSources(m userconf.Machine, lookPath func(string) (st
 	// cue sends its own login to a registry before Docker's credential for it.
 	c.readCUE(m)
 	c.readSwiftPM(m)
+	c.readConan(m)
 }

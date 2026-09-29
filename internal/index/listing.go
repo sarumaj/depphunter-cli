@@ -44,6 +44,14 @@ type memo[T any] struct {
 	failed map[string]qlFailure
 }
 
+// known is what was read for key, without reading it.
+func (m *memo[T]) known(key string) (T, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	v, ok := m.got[key]
+	return v, ok
+}
+
 func (m *memo[T]) get(key string, read func() (T, error)) (T, error) {
 	m.mu.Lock()
 	v, ok := m.got[key]

@@ -19,6 +19,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/cpp"
 	"github.com/sarumaj/depphunter-cli/internal/lang/nuget"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
 	"github.com/sarumaj/depphunter-cli/internal/userconf"
@@ -108,6 +109,10 @@ const (
 	// CUE is the cue plugin's island of modules; a CUE registry is an OCI
 	// registry holding each module version's module.cue beside its archive.
 	CUE = "cue"
+	// Conan is the cpp plugin's island of Conan packages; a Conan remote serves
+	// each recipe revision's conanfile.py through Conan's REST API v2 (see
+	// conanRecipe).
+	Conan = "conan"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -163,6 +168,8 @@ var public = map[string]string{
 	Buf:   "https://buf.build",
 	// The registry cue asks unless CUE_REGISTRY says otherwise.
 	CUE: "https://registry.cue.works",
+	// ConanCenter, the remote Conan 2 configures when nothing else is.
+	Conan: "https://center2.conan.io",
 }
 
 // Clojars is the Maven repository Clojure's libraries are published to. Leiningen,
@@ -335,6 +342,9 @@ type Source struct {
 	// nugetKey is the key of a NuGet.Config package source: such sources are
 	// recomputed from the merged configuration on every discovery (applyNuGet).
 	nugetKey string
+	// conanAllowed are a Conan remote's allowed_packages: the patterns of the
+	// references it is asked for, none for every one (see conanCandidates).
+	conanAllowed []string
 }
 
 // Config is the index configuration of one analysis: what this machine knows, and
@@ -392,6 +402,9 @@ type Config struct {
 	// podRepositories are the spec repositories in CocoaPods' repos directory:
 	// the copies on this machine's disk of the ones a Podfile names (podCopy).
 	podRepositories []podRepository
+	// conanLocks are the references the repository's conan.lock files pin, by
+	// name (see conanLocked).
+	conanLocks map[string]cpp.ConanReference
 }
 
 func New() *Config {
@@ -438,7 +451,8 @@ func (c *Config) Trust(urls []string) {
 //
 // Implements: REQ-SUP-038
 func (c *Config) Public(ecosystem, index string) bool {
-	return index != "" && (index == c.publicURL(ecosystem) || ecosystem == Maven && index == clojarsURL)
+	return index != "" && (index == c.publicURL(ecosystem) || ecosystem == Maven && index == clojarsURL ||
+		ecosystem == Conan && ConanCenter(index))
 }
 
 // publicURL is an ecosystem's public default: public's, except that Bioconductor's is
@@ -488,7 +502,7 @@ func (c *Config) Add(ecosystem string, s Source) {
 
 // forgetProject drops what the repository declared, before it is read again.
 func (c *Config) forgetProject() {
-	c.clojure, c.biocRelease, c.cpanArchives = false, "", nil
+	c.clojure, c.biocRelease, c.cpanArchives, c.conanLocks = false, "", nil, nil
 	c.bazelHelpers = slices.DeleteFunc(c.bazelHelpers, func(h bazelHelper) bool { return h.project })
 	for ecosystem, origin := range c.off {
 		if origin == OriginProject {
@@ -801,6 +815,9 @@ func (c *Config) candidates(ecosystem, packageName, registry string) []candidate
 func (c *Config) candidatesFor(t lang.Target) []candidate {
 	if t.Ecosystem == OCI {
 		return c.ociCandidates(t.Package, t.Version)
+	}
+	if t.Ecosystem == Conan {
+		return c.conanCandidates(t)
 	}
 	return c.candidates(t.Ecosystem, t.Package, t.Registry)
 }

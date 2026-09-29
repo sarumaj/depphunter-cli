@@ -71,6 +71,9 @@ type Client struct {
 	juliaCopies memo[*juliaCopy]
 	// wallyConfigs are the config.json files of Wally registries, read once.
 	wallyConfigs memo[*wallyConfiguration]
+	// conanTokens are the tokens Conan remotes handed out for this machine's
+	// logins, asked for once per remote (see conanGet).
+	conanTokens memo[string]
 	// qlSystems is what each Quicklisp dist's system index lists: one request
 	// per dist version rather than one per project.
 	qlSystems map[string]*qlIndex
@@ -148,6 +151,9 @@ func NewClient(config *Config, directory string, ttl, timeout time.Duration,
 func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	if c == nil || t.Package == "" {
 		return nil
+	}
+	if t.Ecosystem == Conan {
+		t = c.config.conanPinned(t) // what Conan installs is what its lock pins
 	}
 	l := trace.Lookup{Ecosystem: t.Ecosystem, Package: t.Package, Version: t.Version, Answer: trace.NoAnswer}
 	// A package installed from a directory, an archive or a repository is on no index:
@@ -389,6 +395,9 @@ func cacheKey(t lang.Target, index string) string {
 	if t.Ecosystem == Julia && t.Registry != "" {
 		key += "|" + strings.ToLower(t.Registry)
 	}
+	if t.Ecosystem == Conan && t.Registry != "" {
+		key += "|" + t.Registry // the user, channel and revision name another recipe
+	}
 	return key
 }
 
@@ -413,7 +422,7 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		// Implements: REQ-SUP-072
 		return answer{source: trace.NoAnswer, reason: trace.ReasonPlugin}, nil
 	}
-	if (t.Ecosystem == Go || t.Ecosystem == CUE) && t.Version == "" ||
+	if (t.Ecosystem == Go || t.Ecosystem == CUE || t.Ecosystem == Conan) && t.Version == "" ||
 		t.Ecosystem == Opam && !opam.ExactVersion(t.Version) && c.unlisted(Opam, index) ||
 		t.Ecosystem == Alire && !alireExact(t.Version) && (!ada.ValidConstraint(t.Version) || c.unlisted(Alire, index)) {
 		// A module proxy serves a go.mod for one version, a CUE registry a
@@ -495,6 +504,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		dependencies, err = c.cueModule(ctx, index, t)
 	case SwiftPM:
 		dependencies, err = c.swiftPackage(ctx, index, t)
+	case Conan:
+		dependencies, err = c.conanRecipe(ctx, index, t)
 	case Maven:
 		if !strings.Contains(t.Package, ":") {
 			// A name without an artifact cannot be asked: a POM is addressed by
@@ -561,10 +572,14 @@ func (c *Client) targets(from lang.Target, dependencies []dependency) []lang.Tar
 		if d.Ecosystem != "" {
 			e = d.Ecosystem
 		}
-		out = append(out, lang.Target{
+		t := lang.Target{
 			Ecosystem: e, Package: d.Name, Version: d.Version,
 			Pinned: d.Pinned(e), Registry: d.registry(from),
-		})
+		}
+		if e == Conan {
+			t = c.config.conanPinned(t) // a lock's pin wins over the recipe's range
+		}
+		out = append(out, t)
 	}
 	return out
 }
@@ -858,6 +873,9 @@ func (d dependency) registry(from lang.Target) string {
 	case from.Ecosystem == Wally:
 		// A Wally manifest names the registry its dependencies come from.
 		return d.Registry
+	case from.Ecosystem == Conan:
+		// A recipe's requirement names its user, channel and revision.
+		return d.Registry
 	case from.Ecosystem != Cargo:
 		return ""
 	case d.Registry == "":
@@ -886,6 +904,10 @@ func (d dependency) Pinned(ecosystem string) bool {
 	}
 	if ecosystem == Racket {
 		return false // a catalog's #:version is a minimum
+	}
+	if ecosystem == Conan {
+		// A reference's version is one version; a range is bracketed.
+		return d.Version != "" && !strings.HasPrefix(d.Version, "[")
 	}
 	if ecosystem == Wally {
 		// A bare version is a caret range in Wally; "=1.2.3" is one release.

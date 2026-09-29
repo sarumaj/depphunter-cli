@@ -109,6 +109,11 @@ tool looks for it, reading the variables from the machine's environment only:
   on macOS when it is there, else in `configuration` below
   `$XDG_CONFIG_HOME/swiftpm` or `~/.swiftpm`
   ([REQ-SUP-075](REQ-SUP-075-swiftpm-registries.md)).
+- Conan 2: its home, `CONAN_HOME` (a leading `~` being the user's home; a
+  relative one, which Conan refuses, is none), else `~/.conan2`, holding
+  `remotes.json`, `credentials.json` and the `auth_remote.py` plugin
+  ([REQ-SUP-076](REQ-SUP-076-conan-remotes.md),
+  [REQ-AUTH-035](../auth/REQ-AUTH-035-conan-remote-logins.md)).
 
 ## Rationale
 
@@ -158,6 +163,7 @@ fixed `$HOME` paths missed the feed the machine actually uses.
 16. CocoaPods' repos directory follows `CP_REPOS_DIR` and `CP_HOME_DIR`;
     SwiftPM's `registries.json` is macOS's idiomatic one when it exists, else
     below `XDG_CONFIG_HOME` or `~/.swiftpm`.
+17. Conan's home follows `CONAN_HOME`, `~` expanded, a relative one refused.
 
 ## Notes
 

@@ -204,3 +204,27 @@ func (m Machine) SwiftPMRegistries() string {
 	}
 	return join(directory, "configuration", "registries.json")
 }
+
+// ---------------------------------------------------------------- Conan
+
+// ConanHome is Conan 2's home, which holds remotes.json and credentials.json:
+// `CONAN_HOME` (a leading ~ is the user's home), else .conan2 in the user's home.
+// A CONAN_HOME that is not absolute, which Conan refuses, names none. The
+// .conanrc Conan looks for from the directory it runs in upwards is not read
+// here: in a repository it is the repository's say (internal/index).
+//
+// Implements: REQ-SUP-064
+func (m Machine) ConanHome() string {
+	directory := strings.TrimSpace(m.Environment("CONAN_HOME"))
+	switch {
+	case directory == "":
+		return join(m.Home, ".conan2")
+	case directory == "~":
+		return m.Home
+	case strings.HasPrefix(directory, "~/") || strings.HasPrefix(directory, `~\`):
+		return join(m.Home, directory[2:])
+	case filepath.IsAbs(directory), strings.HasPrefix(directory, "/"), m.GOOS == "windows" && windowsAbsolute(directory):
+		return directory
+	}
+	return ""
+}
