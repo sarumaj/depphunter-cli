@@ -60,6 +60,11 @@ type Store struct {
 	goNoNetrc bool
 	// buf holds BUF_TOKEN's tokens for Buf Schema Registry hosts; see BufToken.
 	buf map[string]string
+	// conan holds the logins of Conan remotes, by the remote's URL; see
+	// ConanLogin. conanPlugin is the auth_remote.py plugin Conan would ask
+	// first, which is not run.
+	conan       map[string]conanLogin
+	conanPlugin string
 }
 
 // secret is a credential of scoped: a Bearer token, a Basic "user:password", or

@@ -27,12 +27,15 @@ type declaredPackage struct {
 	requested       string // what the manifest asked for when a lock or override fixed it
 	pinned          bool
 	floating        bool // names no version, and nothing fixes one
+	// qualifier is a Conan reference's user, channel and recipe revision
+	// (ConanReference.Qualifier), the one a lock pins winning.
+	qualifier string
 }
 
 func (p *declaredPackage) target() lang.Target {
 	return lang.Target{
 		Ecosystem: p.ecosystem, Package: p.name, Version: p.version, Requested: p.requested,
-		Pinned: p.pinned, Floating: p.floating,
+		Pinned: p.pinned, Floating: p.floating, Registry: p.qualifier,
 	}
 }
 
@@ -243,19 +246,50 @@ func readVcpkg(source, config []byte) []*declaredPackage {
 	return out
 }
 
-// conanReference splits a Conan reference, name/version@user/channel#revision (a Conan
-// 2 lock appends %timestamp), into its name and version.
-func conanReference(reference string) (name, version string, ok bool) {
+// ConanReference is a Conan recipe reference, name/version@user/channel#revision.
+type ConanReference struct{ Name, Version, User, Channel, Revision string }
+
+// ParseConanReference reads a Conan reference, name/version@user/channel#revision
+// (a Conan 2 lock appends %timestamp, and "name/version@" says there is no user
+// or channel). ok is false for anything that is no plain reference: a name or
+// version built at run time ({}, $), quoted, or missing.
+//
+// Implements: REQ-CPP-010
+func ParseConanReference(reference string) (r ConanReference, ok bool) {
 	reference = strings.TrimSpace(reference)
-	reference, _, _ = strings.Cut(reference, "#")
 	reference, _, _ = strings.Cut(reference, "%")
-	reference, _, _ = strings.Cut(reference, "@")
-	name, version, ok = strings.Cut(reference, "/")
-	name, version = strings.TrimSpace(name), strings.TrimSpace(version)
-	if !ok || name == "" || version == "" || strings.ContainsAny(name, " {}$\"'") || strings.ContainsAny(version, "{}$\"'") {
-		return "", "", false
+	reference, r.Revision, _ = strings.Cut(reference, "#")
+	reference, qualifier, _ := strings.Cut(reference, "@")
+	r.User, r.Channel, _ = strings.Cut(qualifier, "/")
+	name, version, ok := strings.Cut(reference, "/")
+	r.Name, r.Version = strings.TrimSpace(name), strings.TrimSpace(version)
+	r.User, r.Channel, r.Revision = strings.TrimSpace(r.User), strings.TrimSpace(r.Channel), strings.TrimSpace(r.Revision)
+	if r.User == "_" && r.Channel == "_" || r.User == "_" && r.Channel == "" {
+		r.User, r.Channel = "", "" // how a server spells none
 	}
-	return name, version, true
+	if !ok || r.Name == "" || r.Version == "" || strings.ContainsAny(r.Name, " {}$\"'") ||
+		strings.ContainsAny(r.Version, "{}$\"'") || strings.ContainsAny(r.User+r.Channel+r.Revision, " /{}$\"'") {
+		return ConanReference{}, false
+	}
+	return r, true
+}
+
+// Qualifier is what the reference says beyond its name and version:
+// "@user/channel" when it has a user, then "#revision" when it has one. It is
+// the lang.Target.Registry of a Conan package, which is where a Conan remote
+// looks the recipe up.
+func (r ConanReference) Qualifier() string {
+	out := ""
+	if r.User != "" {
+		out = "@" + r.User
+		if r.Channel != "" {
+			out += "/" + r.Channel
+		}
+	}
+	if r.Revision != "" {
+		out += "#" + r.Revision
+	}
+	return out
 }
 
 // conanPackage is a declared reference: an exact version pins it, a range in
@@ -263,11 +297,16 @@ func conanReference(reference string) (name, version string, ok bool) {
 //
 // Implements: REQ-CPP-010
 func conanPackage(reference string) *declaredPackage {
-	name, version, ok := conanReference(reference)
+	r, ok := ParseConanReference(reference)
 	if !ok {
 		return nil
 	}
-	return &declaredPackage{ecosystem: ecosystemConan, name: name, version: version, pinned: !strings.HasPrefix(version, "[")}
+	return conanDeclared(r)
+}
+
+func conanDeclared(r ConanReference) *declaredPackage {
+	return &declaredPackage{ecosystem: ecosystemConan, name: r.Name, version: r.Version, qualifier: r.Qualifier(),
+		pinned: !strings.HasPrefix(r.Version, "[")}
 }
 
 // readConanfileTxt reads the references under [requires], [tool_requires],
@@ -294,35 +333,55 @@ func readConanfileTxt(source []byte) []*declaredPackage {
 
 var (
 	// self.requires("fmt/10.2.1"), self.tool_requires('cmake/[>=3.20]'): the
-	// first argument when it is a plain string literal (an f-string is not).
-	conanCall = regexp.MustCompile(`self\.(?:requires|tool_requires|build_requires|test_requires)\(\s*["']([^"']+)["']`)
+	// first argument when it is a string literal (an f-string only when it
+	// substitutes nothing, which ParseConanReference checks).
+	conanCall = regexp.MustCompile(`self\.(requires|tool_requires|build_requires|test_requires)\(\s*[fF]?["']([^"']+)["']`)
 	// requires = "a/1", "b/2" or a list or tuple, possibly over several lines.
-	conanAttribute = regexp.MustCompile(`(?m)^[ \t]*(?:requires|tool_requires|build_requires|test_requires)[ \t]*=[ \t]*`)
+	conanAttribute = regexp.MustCompile(`(?m)^[ \t]*(requires|tool_requires|build_requires|test_requires)[ \t]*=[ \t]*`)
 	pyString       = regexp.MustCompile(`"([^"\n]*)"|'([^'\n]*)'`)
 )
 
-// readConanfilePy reads the string literals a conanfile.py requires with, in
-// self.requires() and its kin, and in the requires, tool_requires, build_requires
-// and test_requires attributes. The recipe is not run: a reference built at run
-// time (an f-string, a variable) is not seen, and a conditional one counts
-// whatever the condition.
+// ConanRequirement is one reference a recipe requires, with how: "requires",
+// "tool_requires", "build_requires" or "test_requires".
+type ConanRequirement struct {
+	Kind      string
+	Reference ConanReference
+}
+
+// RecipeRequirements reads the string literals a conanfile.py requires with, in
+// self.requires() and its kin, and in the requires, tool_requires,
+// build_requires and test_requires attributes, in that order. The recipe is not
+// run: a reference built at run time (an f-string, a variable) is not seen, and
+// a conditional one counts whatever the condition.
 //
 // Implements: REQ-CPP-010, REQ-CPP-013
-func readConanfilePy(source []byte) []*declaredPackage {
+func RecipeRequirements(source []byte) []ConanRequirement {
 	text := stripPyComments(string(source))
-	var out []*declaredPackage
-	add := func(reference string) {
-		if d := conanPackage(reference); d != nil {
-			out = append(out, d)
+	var out []ConanRequirement
+	add := func(kind, reference string) {
+		if r, ok := ParseConanReference(reference); ok {
+			out = append(out, ConanRequirement{Kind: kind, Reference: r})
 		}
 	}
 	for _, m := range conanCall.FindAllStringSubmatch(text, -1) {
-		add(m[1])
+		add(m[1], m[2])
 	}
-	for _, span := range conanAttribute.FindAllStringIndex(text, -1) {
+	for _, span := range conanAttribute.FindAllStringSubmatchIndex(text, -1) {
 		for _, m := range pyString.FindAllStringSubmatch(pyValue(text[span[1]:]), -1) {
-			add(m[1] + m[2])
+			add(text[span[2]:span[3]], m[1]+m[2])
 		}
+	}
+	return out
+}
+
+// readConanfilePy reads what a conanfile.py requires (RecipeRequirements), of
+// every kind.
+//
+// Implements: REQ-CPP-010, REQ-CPP-013
+func readConanfilePy(source []byte) []*declaredPackage {
+	var out []*declaredPackage
+	for _, requirement := range RecipeRequirements(source) {
+		out = append(out, conanDeclared(requirement.Reference))
 	}
 	return out
 }
@@ -380,6 +439,62 @@ func stripPyComments(s string) string {
 	return strings.Join(lines, "\n")
 }
 
+// conanLock is a conan.lock: Conan 2's flat lists, or Conan 1's graph_lock.
+type conanLock struct {
+	GraphLock *struct {
+		Nodes map[string]struct {
+			Reference     string   `json:"ref"`
+			Path          string   `json:"path"`
+			Requires      []string `json:"requires"`
+			BuildRequires []string `json:"build_requires"`
+		} `json:"nodes"`
+	} `json:"graph_lock"`
+	Requires       []string `json:"requires"`
+	BuildRequires  []string `json:"build_requires"`
+	PythonRequires []string `json:"python_requires"`
+}
+
+func readConanLock(source []byte) (l conanLock, ok bool) {
+	return l, json.Unmarshal(source, &l) == nil
+}
+
+// references are the exact references the lock pins: a Conan 2 lock's
+// requires, then its build_requires; a Conan 1 lock's nodes by id (in the order
+// of the ids, so which of two versions of one library counts does not change
+// from run to run), the consumer left out.
+func (l conanLock) references() []ConanReference {
+	var out []ConanReference
+	add := func(reference string) {
+		if r, ok := ParseConanReference(reference); ok && !strings.HasPrefix(r.Version, "[") {
+			out = append(out, r)
+		}
+	}
+	for _, reference := range append(slices.Clone(l.Requires), l.BuildRequires...) {
+		add(reference)
+	}
+	if l.GraphLock != nil {
+		for _, id := range slices.Sorted(maps.Keys(l.GraphLock.Nodes)) {
+			if n := l.GraphLock.Nodes[id]; n.Path == "" {
+				add(n.Reference)
+			}
+		}
+	}
+	return out
+}
+
+// ConanLockReferences are the exact references a conan.lock pins, Conan 2's or
+// Conan 1's, with their recipe revisions: what Conan installs in place of a
+// requirement's range when it is given the lock.
+//
+// Implements: REQ-CPP-011
+func ConanLockReferences(source []byte) []ConanReference {
+	l, ok := readConanLock(source)
+	if !ok {
+		return nil
+	}
+	return l.references()
+}
+
 // lock applies a conan.lock to the references declared beside it: the locked
 // version replaces a range, and what the lock holds beyond them (the libraries
 // the declared ones need) is installed too and so declared. It reads Conan 2
@@ -389,42 +504,21 @@ func stripPyComments(s string) string {
 //
 // Implements: REQ-CPP-011
 func (p *packages) lock(source []byte, declared []*declaredPackage) (_ []*declaredPackage, flat bool) {
-	var l struct {
-		GraphLock *struct {
-			Nodes map[string]struct {
-				Reference     string   `json:"ref"`
-				Path          string   `json:"path"`
-				Requires      []string `json:"requires"`
-				BuildRequires []string `json:"build_requires"`
-			} `json:"nodes"`
-		} `json:"graph_lock"`
-		Requires       []string `json:"requires"`
-		BuildRequires  []string `json:"build_requires"`
-		PythonRequires []string `json:"python_requires"`
-	}
-	if json.Unmarshal(source, &l) != nil {
+	l, ok := readConanLock(source)
+	if !ok {
 		return declared, false
 	}
 	var locked []*declaredPackage
-	for _, reference := range append(l.Requires, l.BuildRequires...) {
-		if d := conanPackage(reference); d != nil && d.pinned {
-			locked = append(locked, d)
-		}
+	for _, r := range l.references() {
+		locked = append(locked, conanDeclared(r))
 	}
 	if l.GraphLock != nil {
-		// In the order of the node ids, so which of two versions of one library
-		// counts does not change from run to run.
-		ids := slices.Sorted(maps.Keys(l.GraphLock.Nodes))
-		for _, id := range ids {
+		for _, id := range slices.Sorted(maps.Keys(l.GraphLock.Nodes)) {
 			n := l.GraphLock.Nodes[id]
-			if n.Path != "" { // the consumer: the conanfile itself
-				continue
-			}
 			d := conanPackage(n.Reference)
-			if d == nil || !d.pinned {
+			if n.Path != "" || d == nil || !d.pinned {
 				continue
 			}
-			locked = append(locked, d)
 			key := d.name + "/" + d.version
 			for _, requirement := range append(n.Requires, n.BuildRequires...) {
 				if dependency := conanPackage(l.GraphLock.Nodes[requirement].Reference); dependency != nil {
@@ -444,7 +538,7 @@ func (p *packages) lock(source []byte, declared []*declaredPackage) (_ []*declar
 			if v.version != d.version {
 				d.requested, d.version = d.version, v.version
 			}
-			d.pinned = true
+			d.pinned, d.qualifier = true, v.qualifier
 			delete(byName, normalizeName(d.name))
 		}
 	}

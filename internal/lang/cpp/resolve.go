@@ -137,7 +137,7 @@ func (r *resolver) Notes() []trace.Note {
 	var out []trace.Note
 	for _, f := range r.packages.flat {
 		out = append(out, trace.Note{File: f, Code: trace.NoteFlat, Message: "a Conan 2 lock pins versions but " +
-			"records no edges, and no index is asked for Conan: --resolve-depth adds nothing past the packages it pins"})
+			"records no edges: past the packages it pins, --resolve-depth reads the recipes on the Conan remotes only with --online"})
 	}
 	return out
 }

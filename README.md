@@ -1099,9 +1099,10 @@ records versions only), Puppet modules r10k has not installed, Racket packages
 (raco keeps no lock file), Wally packages no `wally.lock` records, Buf Schema
 Registry modules (`buf.lock` is a flat list), CUE modules missing from cue's
 module cache on this machine (`$CUE_CACHE_DIR`, else `cue` in the user's cache
-directory) and Swift registry packages SwiftPM has not checked out under
-`.build` (`Package.resolved` is a flat list) — require `--online`, described
-below; the PowerShell Gallery, vcpkg, Conan 2 (whose lock is a flat list),
+directory), Swift registry packages SwiftPM has not checked out under
+`.build` (`Package.resolved` is a flat list) and Conan packages no Conan 1
+lock records (a Conan 2 `conan.lock` is a flat list) — require `--online`,
+described below; the PowerShell Gallery, vcpkg,
 Bioconductor packages no lock records, Swift packages from git repositories
 that SwiftPM has not checked out and Terraform modules fetched from git or an
 archive are not resolved beyond the first level at present. Content a CMake
@@ -1173,7 +1174,9 @@ of cabal's own configuration (`~/.cabal/config`, `~/.config/cabal/config`,
 lines (asked in order) and the spec repositories of `Podfile.lock` (each
 serving the pods installed from it) other than CocoaPods' own, and the spec
 repositories cloned in `~/.cocoapods/repos`; the registries of SwiftPM's
-`registries.json`, the user's and the repository's; the `rocks_servers` of a
+`registries.json`, the user's and the repository's; the remotes of Conan's
+`remotes.json`, in this machine's Conan home and in the home a repository's
+`.conanrc` names; the `rocks_servers` of a
 project's `.luarocks/config-5.x.lua`, of `~/.luarocks/config-5.x.lua` and of
 `LUAROCKS_CONFIG` other than luarocks.org; the registries of `DUB_REGISTRY`,
 of dub's `settings.json` (`registryUrls`) and of a `dub.settings.json`, asked
@@ -1240,6 +1243,7 @@ and platform paths:
 | buf        | `BUF_TOKEN`; the netrc entries `buf registry login` writes                                                                                                                                                                                                                                                                                                                                                                                      |
 | CocoaPods  | `CP_REPOS_DIR`, else `repos` below `CP_HOME_DIR`, else `~/.cocoapods/repos`: each spec repository, a git clone by its `origin` remote or a CDN source by its `.url`                                                                                                                                                                                                                                                                             |
 | SwiftPM    | `registries.json` in `~/Library/org.swift.swiftpm/configuration` on macOS when it is there, else in `configuration` below `$XDG_CONFIG_HOME/swiftpm` or `~/.swiftpm`; the netrc for `swift package-registry login` (the keychain is not read)                                                                                                                                                                                                   |
+| Conan      | `CONAN_HOME` (a leading `~` being the home directory), else `~/.conan2`: `remotes.json`, `credentials.json` (the environment variables its template names substituted) and `extensions/plugins/auth_remote.py` (found, not run); `CONAN_LOGIN_USERNAME[_<REMOTE>]`, `CONAN_PASSWORD[_<REMOTE>]`                                                                                                                                                 |
 
 Nothing is read from the repository through these variables' defaults; they
 only say where this machine's own files are.
@@ -1269,6 +1273,7 @@ default or is asked **beside** it:
 | Alire                         | alr's indexes, asked by priority, the community index only when it is one of them                                                                                                                                                                                                                                          | —                                                                                                                                                                                                                                                                                                                                |
 | CocoaPods                     | a Podfile's `source` lines, asked in its order, the CDN only when it is one of them (or none is listed)                                                                                                                                                                                                                    | —                                                                                                                                                                                                                                                                                                                                |
 | SwiftPM                       | nothing: there is no public registry                                                                                                                                                                                                                                                                                       | — (a package is asked of the one registry `registries.json` maps its scope to, else of the default registry)                                                                                                                                                                                                                     |
+| Conan                         | `remotes.json`'s remotes, asked in its order, ConanCenter only when it is one of them (or there is no `remotes.json`); a remote's `allowed_packages` limit what it is asked for                                                                                                                                            | —                                                                                                                                                                                                                                                                                                                                |
 | crates.io                     | `[source.crates-io] replace-with` (followed to the end of the chain)                                                                                                                                                                                                                                                       | —                                                                                                                                                                                                                                                                                                                                |
 | npm and every other ecosystem | the first unscoped source found (npm's `registry`, then Yarn's `npmRegistryServer`, `~/.yarnrc`'s `registry` and Bun's `[install] registry`)                                                                                                                                                                               | —                                                                                                                                                                                                                                                                                                                                |
 
@@ -1370,6 +1375,22 @@ vouched for, whatever credential this machine holds for its host; one the
 user's file names too is trusted. A package named by its repository's URL is
 asked of no registry.
 
+A Conan package is asked of the remotes of Conan 2's `remotes.json`, in the
+file's order, as Conan asks them: this machine's (in `CONAN_HOME`, else
+`~/.conan2`; ConanCenter alone when there is no file), then those of the home a
+repository's `.conanrc` names (`conan_home=./.conan2`, read from the disk, the
+`.conanrc` nearest the conanfile up to the repository's root). A disabled
+remote and a `local-recipes-index` folder are not asked, and a remote's
+`allowed_packages` patterns limit it to the references they match. The
+`.conanrc`'s home is the repository's choice wherever it is: its remotes are
+marked **⚠ index** and not asked until vouched for, unless this machine's own
+`remotes.json` lists the same remote, and its `credentials.json` is not read.
+ConanCenter (`center2.conan.io`, and the older `center.conan.io`) is the public
+index, never asked about a private package. A version range is resolved as
+Conan resolves it, against the remote's search, and a package the repository's
+`conan.lock` pins is asked about, and answered, at the lock's version and
+recipe revision.
+
 Five kinds of source are **authoritative** and have no fallback: a scoped source
 that covers the package (an npm `@scope:registry`, a Gemfile `source` block, a
 pubspec's `hosted:` server, a Python package pinned to an index by uv's
@@ -1444,6 +1465,7 @@ ecosystems whose graph is held outside the repository:
 | Terraform modules      | `<modules.v1>/<namespace>/<name>/<provider>/versions` (service discovery off the public registry)                                                                                                                                 | the providers and registry modules of the version asked for, or the newest its constraint allows                 |
 | CocoaPods              | `<cdn>/Specs/<a>/<b>/<c>/<pod>/<version>/<pod>.podspec.json` (newest: the shard's version list); a clone in `~/.cocoapods/repos` instead (any host; `.podspec.json` or `.podspec`)                                                | its and its default subspecs' `dependencies`                                                                     |
 | SwiftPM registry       | `<registry>/<scope>/<name>` for the releases, then `<registry>/<scope>/<name>/<version>/Package.swift` (the registry `registries.json` maps the scope to)                                                                         | its `.package(id:)` and `.package(url:)` dependencies                                                            |
+| Conan                  | `<remote>/v2/conans/<name>/<version>/<user>/<channel>/latest`, then `.../revisions/<revision>/files/conanfile.py`; a range from `<remote>/v2/conans/search?q=<name>/*`                                                            | the recipe's `requires`, pinned as `conan.lock` pins them                                                        |
 | LuaRocks               | `<server>/<rock>-<version>.rockspec`, versions from `<server>/manifest-5.1.zip` (read once)                                                                                                                                       | its run-time `dependencies`, without `lua`                                                                       |
 | CPAN                   | MetaCPAN's `<api>/v1/release/<AUTHOR>/<name>` (as `cpanfile.snapshot` records) or `/_search` for a pinned version, else `/v1/release/<distribution>`; `/v1/module/<module>` per dependency; a mirror's 02packages first           | its run-time requirements as distributions, without perl's own modules                                           |
 | opam                   | `<repository>/packages/<name>/<name>.<version>/opam`, from opam's copy of the repository, else over HTTP; for a range, the newest version admitted, listed by the copy (opam-repository: GitHub's contents API)                   | its `depends`, without the compiler and what only tests or documentation need                                    |
@@ -1546,6 +1568,7 @@ written for and to no other.
 | cue's `logins.json` (`CUE_CONFIG_DIR`)                      | the tokens `cue login` stores, per registry host, over Docker's                                                |
 | r10k's `r10k.yaml`                                          | `forge: authorization_token`, for the paths of `forge: baseurl`                                                |
 | the netrc entry `swift package-registry login` writes       | a registry's token (Bearer, as the user's `registries.json` says) or user and password                         |
+| Conan's `credentials.json`, `CONAN_LOGIN_USERNAME`          | a remote's user and password, for its token (below)                                                            |
 | the index URL itself                                        | `https://user:password@host/simple`, as a private pip or Cargo mirror is set                                   |
 
 Between them these cover Nexus, Artifactory, Azure Artifacts, ProGet, GitHub
@@ -1556,6 +1579,19 @@ servers, Hex organizations, a private Puppet Forge, Buf Schema Registry, CUE
 registry or Swift package registry. What SwiftPM keeps in the macOS keychain
 (its default there) is not read: log in with `--disable-keychain` to keep the
 credential in the netrc.
+
+A Conan remote is asked without a login first, as Conan asks it. When it
+answers 401, the login Conan would use for it — the entry of the home's
+`credentials.json` for the remote's name (a Jinja2 template's
+`os.getenv("NAME")` substituted), else `CONAN_LOGIN_USERNAME_<REMOTE>` and
+`CONAN_PASSWORD_<REMOTE>` (the name upper case, `-` as `_`), else
+`CONAN_LOGIN_USERNAME` and `CONAN_PASSWORD` — goes as Basic credentials to the
+remote's `/v2/users/authenticate` alone, over https or on this machine, and
+the token it answers with is sent as a Bearer token from then on. Conan's
+`auth_remote.py` plugin is a program and is not run (`--explain` notes it,
+`helper-not-run`, when a remote wants a login this machine does not hold), and
+the tokens `conan remote login` keeps in the home's `.conan.db` database are
+not read.
 
 Each file is looked for where its tool looks for it; see
 [Configuration locations](#configuration-locations).
@@ -1886,7 +1922,8 @@ The report records six things:
   (`no-release`); an opam repository, Alire index, Julia registry or
   CocoaPods spec repository only git serves, with no copy on this machine
   (`no-copy`); and a Bazel registry
-  a `.bazelrc` names a credential helper for, which is not run
+  a `.bazelrc` names a credential helper for, or a Conan remote that wants a
+  login only Conan's `auth_remote.py` plugin could supply, which is not run
   (`helper-not-run`); and
 - **the questions nothing answered** — every package for which no answer was
   obtained, with the reason: no lock file covers it; its index is named only by
@@ -3278,12 +3315,16 @@ platforms are not evaluated) and `overrides`; Conan's `conanfile.txt` for its `[
 and tool sections, a `conanfile.py` for the string literals given to
 `self.requires()` and its kin or assigned to `requires` and `tool_requires`,
 and a `conan.lock` beside them in either Conan 1 or Conan 2 form, whose
-libraries count as declared since the build installs them. The recipe is not
-run, so a reference built at run time (an f-string) is not seen and a
-conditional one counts whatever the condition. A vcpkg port pins only by an
-override: a `builtin-baseline` fixes versions through the registry's history,
-which the repository does not carry, so a port without a version is then
-neither pinned nor floating, while without a baseline it floats. A header no
+libraries count as declared since the build installs them; a reference keeps
+its user, channel and the recipe revision a lock pins. The recipe is not
+run, so a reference built at run time (an f-string that substitutes) is not
+seen and a conditional one counts whatever the condition. With `--online`, a
+Conan package's own requirements are the `requires` of its recipe on the Conan
+remotes (see [Package indexes](#package-indexes)), read the same way. A vcpkg
+port pins only by an override: a `builtin-baseline` fixes versions through the
+registry's history, which the repository does not carry, so a port without a
+version is then neither pinned nor floating, while without a baseline it
+floats. A header no
 manifest's package claims goes, by the same names, to content the CMake build
 fetches (below). Everything else stays in C/C++ external, without a version.
 

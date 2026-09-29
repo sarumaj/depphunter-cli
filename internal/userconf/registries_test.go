@@ -168,3 +168,31 @@ func TestCocoaPodsAndSwiftPMLocations(t *testing.T) {
 		t.Error("no home, no paths")
 	}
 }
+
+// Conan 2's home is CONAN_HOME (~ the user's home; a relative one is refused),
+// else .conan2 in the user's home.
+//
+// Verifies: REQ-SUP-064
+func TestConanHome(t *testing.T) {
+	home, directory := t.TempDir(), t.TempDir()
+	for _, testCase := range []struct {
+		goos      string
+		variables map[string]string
+		want      string
+	}{
+		{"linux", nil, filepath.Join(home, ".conan2")},
+		{"windows", nil, filepath.Join(home, ".conan2")},
+		{"linux", map[string]string{"CONAN_HOME": directory}, directory},
+		{"linux", map[string]string{"CONAN_HOME": "~/conan-work"}, filepath.Join(home, "conan-work")},
+		{"windows", map[string]string{"CONAN_HOME": `~\conan-work`}, filepath.Join(home, "conan-work")},
+		{"windows", map[string]string{"CONAN_HOME": `D:\conan`}, `D:\conan`},
+		{"linux", map[string]string{"CONAN_HOME": "relative/home"}, ""},
+	} {
+		if got := machine(t, home, testCase.goos, testCase.variables).ConanHome(); got != testCase.want {
+			t.Errorf("%s %v: got %s, want %s", testCase.goos, testCase.variables, got, testCase.want)
+		}
+	}
+	if got := machine(t, "", "linux", nil).ConanHome(); got != "" {
+		t.Errorf("no home: %s", got)
+	}
+}
