@@ -390,15 +390,28 @@ const MOUTH = 0.07;
 // along the half span the brake lines fan out from the tail.
 const LINE_ROWS = [0.07, 0.3, 0.56, 0.84];
 const BRAKE_AT = [0.18, 0.42, 0.66, 0.92];
-// Where the risers leave the harness (the walker's shoulders, the rig's origin) and
-// where they end at the links the lines are gathered on, and how far the lines from
-// the tail are gathered below the canopy before they run down to the toggle.
-const SHOULDER = 0.12, LINK_X = 0.18, LINKS = 0.42, CASCADE = 0.55;
+// Where the risers leave the harness - on top of the walker's shoulders, level with
+// the rig's origin, out to the sides of the head and a little behind the eyes, so
+// that they start outside the view's near edge - and where they end at the links the
+// lines are gathered on, up and further out; and how far the lines from the tail are
+// gathered below the canopy before they run down to the toggle.
+const SHOULDER = 0.17, SHOULDER_BACK = 0.03, LINK_X = 0.25, LINKS = 0.42, CASCADE = 0.55;
+// The links' depth, front riser and back.
+const FRONT_LINK = -0.02, BACK_LINK = 0.035;
+// The risers as webbing: how wide and thick the strap is, and how far up it the strap
+// fades in - the part of it that passes the eyes is nearer the lens than anything
+// else hanging there, and at full strength it would be a bar across the view.
+const RISER_WIDTH = 0.0035, RISER_THICKNESS = 0.0015, RISER_FADE = [0.22, 0.62];
+// How far down the lines the slider comes once the canopy is open, from where the
+// lines are sewn on toward the links, and how far its fabric bunches up toward its
+// middle as it does: it stays up near the canopy, collapsed under it, rather than
+// coming all the way down to the links in front of the eyes.
+const SLIDER_DOWN = 0.18, SLIDER_GATHER = 0.6;
 // The cells, left to right, in the colors a canopy is sewn in: white and red, with
 // the middle cell blue so the heading can be read off it from below.
 const CELL_COLORS = ['#f2f4f7', '#e4402f', '#f2f4f7', '#e4402f', '#2f7fb8', '#e4402f', '#f2f4f7', '#e4402f', '#f2f4f7'];
 // The fabric and the hardware.
-const LINE_COLOR = '#3a3f46', RISER_COLOR = '#4a535d', PILOT_COLOR = '#e4402f', BAG_COLOR = '#39424c';
+const LINE_COLOR = '#3a3f46', RISER_COLOR = '#2a2e33', LINK_COLOR = '#6d737a', PILOT_COLOR = '#e4402f', BAG_COLOR = '#39424c';
 // How far the tail flutters at a given airspeed, and how fast; and how the cells
 // breathe as the air through the mouths comes and goes.
 const FLUTTER = 0.012, FLUTTER_RATE = 21, BREATHE = 0.035, BREATHE_RATE = 2.3;
@@ -543,13 +556,25 @@ function reshape(mesh, shape, normals) {
 
 // Where the right toggle is stowed on its rear riser, and the left one too when no hand
 // is holding it: most of the way up the riser, on its outside.
-const STOWED = new THREE.Vector3(-(SHOULDER + (LINK_X - SHOULDER) * 0.72) - 0.004, LINKS * 0.72, 0.034);
+const STOWED = new THREE.Vector3(-(SHOULDER + (LINK_X - SHOULDER) * 0.72) - 0.004, LINKS * 0.72,
+  SHOULDER_BACK + (BACK_LINK - SHOULDER_BACK) * 0.72 - 0.001);
 
-// A strap from one point to another, for the risers.
+// A strap from one point to another, for the risers: webbing that fades in from
+// nothing at `from` over `fade` (the fractions of the way along it where it starts
+// and finishes coming in).
 const ALONG_Y = new THREE.Vector3(0, 1, 0);
-function strap(make, from, to, width, color) {
+function strap(make, from, to, color, fade) {
   const run = new THREE.Vector3().subVectors(to, from);
-  const mesh = make(new THREE.BoxGeometry(width, run.length(), 0.003), color);
+  const length = run.length();
+  const geometry = new THREE.BoxGeometry(RISER_WIDTH, length, RISER_THICKNESS, 1, 12, 1);
+  const positions = geometry.getAttribute('position');
+  const colors = new Float32Array(positions.count * 4);
+  for (let i = 0; i < positions.count; i++) {
+    const along = clamp((positions.getY(i) / length + 0.5 - fade[0]) / (fade[1] - fade[0]), 0, 1);
+    colors.set([1, 1, 1, along * along * (3 - 2 * along)], i * 4);
+  }
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 4));
+  const mesh = make(geometry, color, { vertexColors: true, transparent: true, depthWrite: false, shininess: 4 });
   mesh.position.copy(from).addScaledVector(run, 0.5);
   mesh.quaternion.setFromUnitVectors(ALONG_Y, run.normalize());
   return mesh;
@@ -596,10 +621,10 @@ export function canopyRig(make, lineMaterial, lit = true) {
   const risers = new THREE.Group();
   risers.name = 'risers';
   for (const side of [-1, 1]) {
-    for (const [z0, z1] of [[-0.01, -0.02], [0.02, 0.035]]) {
+    for (const [z0, z1] of [[SHOULDER_BACK - 0.012, FRONT_LINK], [SHOULDER_BACK + 0.012, BACK_LINK]]) {
       const from = new THREE.Vector3(side * SHOULDER, 0, z0), to = new THREE.Vector3(side * LINK_X, LINKS, z1);
-      risers.add(strap(make, from, to, 0.005, RISER_COLOR));
-      const link = make(new THREE.TorusGeometry(0.008, 0.0022, 5, 10), '#b9bec6');
+      risers.add(strap(make, from, to, RISER_COLOR, RISER_FADE));
+      const link = make(new THREE.TorusGeometry(0.006, 0.0016, 5, 10), LINK_COLOR, { shininess: 8 });
       link.position.copy(to);
       risers.add(link);
     }
@@ -616,7 +641,7 @@ export function canopyRig(make, lineMaterial, lit = true) {
   // The slider: a square of fabric with a grommet at each corner that the four line
   // groups run through, which slows the opening; it comes down to the links as the
   // canopy spreads.
-  const slider = make(new THREE.BufferGeometry(), '#e6ebf0', { side: THREE.DoubleSide, transparent: true, opacity: 0.3, depthWrite: false });
+  const slider = make(new THREE.BufferGeometry(), '#e6ebf0', { side: THREE.DoubleSide, transparent: true, opacity: 0.18, depthWrite: false });
   slider.geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3));
   slider.geometry.setIndex([0, 1, 2, 0, 2, 3]);
   slider.name = 'slider';
@@ -764,7 +789,7 @@ export function poseRig(rig, look, hand = null) {
     for (let row = 0; row < LINE_ROWS.length; row++) {
       canopyPoint(s, LINE_ROWS[row], 1, 0, shape, TIP).applyMatrix4(canopy.matrix);
       if (harness) LINK.copy(harness);
-      else LINK.set(side * LINK_X, LINKS, row < 2 ? -0.02 : 0.035);
+      else LINK.set(side * LINK_X, LINKS, row < 2 ? FRONT_LINK : BACK_LINK);
       segment(LINK, TIP);
     }
   }
@@ -785,9 +810,10 @@ export function poseRig(rig, look, hand = null) {
     segment(HAND, JOIN);
   }
 
-  // The slider comes down the lines to the links as the canopy spreads. Each of its
-  // corners is on a line group, between the links and the middle of where that
-  // group's lines are sewn to the canopy.
+  // The slider comes down the lines as the canopy spreads, but only a little way: it
+  // stays up under the canopy, well above the head, and bunches up as it goes. Each
+  // of its corners starts on a line group, between the middle of where that group's
+  // lines are sewn to the canopy and the links.
   const down = clamp((look.open - 0.2) / 0.85, 0, 1);
   slider.visible = !harness;
   if (slider.visible) {
@@ -801,9 +827,14 @@ export function poseRig(rig, look, hand = null) {
         GROUPS[i].add(canopyPoint(s, (LINE_ROWS[row] + LINE_ROWS[row + 1]) / 2, 1, 0, shape, TIP).applyMatrix4(canopy.matrix));
       }
       GROUPS[i].multiplyScalar(1 / ((CELLS + 1) / 2));
-      LINK.set(side * LINK_X, LINKS, row < 2 ? -0.02 : 0.035);
-      TIP.lerpVectors(GROUPS[i], LINK, 0.12 + 0.86 * down);
-      corners.setXYZ(i, TIP.x, TIP.y, TIP.z);
+      LINK.set(side * LINK_X, LINKS, row < 2 ? FRONT_LINK : BACK_LINK);
+      GROUPS[i].lerp(LINK, 0.05 + (SLIDER_DOWN - 0.05) * down);
+    });
+    JOIN.set(0, 0, 0);
+    for (const corner of GROUPS) JOIN.addScaledVector(corner, 1 / GROUPS.length);
+    GROUPS.forEach((corner, i) => {
+      corner.lerp(JOIN, SLIDER_GATHER * down);
+      corners.setXYZ(i, corner.x, corner.y, corner.z);
     });
     corners.needsUpdate = true;
     slider.geometry.computeBoundingSphere();
