@@ -46,13 +46,14 @@ export const MIN_DEPLOY = 0.8;
 // its forward speed and its sink, in units a second. Neutral is where the hands rest,
 // a little way down; W lets the toggles up for the faster, steeper line; S holds them
 // most of the way down, slow and sinking a little more. Neutral comes to about
-// twelve meters a second forward and four and a half down - a glide of 2.7, which is
-// a student canopy - and each point is solved into lift and drag for walk mode's
-// gravity (coefficientsFor), so the canopy settles into exactly this trim.
+// twelve meters a second forward and under three down - a glide of about 4, a
+// docile canopy that leaves time to look around on the way down - and each point is
+// solved into lift and drag for walk mode's gravity (coefficientsFor), so the canopy
+// settles into exactly this trim.
 export const TRIM = [
-  { brake: 0, speed: 3.9, sink: 1.7 },
-  { brake: 0.3, speed: 3.35, sink: 1.25 },
-  { brake: 0.8, speed: 1.9, sink: 1.45 },
+  { brake: 0, speed: 3.9, sink: 1.1 },
+  { brake: 0.3, speed: 3.35, sink: 0.8 },
+  { brake: 0.8, speed: 1.9, sink: 0.93 },
 ];
 export const NEUTRAL_BRAKE = 0.3, DEEP_BRAKE = 0.8;
 // How long the toggles take to travel, as the time constant of their easing.
@@ -63,15 +64,21 @@ const TOGGLE_TAU = 0.22;
 // flight path round to where it is pointed.
 export const TURN_RATE = 1.2;
 const TURN_TAU = 0.35, BANK_TAU = 0.4, TURN_DRAG = 0.5, SIDE_GRIP = 1.6;
+// A canopy flown faster than its trim speed, the way the opening leaves it, is pushed
+// off its angle and luffs: this much more drag for each share of speed over trim. It
+// is nothing in steady flight and only bleeds off a surge, which a canopy this flat
+// would otherwise turn back into height - a climb out of the opening, and a pendulum
+// of a descent after it.
+const SURGE_DRAG = 1.5;
 // The flare: both toggles pulled down, progressively, which pitches the canopy up and
 // trades its forward speed for lift. The pull is a quick first bite over FLARE_RISE
 // and then a steady draw to the bottom by FLARE_TIME, adding up to FLARE_LIFT of lift
 // and FLARE_DRAG of drag: pulled progressively, the lift grows as the speed it is made
-// of runs down, which holds the sink near nothing for most of a second. A flare that
+// of runs down, which holds the sink near nothing for a second or so. A flare that
 // runs out before the ground stalls the canopy for STALL_TIME - under half its lift,
 // more drag - and it takes STALL_EASE to fly again.
-export const FLARE_TIME = 1.2;
-const FLARE_RISE = 0.15, FLARE_LIFT = 2.4, FLARE_DRAG = 1.9;
+export const FLARE_TIME = 1.5;
+const FLARE_RISE = 0.15, FLARE_LIFT = 2.4, FLARE_DRAG = 2.6;
 export const STALL_TIME = 1.1;
 const STALL_EASE = 0.8, STALL_LIFT = 0.45, STALL_DRAG = 1.3;
 // The pilot chute's own drag while it drags the bag out, per unit of speed: next to
@@ -185,7 +192,7 @@ export function flareAt(t) {
   if (t < 0) return [1, 1];
   if (t < FLARE_TIME) {
     const bite = Math.min(1, t / FLARE_RISE), pull = t / FLARE_TIME;
-    return [1 + FLARE_LIFT * (0.35 * bite + 0.65 * pull ** 1.5), 1 + FLARE_DRAG * (0.3 * bite + 0.7 * pull)];
+    return [1 + FLARE_LIFT * (0.2 * bite + 0.8 * pull ** 1.5), 1 + FLARE_DRAG * (0.3 * bite + 0.7 * pull)];
   }
   const after = t - FLARE_TIME;
   if (after < STALL_TIME) return [STALL_LIFT, STALL_DRAG];
@@ -264,7 +271,12 @@ function substep(chute, input, ground, climb, events) {
   // An opening canopy is a drogue: drag in proportion to how much of it has filled,
   // and several times as much drag for its size as the wing it becomes.
   const lift = trim.lift * open * flying * flareLift;
+  // Faster than trim, the wing luffs (SURGE_DRAG) - once it is a wing: an opening
+  // canopy is still the drogue above. Trim speed is where lift and drag together hold
+  // up the walker's weight.
+  const surge = Math.max(0, speed / Math.sqrt(CHUTE_GRAVITY / Math.hypot(trim.lift, trim.drag)) - 1);
   const drag = trim.drag * open * (1 + 2.5 * (1 - flying)) * flareDrag * (1 + TURN_DRAG * Math.abs(chute.turn) * flying)
+      * (1 + SURGE_DRAG * surge * flying)
     + (chute.phase === 'pilot' || open < 0.2 ? PILOT_DRAG : 0);
   let ax = 0, ay = -CHUTE_GRAVITY, az = 0;
   if (speed > 1e-6) {

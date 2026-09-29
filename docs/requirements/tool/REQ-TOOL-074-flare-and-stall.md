@@ -11,7 +11,7 @@ verification:
 
 ## Statement
 
-Under an open canopy `Space` **shall** flare it: for a little over a second the
+Under an open canopy `Space` **shall** flare it: for a second and a half the
 canopy trades forward speed for lift, holding the sink near nothing. A flare
 spent before the ground **shall** leave the canopy stalled for a moment,
 sinking faster than it would have without the flare.
@@ -23,6 +23,7 @@ could be held from any height would be no skill at all.
 
 ## Acceptance criteria
 
-1. A flare begun about two meters up comes in at under two thirds of the speed
-   of none.
+1. A flare begun about two meters up comes in at under 0.7 of the speed of
+   none and costs nothing, and so does one begun anywhere from under a meter
+   to about two and a half meters up.
 2. A flare begun five meters up stalls and comes in sinking faster than none.

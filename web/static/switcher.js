@@ -35,8 +35,9 @@
 // keys with it, which is the only arrangement in which the two cannot drift apart.
 //
 // Ten digits number ten tools. The eleventh, the parachute, has a key of its own
-// instead (tools.js `key`): the one left of 1, and its slot is the first in the row,
-// so the row still reads the way the top of the keyboard does - ` then 1 to 0.
+// instead (tools.js `key`), T, which its slot wears in place of a digit. Its slot is
+// the first in the row, where the carried tools start, and the digits count on from
+// the next one - so the row reads T and then 1 to 0.
 
 import { TOOLS, PRIMARY_IDS, SECONDARY_IDS, toolFor } from './tools.js';
 
