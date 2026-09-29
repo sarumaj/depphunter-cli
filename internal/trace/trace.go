@@ -115,6 +115,9 @@ const (
 	// NoteGitUnpinned is a git dependency a lock file names a branch or a tag of
 	// and no commit: it is not pinned.
 	NoteGitUnpinned = "git-unpinned"
+	// NoteImportRoot is a directory PYTHONPATH or a tool's settings add to the
+	// places imports are looked up in, and what added it.
+	NoteImportRoot = "import-root"
 )
 
 // Note is something a resolver or the index client knows about the run that no

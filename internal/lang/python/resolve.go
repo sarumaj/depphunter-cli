@@ -2,9 +2,12 @@ package python
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -70,9 +73,10 @@ type dist struct {
 }
 
 type resolver struct {
+	lang.NoteList
 	files         map[string]bool
 	pyDirectories map[string]bool // directories containing Python files at any depth
-	roots         []string        // import roots, most specific first, "." last
+	roots         []importRoot    // import roots, most specific first, "." last
 	distMap       map[string]*dist
 	// tree maps a normalized distribution name to what a lock file says it needs.
 	tree map[string][]string
@@ -80,8 +84,12 @@ type resolver struct {
 	environment *environment
 }
 
-// Implements: REQ-PY-003, REQ-PY-006, REQ-PY-009
-func newResolver(all, claimed []*scan.File) *resolver {
+// newResolver reads the project files in all (claimed are the Python files) from
+// root, the analyzed repository. getenv, when not nil, gives the PYTHONPATH of the
+// process running depphunter.
+//
+// Implements: REQ-PY-003, REQ-PY-006, REQ-PY-009, REQ-PY-016
+func newResolver(root string, all, claimed []*scan.File, getenv func(string) string) *resolver {
 	r := &resolver{files: map[string]bool{}, pyDirectories: map[string]bool{}, distMap: map[string]*dist{}, tree: map[string][]string{}}
 	for _, f := range claimed {
 		r.files[f.Path] = true
@@ -89,21 +97,36 @@ func newResolver(all, claimed []*scan.File) *resolver {
 			r.pyDirectories[d] = true
 		}
 	}
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		absolute = root
+	}
+	finder := &rootFinder{resolver: r, absolute: absolute, environmentFiles: map[string]bool{}}
+	finder.environment(getenv)
 
-	roots := map[string]bool{".": true}
+	projects := map[string]bool{".": true}
 	var locks []*scan.File
 	for _, f := range all {
 		directory, base := path.Dir(f.Path), path.Base(f.Path)
 		switch {
 		case base == "pyproject.toml":
-			roots[directory] = true
+			projects[directory] = true
 			r.readPyproject(f.AbsolutePath)
+			finder.pyproject(f)
 		case base == "setup.cfg":
-			roots[directory] = true
+			projects[directory] = true
 			r.readSetupConfig(f.AbsolutePath)
+			finder.iniFile(f)
 		case base == "setup.py":
-			roots[directory] = true
+			projects[directory] = true
 			r.readSetupPy(f.AbsolutePath)
+			finder.setupPy(f)
+		case base == "pytest.ini" || base == ".pytest.ini" || base == "tox.ini" || base == "mypy.ini" || base == ".mypy.ini":
+			finder.iniFile(f)
+		case base == "pyrightconfig.json" || base == "basedpyrightconfig.json":
+			finder.pyrightConfig(f)
+		case base == ".env":
+			finder.dotenv(f.Path, "PYTHONPATH in "+f.Path)
 		case base == "Pipfile":
 			r.readPipfile(f.AbsolutePath)
 		case base == "poetry.lock" || base == "uv.lock" || base == "pdm.lock" || base == "Pipfile.lock":
@@ -115,25 +138,55 @@ func newResolver(all, claimed []*scan.File) *resolver {
 	for _, f := range locks { // after manifests, so pinned versions override ranges
 		r.readLock(f)
 	}
-	for d := range roots {
-		r.roots = append(r.roots, d)
+	// The scan skips .vscode and leaves out a git-ignored .env, which is where a .env
+	// usually is: both are read from disk in the repository root and in each project
+	// directory, the folders an editor opens.
+	for _, directory := range slices.Sorted(maps.Keys(projects)) {
+		finder.dotenv(path.Join(directory, ".env"), "PYTHONPATH in "+path.Join(directory, ".env"))
+		finder.vscode(directory)
+	}
+
+	// A project's own roots - the directories of its manifests, their src/ and the
+	// source directories its packaging tools name - deepest first, so a sub-project's
+	// modules shadow same-named top-level ones. Then the roots the environment and
+	// the tools' settings add, in the order they give them, the process's PYTHONPATH
+	// first and deeper files before shallower: they stand for paths a run or an
+	// editor puts ahead of the working directory, but a sub-project's own modules
+	// are more specific than a path configured for the whole repository. The
+	// repository root, the least specific, comes last.
+	var own []string
+	for d := range projects {
+		if d != "." {
+			own = append(own, d)
+		}
 		if source := path.Join(d, "src"); r.pyDirectories[source] {
-			r.roots = append(r.roots, source)
+			own = append(own, source)
 		}
 	}
-	// Deepest first, so a sub-project's modules shadow same-named top-level ones; "." last.
-	depth := func(d string) int {
-		if d == "." {
-			return -1
-		}
-		return strings.Count(d, "/")
+	for _, packaging := range finder.packaging {
+		own = append(own, packaging.directory)
 	}
-	sort.Slice(r.roots, func(i, j int) bool {
-		if depthI, depthJ := depth(r.roots[i]), depth(r.roots[j]); depthI != depthJ {
+	depth := func(d string) int { return strings.Count(d, "/") }
+	sort.Slice(own, func(i, j int) bool {
+		if depthI, depthJ := depth(own[i]), depth(own[j]); depthI != depthJ {
 			return depthI > depthJ
 		}
-		return r.roots[i] < r.roots[j]
+		return own[i] < own[j]
 	})
+	seen := map[importRoot]bool{}
+	add := func(root importRoot) {
+		if !seen[root] && !seen[importRoot{directory: root.directory}] {
+			seen[root] = true
+			r.roots = append(r.roots, root)
+		}
+	}
+	for _, d := range own {
+		add(importRoot{directory: d})
+	}
+	for _, root := range ordered(finder.configured) {
+		add(root)
+	}
+	add(importRoot{directory: "."})
 	return r
 }
 
@@ -148,7 +201,10 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 func (r *resolver) resolve(dotted, file string) lang.Target {
 	parts := strings.Split(dotted, ".")
 	for _, root := range r.roots {
-		if t, ok := r.longest(root, parts); ok {
+		if !root.serves(file) {
+			continue
+		}
+		if t, ok := r.longest(root.directory, parts); ok {
 			return t
 		}
 	}
