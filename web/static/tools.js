@@ -51,16 +51,24 @@
 //                     the walker along it, how close it brings them, how far away it
 //                     will still pull from, and whether it sets them on top of what
 //                     it caught or leaves them against it.
-//   flies / floats    what carrying a secondary tool does to the walker: the jet
-//                     backpack holds them in the air, the skimmers hold them on the
-//                     water. walk.js reads both off whatever is in hand.
+//   flies / floats /  what carrying a secondary tool does to the walker: the jet
+//   glides            backpack holds them in the air, the skimmers hold them on the
+//                     water, and the parachute, once it is thrown open, lets them
+//                     down under a canopy (parachute.js). walk.js reads all three
+//                     off whatever is in hand.
 //   fuel              how long it will do it for, and how long it takes to come back:
 //                     {full} seconds of use, {fills} seconds to refill from empty
 //                     while it is not being used. A tool without it never runs out.
+//                     {once} is a tool spent whole in one use - the parachute, whose
+//                     tank is the pack - which works again only once it is full.
+//   key               a key of its own, {code, label}, for a tool the digits do not
+//                     reach: the row is numbered 1 to 0 along the tools without one
+//                     (switcher.js).
 
 import * as THREE from './vendor/three.module.min.js';
 
 import { handModel, closeHand, closeFinger, setWrist, loadHands, handsReady } from './hands.js';
+import { NEUTRAL_BRAKE } from './parachute.js';
 
 /**
  * One part of a tool. Unlike everything else on the map these are lit: the walk
@@ -1325,7 +1333,7 @@ const grapple = {
   noun: 'climbed',
   hint: 'F or C fires it: hook a building to be pulled onto its roof, and from up there hook something lower to come down',
   reticle: 'hook',
-  slot: 8,
+  slot: 9,
   kind: 'secondary',
   // The longest reach in the bag, because a line is the one thing here that is meant
   // to span a street - but a line, not a rifle: it ends where the rope does.
@@ -1433,7 +1441,7 @@ const jetpack = {
   noun: 'flown',
   hint: 'Carrying it is flying: W and S follow your eyes, Space and C go up and down, and F opens the throttle for a burst',
   reticle: 'thrust',
-  slot: 9,
+  slot: 10,
   kind: 'secondary',
   flies: true,
   // Long enough to cross a district and pick a roof to land on, and about half as long
@@ -1600,7 +1608,7 @@ const skimmers = {
   noun: 'skimmed',
   hint: 'Carrying them is walking on water; stow them over the bay and it will not hold you',
   reticle: 'ripple',
-  slot: 10,
+  slot: 11,
   kind: 'secondary',
   floats: true,
   // Floats waterlog, and quickly: the bay is a thing to cross rather than a place to
@@ -1654,8 +1662,155 @@ const skimmers = {
   projectile: null,
 };
 
+// Where the parachute's container is in the frame: below and outboard of the hand,
+// the corner of it that reaches round from the walker's back, the way the jet's
+// thruster does. It is placed in the viewmodel's own frame rather than the hand's,
+// because it is on the walker's back and not in their hand.
+const CONTAINER_AT = new THREE.Vector3(0.36, -0.44, -0.3), CONTAINER_TURN = new THREE.Euler(0.35, -0.75, 0.2);
+// ... and the pouch on its bottom corner the pilot chute is stowed in, in its frame.
+const POUCH_AT = new THREE.Vector3(-0.11, -0.13, -0.03);
+
+/**
+ * A parachute: a ram-air canopy packed into a container on the walker's back, thrown
+ * open off a roof or out of the jet and flown down. It is the one secondary tool that
+ * is spent whole in one use - the pack is its tank (fuel.once) - and the one that is
+ * flown rather than ridden: the jet goes where it is pointed and the skimmers where
+ * they are walked, but a canopy has its own speed and its own heading, and the walker
+ * only trims it and steers it with the toggles.
+ *
+ * What the hand holds is the part of it a hand holds: packed, the pilot chute's handle
+ * on its bridle out of the pouch at the bottom of the container; open, the left
+ * steering toggle, whose line walk.js runs up to the canopy overhead (parachute.js
+ * draws everything above the hand). The corner of the container reaches round into
+ * the bottom of the frame, where the jet's thruster does, so the thing on the
+ * walker's back is never only a word in the tool row.
+ *
+ * Implements: REQ-TOOL-070, REQ-TOOL-071, REQ-TOOL-035
+ */
+const parachute = {
+  id: 'parachute',
+  label: 'Parachute',
+  verb: 'Glide',
+  noun: 'glided',
+  hint: 'Off a roof or out of the jet, F throws it open: A and D steer, W and S trim, and Space flares it down onto the ground - too soon and it stalls',
+  slot: 8,
+  kind: 'secondary',
+  glides: true,
+  // One descent to a pack, and a while to fold it again: long enough that the jet is
+  // still the way to get up there, short enough to be ready by the next roof.
+  fuel: { once: true, fills: 12 },
+  // The row has ten digits and eleven tools, so this one has a key of its own: the
+  // one left of 1, which makes the row read the way the top of the keyboard does.
+  key: { code: 'Backquote', label: '`' },
+  hold: { x: 0.21, y: -0.17, z: -0.52, along: [0.05, 1, 0.26], back: [0.4, -0.3, 1] },
+  grip: SWUNG,
+  viewmodel() {
+    return viewmodel(g => {
+      const held = armed(g, this, tool => { tool.name = 'held'; });
+
+      // The container's corner, reaching round from the walker's back: the tray, its
+      // closing flaps, the binding along its edges, and the pouch the pilot chute is
+      // stowed in.
+      const container = new THREE.Group();
+      container.name = 'container';
+      container.position.copy(CONTAINER_AT);
+      container.rotation.copy(CONTAINER_TURN);
+      g.add(container);
+      container.add(part(new THREE.BoxGeometry(0.26, 0.34, 0.12), '#2b3138'));
+      container.add(part(new THREE.BoxGeometry(0.264, 0.014, 0.124).translate(0, 0.165, 0), '#59636e')); // binding
+      container.add(part(new THREE.BoxGeometry(0.014, 0.344, 0.124).translate(-0.13, 0, 0), '#59636e'));
+      const flap = part(new THREE.BoxGeometry(0.2, 0.12, 0.012).translate(0, -0.06, 0), '#39424c');
+      flap.position.set(0, 0.16, -0.064);
+      flap.name = 'flap';
+      container.add(flap);
+      const pouch = part(new THREE.CylinderGeometry(0.035, 0.035, 0.07, 10), '#39424c');
+      pouch.position.copy(POUCH_AT);
+      pouch.rotation.z = Math.PI / 2;
+      container.add(pouch);
+
+      // Packed: the pilot chute's handle, a soft ball in the fist, and its bridle out of
+      // the bottom of the fist to the pouch. The bridle is measured from the hand to
+      // the pouch as they are placed, both in the viewmodel, so it arrives there.
+      const hackey = new THREE.Group();
+      hackey.name = 'hackey';
+      held.add(hackey);
+      hackey.add(part(new THREE.SphereGeometry(0.024, 12, 9), '#e4402f'));
+      g.updateMatrixWorld(true);
+      const into = hackey.worldToLocal(container.localToWorld(POUCH_AT.clone()));
+      hackey.add(linkPart(new THREE.Vector3(0, -0.018, 0), into, 0.0045, '#f2f4f7'));
+
+      // Open: the left toggle, a stiffened loop with the steering line leaving its top.
+      // walk.js reads `toggle-top` for where the line starts.
+      const toggle = new THREE.Group();
+      toggle.name = 'toggle';
+      toggle.visible = false;
+      held.add(toggle);
+      toggle.add(part(new THREE.BoxGeometry(0.02, 0.07, 0.014), '#e8a317'));
+      const loop = part(new THREE.TorusGeometry(0.017, 0.004, 5, 12), '#e8a317');
+      loop.position.y = -0.05;
+      toggle.add(loop);
+      toggle.add(linkPart(new THREE.Vector3(0, 0.03, 0), new THREE.Vector3(0, 0.12, 0.004), 0.0022, '#3a3f46'));
+      const top = new THREE.Object3D();
+      top.name = 'toggle-top';
+      top.position.set(0, 0.12, 0.004);
+      toggle.add(top);
+    });
+  },
+  /**
+   * Throwing it: the hand goes down and back to the pouch, then sweeps out and up to
+   * let the pilot chute go into the air beside the walker. Any other use - thrown too
+   * low, not packed yet - is a hand patting the pouch to check it is still there.
+   */
+  pose(vm, u) {
+    const k = swing(u);
+    const hackey = vm.getObjectByName('hackey');
+    if (vm.userData.throwing) {
+      vm.rotation.x = REST.rx - k * 0.55;
+      vm.rotation.z = REST.rz + k * 0.7;
+      vm.position.x = REST.x + k * 0.1;
+      vm.position.y = vm.userData.restY + k * 0.12;
+      vm.position.z = REST.z - Math.max(0, k) * 0.08;
+      if (hackey && u > 0.4) hackey.visible = false; // let go at the top of the throw
+      grip(vm, u < 0.4 ? 0.8 : 0);
+      if (u >= 1) vm.userData.throwing = false;
+      return;
+    }
+    const pat = press(u);
+    vm.position.y = vm.userData.restY - pat * 0.05;
+    vm.rotation.x = REST.rx + pat * 0.1;
+    grip(vm, pat * 0.5);
+  },
+  /**
+   * The hand under an open canopy, once a frame after the idle has placed it (walk.js):
+   * the handle is gone and the toggle is in the fist, pulled down as far as the left
+   * side of the tail is pulled - the brakes, a turn to the left, a flare - and the
+   * hand comes back up as it is let off.
+   *
+   * Implements: REQ-TOOL-076
+   */
+  steer(vm, chute) {
+    // Only a packed parachute has a handle to hold: one on the ground or cut away is
+    // being repacked, and the tray is empty until it is done.
+    const packed = chute.phase === 'packed';
+    const open = chute.phase === 'inflating' || chute.phase === 'flying';
+    const hackey = vm.getObjectByName('hackey'), toggle = vm.getObjectByName('toggle');
+    if (hackey && !vm.userData.throwing) hackey.visible = packed;
+    if (toggle) toggle.visible = open;
+    const flap = vm.getObjectByName('flap');
+    if (flap) flap.rotation.x = packed ? 0 : -0.9; // the flap hangs open over an empty tray
+    if (!open) return;
+    const flaring = chute.flare >= 0 && chute.flare < 1;
+    const pull = Math.min(1, flaring ? 1 : Math.max(0, chute.brake - NEUTRAL_BRAKE) + Math.max(0, chute.turn) * 0.8);
+    vm.position.y -= pull * 0.13;
+    vm.position.z += pull * 0.03;
+    vm.rotation.x -= pull * 0.25;
+    grip(vm, 0.4 + pull * 0.4);
+  },
+  projectile: null, // what it throws, it keeps on its bridle (parachute.js)
+};
+
 // Implements: REQ-TOOL-004, REQ-TOOL-005, REQ-TOOL-021
-export const TOOLS = { rod, net, camera, bubbles, extinguisher, dart, nailer, grapple, jetpack, skimmers };
+export const TOOLS = { rod, net, camera, bubbles, extinguisher, dart, nailer, parachute, grapple, jetpack, skimmers };
 
 /**
  * The tools in slot order, which is the order each hand cycles through them. The row
@@ -1686,4 +1841,4 @@ export const isMelee = tool => !tool.projectile && tool.reach != null;
 export const DEFAULT_TOOL = 'rod';
 
 export function toolFor(id) { return TOOLS[id] || TOOLS[DEFAULT_TOOL]; }
-export { idle as idleTool };
+export { idle as idleTool, part as litPart };

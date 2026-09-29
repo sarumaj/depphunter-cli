@@ -212,7 +212,7 @@ describe('the two kinds of tool', () => {
       assert.ok(!slots.has(tool.slot), `two tools in slot ${tool.slot}`);
       slots.add(tool.slot);
     }
-    assert.equal(TOOL_IDS.length, 10);
+    assert.equal(TOOL_IDS.length, 11);
     const kinds = TOOL_IDS.map(id => toolFor(id).kind);
     assert.deepEqual(kinds, [...kinds].sort((a, b) => (a === 'primary' ? 0 : 1) - (b === 'primary' ? 0 : 1)));
     assert.equal(toolFor(DEFAULT_TOOL).kind, 'primary', 'walk mode opens with something that carries you');
@@ -232,7 +232,7 @@ describe('the two kinds of tool', () => {
   it('splits the row into the hand each tool goes in', () => {
     assert.deepEqual([...PRIMARY_IDS, ...SECONDARY_IDS], TOOL_IDS, 'the rows do not make up the row');
     assert.equal(PRIMARY_IDS.length, 7);
-    assert.equal(SECONDARY_IDS.length, 3);
+    assert.equal(SECONDARY_IDS.length, 4);
     for (const id of PRIMARY_IDS) assert.equal(isSecondary(toolFor(id)), false);
   });
 
@@ -252,7 +252,13 @@ describe('the two kinds of tool', () => {
     for (const id of TOOL_IDS) {
       const tool = toolFor(id);
       if (!tool.fuel) continue;
-      assert.ok(tool.flies || tool.floats, `${id} has a tank and nothing to spend it on`);
+      assert.ok(tool.flies || tool.floats || tool.glides, `${id} has a tank and nothing to spend it on`);
+      // A parachute is spent whole in one use, and its tank is only how long it takes
+      // to repack.
+      if (tool.fuel.once) {
+        assert.ok(tool.fuel.fills > 5, `${id} repacks in no time at all`);
+        continue;
+      }
       assert.ok(tool.fuel.full > 5, `${id} runs out before it is any use`);
       assert.ok(tool.fuel.fills >= tool.fuel.full, `${id} fills faster than it empties`);
     }
@@ -476,36 +482,42 @@ describe('the two kinds of tool', () => {
 // Neither needs a browser, and both are what a walker feels when they flick the mouse
 // - so a wedge that is off by one is a tool taken by mistake in the middle of a chase.
 describe('the tool switcher', () => {
-  // Verifies: REQ-TOOL-054, REQ-TOOL-055
+  // Verifies: REQ-TOOL-054, REQ-TOOL-055, REQ-TOOL-070
   it('numbers the row it draws, left to right', () => {
     // The fix this all exists for. The row is laid out with the carried tools on the
     // left, because that is the hand they go in, and the digits are counted along
     // that same list - so the row reads 1 to 0 from left to right rather than
-    // 8, 9, 0, 1, 2, which is what assigning them by kind produced.
+    // 8, 9, 0, 1, 2, which is what assigning them by kind produced. The parachute, the
+    // eleventh, has the key left of 1 and the first slot, so the row still reads the
+    // way the top of the keyboard does.
     const row = SWITCH.rowOrder();
     assert.deepEqual(row, [...SECONDARY_IDS, ...PRIMARY_IDS], 'the row is not laid out by hand');
-    assert.deepEqual(row.map(SWITCH.keyFor), ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']);
-    assert.deepEqual(SECONDARY_IDS.map(SWITCH.keyFor), ['1', '2', '3'], 'the left hand is not 1, 2, 3');
+    assert.deepEqual(row.map(SWITCH.keyFor), ['`', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0']);
+    assert.deepEqual(SECONDARY_IDS.map(SWITCH.keyFor), ['`', '1', '2', '3'], 'the left hand is not `, 1, 2, 3');
     assert.deepEqual(PRIMARY_IDS.map(SWITCH.keyFor), ['4', '5', '6', '7', '8', '9', '0']);
 
-    // And every digit gets back the tool whose slot wears it.
-    for (const id of row) assert.equal(SWITCH.toolForKey(`Digit${SWITCH.keyFor(id)}`), id);
-    // Ten slots is exactly ten digits, which is the only reason the numbering can be
-    // this simple; an eleventh tool would take a digit another one already wears.
-    assert.equal(new Set(row.map(SWITCH.keyFor)).size, TOOL_IDS.length, 'two tools share a digit');
-    assert.equal(row.length, 10, 'ten slots no longer fit the ten digits');
+    // And every key gets back the tool whose slot wears it.
+    const numbered = row.filter(id => !TOOLS[id].key);
+    for (const id of numbered) assert.equal(SWITCH.toolForKey(`Digit${SWITCH.keyFor(id)}`), id);
+    assert.equal(SWITCH.toolForKey('Backquote'), 'parachute');
+    // Ten numbered slots is exactly ten digits, which is the only reason the numbering
+    // can be this simple; a tool past the tenth has to bring a key of its own rather
+    // than take a digit another one already wears.
+    assert.equal(new Set(row.map(SWITCH.keyFor)).size, TOOL_IDS.length, 'two tools share a key');
+    assert.equal(numbered.length, 10, 'ten numbered slots no longer fit the ten digits');
 
-    // Nothing that is not a digit key picks a tool. 'KeyQ'.slice(5) is an empty
+    // Nothing that is not one of those keys picks a tool. 'KeyQ'.slice(5) is an empty
     // string and +'' is nought, so an unguarded lookup answers Q with the 0 key -
     // which would have put a nail gun in the hunting hand instead of walking the
     // carried row, and only while somebody was reaching for something else.
-    for (const code of ['KeyQ', 'KeyE', 'KeyR', 'KeyW', 'Escape', 'Enter', 'Space', 'Digit', 'DigitX']) {
+    for (const code of ['KeyQ', 'KeyE', 'KeyR', 'KeyW', 'Escape', 'Enter', 'Space', 'Digit', 'DigitX', 'Quote', 'Backslash']) {
       assert.equal(SWITCH.toolForKey(code), undefined, `${code} picked a tool`);
     }
 
-    // A carried tool answers to its digit and to Q, its digit first because that is
+    // A carried tool answers to its key and to Q, its own key first because that is
     // what its slot shows.
-    assert.deepEqual(SWITCH.keysFor(SECONDARY_IDS[0]), ['1', 'Q']);
+    assert.deepEqual(SWITCH.keysFor('parachute'), ['`', 'Q']);
+    assert.deepEqual(SWITCH.keysFor('grapple'), ['1', 'Q']);
     assert.deepEqual(SWITCH.keysFor(PRIMARY_IDS[0]), ['4']);
   });
 

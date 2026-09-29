@@ -14,7 +14,9 @@
 // time, one to a hand - the primary in the right and the secondary in the left - so a
 // walker can fly over the map and net what they find without putting either down.
 // Which secondary is in the off hand is what decides whether the walker flies or the
-// water holds them up, so putting one away is how you come down, or get wet.
+// water holds them up, so putting one away is how you come down, or get wet. The
+// parachute is the one that is flown rather than ridden: thrown open, it has the
+// walker until the ground does (parachute.js), and putting it away cuts it loose.
 //
 // The other quarry is real: every finding a scanner reported walks the streets as a
 // bug (bugs.js), and catching one reads out what was said about it. They bite back,
@@ -25,7 +27,8 @@ import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './
 import { Health } from './health.js';
 import { Wind } from './wind.js';
 import { severityColors } from './findings.js';
-import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee } from './tools.js';
+import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee, litPart } from './tools.js';
+import { packedChute, deployChute, stepChute, aloft, cutAway, lookOf, poseRig, canopyRig, LooseCanopy, MIN_DEPLOY, DRAPE_AHEAD, dropFor } from './parachute.js';
 import { ToolWheel, EMPTY, carriedRing, cycle, keyFor, keysFor, rowOrder, toolForKey } from './switcher.js';
 import { inBlaze } from './flames.js';
 
@@ -159,6 +162,11 @@ const SHOWING = 4.2, LIFTING = 0.6;
 // A burst on the jet backpack: how long it lasts and how much faster it goes.
 // Implements: REQ-TOOL-024
 const BURST = 0.9, BURST_SPEED = 3;
+// Under a canopy: how far below the eye the risers meet the harness, which is where
+// the canopy hangs from, and how much of the walker's swing under it the head keeps
+// rather than leveling out.
+// Implements: REQ-TOOL-076
+const SHOULDERS = 0.15, NOD = 0.45;
 // Out of your depth: how fast the water takes a walker who is in it with nothing to
 // hold them up. A couple of seconds, so wading ashore is possible and standing in the
 // bay when the skimmers go away is not.
@@ -210,9 +218,9 @@ const KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyE', 'KeyQ', 'KeyF', 'Enter',
   'Escape', 'KeyV', 'KeyM', 'KeyR', 'KeyH',
-  // Every tool's digit: the row is ten slots and the digits count along it, 1 to 9
-  // and then 0 for the tenth (switcher.js).
-  'Digit0', ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`),
+  // Every tool's digit: the digits count along the row, 1 to 9 and then 0 for the
+  // tenth (switcher.js) - and the parachute's key of its own, the one left of 1.
+  'Digit0', ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`), 'Backquote',
 ]);
 
 // Planet curvature, by the character typed rather than the key's place on the board:
@@ -292,14 +300,20 @@ export class Walker {
     this.primary = toolFor(hooks.tool?.() || DEFAULT_TOOL);
     this.secondary = null;
     // The wheel, which is the third way of changing hands and the only one that shows
-    // all ten at once. It builds its own face the first time it comes up, and while it
-    // is up the mouse points at it rather than looking around.
+    // all eleven at once. It builds its own face the first time it comes up, and while
+    // it is up the mouse points at it rather than looking around.
     this.wheel = new ToolWheel(hud.querySelector('.w-wheel'));
     this.health = new Health(hud);
     this.bitAt = 0;   // when a bug last got a bite in
     this.burnAt = 0;  // ... and when a fire last took something
     this.burst = 0;   // seconds of jet backpack thrust left
     this.fell = null; // the height a fall in progress started from
+    // The parachute on the walker's back, and whatever it has left lying about: a
+    // canopy in the street or one drifting away after being cut loose (parachute.js).
+    this.chute = packedChute();
+    this.canopies = [];
+    this.rig = null;    // the canopy over the walker's head, built the first time one opens
+    this.drift = { x: 0, z: 0 }; // how fast the walker was last going across the map
     // How full each carried tool's tank is, as a share, by tool id. A tank is the
     // tool's rather than the walker's, so putting the jet down and picking it up again
     // does not refill it - but time on the ground does.
@@ -416,7 +430,8 @@ export class Walker {
   stance() {
     if (!this.active) return this.home;
     const { x, z, feet, yaw, pitch } = this.p;
-    return { x, z, feet, yaw, pitch, anchor: this.anchorFor() };
+    // Under a canopy, the map draws the walker under one (avatar.js).
+    return { x, z, feet, yaw, pitch, anchor: this.anchorFor(), canopy: aloft(this.chute) };
   }
 
   /**
@@ -425,9 +440,12 @@ export class Walker {
    * or on the south road of `block` if they have never been out. `bounds` sizes the
    * planet, and `grab` is false when something else wants the pointer first.
    *
-   * Implements: REQ-WALK-001, REQ-WALK-009, REQ-WALK-010, REQ-WALK-030
+   * Implements: REQ-WALK-001, REQ-WALK-009, REQ-WALK-010, REQ-WALK-030, REQ-TOOL-079
    */
   enter(box, block, bounds, grab = true) {
+    // Coming back to where they left off, a walker who left under a canopy is still
+    // under it; anywhere else they start with it packed.
+    const gliding = !box && !!this.home && !this.fallen && aloft(this.chute);
     const diag = Math.hypot(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
     this.radius = clamp(diag * 0.6, 15, Math.min(600, this.maxRadius()));
     this.active = true;
@@ -461,6 +479,9 @@ export class Walker {
     this.sinking = false;
     this.tanks.clear();
     this.dry.clear();
+    if (gliding) this.spend(toolFor('parachute'));
+    else this.chute = packedChute();
+    Object.assign(this.chute, { x: this.p.x, z: this.p.z, feet: this.p.feet });
     this.wind.reset();
     this.blown = false;
     this.rideLift = 0;
@@ -503,6 +524,8 @@ export class Walker {
     this.closeWheel(false);
     this.dropDarts();
     this.cutLine();
+    this.dropCanopies();
+    if (this.rig?.parent) this.rig.parent.remove(this.rig);
     this.endShow(false);
     this.scene.scene.remove(this.beacons);
     this.bugs?.show(false);
@@ -635,7 +658,7 @@ export class Walker {
     this.confine();
     this.makeRoom(this.p.feet);
     const floor = this.height(this.p.x, this.p.z);
-    this.p.feet = this.p.fly ? Math.max(this.p.feet, floor) : floor;
+    this.p.feet = this.p.fly || aloft(this.chute) ? Math.max(this.p.feet, floor) : floor;
   }
 
   /**
@@ -763,12 +786,17 @@ export class Walker {
     // what they want in their hand.
     if (this.showing) this.endShow(false);
     const tool = toolFor(id);
+    let cut = false;
     if (tool.kind === 'secondary') {
+      const was = this.secondary;
       this.secondary = this.secondary === tool ? null : tool;
       this.offSwing = -1;
       // Taking one out is what brings it back after it has run dry - with whatever has
       // filled in the meantime, which may be little enough to run out again at once.
-      if (this.secondary) this.dry.delete(tool.id);
+      // Not a parachute: half a pack is no parachute at all.
+      if (this.secondary && !tool.fuel?.once) this.dry.delete(tool.id);
+      // Letting go of the toggles is letting go of the canopy.
+      if (was?.glides && this.secondary !== was) cut = this.cutAwayCanopy();
     } else {
       this.primary = tool;
       this.swing = -1;
@@ -782,9 +810,12 @@ export class Walker {
       this.showTool();
       this.drawSlots();
       this.drawHud();
-      this.flash(tool.kind === 'secondary' && this.secondary !== tool
-        ? `${tool.label} stowed`
-        : tool.hint);
+      // A canopy cut loose has said so, and that is the thing worth reading.
+      if (!cut) {
+        this.flash(tool.kind === 'secondary' && this.secondary !== tool
+          ? `${tool.label} stowed`
+          : tool.hint);
+      }
       this.aim = { i: -1, point: null, bug: null, box: null, far: false }; // it may want another target
     }
     this.hooks.onTool?.(this.primary.id);
@@ -1565,13 +1596,19 @@ export class Walker {
       // deepens instead, until it takes them back to the map.
       if (this.arrival) this.arrive(deltaTime);
       else if (this.dying !== null) this.fade(deltaTime);
-      else this.step(deltaTime);
+      else {
+        const x = this.p.x, z = this.p.z;
+        this.step(deltaTime);
+        // How fast the walker is going across the map, for a canopy thrown open now.
+        if (deltaTime > 0 && !this.still) this.drift = { x: (this.p.x - x) / deltaTime, z: (this.p.z - z) / deltaTime };
+      }
       if (this.showing) this.study(deltaTime);
       this.autoFire(now);
-      if (this.p.fly) this.setFog();
+      if (this.p.fly || aloft(this.chute)) this.setFog();
       this.zoom(deltaTime);
       this.updateDarts(deltaTime);
       this.updatePuffs(deltaTime);
+      this.updateCanopies(deltaTime);
       // The walker's eye, for the catches that draw a bug in towards them - and the
       // hoop of the net, for the one catch that carries a bug somewhere else.
       const hoop = this.primary.catchAs === 'net' ? this.muzzle(this.viewmodel, HOOP_AT) : null;
@@ -1581,9 +1618,13 @@ export class Walker {
       this.health.draw(now); // the wash a hit leaves has to come off by itself
       this.drawFuel();
       this.poseTool(deltaTime, now);
+      if (this.offhand && this.secondary?.steer) this.secondary.steer(this.offhand, this.chute);
       this.bank(deltaTime);
       const under = this.drown(deltaTime, now);
-      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(deltaTime) + under, this.p.yaw, this.p.pitch, this.roll);
+      const hang = this.hang();
+      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(deltaTime) + under + hang.eye,
+        this.p.yaw, this.p.pitch + hang.pitch, this.roll + hang.roll);
+      this.hangCanopy(now);
       if (!this.still && !this.arrival) this.updateAim();
       this.scene.renderNow();
       if (this.frozen && this.focus) this.drawFocus();
@@ -1717,6 +1758,8 @@ export class Walker {
         return this.reel(deltaTime);
       }
     }
+    // Under a canopy the canopy has the walker, until the ground has them instead.
+    if (aloft(this.chute)) return this.glide(deltaTime);
     const turn = (k.has('ArrowLeft') ? 1 : 0) - (k.has('ArrowRight') ? 1 : 0);
     p.yaw += turn * TURN * deltaTime;
     const forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
@@ -1918,6 +1961,14 @@ export class Walker {
     this.fuelShown = shown;
     this.fuelSpent = spent;
     (this.fuelFill ||= box.querySelector('.w-fuel-fill')).style.width = `${shown}%`;
+    if (tool.fuel.once) {
+      // A pack is either ready or being repacked, and neither is an emergency.
+      box.dataset.state = spent ? 'low' : 'well';
+      box.title = aloft(this.chute) ? `${tool.label}: open - it is repacked once it is back on the ground`
+        : spent ? `${tool.label}: ${shown}% repacked - it can be thrown again once it is packed`
+          : `${tool.label}: packed and ready`;
+      return;
+    }
     box.dataset.state = spent ? 'empty' : share > 0.25 ? 'well' : share > 0 ? 'low' : 'empty';
     box.title = spent
       ? `${tool.label} has run out: it is ${shown}% filled, and works again at ${Math.round(REFILLED * 100)}%`
@@ -1944,17 +1995,22 @@ export class Walker {
       const tool = toolFor(id);
       if (!tool.fuel) continue;
       const was = this.tank(tool);
-      const spending = tool === this.secondary && using;
-      const now = clamp(was + (spending ? -deltaTime / tool.fuel.full : deltaTime / tool.fuel.fills), 0, 1);
+      // A parachute is spent all at once when it is thrown (deploy), and repacks
+      // only once it is out of the air: while it is open it neither drains nor fills.
+      const spending = tool.fuel.once ? aloft(this.chute) : tool === this.secondary && using;
+      const drains = tool.fuel.once ? 0 : deltaTime / tool.fuel.full;
+      const now = clamp(was + (spending ? -drains : deltaTime / tool.fuel.fills), 0, 1);
       this.tanks.set(id, now);
       if (!spending) {
         // Back once there is enough in it to be worth having, in the hand or not - not
         // the moment a drop has trickled in, because an empty jet that keeps catching
         // is worse than one that has plainly stopped, and not only once it has been
-        // put away and taken out again, which nothing on screen asks for.
-        if (this.dry.has(id) && now >= REFILLED) {
+        // put away and taken out again, which nothing on screen asks for. A pack is
+        // back only once it is whole.
+        if (this.dry.has(id) && now >= (tool.fuel.once ? 1 : REFILLED)) {
           this.dry.delete(id);
-          if (tool === this.secondary) this.flash(`${tool.label} has filled - ready again`);
+          if (tool.glides) this.chute = packedChute();
+          if (tool === this.secondary) this.flash(tool.fuel.once ? `${tool.label} packed - ready again` : `${tool.label} has filled - ready again`);
         }
         continue;
       }
@@ -2015,6 +2071,8 @@ export class Walker {
    */
   die(cause) {
     if (this.dying !== null) return;
+    // A canopy over a walker who is done for goes its own way.
+    if (aloft(this.chute)) this.cutAwayCanopy();
     this.dying = 0;
     this.fallen = true; // walking in again gets up off the ground (startArrival)
     this.keys.clear();
@@ -2064,8 +2122,10 @@ export class Walker {
     this.confine();
     this.makeRoom(was);
     const floor = this.height(p.x, p.z);
-    p.feet = p.fly ? Math.max(p.feet, floor) : floor;
-    p.vy = 0;
+    // In the air - on the jet or under a canopy - the walker stays in the air.
+    const up = p.fly || aloft(this.chute);
+    p.feet = up ? Math.max(p.feet, floor) : floor;
+    if (!up) p.vy = 0;
   }
 
   // Steps aside when a building now stands where the walker was put: the nearest
@@ -2435,6 +2495,10 @@ export class Walker {
       return;
     }
     this.offSwing = 0;
+    if (tool.glides) {
+      this.deploy();
+      return;
+    }
     if (tool.fuel && (this.dry.has(tool.id) || this.tank(tool) <= 0)) {
       this.flash(`${tool.label} is spent - it works again once it has filled a little`);
       return;
@@ -2488,6 +2552,240 @@ export class Walker {
       if (box) return { box, point: v.clone() };
     }
     return null;
+  }
+
+  // ---------------------------------------------------------------- the parachute
+
+  /**
+   * F with the parachute in hand: the pilot chute goes out and the canopy follows it.
+   * It has to be thrown from high enough to be worth throwing and with a packed pack;
+   * anything else is said rather than done, and the gesture is a pat on the pouch.
+   *
+   * The canopy opens on the heading the walker is facing, and takes over what they
+   * were doing: falling, flying, being pulled along a line.
+   *
+   * Implements: REQ-TOOL-070, REQ-TOOL-072
+   */
+  deploy() {
+    const p = this.p, tool = this.secondary, chute = this.chute;
+    if (aloft(chute)) {
+      this.flash('It is open - Space flares it, and putting it away cuts it loose');
+      return;
+    }
+    if (this.dry.has(tool.id) || this.tank(tool) < 1) {
+      this.flash(`Still being repacked - ${Math.floor(this.tank(tool) * 100)}% packed`);
+      return;
+    }
+    const clear = p.feet - this.height(p.x, p.z, p.feet);
+    if (p.ground || clear < MIN_DEPLOY) {
+      this.flash('Too low to open it - it wants a roof or a jet under you');
+      return;
+    }
+    this.cutLine();
+    deployChute(chute, { x: p.x, feet: p.feet, z: p.z, vx: this.drift.x, vy: p.vy, vz: this.drift.z, heading: p.yaw });
+    this.spend(tool);
+    this.fell = null; // from here the canopy decides what the ground costs
+    if (this.offhand) this.offhand.userData.throwing = true;
+    this.flash('Pilot chute out');
+    this.drawHud();
+  }
+
+  /** Empties a pack: a parachute out of its container is a parachute to repack. */
+  spend(tool) {
+    this.tanks.set(tool.id, 0);
+    this.dry.add(tool.id);
+  }
+
+  /**
+   * One frame under the canopy. The canopy flies the walker and the keys fly the
+   * canopy: W and S trim it, A and D (or the arrows) turn it, Space flares it. The
+   * mouse still looks about, and the body turns with the canopy, so a turn carries
+   * the view round with it the way it would anybody hanging under one.
+   *
+   * Implements: REQ-TOOL-072, REQ-TOOL-073, REQ-TOOL-074, REQ-TOOL-075
+   */
+  glide(deltaTime) {
+    const k = this.keys, p = this.p, chute = this.chute;
+    const forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
+    const turn = (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0);
+    // Wherever something else has put the walker since the last frame - a relayout,
+    // the edge of the map - is where the canopy is.
+    Object.assign(chute, { x: p.x, z: p.z, feet: p.feet });
+    const heading = chute.heading;
+    const events = stepChute(chute, { forward, turn, flare: k.has('Space') }, deltaTime,
+      (x, z, from) => this.height(x, z, from), STEP);
+    p.yaw += chute.heading - heading;
+    Object.assign(p, { x: chute.x, z: chute.z, feet: chute.feet, vy: chute.vy, ground: false });
+    this.confine();
+    this.wind.breathe(deltaTime, false);
+    this.pace += (0.3 - this.pace) * Math.min(1, deltaTime * 7);
+    this.burn(deltaTime, true);
+    this.fell = null;
+    this.sinking = false;
+    for (const e of events) {
+      if (e.kind === 'wall') this.struck(e.speed);
+      else this.touchdown(e);
+    }
+    if (this.dying === null) {
+      this.bites();
+      this.scorches();
+    }
+    this.health.mend(deltaTime);
+  }
+
+  /**
+   * A wall, flown into. It costs what arriving at that speed costs, which is nothing
+   * at a crawl and a good deal at full flight.
+   *
+   * Implements: REQ-TOOL-075
+   */
+  struck(speed) {
+    const damage = this.health.touchdown(speed);
+    if (!damage) return;
+    // In a person's meters a second, the walker being half a unit tall (health.js).
+    if (this.health.dead) this.die(`A wall at ${Math.round(speed * 3.5)} meters a second`);
+    else this.flash(`That wall cost ${damage} - steer clear of the buildings`);
+  }
+
+  /**
+   * The ground, under a canopy. What it costs is how fast the walker arrives, not how
+   * far they came down: the sink and a share of the speed along the ground, which is
+   * what a flare is for. A canopy that had not finished opening has done less, and is
+   * judged more like the fall it nearly was (Health.touchdown). Water costs nothing,
+   * though it is still water.
+   *
+   * Implements: REQ-TOOL-075, REQ-TOOL-077
+   */
+  touchdown(e) {
+    const p = this.p;
+    p.ground = true;
+    p.vy = 0;
+    this.lay('landed');
+    const wet = this.height(p.x, p.z, p.feet) <= WATER;
+    const damage = wet ? 0 : this.health.touchdown(e.speed, e.open, dropFor(e.vertical));
+    if (this.health.dead) this.die(`A landing at ${Math.round(e.speed * 3.5)} meters a second`);
+    else if (damage) this.flash(`That landing cost ${damage} - flare just before the ground`);
+    else this.flash(wet ? 'Down in the water' : 'Down - the parachute is being repacked');
+    this.drawHud();
+  }
+
+  /**
+   * Lets go of the canopy in the air. It flies off on its own, emptying as it goes,
+   * and the walker falls from where they are - which is a fall like any other.
+   * Returns whether there was a canopy to let go of.
+   *
+   * Implements: REQ-TOOL-078
+   */
+  cutAwayCanopy() {
+    if (!aloft(this.chute)) return false;
+    this.lay('cutaway');
+    cutAway(this.chute);
+    this.p.vy = this.chute.vy;
+    this.p.ground = false;
+    this.fell = this.p.feet;
+    this.flash('Cut away - the canopy is gone, and so is what was holding you up');
+    this.drawHud();
+    return true;
+  }
+
+  /**
+   * Leaves the canopy where it is, out in the scene: on the ground to be repacked, or
+   * cut away and drifting. What is over the walker's head is taken down.
+   */
+  lay(kind) {
+    const chute = this.chute;
+    const from = this.rigWorld(new THREE.Matrix4());
+    // A canopy on the ground comes down on what is ahead of the walker, where it drapes
+    // to: over the edge of a roof onto the street below, but never up a wall.
+    const here = this.height(chute.x, chute.z, chute.feet);
+    const there = this.height(chute.x - Math.sin(chute.heading) * DRAPE_AHEAD, chute.z - Math.cos(chute.heading) * DRAPE_AHEAD, chute.feet);
+    const ground = kind === 'landed' && there <= here + STEP ? there : here;
+    const life = kind === 'landed' ? toolFor('parachute').fuel.fills : undefined;
+    const velocity = { x: chute.vx, y: chute.vy, z: chute.vz };
+    const look = lookOf(chute, performance.now());
+    // One that came down before it had finished opening lies there as far open as it got.
+    if (kind === 'landed' && chute.touchdown) look.open = chute.touchdown.open;
+    this.canopies.push(new LooseCanopy(this.scene, kind, from, look, { ground, velocity, life }));
+    if (this.rig?.parent) this.rig.parent.remove(this.rig);
+  }
+
+  /**
+   * Where the canopy's rig hangs in the world: at the walker's shoulders, turned to
+   * the canopy's heading and tilted by the walker's swing under it (parachute.js),
+   * into `out`.
+   */
+  rigWorld(out) {
+    const p = this.p, swing = this.chute.swing;
+    RIG_TURN.set(swing.pitch, this.chute.heading, swing.roll, 'YXZ');
+    return out.compose(RIG_AT.set(p.x, p.feet + EYE - SHOULDERS, p.z), RIG_QUATERNION.setFromEuler(RIG_TURN), RIG_SCALE);
+  }
+
+  /**
+   * The canopy over the walker's head, once a frame after the camera is placed. It is
+   * hung from the camera and drawn in the pass that draws what the walker holds, lit
+   * by the same lights - it is nearer to them than anything in the street, and a wall
+   * drawn through it would be a wall drawn through the lines they are hanging from -
+   * and it is given the world's orientation back, so that looking about does not turn
+   * the canopy with the eyes. The left brake line ends at the toggle in the left hand.
+   *
+   * It is drawn whether or not the hands are (H): it is not held.
+   *
+   * Implements: REQ-TOOL-071, REQ-TOOL-076
+   */
+  hangCanopy(now) {
+    const cam = this.scene.walkCamera;
+    if (!aloft(this.chute) || this.arrival) {
+      if (this.rig?.parent) this.rig.parent.remove(this.rig);
+      if (!this.held && cam.parent === this.scene.viewScene) this.hideTool();
+      return;
+    }
+    this.rig ||= canopyRig(litPart, (color, options) => new THREE.LineBasicMaterial({ color, ...options }));
+    if (cam.parent !== this.scene.viewScene) this.scene.viewScene.add(cam);
+    this.lights ||= viewLights();
+    if (this.lights.parent !== cam) cam.add(this.lights);
+    if (this.rig.parent !== cam) {
+      cam.add(this.rig);
+      this.rig.matrixAutoUpdate = false;
+      this.rig.traverse(o => { o.renderOrder = 9; });
+    }
+    cam.updateMatrixWorld();
+    this.rigWorld(RIG_MATRIX);
+    this.rig.matrix.copy(cam.matrixWorld).invert().multiply(RIG_MATRIX);
+    this.rig.matrixWorldNeedsUpdate = true;
+    const top = this.offhand?.getObjectByName('toggle-top');
+    let hand = null;
+    if (top?.parent?.visible) {
+      top.updateWorldMatrix(true, false);
+      hand = top.getWorldPosition(RIG_HAND).applyMatrix4(RIG_MATRIX.invert());
+    }
+    poseRig(this.rig, lookOf(this.chute, now), hand);
+  }
+
+  /**
+   * What hanging under the canopy does to the view: the head swings with the body
+   * under it - rolling with the lines in a turn, nodding with a surge or a flare - and
+   * dips as the lines take the opening jolt.
+   *
+   * Implements: REQ-TOOL-076
+   */
+  hang() {
+    const swing = this.chute.swing;
+    if (!aloft(this.chute) || reducedMotion()) return HANG_NONE;
+    HANG.eye = swing.sag;
+    HANG.pitch = swing.pitch * NOD;
+    HANG.roll = swing.roll;
+    return HANG;
+  }
+
+  /** One frame of every canopy left lying about or drifting off. */
+  updateCanopies(deltaTime) {
+    if (this.canopies.length) this.canopies = this.canopies.filter(c => c.update(deltaTime));
+  }
+
+  /** Takes every canopy that was left behind off the map. */
+  dropCanopies() {
+    for (const canopy of this.canopies) canopy.dispose();
+    this.canopies = [];
   }
 
   // ---------------------------------------------------------------- the grapple
@@ -3241,9 +3539,10 @@ export class Walker {
     // and reading are worth a word, and get one.
     const mode = this.frozen ? 'reading'
       : this.showing ? 'looking'
-        : this.p.fly ? 'flying'
-          : this.sinking ? 'sinking'
-            : this.onWater() ? 'afloat' : '';
+        : aloft(this.chute) ? 'gliding'
+          : this.p.fly ? 'flying'
+            : this.sinking ? 'sinking'
+              : this.onWater() ? 'afloat' : '';
     const modeChip = this.hud.querySelector('.w-mode');
     modeChip.hidden = !mode;
     modeChip.textContent = mode;
@@ -3491,6 +3790,10 @@ const SEVERITY_ORDER = ['unknown', 'info', 'low', 'medium', 'high', 'critical'];
 const severityRank = s => SEVERITY_ORDER.indexOf(s);
 
 const FORWARD = new THREE.Vector3(0, 0, 1); // the dart geometry's nose
+// Scratch for hanging the canopy (hangCanopy, rigWorld), and what hang() hands back.
+const RIG_AT = new THREE.Vector3(), RIG_TURN = new THREE.Euler(), RIG_QUATERNION = new THREE.Quaternion();
+const RIG_SCALE = new THREE.Vector3(1, 1, 1), RIG_MATRIX = new THREE.Matrix4(), RIG_HAND = new THREE.Vector3();
+const HANG = { eye: 0, pitch: 0, roll: 0 }, HANG_NONE = Object.freeze({ eye: 0, pitch: 0, roll: 0 });
 const EYE_AT = new THREE.Vector3();        // where the walker is, handed to the bugs
 const HOOP_AT = new THREE.Vector3();       // ... and where the net's hoop is, likewise
 // What a beacon is over a module the scanners had nothing to say about; anything they

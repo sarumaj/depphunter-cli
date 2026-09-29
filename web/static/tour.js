@@ -88,10 +88,10 @@ export const WALK_TOUR = [
     title: 'A tool in each hand',
     body: `Hold R for the tool wheel: the hunt down its right side — rod, net,
       camera, bubble wand, extinguisher, dart, nail gun — and down its left what
-      carries you: a grapple gun, a jet backpack, skimmers, or an empty hand. Point
-      at one and let go; you are held still while it is up. Without looking: E is the
-      next tool for your right hand, Q the next for your left, and 1 to 0 pick along
-      the row at the bottom. H stows both hands.`,
+      carries you: a parachute, a grapple gun, a jet backpack, skimmers, or an empty
+      hand. Point at one and let go; you are held still while it is up. Without
+      looking: E is the next tool for your right hand, Q the next for your left, and
+      \` and 1 to 0 pick along the row at the bottom. H stows both hands.`,
   },
   {
     title: 'Using them',
