@@ -202,6 +202,12 @@ const skinMaterial = () =>
  * to the camera, so they travel with the view, and they reach nothing else, because
  * the map is drawn with unlit materials.
  *
+ * A directional light shines from its position toward its target's, and a target
+ * left out of the scene graph keeps the world origin: the light would then come from
+ * wherever the walker stands relative to the middle of the map. So each target is
+ * hung in the group too, at the camera, which keeps every direction fixed in view
+ * space: the hands are lit the same anywhere on the map, facing anywhere.
+ *
  * Implements: REQ-TOOL-012
  */
 export function viewLights() {
@@ -215,6 +221,7 @@ export function viewLights() {
   const rim = new THREE.DirectionalLight(0xffffff, 0.75);
   rim.position.set(0.25, 0.7, -1);
   g.add(key, fill, rim, new THREE.HemisphereLight(0xdceaff, 0x6a5a4a, 0.85));
+  g.add(key.target, fill.target, rim.target);
   return g;
 }
 
