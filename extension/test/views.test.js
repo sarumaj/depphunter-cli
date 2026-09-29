@@ -57,6 +57,8 @@ class Fake {
     this.version = 1;
     this.selected = '';
     this.backpack = [{ id: `${this.name}-F1`, severity: 'high', title: `finding in ${this.name}`, where: 'a.go', nodeId: `${this.name}/a.go` }];
+    // What the scanners reported; null answers 202, as the server does while it reads.
+    this.findings = [];
     this.requests = [];
     this.streams = [];
     this.server = http.createServer((request, response) => this.handle(request, response));
@@ -105,6 +107,10 @@ class Fake {
           }
           response.setHeader('ETag', this.etag);
           json(this.graph);
+          return;
+        case 'GET /api/findings':
+          if (this.findings === null) response.writeHead(202).end();
+          else json({ findings: this.findings, sources: ['npm audit'] });
           return;
         case 'GET /api/session':
           json({ selected: this.selected, backpack: this.backpack });
@@ -211,7 +217,7 @@ describe('the panel and the commands, against a stand-in server', () => {
   });
 
   // Verifies: REQ-EXT-001
-  it('contributes a container of its own with Maps, Dependencies and Backpack, each with a provider', () => {
+  it('contributes a container of its own with Maps, Dependencies, Backpack and Findings, each with a provider', () => {
     // The manifest is read, not changed: it is what the editor draws the activity bar from.
     const container = MANIFEST.contributes.viewsContainers.activitybar.find(c => c.id === 'depphunter');
     assert.ok(container, 'no activity-bar container named depphunter');
@@ -221,6 +227,7 @@ describe('the panel and the commands, against a stand-in server', () => {
       ['depphunter.maps', 'Maps'],
       ['depphunter.tree', 'Dependencies'],
       ['depphunter.backpack', 'Backpack'],
+      ['depphunter.findings', 'Findings'],
     ]);
     // A view without a provider is a view that says "no data provider registered".
     for (const { id } of views) {
@@ -245,13 +252,13 @@ describe('the panel and the commands, against a stand-in server', () => {
     for (const title of [
       'Open the Map', 'Open the Map in the Browser', 'Restart the Server', 'Stop the Server',
       'Show the Server Log', 'Show the Resolution Report', 'Export the Graph', 'Export the Backpack',
-      'Open Settings',
+      'Open Settings', 'Add to the Backpack',
     ]) {
       assert.ok(titles.has(title), `no command titled "depphunter: ${title}"`);
     }
     const hidden = new Set((MANIFEST.contributes.menus.commandPalette ?? [])
       .filter(m => m.when === 'false').map(m => m.command));
-    for (const title of ['Open the Map', 'Export the Graph', 'Export the Backpack']) {
+    for (const title of ['Open the Map', 'Export the Graph', 'Export the Backpack', 'Add to the Backpack']) {
       assert.ok(!hidden.has(titles.get(title)), `${title} is hidden from the palette`);
     }
     const explorer = MANIFEST.contributes.menus['explorer/context'];
@@ -429,6 +436,92 @@ describe('the panel and the commands, against a stand-in server', () => {
     const quiet = fake.calls().length;
     await stub.commands.get('depphunter.showFinding')(rows[1]);
     assert.deepStrictEqual(fake.calls().slice(quiet), []);
+  });
+
+  // Verifies: REQ-EXT-035, REQ-EXT-036
+  it('lists the findings, and puts one in the backpack as the map would catch it', async () => {
+    const fake = fakes.get(first);
+    const view = provider('depphunter.findings');
+    const pack = provider('depphunter.backpack');
+    const puts = () => fake.calls().filter(r => r.path === '/api/backpack' && r.method === 'PUT');
+    // A package on the map for an advisory to be placed on, and an empty backpack.
+    fake.change(graphOf('alpha', [{ id: 'p:go:x', kind: 'package', name: 'x', parent: 'eco:go', version: '1.0.0' }]));
+    fake.announce('graph', { version: fake.version });
+    await until('the graph with the package', () => provider('depphunter.tree').graphModel?.byId.has('p:go:x'));
+    fake.backpack = [];
+    fake.announce('backpack', { count: 0, origin: 'the-map' });
+    await until('the backpack to empty', () => pack.getChildren().length === 0);
+
+    // Still being read: nothing, until the server says the findings are there.
+    fake.findings = [
+      { id: 'lint-1', severity: 'low', title: 'unused variable', ref: 'unused', path: 'a.go', line: 7, source: 'eslint' },
+      { id: 'GO-x', severity: 'critical', title: 'Excessive memory growth', ref: 'GO-2026-0001', ecosystem: 'go', package: 'x', version: '1.0.0', source: 'osv' },
+      { id: 'lint-2', severity: 'low', title: 'a note', path: 'README.md', source: 'markdownlint' },
+    ];
+    fake.announce('findings', { available: true });
+    const rows = await until('the findings to arrive', () => (view.getChildren().length === 3 ? view.getChildren() : null));
+    // Worst first, then by name, whatever the case: a.go before README.md.
+    assert.deepStrictEqual(rows.map(f => f.id), ['GO-x', 'lint-1', 'lint-2']);
+    const item = view.getTreeItem(rows[0]);
+    assert.strictEqual(item.label, 'x@1.0.0');
+    assert.match(item.description, /GO-2026-0001 Excessive memory growth/);
+    assert.match(item.description, /critical/);
+    assert.strictEqual(item.contextValue, 'uncaught');
+    // Picking a row selects its node on the map, as a backpack entry does.
+    assert.strictEqual(item.command.command, 'depphunter.showFinding');
+    assert.strictEqual(item.command.arguments[0].nodeId, 'p:go:x');
+
+    // Its button: the entry the map's catch makes, first in the backpack, sent the way
+    // a removal is.
+    const before = puts().length;
+    await stub.commands.get('depphunter.catchFinding')(rows[0]);
+    const put = puts().at(-1);
+    assert.strictEqual(puts().length, before + 1);
+    assert.match(put.body.origin ?? '', /^vscode-/);
+    const [entry] = put.body.items;
+    assert.strictEqual(typeof entry.caughtAt, 'number');
+    assert.deepStrictEqual({ ...entry, caughtAt: 0 }, {
+      id: 'GO-x', severity: 'critical', title: 'Excessive memory growth', where: 'x', line: 0,
+      nodeId: 'p:go:x', caughtAt: 0, fixed: false, fixedAt: 0,
+    });
+    assert.deepStrictEqual(pack.getChildren().map(it => it.id), ['GO-x']);
+    assert.strictEqual(view.getTreeItem(rows[0]).contextValue, 'caught');
+    assert.match(view.getTreeItem(rows[0]).description, /in the backpack/);
+
+    // Caught already: nothing is sent.
+    await stub.commands.get('depphunter.catchFinding')(rows[0]);
+    assert.strictEqual(puts().length, before + 1, 'catching it twice sent the backpack again');
+
+    // The map catches another: the view follows the server's announcement.
+    fake.backpack = [{ id: 'lint-1', severity: 'low', title: 'unused variable', where: 'a.go', line: 7 }, ...fake.backpack];
+    fake.announce('backpack', { count: 2, origin: 'the-map' });
+    await until('the map\'s catch to be marked', () => view.getTreeItem(rows[1]).contextValue === 'caught');
+
+    // From the palette, only what is not caught yet is offered.
+    const window = stub.vscode.window;
+    const pick = window.showQuickPick;
+    let offered;
+    window.showQuickPick = async items => { offered = items.map(i => i.finding.id); return items[0]; };
+    try {
+      await stub.commands.get('depphunter.catchFinding')();
+    } finally {
+      window.showQuickPick = pick;
+    }
+    assert.deepStrictEqual(offered, ['lint-2']);
+    assert.deepStrictEqual(puts().at(-1).body.items.map(it => it.id), ['lint-2', 'lint-1', 'GO-x']);
+
+    // And a caught one is taken out from this view as from the backpack's.
+    await stub.commands.get('depphunter.dropFinding')(rows[0]);
+    assert.deepStrictEqual(puts().at(-1).body.items.map(it => it.id), ['lint-2', 'lint-1']);
+    assert.strictEqual(view.getTreeItem(rows[0]).contextValue, 'uncaught');
+  });
+
+  // Verifies: REQ-EXT-036
+  it('offers adding and taking out beside each finding, by whether it is caught', () => {
+    const menus = MANIFEST.contributes.menus['view/item/context'];
+    const inline = (command, when) => menus.some(m => m.command === command && m.when === when && m.group.startsWith('inline'));
+    assert.ok(inline('depphunter.catchFinding', 'view == depphunter.findings && viewItem == uncaught'));
+    assert.ok(inline('depphunter.dropFinding', 'view == depphunter.findings && viewItem == caught'));
   });
 
   /** Runs an export command once per format, picking it and saving where it suggests. */

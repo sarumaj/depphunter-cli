@@ -57,9 +57,9 @@ export class BackpackView implements vscode.TreeDataProvider<PackItem> {
 }
 
 const ORDER = ['unknown', 'info', 'low', 'medium', 'moderate', 'high', 'critical'];
-const rank = (s: string) => ORDER.indexOf((s || 'unknown').toLowerCase());
+export const rank = (s: string) => ORDER.indexOf((s || 'unknown').toLowerCase());
 
-function icon(severity: string): string {
+export function icon(severity: string): string {
   switch ((severity || '').toLowerCase()) {
     case 'critical':
     case 'high':
@@ -73,7 +73,7 @@ function icon(severity: string): string {
   }
 }
 
-function color(severity: string): string {
+export function color(severity: string): string {
   switch ((severity || '').toLowerCase()) {
     case 'critical':
     case 'high':

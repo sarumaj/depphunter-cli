@@ -85,6 +85,7 @@
       <button id="fit" title="Fit to screen (Home)" data-map-only>Fit</button>
       <button id="reset-view" title="Back to the view the map opened at (R)" data-map-only>Reset</button>
       <button id="walk" title="Walk the map in first person (V, or double-click open ground)" aria-pressed="false">Walk</button>
+      <button id="findings-btn" title="Every finding on the map, as a list (L)" aria-expanded="false" aria-controls="findings" hidden>Findings <span id="findings-count" class="count" hidden></span></button>
       <button id="pack-btn" title="What you have caught (B)" aria-expanded="false" aria-controls="pack" hidden>Backpack <span id="pack-count" class="count" hidden></span></button>
       <button id="stash-btn" title="Photographs you have taken (G)" aria-expanded="false" aria-controls="stash" hidden>Photos <span id="stash-count" class="count" hidden></span></button>
       <button id="save-settings">Save settings</button>
@@ -150,6 +151,17 @@
     <div id="tooltip" hidden></div>
     <section id="legend" aria-label="Legend"></section>
     <div id="status"><span id="live" class="live" role="status" hidden></span><span id="status-text" role="status" aria-live="polite">Analyzing…</span></div>
+    <!-- Implements: REQ-HUNT-049, REQ-HUNT-050, REQ-HUNT-051 -->
+    <aside id="findings" hidden aria-label="Findings">
+      <header>
+        <h3>Findings</h3>
+        <span id="findings-summary" class="hint"></span>
+        <button id="findings-close" class="close" title="Close (Esc)" aria-label="Close the findings">×</button>
+      </header>
+      <ul id="findings-list" aria-label="Findings, worst first"></ul>
+      <p id="findings-empty-note" class="hint">Nothing the scanners reported is on the map as it is filtered now.</p>
+      <p class="hint foot">Point at one to light its building, pick it to read it; <b>+</b> puts it in the backpack, the same as catching its bug.</p>
+    </aside>
     <aside id="pack" hidden aria-label="Backpack">
       <header>
         <h3>Backpack</h3>
@@ -229,6 +241,7 @@
         <tr><th>P</th><td>Save the map as a PNG image.</td></tr>
         <tr><th>X / K</th><td>Open the export menu; save the current view to the configuration file. Both work from the street as well as from the map.</td></tr>
         <tr><th>?</th><td>This page. The button at the foot of it shows the introduction again — the map's, or walk mode's if you are out in it.</td></tr>
+        <tr><th>L</th><td>List every finding the map shows, worst first, within the filters. Pointing at one lights its building and picking it opens it; its <kbd>+</kbd> puts it in the backpack exactly as catching its bug in the street would, without walking there. In the list, the arrow keys move, <kbd>Enter</kbd> opens and <kbd>+</kbd> puts in or takes out.</td></tr>
         <tr><th>B</th><td>Open the backpack: everything you have caught, in either view, still open or fixed since. Selecting an entry returns you to where it was caught.</td></tr>
         <tr><th>G</th><td>Open the photographs the camera has taken. They are kept for the session only, so the ones worth having are saved from there, one at a time, as PNG files. From the street each one can also be put up on the camera and looked at there.</td></tr>
         <tr><th>Legend click</th><td>Hide or show a language.</td></tr>

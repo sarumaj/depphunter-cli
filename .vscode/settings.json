@@ -711,6 +711,7 @@
     "filetest",
     "fileupload",
     "fileutils",
+    "findinglist",
     "findlib",
     "fipp",
     "Firestore",

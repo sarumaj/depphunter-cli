@@ -22,3 +22,9 @@ The point of catching a finding is to come back to it.
 
 1. Catching a bug in walk mode makes its finding appear in the backpack.
 2. Catching the same finding again does not add a second entry.
+
+## Notes
+
+The side panel's `+` and the findings list (REQ-HUNT-050) catch through the same
+function (`catchFinding` in web/static/backpack.js), so an entry reads the same
+however it was caught.

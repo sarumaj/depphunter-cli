@@ -126,6 +126,22 @@ export class Backpack {
   }
 }
 
+/**
+ * Catches a finding: puts it in the backpack, recorded against `node`, the building
+ * its bug stands at - which is the building findings.js placed it on, and so what
+ * `node` is when nobody names one. Netting its bug in the street, the `+` beside it
+ * in the details and the findings list's button are all this, so an entry reads the
+ * same however it was caught; everything that follows a catch - the bug stopping,
+ * the server hearing of it - follows from the backpack having changed.
+ *
+ * Returns whether it went in: catching one already caught changes nothing.
+ *
+ * Implements: REQ-HUNT-016, REQ-HUNT-050
+ */
+export function catchFinding(pack, index, finding, node = index?.place(finding)) {
+  return pack.add(finding, node);
+}
+
 function read(key) {
   try {
     const items = JSON.parse(localStorage.getItem(key) || '[]');

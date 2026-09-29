@@ -54,7 +54,7 @@ export const TOUR = [
       finding becomes a bug patrolling the building it belongs to — a caterpillar for a
       critical one, a beetle for the middle of the range, a mite for a note. Catch one
       and it tells you what was reported, and goes into your backpack until the source
-      is fixed. They bite, so watch your health.`,
+      is fixed. They bite, so watch your health. From above, L lists them all.`,
   },
   {
     title: 'Press ? at any time',
