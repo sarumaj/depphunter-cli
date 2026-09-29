@@ -269,8 +269,22 @@ type Report struct {
 func New(resolveDepth int, online bool, private, trusted []string) *Report {
 	return &Report{
 		ResolveDepth: resolveDepth, Online: online,
-		Private: append([]string(nil), private...), TrustedIndexes: append([]string(nil), trusted...),
+		Private: once(private), TrustedIndexes: once(trusted),
 	}
+}
+
+// once is a list with each entry kept only the first time it appears: the same index
+// or pattern is often named by the config file, the environment and a flag at once.
+func once(list []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, entry := range list {
+		if !seen[entry] {
+			seen[entry] = true
+			out = append(out, entry)
+		}
+	}
+	return out
 }
 
 // SetSources records the indexes the run discovered.

@@ -179,6 +179,25 @@ func TestReadsWhatTheMachineAlreadySaysAboutGo(t *testing.T) {
 	if p.Match("npm", "corp.example/lib") {
 		t.Error("GOPRIVATE reached beyond Go")
 	}
+	// A repeat changes nothing that matches, and is listed once: the resolution report
+	// printed "go:corp.example/*" once for each variable that said it.
+	if got, want := p.Patterns(), []string{"go:corp.example/*", "go:other.example/x"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("patterns %v, want %v", got, want)
+	}
+}
+
+// What is listed is listed once and in the same order on every run: patterns that
+// name no ecosystem as declared, then each ecosystem's, the ecosystems by name.
+//
+// Verifies: REQ-SUP-035, REQ-TRC-001
+func TestPatternsAreListedOnceInAFixedOrder(t *testing.T) {
+	declared := []string{"corp.example/*", "npm:@acme/*", "go:gitlab.corp/*", "corp.example/*", "NPM:@acme/*", "cargo-less.example", "go:gitlab.corp/*,go:gitlab.corp/*"}
+	want := []string{"corp.example/*", "cargo-less.example", "go:gitlab.corp/*", "npm:@acme/*"}
+	for range 20 { // map order would differ between runs
+		if got := New(declared).Patterns(); !reflect.DeepEqual(got, want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
 }
 
 // Julia packages are the julia ecosystem's; the standard library is not an
