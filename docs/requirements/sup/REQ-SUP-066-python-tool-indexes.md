@@ -35,9 +35,12 @@ index untrusted:
 - Poetry: the `[[tool.poetry.source]]` entries - the sources of priority
   `default` and then `primary` (a source stating none) replacing PyPI together
   as an ordered list, a source named PyPI without a URL being PyPI at its
-  place in it; `supplemental` (and the legacy `secondary`) asked beside
-  them; `explicit` serving only the dependencies (of any group) that name it
-  with `source = "<name>"`.
+  place in it; the legacy `secondary` and then `supplemental` ones asked after
+  them (after PyPI when no source is primary); `explicit` serving only the
+  dependencies (of any group) that name it with `source = "<name>"`. PyPI
+  **shall** be asked only where a source names it when the file declares a
+  primary or default source or a source named PyPI of any priority, which
+  drops Poetry's implicit PyPI.
 - Pipenv: the `[[source]]` entries of a `Pipfile` and the `_meta.sources` of
   a `Pipfile.lock` - the first replacing PyPI, the others asked beside it -
   and the packages of any category pinned with `index = "<name>"`.
@@ -69,8 +72,10 @@ PyPI or to nothing.
 2. A directory's `uv.toml` replaces its `pyproject.toml`'s uv indexes, whose
    pins still resolve against `uv.toml` or this machine's indexes.
 3. Two Poetry primary sources are asked in order and PyPI not at all; a
-   supplemental one is asked too; an explicit one serves only its pinned
-   dependency; a source named PyPI keeps its place.
+   supplemental one is asked after them, or after PyPI when no source is
+   primary; an explicit one serves only its pinned dependency; a source named
+   PyPI keeps its place, and one of priority `explicit` leaves only the
+   supplemental sources for the other packages.
 4. A `Pipfile`'s first source replaces PyPI, the second is asked beside it, a
    pinned package is served by its source alone; `Pipfile.lock` reads alike.
 5. PDM's `pypi` source replaces PyPI, a `find_links` source is ignored, and a
@@ -83,9 +88,8 @@ PyPI or to nothing.
 Where several tools of this machine name a replacement, the first read is the
 one used, in the order pip, uv, PDM; a repository's replacement comes after
 this machine's, although uv itself would put the project's indexes first.
-Indexes asked beside PyPI are asked before it, although Poetry asks its
-supplemental sources after its primary ones: the organization's index is
-asked first so that a package it has is never named to PyPI. PDM's
+Poetry searches all its primary sources and merges what they have; the first
+one that has the package answers here. PDM's
 `exclude_packages` and `respect-source-order`, uv's `index-strategy` and
 `flat` indexes, and `[tool.uv.sources]` of workspace members other than the
 file's own are not read. The system-wide uv file on Windows is

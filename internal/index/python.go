@@ -68,8 +68,9 @@ func (p *pythonMachine) vouch(index string) {
 // addPython records one index as the source its kind makes it: Default replaces
 // PyPI (or, listed, joins Poetry's ordered primary sources), Primary is one of
 // those, Extra is asked beside PyPI and, for each PDM include_packages pattern,
-// serves the matching packages alone. An explicit index serves only what is
-// pinned to it and is not a source by itself. It answers the URL recorded.
+// serves the matching packages alone, Supplemental is asked after the primary
+// sources. An explicit index serves only what is pinned to it and is not a source
+// by itself. It answers the URL recorded.
 func addPython(i pyconf.Index, listed bool, k sink) string {
 	u := strings.TrimSpace(i.URL)
 	if u == "" {
@@ -80,6 +81,8 @@ func addPython(i pyconf.Index, listed bool, k sink) string {
 		k.put(PyPI, Source{URL: u, Kind: Listed})
 	case i.Kind == pyconf.Default:
 		k.put(PyPI, Source{URL: u})
+	case i.Kind == pyconf.Supplemental:
+		k.put(PyPI, Source{URL: u, Kind: Supplemental})
 	case i.Kind == pyconf.Extra:
 		for _, p := range i.Include {
 			k.put(PyPI, Source{URL: u, Scope: p})
@@ -181,8 +184,15 @@ func (c *Config) projectPython(files []*scan.File) func(f *scan.File, base strin
 }
 
 // pythonSettings records the indexes of one repository file, lends the credentials
-// this machine holds for them (see lendPython), and records its pins.
+// this machine holds for them (see lendPython), and records its pins. A file that
+// drops the tool's implicit PyPI switches PyPI off: it is asked only where one of
+// the file's indexes names it.
+//
+// Implements: REQ-SUP-066, REQ-SUP-063
 func (c *Config) pythonSettings(s pyconf.Settings, tool pyTool, k sink) {
+	if s.NoImplicitPyPI {
+		k.off(PyPI)
+	}
 	for i := range s.Indexes {
 		index := &s.Indexes[i]
 		if pyconf.PoetryPyPI(*index) {

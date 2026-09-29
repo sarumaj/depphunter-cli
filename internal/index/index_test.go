@@ -637,13 +637,13 @@ func TestDiscoverReadsHexAPI(t *testing.T) {
 	}
 }
 
-// renv.lock's repositories are the repository's, each scoped to the packages
-// installed from it; CRAN and Posit Package Manager are the public index. An
-// options(repos = ...) in the project's .Rprofile is the repository's as well; in
-// the user's ~/.Rprofile, R_PROFILE_USER or RENV_CONFIG_REPOS_OVERRIDE it is this
-// machine's.
+// renv.lock's repositories are the repository's, asked in order, each also scoped
+// to the packages installed from it; CRAN and Posit Package Manager are the public
+// index. An options(repos = ...) in the project's .Rprofile is the repository's as
+// well; in the user's ~/.Rprofile, R_PROFILE_USER or RENV_CONFIG_REPOS_OVERRIDE it
+// is this machine's. A list that does not name CRAN switches it off.
 //
-// Verifies: REQ-SUP-015, REQ-SUP-048
+// Verifies: REQ-SUP-015, REQ-SUP-048, REQ-SUP-063
 func TestDiscoverReadsRRepositories(t *testing.T) {
 	files := write(t, map[string]string{
 		"renv.lock": `{"R": {"Version": "4.4.1", "Repositories": [
@@ -656,16 +656,16 @@ func TestDiscoverReadsRRepositories(t *testing.T) {
 		"sub/.Rprofile": `options(repos = c(CRAN = "https://cran.rstudio.com", drat = "https://acme.github.io/drat"))`,
 	})
 	c := Discover(files, environment(nil), "")
-	for packageName, want := range map[string]string{
-		"acmeR": "https://cran.corp.test/latest",
-		"dplyr": "https://acme.github.io/drat",
+	for packageName, want := range map[string][]string{
+		"acmeR": {"https://cran.corp.test/latest?"},
+		"dplyr": {"https://cloud.r-project.org", "https://cran.corp.test/latest?", "https://acme.github.io/drat?"},
 	} {
-		if index, known := c.For(CRAN, packageName); index != want || known {
-			t.Errorf("%s: got %s (known %v), want %s, unknown", packageName, index, known, want)
+		if got := order(c, CRAN, packageName, ""); !slices.Equal(got, want) {
+			t.Errorf("%s: asked %v, want %v", packageName, got, want)
 		}
 	}
-	if index, known := Discover(nil, environment(nil), "").For(CRAN, "dplyr"); index != "https://cloud.r-project.org" || !known {
-		t.Errorf("default: got %s (known %v)", index, known)
+	if got := order(Discover(nil, environment(nil), ""), CRAN, "dplyr", ""); !slices.Equal(got, []string{"https://cloud.r-project.org"}) {
+		t.Errorf("default: %v", got)
 	}
 
 	home := t.TempDir()
@@ -675,9 +675,33 @@ func TestDiscoverReadsRRepositories(t *testing.T) {
 	if index, known := Discover(nil, environment(nil), home).For(CRAN, "dplyr"); index != "https://r.corp.test" || !known {
 		t.Errorf("~/.Rprofile: got %s (known %v)", index, known)
 	}
+	if got := order(Discover(nil, environment(nil), home), CRAN, "dplyr", ""); !slices.Equal(got, []string{"https://r.corp.test"}) {
+		t.Errorf("~/.Rprofile switches CRAN off: %v", got)
+	}
 	c = Discover(nil, environment(map[string]string{"RENV_CONFIG_REPOS_OVERRIDE": "CRAN=https://mirror.corp.test/cran"}), "")
-	if index, known := c.For(CRAN, "dplyr"); index != "https://mirror.corp.test/cran" || !known {
-		t.Errorf("RENV_CONFIG_REPOS_OVERRIDE: got %s (known %v)", index, known)
+	if got := order(c, CRAN, "dplyr", ""); !slices.Equal(got, []string{"https://mirror.corp.test/cran"}) {
+		t.Errorf("RENV_CONFIG_REPOS_OVERRIDE: %v", got)
+	}
+	c = Discover(nil, environment(map[string]string{"RENV_CONFIG_REPOS_OVERRIDE": "https://mirror.corp.test/cran;CRAN=https://cloud.r-project.org"}), "")
+	if got := order(c, CRAN, "dplyr", ""); !slices.Equal(got, []string{"https://mirror.corp.test/cran", "https://cloud.r-project.org"}) {
+		t.Errorf("RENV_CONFIG_REPOS_OVERRIDE with CRAN: %v", got)
+	}
+	for _, test := range []struct{ profile, want string }{
+		// The list extends the option it does not spell out: CRAN stays.
+		{`options(repos = c(getOption("repos"), internal = "https://r.corp.test"))`, "https://r.corp.test https://cloud.r-project.org"},
+		// "@CRAN@" is the CRAN mirror R asks for; its place in the list is kept.
+		{`options("repos" = c(corp = "https://r.corp.test", CRAN = "@CRAN@"))`, "https://r.corp.test https://cloud.r-project.org"},
+		// Bioconductor's repositories are left to the Bioconductor index, local ones
+		// cannot be asked: neither is CRAN.
+		{`options(repos = c(BioCsoft = "https://bioconductor.org/packages/3.18/bioc", local = "file:///srv/cran"))`, ""},
+		{`options(repos = c(r = 'https://r.corp.test', "https://two.corp.test"), timeout = 60)`, "https://r.corp.test https://two.corp.test"},
+	} {
+		profile := filepath.Join(t.TempDir(), "profile.R")
+		os.WriteFile(profile, []byte(test.profile), 0o644)
+		c := Discover(nil, environment(map[string]string{"R_PROFILE_USER": profile}), "")
+		if got := strings.Join(order(c, CRAN, "dplyr", ""), " "); got != test.want {
+			t.Errorf("%s: asked %q, want %q", test.profile, got, test.want)
+		}
 	}
 }
 
@@ -701,32 +725,88 @@ func TestCRANMirror(t *testing.T) {
 	}
 }
 
-// A repository stanza of cabal.project is the repository's index, Hackage itself is
-// not recorded; one in ~/.cabal/config, ~/.config/cabal/config or the file
-// CABAL_CONFIG or CABAL_DIR names is this machine's.
+// A repository stanza of cabal.project is the repository's index, asked before
+// Hackage (cabal combines every repository's packages); Hackage itself is not
+// recorded, and a mirror under Hackage's name replaces it. The configuration cabal
+// reads - CABAL_CONFIG, CABAL_DIR's, ~/.cabal/config or the XDG one - is this
+// machine's; one that lists repositories without Hackage leaves Hackage out.
 //
-// Verifies: REQ-SUP-015, REQ-SUP-049
+// Verifies: REQ-SUP-015, REQ-SUP-049, REQ-SUP-063
 func TestDiscoverReadsCabalRepositories(t *testing.T) {
 	files := write(t, map[string]string{
 		"cabal.project": "packages: .\n\nrepository hackage.haskell.org\n  url: http://hackage.haskell.org/\n\n" +
-			"repository head.hackage.ghc.haskell.org\n   url: https://ghc.gitlab.haskell.org/head.hackage/\n   secure: True\n",
+			"repository head.hackage.ghc.haskell.org\n   url: https://ghc.gitlab.haskell.org/head.hackage/\n   secure: True\n\n" +
+			"repository local\n  url: file+noindex:///srv/packages\n",
 	})
-	if index, known := Discover(files, environment(nil), "").For(Hackage, "aeson"); index != "https://ghc.gitlab.haskell.org/head.hackage" || known {
-		t.Errorf("cabal.project: got %s (known %v)", index, known)
+	if got := order(Discover(files, environment(nil), ""), Hackage, "aeson", ""); !slices.Equal(got, []string{"https://ghc.gitlab.haskell.org/head.hackage?", "https://hackage.haskell.org"}) {
+		t.Errorf("cabal.project: %v", got)
 	}
-	if index, known := Discover(nil, environment(nil), "").For(Hackage, "aeson"); index != "https://hackage.haskell.org" || !known {
-		t.Errorf("default: got %s (known %v)", index, known)
+	if index, known := Discover(files, environment(nil), "").For(Hackage, "aeson"); index != "https://hackage.haskell.org" || !known {
+		t.Errorf("cabal.project: attributed to %s (known %v)", index, known)
+	}
+	if got := order(Discover(nil, environment(nil), ""), Hackage, "aeson", ""); !slices.Equal(got, []string{"https://hackage.haskell.org"}) {
+		t.Errorf("default: %v", got)
 	}
 	home := t.TempDir()
 	os.MkdirAll(filepath.Join(home, ".cabal"), 0o755)
 	os.WriteFile(filepath.Join(home, ".cabal", "config"), []byte("-- comment\nrepository hackage.haskell.org\n  url: https://hackage.mirror.corp.test/\n\nremote-repo-cache: /x\n"), 0o644)
-	if index, known := Discover(nil, environment(nil), home).For(Hackage, "aeson"); index != "https://hackage.mirror.corp.test" || !known {
-		t.Errorf("~/.cabal/config: got %s (known %v)", index, known)
+	if got := order(Discover(nil, environment(nil), home), Hackage, "aeson", ""); !slices.Equal(got, []string{"https://hackage.mirror.corp.test"}) {
+		t.Errorf("~/.cabal/config: %v", got)
 	}
 	directory := t.TempDir()
 	os.WriteFile(filepath.Join(directory, "config"), []byte("repository corp\n  url: https://hackage.corp.test\n"), 0o644)
-	if index, known := Discover(nil, environment(map[string]string{"CABAL_DIR": directory}), "").For(Hackage, "aeson"); index != "https://hackage.corp.test" || !known {
-		t.Errorf("CABAL_DIR: got %s (known %v)", index, known)
+	if got := order(Discover(nil, environment(map[string]string{"CABAL_DIR": directory}), ""), Hackage, "aeson", ""); !slices.Equal(got, []string{"https://hackage.corp.test"}) {
+		t.Errorf("CABAL_DIR: %v", got)
+	}
+	os.WriteFile(filepath.Join(directory, "config"), []byte("repository hackage.haskell.org\n  url: http://hackage.haskell.org/\nrepository corp\n  url: https://hackage.corp.test\n"), 0o644)
+	if got := order(Discover(nil, environment(map[string]string{"CABAL_DIR": directory}), ""), Hackage, "aeson", ""); !slices.Equal(got, []string{"https://hackage.corp.test", "https://hackage.haskell.org"}) {
+		t.Errorf("CABAL_DIR with Hackage: %v", got)
+	}
+}
+
+// active-repositories chooses the repositories cabal asks and their order: its list
+// searched last to first, ":rest" for every configured repository it does not name,
+// ":none" for none. The repository's cabal.project (cabal.project.local over it)
+// wins over this machine's configuration.
+//
+// Verifies: REQ-SUP-049, REQ-SUP-063
+func TestCabalActiveRepositories(t *testing.T) {
+	stanzas := "repository corp\n  url: https://hackage.corp.test\n\nrepository head\n  url: https://head.corp.test\n\n"
+	for _, test := range []struct{ active, want string }{
+		{"", "https://hackage.corp.test? https://head.corp.test? https://hackage.haskell.org"},
+		{"active-repositories: hackage.haskell.org, corp:override\n", "https://hackage.corp.test? https://hackage.haskell.org"},
+		{"active-repositories: :rest, corp\n", "https://hackage.corp.test? https://head.corp.test? https://hackage.haskell.org"},
+		{"active-repositories:\n  , corp\n  , hackage.haskell.org\n  , head:merge\n", "https://head.corp.test? https://hackage.haskell.org https://hackage.corp.test?"},
+		{"active-repositories: head\n", "https://head.corp.test?"},
+		{"active-repositories: :none\n", ""},
+	} {
+		c := Discover(write(t, map[string]string{"cabal.project": "packages: .\n\n" + stanzas + test.active}), environment(nil), "")
+		if got := strings.Join(order(c, Hackage, "aeson", ""), " "); got != test.want {
+			t.Errorf("%q: asked %q, want %q", test.active, got, test.want)
+		}
+	}
+	// This machine's list, until the repository's cabal.project.local sets another.
+	config := filepath.Join(t.TempDir(), "config")
+	os.WriteFile(config, []byte("repository hackage.haskell.org\n  url: http://hackage.haskell.org/\n\n"+stanzas+"active-repositories: corp\n"), 0o644)
+	d := NewDiscoverer(environment(map[string]string{"CABAL_CONFIG": config}), "")
+	if got := order(d.Discover(nil), Hackage, "aeson", ""); !slices.Equal(got, []string{"https://hackage.corp.test"}) {
+		t.Errorf("machine: %v", got)
+	}
+	files := write(t, map[string]string{
+		"cabal.project":       "packages: .\nactive-repositories: corp\n",
+		"cabal.project.local": "active-repositories: hackage.haskell.org, head\n",
+	})
+	if got := order(d.Discover(files), Hackage, "aeson", ""); !slices.Equal(got, []string{"https://head.corp.test", "https://hackage.haskell.org"}) {
+		t.Errorf("cabal.project.local: %v", got)
+	}
+	if got := order(d.Discover(nil), Hackage, "aeson", ""); !slices.Equal(got, []string{"https://hackage.corp.test"}) {
+		t.Errorf("forgotten with the repository: %v", got)
+	}
+	// A configuration that leaves Hackage out leaves it out of ":rest" too.
+	os.WriteFile(config, []byte(stanzas), 0o644)
+	d = NewDiscoverer(environment(map[string]string{"CABAL_CONFIG": config}), "")
+	if got := order(d.Discover(write(t, map[string]string{"cabal.project": "active-repositories: :rest\n"})), Hackage, "aeson", ""); !slices.Equal(got, []string{"https://head.corp.test", "https://hackage.corp.test"}) {
+		t.Errorf(":rest without Hackage: %v", got)
 	}
 }
 
@@ -789,30 +869,40 @@ func TestDiscoverReadsCocoaPodsSources(t *testing.T) {
 }
 
 // A project's .luarocks/config-5.x.lua names the repository's rocks servers;
-// LUAROCKS_CONFIG and ~/.luarocks/config-5.x.lua this machine's. luarocks.org itself
-// is not recorded.
+// LUAROCKS_CONFIG (which replaces the user's file) and ~/.luarocks/config-5.x.lua
+// this machine's. rocks_servers replaces the default list: its servers are asked
+// in order, luarocks.org only where it is listed, and a group's mirrors each after
+// any failure of the one before.
 //
-// Verifies: REQ-SUP-015, REQ-SUP-052
+// Verifies: REQ-SUP-015, REQ-SUP-052, REQ-SUP-063
 func TestDiscoverReadsLuaRocksConfig(t *testing.T) {
 	files := write(t, map[string]string{
-		".luarocks/config-5.1.lua": `rocks_servers = { "https://luarocks.org", "https://rocks.corp.test/" }`,
+		".luarocks/config-5.1.lua": `rocks_servers = { "https://luarocks.org", "https://rocks.corp.test/", "/srv/rocks" }`,
 	})
-	if index, known := Discover(files, environment(nil), "").For(LuaRocks, "penlight"); index != "https://rocks.corp.test" || known {
-		t.Errorf("project: got %s (known %v)", index, known)
+	if got := order(Discover(files, environment(nil), ""), LuaRocks, "penlight", ""); !slices.Equal(got, []string{"https://luarocks.org", "https://rocks.corp.test?"}) {
+		t.Errorf("project: %v", got)
 	}
-	if index, known := Discover(nil, environment(nil), "").For(LuaRocks, "penlight"); index != "https://luarocks.org" || !known {
-		t.Errorf("default: got %s (known %v)", index, known)
+	if got := order(Discover(nil, environment(nil), ""), LuaRocks, "penlight", ""); !slices.Equal(got, []string{"https://luarocks.org"}) {
+		t.Errorf("default: %v", got)
 	}
 	home := t.TempDir()
 	os.MkdirAll(filepath.Join(home, ".luarocks"), 0o755)
-	os.WriteFile(filepath.Join(home, ".luarocks", "config-5.4.lua"), []byte("rocks_servers = {\n  { 'https://mirror.corp.test' },\n}\n"), 0o644)
-	if index, known := Discover(nil, environment(nil), home).For(LuaRocks, "penlight"); index != "https://mirror.corp.test" || !known {
-		t.Errorf("home: got %s (known %v)", index, known)
+	os.WriteFile(filepath.Join(home, ".luarocks", "config-5.4.lua"), []byte("rocks_servers = {\n  { 'https://mirror.corp.test', 'https://mirror2.corp.test' },\n  'https://rocks.corp.test',\n}\n"), 0o644)
+	c := Discover(nil, environment(nil), home)
+	if got := order(c, LuaRocks, "penlight", ""); !slices.Equal(got, []string{"https://mirror.corp.test", "https://mirror2.corp.test", "https://rocks.corp.test"}) {
+		t.Errorf("home: %v", got)
+	}
+	var onError []bool
+	for _, k := range c.candidates(LuaRocks, "penlight", "") {
+		onError = append(onError, k.onError)
+	}
+	if !slices.Equal(onError, []bool{true, false, false}) {
+		t.Errorf("a group's mirrors move on after any failure: %v", onError)
 	}
 	config := filepath.Join(t.TempDir(), "config.lua")
 	os.WriteFile(config, []byte(`rocks_servers = { "https://rocks.env.test" }`), 0o644)
-	if index, known := Discover(nil, environment(map[string]string{"LUAROCKS_CONFIG": config}), "").For(LuaRocks, "penlight"); index != "https://rocks.env.test" || !known {
-		t.Errorf("LUAROCKS_CONFIG: got %s (known %v)", index, known)
+	if got := order(Discover(nil, environment(map[string]string{"LUAROCKS_CONFIG": config}), home), LuaRocks, "penlight", ""); !slices.Equal(got, []string{"https://rocks.env.test"}) {
+		t.Errorf("LUAROCKS_CONFIG: %v", got)
 	}
 	if !LuaRocksItself("https://luarocks.org/dev") || LuaRocksItself("https://rocks.corp.test") {
 		t.Error("LuaRocksItself")

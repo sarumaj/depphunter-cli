@@ -311,9 +311,14 @@ const (
 	// asks it too, so a package it lacks is still found on the default.
 	Additive
 	// Listed is an entry of an ordered list that replaces the public default
-	// entry by entry: GOPROXY, Poetry's primary sources. Every entry is asked in
-	// turn, and nothing that is not on the list.
+	// entry by entry: GOPROXY, Poetry's primary sources, R's repos option,
+	// LuaRocks' rocks_servers. Every entry is asked in turn, and nothing that is
+	// not on the list.
 	Listed
+	// Supplemental is asked after the primary index (the Replace source, the
+	// Listed ones or the public default), for a package none of those has:
+	// Poetry's supplemental sources and its legacy secondary ones.
+	Supplemental
 )
 
 // Source is one index, and what it serves.
@@ -361,6 +366,9 @@ type Source struct {
 	// powershellName is the name a PowerShell repository is registered under,
 	// by which an install names it (see powershellRepository).
 	powershellName string
+	// cabalName is the name of a cabal repository stanza, by which
+	// active-repositories names it (see cabalCandidates).
+	cabalName string
 }
 
 // Config is the index configuration of one analysis: what this machine knows, and
@@ -421,6 +429,10 @@ type Config struct {
 	// conanLocks are the references the repository's conan.lock files pin, by
 	// name (see conanLocked).
 	conanLocks map[string]cpp.ConanReference
+	// cabalMachine and cabalProject are the active-repositories this machine's
+	// cabal configuration and the repository's cabal.project files name, nil
+	// where none does (see cabalCandidates).
+	cabalMachine, cabalProject []string
 }
 
 func New() *Config {
@@ -518,7 +530,7 @@ func (c *Config) Add(ecosystem string, s Source) {
 
 // forgetProject drops what the repository declared, before it is read again.
 func (c *Config) forgetProject() {
-	c.clojure, c.biocRelease, c.cpanArchives, c.conanLocks = false, "", nil, nil
+	c.clojure, c.biocRelease, c.cpanArchives, c.conanLocks, c.cabalProject = false, "", nil, nil, nil
 	c.bazelHelpers = slices.DeleteFunc(c.bazelHelpers, func(h bazelHelper) bool { return h.project })
 	for ecosystem, origin := range c.off {
 		if origin == OriginProject {
@@ -683,6 +695,8 @@ type candidate struct {
 //   - A Julia package (lang.Target.Registry its UUID) is served by the registries
 //     installed on this machine that list it under that UUID, in the order found;
 //     one no such registry lists, by General (see juliaScoped).
+//   - A Haskell package, when cabal's active-repositories is set, is served by
+//     the repositories it activates, last to first (see cabalCandidates).
 //   - A scoped source that covers the package (an npm scope, a gem's source block, a
 //     pubspec's hosted server) serves it alone. It is authoritative: a package
 //     missing from it is not looked for on the public index, which is what a
@@ -693,7 +707,8 @@ type candidate struct {
 //     Central for a Clojure project) unless it is switched off. A ReplaceAll source
 //     leaves the additive ones out. Asking the organization's own index first is
 //     what Maven and Composer do, and it keeps the name of a package that index has
-//     from being sent to the public one at all.
+//     from being sent to the public one at all. The supplemental sources come
+//     after the primary index, in the order found.
 //
 // A source the repository names is listed like any other, with known false: the
 // client does not ask it, but reports it when nothing it could ask had the package.
@@ -778,12 +793,17 @@ func (c *Config) candidates(ecosystem, packageName, registry string) []candidate
 			return ks
 		}
 	}
+	if ecosystem == Hackage {
+		if ks, ok := c.cabalCandidates(); ok {
+			return ks
+		}
+	}
 	for _, s := range c.sources[ecosystem] {
 		if ecosystem != Julia && s.Scope != "" && s.Registry == "" && matches(ecosystem, s.Scope, packageName) {
 			return one(s)
 		}
 	}
-	var additive, primary []candidate
+	var additive, primary, supplemental []candidate
 	var chosen *Source
 	for i, s := range c.sources[ecosystem] {
 		if s.Scope != "" || s.Registry != "" {
@@ -793,6 +813,8 @@ func (c *Config) candidates(ecosystem, packageName, registry string) []candidate
 		switch s.Kind {
 		case Additive:
 			additive = append(additive, k)
+		case Supplemental:
+			supplemental = append(supplemental, k)
 		case Listed:
 			if chosen == nil || chosen.Kind == Listed {
 				k.primary = true
@@ -818,9 +840,9 @@ func (c *Config) candidates(ecosystem, packageName, registry string) []candidate
 	if chosen != nil && chosen.Kind == ReplaceAll {
 		additive = nil
 	}
-	out := make([]candidate, 0, len(additive)+len(primary))
+	out := make([]candidate, 0, len(additive)+len(primary)+len(supplemental))
 	seen := map[string]bool{}
-	for _, k := range append(additive, primary...) {
+	for _, k := range slices.Concat(additive, primary, supplemental) {
 		if !seen[k.url] {
 			seen[k.url] = true
 			out = append(out, k)

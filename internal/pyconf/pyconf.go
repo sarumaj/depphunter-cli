@@ -26,8 +26,7 @@ type Kind uint8
 
 const (
 	// Extra is asked beside PyPI (or what replaces it): uv's index, pip's
-	// extra-index-url, a supplemental Poetry source, a Pipfile source after the
-	// first, a PDM source.
+	// extra-index-url, a Pipfile source after the first, a PDM source.
 	Extra Kind = iota
 	// Default replaces PyPI: uv's default index, a Poetry source of priority
 	// "default", the first Pipfile source, PDM's "pypi".
@@ -38,6 +37,9 @@ const (
 	// Explicit serves only the packages pinned to it: uv's explicit index,
 	// Poetry's explicit source.
 	Explicit
+	// Supplemental is asked after the primary sources (or PyPI), for what none
+	// of them has: Poetry's supplemental sources and its legacy secondary ones.
+	Supplemental
 )
 
 // Index is one index a configuration names, with its credential as written.
@@ -55,6 +57,10 @@ type Index struct {
 type Settings struct {
 	Indexes []Index
 	Pins    map[string]string
+	// NoImplicitPyPI says PyPI is asked only where an index of the file names it:
+	// Poetry drops its implicit PyPI source when the file declares a primary
+	// source or PyPI itself.
+	NoImplicitPyPI bool
 }
 
 // Named is the index of the given name ("" and false for none). uv and PDM compare
@@ -220,12 +226,14 @@ func UVCredential(environment func(string) string, name string) (user, pass stri
 
 // ---------------------------------------------------------------- Poetry
 
-// Poetry reads the [[tool.poetry.source]] entries of a pyproject.toml by priority -
-// "default" (or the legacy default = true) first, then "primary" (the priority of a
-// source that states none), "supplemental" (or the legacy secondary) and
-// "explicit" - and the dependencies of [tool.poetry.dependencies] and of every
+// Poetry reads the [[tool.poetry.source]] entries of a pyproject.toml by priority, in
+// the order Poetry asks them - "default" (Poetry 1.x, or the legacy default = true)
+// first, then "primary" (the priority of a source that states none), then the
+// legacy "secondary" (or secondary = true) and "supplemental"; "explicit" ones serve
+// only their pins - and the dependencies of [tool.poetry.dependencies] and of every
 // group that name a source with source = "<name>". A source named PyPI without a
-// URL is PyPI itself, at its place in the order; its URL is left empty.
+// URL is PyPI itself, at its place in the order; its URL is left empty. Declaring
+// PyPI, or any primary or default source, drops Poetry's implicit PyPI.
 func Poetry(data []byte) (Settings, bool) {
 	var doc struct {
 		Tool struct {
@@ -243,24 +251,31 @@ func Poetry(data []byte) (Settings, bool) {
 		return Settings{}, false
 	}
 	p := doc.Tool.Poetry
-	var s, defaults Settings
+	var s Settings
+	var defaults, primary, secondary, supplemental []Index
 	for _, source := range p.Source {
 		i := Index{Name: source.Name, URL: source.URL, Kind: Primary}
-		switch {
-		case source.Priority == "default" || source.Default && source.Priority == "":
+		switch priority := strings.ToLower(source.Priority); {
+		case priority == "default" || source.Default && priority == "":
 			i.Kind = Default
-		case source.Priority == "explicit":
+			defaults = append(defaults, i)
+		case priority == "explicit":
 			i.Kind = Explicit
-		case source.Priority == "supplemental" || source.Priority == "secondary" || source.Secondary && source.Priority == "":
-			i.Kind = Extra
+			primary = append(primary, i)
+		case priority == "secondary" || source.Secondary && priority == "":
+			i.Kind = Supplemental
+			secondary = append(secondary, i)
+		case priority == "supplemental":
+			i.Kind = Supplemental
+			supplemental = append(supplemental, i)
+		default:
+			primary = append(primary, i)
 		}
-		if i.Kind == Default {
-			defaults.Indexes = append(defaults.Indexes, i)
-		} else {
-			s.Indexes = append(s.Indexes, i)
+		if i.Kind == Default || i.Kind == Primary || PoetryPyPI(i) {
+			s.NoImplicitPyPI = true
 		}
 	}
-	s.Indexes = append(defaults.Indexes, s.Indexes...)
+	s.Indexes = slices.Concat(defaults, primary, secondary, supplemental)
 	dependencies := []map[string]any{p.Dependencies}
 	for _, g := range slices.Sorted(maps.Keys(p.Group)) {
 		dependencies = append(dependencies, p.Group[g].Dependencies)

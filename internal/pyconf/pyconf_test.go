@@ -15,7 +15,7 @@ import (
 func show(indexes []Index) string {
 	var out []string
 	for _, i := range indexes {
-		kind := [...]string{"extra", "default", "primary", "explicit"}[i.Kind]
+		kind := [...]string{"extra", "default", "primary", "explicit", "supplemental"}[i.Kind]
 		line := strings.TrimSpace(fmt.Sprintf("%s %s %s", i.Name, kind, i.URL))
 		if len(i.Include) > 0 {
 			line += " include=" + strings.Join(i.Include, ",")
@@ -116,9 +116,11 @@ func TestUVEnvironment(t *testing.T) {
 	}
 }
 
-// Poetry's sources come default first, then in the order written; a source with
-// no priority is primary, secondary is supplemental, PyPI without a URL is PyPI;
-// dependencies of every group pin by source.
+// Poetry's sources come in the order Poetry asks them: default first, then the
+// primary (and explicit) ones in the order written, then the legacy secondary and
+// the supplemental ones; a source with no priority is primary, PyPI without a URL
+// is PyPI; dependencies of every group pin by source. A primary source, or PyPI
+// declared, drops the implicit PyPI.
 //
 // Verifies: REQ-SUP-066
 func TestPoetry(t *testing.T) {
@@ -166,11 +168,24 @@ default = true
 		t.Fatal("not read")
 	}
 	check(t, "order", show(s.Indexes), "old-default default https://default.corp/simple\nfirst primary https://first.corp/simple\n"+
-		"PyPI primary\nsupp extra https://supp.corp/simple\nlegacy extra https://legacy.corp/simple\n"+
-		"private explicit https://private.corp/simple\nsecond primary https://second.corp/simple")
+		"PyPI primary\nprivate explicit https://private.corp/simple\nsecond primary https://second.corp/simple\n"+
+		"legacy supplemental https://legacy.corp/simple\nsupp supplemental https://supp.corp/simple")
 	check(t, "pins", pins(s), "acme->private tool->second")
 	if !PoetryPyPI(s.Indexes[2]) || PoetryPyPI(s.Indexes[1]) {
 		t.Error("PoetryPyPI")
+	}
+	if !s.NoImplicitPyPI {
+		t.Error("primary sources keep the implicit PyPI")
+	}
+	for body, want := range map[string]bool{
+		"[[tool.poetry.source]]\nname = \"supp\"\nurl = \"https://supp.corp/simple\"\npriority = \"supplemental\"\n": false,
+		"[[tool.poetry.source]]\nname = \"x\"\nurl = \"https://x.corp/simple\"\npriority = \"explicit\"\n":           false,
+		"[[tool.poetry.source]]\nname = \"pypi\"\npriority = \"explicit\"\n":                                         true,
+		"[[tool.poetry.source]]\nname = \"x\"\nurl = \"https://x.corp/simple\"\n":                                    true,
+	} {
+		if s, _ := Poetry([]byte(body)); s.NoImplicitPyPI != want {
+			t.Errorf("%q: NoImplicitPyPI %v", body, s.NoImplicitPyPI)
+		}
 	}
 }
 

@@ -534,9 +534,17 @@ func TestPythonIndexKinds(t *testing.T) {
 		{"poetry primary replaces", "pyproject.toml",
 			"[[tool.poetry.source]]\nname = \"corp\"\nurl = \"https://poetry.corp/simple\"\n", "x",
 			[]string{"https://poetry.corp/simple?"}},
-		{"poetry supplemental beside", "pyproject.toml",
+		{"poetry supplemental after PyPI", "pyproject.toml",
 			"[[tool.poetry.source]]\nname = \"corp\"\nurl = \"https://poetry.corp/simple\"\npriority = \"supplemental\"\n", "x",
+			[]string{"https://pypi.org/simple", "https://poetry.corp/simple?"}},
+		{"poetry PyPI supplemental after a primary", "pyproject.toml",
+			"[[tool.poetry.source]]\nname = \"PyPI\"\npriority = \"supplemental\"\n\n" +
+				"[[tool.poetry.source]]\nname = \"corp\"\nurl = \"https://poetry.corp/simple\"\n", "x",
 			[]string{"https://poetry.corp/simple?", "https://pypi.org/simple"}},
+		{"poetry PyPI explicit drops the implicit one", "pyproject.toml",
+			"[[tool.poetry.source]]\nname = \"pypi\"\npriority = \"explicit\"\n\n" +
+				"[[tool.poetry.source]]\nname = \"corp\"\nurl = \"https://poetry.corp/simple\"\npriority = \"supplemental\"\n", "x",
+			[]string{"https://poetry.corp/simple?"}},
 		{"poetry explicit serves its dependency", "pyproject.toml",
 			"[tool.poetry.dependencies]\nacme = { version = \"^1\", source = \"corp\" }\n\n" +
 				"[[tool.poetry.source]]\nname = \"corp\"\nurl = \"https://poetry.corp/simple\"\npriority = \"explicit\"\n", "acme",

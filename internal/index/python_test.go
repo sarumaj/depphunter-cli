@@ -101,7 +101,7 @@ func TestUVTomlOverPyproject(t *testing.T) {
 }
 
 // Poetry asks its primary sources in order (a default one first) and PyPI not at
-// all; supplemental ones are asked too, and an explicit one serves only the
+// all; supplemental ones are asked after them, and an explicit one serves only the
 // dependencies that name it. End to end: a package the first primary lacks is found
 // on the second, and PyPI hears of nothing.
 //
@@ -139,7 +139,7 @@ priority = "primary"
 	d := NewDiscoverer(environment(nil), "")
 	d.Config().Trust([]string{first.URL + "/simple", second.URL + "/simple", supplementary.URL + "/simple", explicit.URL + "/simple"})
 	config := d.Discover(files)
-	if got, want := order(config, PyPI, "lib", ""), []string{supplementary.URL + "/simple", first.URL + "/simple", second.URL + "/simple"}; !slices.Equal(got, want) {
+	if got, want := order(config, PyPI, "lib", ""), []string{first.URL + "/simple", second.URL + "/simple", supplementary.URL + "/simple"}; !slices.Equal(got, want) {
 		t.Errorf("order %v, want %v", got, want)
 	}
 	c := newClient(t, config)
