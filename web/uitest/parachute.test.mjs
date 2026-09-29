@@ -363,6 +363,64 @@ describe('the canopy as drawn', () => {
     assert.ok(hand.distanceTo(new THREE.Vector3(-0.2, 0.1, -0.3)) < 1e-6, 'the left brake line does not reach the hand');
   });
 
+  // Verifies: REQ-TOOL-071
+  it('keeps the risers and the slider out of the middle of the view looking up', () => {
+    // Looking straight up under an open canopy, what a skydiver sees is the canopy and
+    // the lines fanning down from it; the risers are webbing at the edges of the view,
+    // from the shoulders up and out to the links, and the slider is bunched up under
+    // the canopy. So the canopy is hung over a stand-in walker the way the walker
+    // hangs it (Walker.hangCanopy, from the eye), the view is turned straight up at
+    // headings all round the canopy's, and every part of the risers in front of the
+    // lens is measured against a cone around the middle of the view.
+    const W = WALK.Walker.prototype;
+    const camera = new THREE.PerspectiveCamera(70, 1280 / 800, 0.02, 3000);
+    camera.rotation.order = 'YXZ';
+    const scene = { viewScene: new THREE.Scene(), walkCamera: camera };
+    scene.viewScene.add(camera);
+    const chute = thrown(40);
+    fly(chute, 3);
+    assert.equal(chute.phase, 'flying');
+    const w = {
+      scene, chute, p: { x: 3, feet: chute.feet, z: -2 }, arrival: null, held: null, offhand: null,
+      rigWorld: W.rigWorld, eye: W.eye, hideTool() {},
+    };
+    // The middle of the view: a cone 36 degrees either side of where the eyes point,
+    // which is past the top and bottom edges of a 70 degree view.
+    const CONE = (36 * Math.PI) / 180;
+    const box = new THREE.Box3(), local = new THREE.Vector3(), seen = new THREE.Vector3();
+    for (const turn of [0, 0.5, Math.PI / 2, 2.2, Math.PI, -1.1, -Math.PI / 2]) {
+      w.eye(camera.position);
+      camera.rotation.set(1.5, chute.heading + turn, 0);
+      camera.updateMatrixWorld();
+      W.hangCanopy.call(w, 1000);
+      scene.viewScene.updateMatrixWorld();
+      const risers = w.rig.getObjectByName('risers');
+      assert.ok(risers.visible, 'no risers over an open canopy');
+      let nearest = Infinity;
+      risers.traverse(part => {
+        if (!part.isMesh) return;
+        part.geometry.computeBoundingBox();
+        box.copy(part.geometry.boundingBox);
+        for (let i = 0; i <= 2; i++) for (let j = 0; j <= 40; j++) for (let k = 0; k <= 2; k++) {
+          local.set(box.min.x + ((box.max.x - box.min.x) * i) / 2, box.min.y + ((box.max.y - box.min.y) * j) / 40,
+            box.min.z + ((box.max.z - box.min.z) * k) / 2);
+          seen.copy(local).applyMatrix4(part.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
+          if (seen.z > -camera.near) continue; // behind the lens
+          nearest = Math.min(nearest, Math.atan2(Math.hypot(seen.x, seen.y), -seen.z));
+        }
+      });
+      assert.ok(nearest > CONE, `turned ${turn.toFixed(2)} from the heading, a riser is ${(nearest * 180 / Math.PI).toFixed(1)} degrees from the middle of the view`);
+    }
+    // The slider is up under the canopy, not down in front of the eyes.
+    const rig = w.rig, slider = rig.getObjectByName('slider'), canopy = rig.getObjectByName('canopy');
+    assert.ok(slider.visible, 'no slider on an open canopy');
+    const corners = slider.geometry.getAttribute('position');
+    for (let i = 0; i < corners.count; i++) {
+      assert.ok(corners.getY(i) > 0.75 * canopy.position.y,
+        `a corner of the slider is ${corners.getY(i).toFixed(2)} over the shoulders, under a canopy ${canopy.position.y.toFixed(2)} over them`);
+    }
+  });
+
   // Verifies: REQ-TOOL-077, REQ-TOOL-078
   it('keeps every line of a canopy let go of between the canopy and the harness', () => {
     // Taut lines to where the harness was would stand up out of the street once the

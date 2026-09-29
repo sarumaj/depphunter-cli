@@ -17,10 +17,14 @@ them, a span curved on an arc, stabilizers at the tips and open cell mouths at
 the nose, hung on suspension lines that converge onto four risers at the
 walker's shoulders, with a slider on the lines, a pilot chute trailing on its
 bridle, brake lines from the tail to the toggles, and the left toggle in the
-walker's left hand. It **shall** be drawn in the pass that draws what the walker
-holds, lit by the same lights, keeping its own orientation in the world whatever
-way the walker looks; packed, the container's corner **shall** be in the bottom
-of the frame and the pilot chute's handle in the hand.
+walker's left hand. The risers **shall** be thin, dark webbing running up and
+out from the shoulders, outside the middle of the view, and the slider, once
+the canopy is open, **shall** be bunched up under the canopy rather than down
+at the links in front of the eyes. It **shall** be drawn in the pass that draws
+what the walker holds, lit by the same lights, keeping its own orientation in
+the world whatever way the walker looks; packed, the container's corner
+**shall** be in the bottom of the frame and the pilot chute's handle in the
+hand.
 
 ## Rationale
 
@@ -35,3 +39,7 @@ would be drawn through the lines the walker hangs from.
 2. The canopy's lines all run from the canopy to the harness or the hand, and
    none is left at a point where no line goes.
 3. Every part of the tool in the hand touches another part.
+4. Looking straight up under an open canopy, whichever way the walker faces
+   under it, no part of the risers is within 36 degrees of the middle of the
+   view, and every corner of the slider is more than three quarters of the way
+   from the shoulders up to the canopy.
