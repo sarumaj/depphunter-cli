@@ -1,6 +1,7 @@
 // Package python analyzes Python with tree-sitter. Imports resolve to project modules
-// (relative imports, the importing file's directory, the project root, src/ layouts
-// and every directory holding a pyproject.toml, setup.py or setup.cfg), to the
+// (relative imports, the importing file's directory, the project root, src/ layouts,
+// every directory holding a pyproject.toml, setup.py or setup.cfg, and the roots
+// PYTHONPATH, .env files and the tools' settings add), to the
 // standard library, or to distributions declared in requirements files, pyproject.toml
 // or Pipfile, with versions pinned by poetry.lock, uv.lock, pdm.lock or Pipfile.lock -
 // or, for what no index has, to what the interpreter's environment has installed.
@@ -55,7 +56,8 @@ var grammar = treesitter.MustGrammar("python", python.Language(), query)
 type Plugin struct {
 	// Interpreter is a Python interpreter's path (--python).
 	Interpreter string
-	// Getenv reads the process environment, for an activated VIRTUAL_ENV.
+	// Getenv reads the process environment, for an activated VIRTUAL_ENV and for
+	// PYTHONPATH.
 	Getenv func(string) string
 }
 
@@ -76,7 +78,7 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 func (Plugin) Version() int { return 1 }
 
 func (p Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
-	r := newResolver(all, lang.Claimed(p, all))
+	r := newResolver(root, all, lang.Claimed(p, all), p.Getenv)
 	r.environment = findEnvironment(root, p.Interpreter, p.Getenv)
 	return r, nil
 }
