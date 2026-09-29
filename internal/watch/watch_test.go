@@ -21,7 +21,11 @@ func TestDebouncedChanges(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var calls atomic.Int32
-	go w.Run(ctx, 100*time.Millisecond, func() { calls.Add(1) })
+	// The writes are 10 ms apart, so each is its own event, and the debounce is far
+	// longer than that: only a stall of most of a debounce between two of them - not
+	// a slow runner's usual hiccup - could split the burst in two.
+	const debounce = 300 * time.Millisecond
+	go w.Run(ctx, debounce, func() { calls.Add(1) })
 
 	// A burst of writes is one change.
 	for i := range 5 {
@@ -32,7 +36,7 @@ func TestDebouncedChanges(t *testing.T) {
 	for calls.Load() == 0 && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(3 * debounce)
 	if n := calls.Load(); n != 1 {
 		t.Fatalf("onChange called %d times, want 1", n)
 	}
@@ -40,7 +44,7 @@ func TestDebouncedChanges(t *testing.T) {
 	// Unwatched directories are silent.
 	w.Sync(nil, nil)
 	os.WriteFile(filepath.Join(directory, "b.go"), nil, 0o644)
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(3 * debounce)
 	if n := calls.Load(); n != 1 {
 		t.Fatalf("change in unwatched dir triggered onChange (%d calls)", n)
 	}
