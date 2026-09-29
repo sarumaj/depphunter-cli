@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -22,6 +23,14 @@ func show(indexes []Index) string {
 		}
 		if i.Username != "" || i.Password != "" {
 			line += " cred=" + i.Username + ":" + i.Password
+		}
+		if len(i.Exclude) > 0 {
+			line += " exclude=" + strings.Join(i.Exclude, ",")
+		}
+		if i.FindLinks {
+			line += " find-links"
+		} else if i.Flat {
+			line += " flat"
 		}
 		out = append(out, line)
 	}
@@ -90,6 +99,70 @@ local = { path = "../local" }
 	}
 }
 
+// uv's flat indexes: format = "flat" keeps an [[index]] in its place, find-links
+// locations come after the indexes; index-strategy is kept as written; an explicit
+// index that is also the default drops PyPI.
+//
+// Verifies: REQ-SUP-066
+func TestUVFlatIndexesAndStrategy(t *testing.T) {
+	s, _ := UV([]byte(`
+[tool.uv]
+index-strategy = "Unsafe-Best-Match"
+find-links = ["https://wheels.corp/", "./local-wheels"]
+
+[[tool.uv.index]]
+name = "flat"
+url = "https://flat.corp/files/"
+format = "flat"
+
+[[tool.uv.index]]
+name = "only"
+url = "https://only.corp/simple"
+explicit = true
+default = true
+`), true)
+	check(t, "indexes", show(s.Indexes), "flat extra https://flat.corp/files/ flat\nonly explicit https://only.corp/simple\n"+
+		"extra https://wheels.corp/ find-links\nextra ./local-wheels find-links")
+	check(t, "strategy", s.IndexStrategy, "unsafe-best-match")
+	if !s.NoImplicitPyPI {
+		t.Error("an explicit default index keeps PyPI")
+	}
+	if s, _ := UV([]byte("[[index]]\nurl = \"https://a.corp/simple\"\nexplicit = true\n"), false); s.NoImplicitPyPI || s.IndexStrategy != "" {
+		t.Errorf("explicit alone: %+v", s)
+	}
+}
+
+// This machine's uv indexes carry the uv.toml they came from; a flat location
+// written as a relative path is taken from that file's directory, or, for
+// UV_FIND_LINKS, from the analyzed directory (and left out without one).
+// UV_INDEX_STRATEGY and the first file's index-strategy are both reported.
+//
+// Verifies: REQ-SUP-066, REQ-SUP-064
+func TestUVMachineFlatIndexes(t *testing.T) {
+	home := t.TempDir()
+	file := filepath.Join(home, ".config", "uv", "uv.toml")
+	write(t, file, "index-strategy = \"unsafe-first-match\"\nfind-links = [\"wheels\"]\n\n[[index]]\nurl = \"https://file.corp/simple\"\n")
+	variables := map[string]string{"UV_FIND_LINKS": "https://env.corp/links/, ./env-wheels", "UV_INDEX_STRATEGY": "first-index"}
+	m := userconf.Machine{Home: home, GOOS: "linux", Directory: filepath.Join(home, "project"),
+		Environment: func(k string) string { return variables[k] }}
+	var got []string
+	for _, i := range UVMachine(m) {
+		got = append(got, i.URL+" "+filepath.Base(i.File)+" "+fmt.Sprint(i.FindLinks))
+	}
+	want := []string{"https://env.corp/links/ . true", filepath.Join(home, "project", "env-wheels") + " . true",
+		"https://file.corp/simple uv.toml false", filepath.Join(home, ".config", "uv", "wheels") + " uv.toml true"}
+	if !slices.Equal(got, want) {
+		t.Errorf("indexes\n got %q\nwant %q", got, want)
+	}
+	if variable, fromFile := UVMachineStrategy(m); variable != "first-index" || fromFile != "unsafe-first-match" {
+		t.Errorf("strategy %q %q", variable, fromFile)
+	}
+	m.Directory = ""
+	if n := len(UVMachine(m)); n != 3 {
+		t.Errorf("a relative UV_FIND_LINKS entry without a directory: %d indexes", n)
+	}
+}
+
 // UV_DEFAULT_INDEX (or UV_INDEX_URL) comes first, then UV_INDEX and
 // UV_EXTRA_INDEX_URL, space separated; name=url names an entry, and a URL's own
 // query string is not taken for a name.
@@ -101,10 +174,12 @@ func TestUVEnvironment(t *testing.T) {
 		"UV_INDEX_URL":       "https://legacy.corp/simple",
 		"UV_INDEX":           "corp=https://corp.corp/simple  https://q.corp/simple?x=y",
 		"UV_EXTRA_INDEX_URL": "https://extra.corp/simple",
+		"UV_FIND_LINKS":      "https://links.corp/, /srv/wheels",
 	}
 	got := show(UVEnvironment(func(k string) string { return variables[k] }))
 	check(t, "env", got, "main default https://main.corp/simple\ndefault https://legacy.corp/simple\n"+
-		"corp extra https://corp.corp/simple\nextra https://q.corp/simple?x=y\nextra https://extra.corp/simple")
+		"corp extra https://corp.corp/simple\nextra https://q.corp/simple?x=y\nextra https://extra.corp/simple\n"+
+		"extra https://links.corp/ find-links\nextra /srv/wheels find-links")
 	user, pass := UVCredential(func(k string) string {
 		return map[string]string{"UV_INDEX_MY_CORP_2_USERNAME": "u", "UV_INDEX_MY_CORP_2_PASSWORD": "p"}[k]
 	}, "my-corp.2")
@@ -255,8 +330,37 @@ name = "links"
 url = "https://links.corp/"
 type = "find_links"
 `))
-	check(t, "sources", show(s.Indexes), "private extra https://${PDM_USER}:${PDM_PASS}@pdm.corp/simple include=acme,acme-*\n"+
+	check(t, "sources", show(s.Indexes), "private extra https://${PDM_USER}:${PDM_PASS}@pdm.corp/simple include=acme,acme-* exclude=other\n"+
 		"pypi default https://mirror.corp/simple")
+	if !s.PDMSources || s.RespectSourceOrder {
+		t.Errorf("merging sources: %+v", s)
+	}
+
+	// respect-source-order: the sources before pypi are asked before it, the ones
+	// after it after it; without a pypi source PyPI comes first.
+	s, _ = PDM([]byte(`
+[tool.pdm.resolution]
+respect-source-order = true
+
+[[tool.pdm.source]]
+name = "first"
+url = "https://first.corp/simple"
+
+[[tool.pdm.source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+
+[[tool.pdm.source]]
+name = "last"
+url = "https://last.corp/simple"
+`))
+	check(t, "in order", show(s.Indexes), "first extra https://first.corp/simple\npypi default https://pypi.org/simple\n"+
+		"last supplemental https://last.corp/simple")
+	s, _ = PDM([]byte("[tool.pdm.resolution]\nrespect-source-order = true\n\n[[tool.pdm.source]]\nname = \"a\"\nurl = \"https://a.corp/simple\"\n"))
+	check(t, "PyPI first", show(s.Indexes), "a supplemental https://a.corp/simple")
+	if s, _ := PDM([]byte("[project]\nname = \"x\"\n")); s.PDMSources {
+		t.Error("no source declared")
+	}
 
 	s, _ = PDMConfig([]byte(`
 [pypi]
@@ -268,12 +372,15 @@ password = "mp"
 url = "https://extra.corp/simple"
 username = "eu"
 password = "ep"
+include_packages = ["corp-*"]
+exclude_packages = ["public-*", 3]
 
 [pypi.links]
 url = "https://links.corp/"
 type = "find_links"
 `))
-	check(t, "config", show(s.Indexes), "pypi default https://pdm-mirror.corp/simple cred=mu:mp\nextra extra https://extra.corp/simple cred=eu:ep")
+	check(t, "config", show(s.Indexes), "pypi default https://pdm-mirror.corp/simple cred=mu:mp\n"+
+		"extra extra https://extra.corp/simple include=corp-* cred=eu:ep exclude=public-*")
 }
 
 // PDM's global config.toml is found through userconf; PDM_PYPI_URL and its

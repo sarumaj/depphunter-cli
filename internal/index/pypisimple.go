@@ -43,6 +43,7 @@ var errNoMetadata = errors.New("the index serves no metadata file (PEP 658) for 
 // simpleFile is one file a project page lists.
 type simpleFile struct {
 	name, url string
+	path      string            // where a local flat index's file is on disk
 	metadata  bool              // the index serves <url>.metadata (PEP 658 / 714)
 	hashes    map[string]string // the metadata file's hashes, when the page gives them
 	yanked    bool              // PEP 592
@@ -63,6 +64,13 @@ func (c *Client) pypiSimple(ctx context.Context, index string, t lang.Target) ([
 	if err != nil {
 		return nil, err
 	}
+	return c.releaseRequires(ctx, page, files, t)
+}
+
+// releaseRequires is the Requires-Dist of the release asked for among the files a
+// page (or a flat index) lists: the first of its files whose metadata can be read,
+// checked against the hash the page gives for it.
+func (c *Client) releaseRequires(ctx context.Context, page string, files []simpleFile, t lang.Target) ([]dependency, error) {
 	version, chosen := pickRelease(files, t.Package, t.Version)
 	if len(chosen) == 0 {
 		return nil, fmt.Errorf("%s: %w", page, errAbsent)
@@ -71,7 +79,7 @@ func (c *Client) pypiSimple(ctx context.Context, index string, t lang.Target) ([
 		if !f.metadata {
 			continue
 		}
-		body, err := c.accept(ctx, metadataURL(f.url), "*/*")
+		body, err := c.fileMetadata(ctx, f)
 		if notFound(err) {
 			continue // advertised but not there: another file's may be
 		}
@@ -85,7 +93,20 @@ func (c *Client) pypiSimple(ctx context.Context, index string, t lang.Target) ([
 		}
 		return requiresDist(metadataRequires(body)), nil
 	}
+	if chosen[0].path != "" {
+		return nil, fmt.Errorf("%s %s: %w", page, version, errNoLocalMetadata)
+	}
 	return nil, fmt.Errorf("%s %s: %w", page, version, errNoMetadata)
+}
+
+// fileMetadata is the core metadata of one file: its PEP 658 file, from the index
+// or - for a file of a local flat index - beside it on disk, else the METADATA
+// inside a local wheel.
+func (c *Client) fileMetadata(ctx context.Context, f simpleFile) ([]byte, error) {
+	if f.path == "" {
+		return c.accept(ctx, metadataURL(f.url), "*/*")
+	}
+	return localMetadata(f.path)
 }
 
 // simpleFiles reads a project page, in whichever form the index answered with.

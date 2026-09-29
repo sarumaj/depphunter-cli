@@ -16,7 +16,7 @@ knows about the run that no single question shows. Each note **shall** name
 the plugin (the walk's, when the index client gives it), the project file it
 is about when there is one, a code (`lock-unread`, `lock-flat`,
 `lock-ignored`, `no-key`, `forbidden`, `unmapped`, `no-release`,
-`no-copy`, `helper-not-run`) and a sentence. A note
+`no-copy`, `helper-not-run`, `merged`) and a sentence. A note
 given more than once **shall** be kept once, and the notes **shall** be listed
 in the same order in every run (by plugin, file, code, sentence). A
 resolver's notes **shall** be recorded whether or not the walk ran.
@@ -56,7 +56,12 @@ JSON (`notes`). At least these **shall** be noted:
   run ([REQ-BAZEL-011](../bazel/REQ-BAZEL-011-read-without-bazel.md)), and a
   Conan remote that wants a login this machine does not hold while Conan's
   `auth_remote.py` plugin could supply one, which is not run
-  ([REQ-AUTH-035](../auth/REQ-AUTH-035-conan-remote-logins.md)).
+  ([REQ-AUTH-035](../auth/REQ-AUTH-035-conan-remote-logins.md));
+- a PyPI package asked of more than one index while a Python tool configured
+  here merges the versions of its indexes (uv's `unsafe-best-match` index
+  strategy or its find-links locations, PDM without `respect-source-order`),
+  where depphunter takes the first index that has the package
+  ([REQ-SUP-066](../sup/REQ-SUP-066-python-tool-indexes.md)).
 
 ## Rationale
 

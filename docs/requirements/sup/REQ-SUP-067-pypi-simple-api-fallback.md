@@ -1,6 +1,6 @@
 ---
 id: REQ-SUP-067
-title: PyPI Simple API fallback with PEP 658 metadata
+title: PyPI Simple API fallback and flat indexes with PEP 658 metadata
 scope: sup
 type: functional
 priority: must
@@ -41,6 +41,18 @@ credential the credential store holds for its own URL
 Python index's credential serves the index URL without `/simple` (devpi's
 `/+simple`), which covers files and metadata below that path.
 
+A flat index ([REQ-SUP-066](REQ-SUP-066-python-tool-indexes.md)) **shall** be
+read the same way from the one page it is, as configured, read once per run
+and holding every project's files: its filenames give the releases of the
+distribution asked about, and a file's metadata is its advertised
+`<file URL>.metadata`. A flat index that is a directory this machine's own
+configuration names **shall** be read from disk: its top-level files, a
+file's metadata being the `<file>.metadata` beside it or, for a wheel, the
+`METADATA` of the wheel's own `.dist-info` directory. A flat index without the
+distribution **shall** pass the question on; a release it has without
+readable metadata (a local release with only source archives) is no answer
+with a reason, as above.
+
 ## Rationale
 
 GitLab, AWS CodeArtifact, Azure Artifacts, Google Artifact Registry, devpi and
@@ -66,10 +78,18 @@ download an archive to learn its requirements.
 4. A path-scoped credential goes with the page and the metadata below the
    index's path; a metadata file on another host is sent without it.
 5. PyPI itself is asked only its JSON API.
+6. A flat page this machine names is requested once for several questions:
+   the newest final release's advertised metadata answers, a release without
+   metadata gives the reason and stops, and a package the page does not list
+   is asked of the next index.
+7. A local flat directory gives a wheel's `METADATA` (not one deeper in the
+   archive) and a source archive's `.metadata` file; a release with only a
+   source archive is no answer with a reason.
 
 ## Notes
 
 `requires-python` is not used to pick a release: the interpreter the map is
 drawn for is not known. A release whose files advertise no metadata gets no
 answer (the report says so): depphunter does not download wheels or source
-archives to read their metadata.
+archives to read their metadata, nor unpack a local source archive (a local
+wheel's `METADATA` is read in place).

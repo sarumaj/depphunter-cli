@@ -109,6 +109,9 @@ const (
 	// NoteHelperNotRun is a credential helper the configuration names for an
 	// index that was asked: helpers are programs, and are not run.
 	NoteHelperNotRun = "helper-not-run"
+	// NoteMerged is a package manager that merges the versions several indexes
+	// have, where depphunter takes the first index that has the package.
+	NoteMerged = "merged"
 )
 
 // Note is something a resolver or the index client knows about the run that no

@@ -1165,8 +1165,9 @@ those of the directories above it and `~/.yarnrc.yml` (`npmRegistryServer`,
 `~/.yarnrc`; Bun's
 `bunfig.toml` and global bunfig (`[install] registry`, `[install.scopes]`);
 `pip.conf` and a requirements file's `--index-url` and `--extra-index-url`;
-uv's indexes in `pyproject.toml`, `uv.toml` and the user's and system's
-`uv.toml` (`UV_INDEX`, `UV_DEFAULT_INDEX`), Poetry's sources in
+uv's indexes and `find-links` in `pyproject.toml`, `uv.toml` and the user's
+and system's `uv.toml` (`UV_INDEX`, `UV_DEFAULT_INDEX`, `UV_FIND_LINKS`),
+Poetry's sources in
 `pyproject.toml`, a `Pipfile`'s and `Pipfile.lock`'s sources, PDM's sources
 in `pyproject.toml` and `pdm.toml` and its own `config.toml` (`PDM_PYPI_URL`),
 each with the packages pinned to one; `NuGet.config` and the `source`
@@ -1233,7 +1234,7 @@ and platform paths:
 | Yarn       | `YARN_NPM_REGISTRY_SERVER`, `YARN_NPM_AUTH_TOKEN`, `_IDENT`, `_ALWAYS_AUTH`; Yarn Berry's file (named `YARN_RC_FILENAME`, else `.yarnrc.yml`) in each directory above the analyzed checkout, then `~/.yarnrc.yml`, merged key by key, `${VAR}` resolved from the environment; Yarn 1's `~/.yarnrc` (registries only: Yarn 1 takes credentials from the npmrc)                                                                                   |
 | Bun        | `$XDG_CONFIG_HOME/.bunfig.toml` when it exists, else `~/.bunfig.toml`, `$VAR` resolved from the environment                                                                                                                                                                                                                                                                                                                                     |
 | pip        | `PIP_INDEX_URL` and `PIP_EXTRA_INDEX_URL`; the file `PIP_CONFIG_FILE` names; the user's `pip.conf` (`$XDG_CONFIG_HOME/pip`, `~/Library/Application Support/pip` on macOS, `%APPDATA%\pip\pip.ini` on Windows, and the legacy `~/.pip`), skipped when `PIP_CONFIG_FILE` names an existing file; the site-wide `/etc/pip.conf`, `$XDG_CONFIG_DIRS/pip/pip.conf`, `%ProgramData%\pip\pip.ini`. `PIP_CONFIG_FILE=/dev/null` switches every file off |
-| uv         | `UV_DEFAULT_INDEX`, `UV_INDEX` and the legacy `UV_INDEX_URL`, `UV_EXTRA_INDEX_URL`; the file `UV_CONFIG_FILE` names alone; else the user's `uv.toml` (`$XDG_CONFIG_HOME/uv`, `~/.config/uv`; `%APPDATA%\uv` on Windows) and the system's (the first `$XDG_CONFIG_DIRS/uv/uv.toml`, else `/etc/uv/uv.toml`; `%ProgramData%\uv` on Windows). `UV_NO_CONFIG` reads no `uv.toml`, the repository's included                                         |
+| uv         | `UV_DEFAULT_INDEX`, `UV_INDEX`, `UV_FIND_LINKS`, `UV_INDEX_STRATEGY` and the legacy `UV_INDEX_URL`, `UV_EXTRA_INDEX_URL`; the file `UV_CONFIG_FILE` names alone; else the user's `uv.toml` (`$XDG_CONFIG_HOME/uv`, `~/.config/uv`; `%APPDATA%\uv` on Windows) and the system's (the first `$XDG_CONFIG_DIRS/uv/uv.toml`, else `/etc/uv/uv.toml`; `%ProgramData%\uv` on Windows). `UV_NO_CONFIG` reads no `uv.toml`, the repository's included   |
 | Poetry     | `config.toml` and `auth.toml` in `POETRY_CONFIG_DIR`, else `%APPDATA%\pypoetry` on Windows, `~/Library/Application Support/pypoetry` on macOS, else `$XDG_CONFIG_HOME/pypoetry` (`~/.config/pypoetry`); `POETRY_REPOSITORIES_<NAME>_URL`, `POETRY_HTTP_BASIC_<NAME>_USERNAME`/`_PASSWORD`                                                                                                                                                       |
 | PDM        | `PDM_PYPI_URL`, `PDM_PYPI_USERNAME`, `PDM_PYPI_PASSWORD` over `config.toml` in `PDM_CONFIG_FILE`, else `%LOCALAPPDATA%\pdm\pdm` on Windows, `~/Library/Application Support/pdm` on macOS, else `$XDG_CONFIG_HOME/pdm` (`~/.config/pdm`)                                                                                                                                                                                                         |
 | Cargo      | `CARGO_REGISTRIES_<NAME>_INDEX`, `_TOKEN` and `_CREDENTIAL_PROVIDER` (the name upper-cased, `-` as `_`), `CARGO_REGISTRY_TOKEN` and `_CREDENTIAL_PROVIDER` for crates.io, `CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS`; `config`/`config.toml` and `credentials`/`credentials.toml` in `CARGO_HOME`, else `~/.cargo` (the file without an extension when both exist)                                                                            |
@@ -1289,7 +1290,7 @@ default or is asked **beside** it:
 
 | Ecosystem                     | replaces the public default                                                                                                                                                                                                                                                                                                | asked beside it                                                                                                                                                                                                                                                                                                                  |
 |-------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| PyPI                          | `index-url`, `PIP_INDEX_URL`, `-i`; a uv index with `default = true`; Poetry's primary sources, asked in order, PyPI only when one of them is it (a declared PyPI of any priority drops the implicit one)                                                                                                                  | `extra-index-url`, `PIP_EXTRA_INDEX_URL`; any other uv index; after the primary index: a supplemental (or legacy secondary) Poetry source                                                                                                                                                                                        |
+| PyPI                          | `index-url`, `PIP_INDEX_URL`, `-i`; a uv index with `default = true` (a repository's before the user's `uv.toml`'s); a PDM source named `pypi`; Poetry's primary sources, asked in order, PyPI only when one of them is it (a declared PyPI of any priority drops the implicit one)                                        | `extra-index-url`, `PIP_EXTRA_INDEX_URL`; any other uv index or `find-links` location; any other PDM source; after the primary index: a supplemental (or legacy secondary) Poetry source, the PDM sources after PyPI under `respect-source-order`                                                                                |
 | Maven                         | a `settings.xml` mirror of `central`; a mirror of `*` or `external:*` (or one without `mirrorOf`), which stands in for every repository; a settings profile or Clojure repository with the id `central`; `COURSIER_REPOSITORIES` and, under `-Dsbt.override.build.repos=true`, `~/.sbt/repositories`, lists asked in order | a POM's `<repositories>`, Gradle's `maven { url … }` (a build's or an init script's), sbt's `resolvers`, Clojure's `:mvn/repos` and `:repositories` (a project's or the user's), an active settings profile's repositories, `~/.sbt/repositories`, a mirror of any other repository; Clojars after Central for a Clojure project |
 | Composer                      | nothing: `"packagist.org": false` switches Packagist off                                                                                                                                                                                                                                                                   | every `composer` repository                                                                                                                                                                                                                                                                                                      |
 | NuGet                         | nothing: nuget.org is off when the merged configuration leaves it out (a `<clear/>` with no closer entry for it, or it disabled), or when `paket.dependencies` lists sources and none is nuget.org                                                                                                                         | every enabled feed; every Paket source                                                                                                                                                                                                                                                                                           |
@@ -1444,8 +1445,8 @@ PowerShellGet installs them from the same repository.
 Five kinds of source are **authoritative** and have no fallback: a scoped source
 that covers the package (an npm `@scope:registry`, a Gemfile `source` block, a
 pubspec's `hosted:` server, a Python package pinned to an index by uv's
-`[tool.uv.sources]`, Poetry's `source =`, Pipenv's `index =` or PDM's
-`include_packages`),
+`[tool.uv.sources]`, Poetry's `source =`, Pipenv's `index =`, or by PDM's
+`include_packages`, whose matching sources are all asked, in order),
 the NuGet feeds `packageSourceMapping` maps the package to, a Cargo alternative
 registry, a private Hex organization (`organization: "acme"` or
 `repo: "hexpm:acme"` in `mix.exs`, `"hexpm:acme"` in `mix.lock`), and the host
@@ -1471,19 +1472,37 @@ the company feed is never named to nuget.org, even when the feed lacks it. A
 package no pattern covers is asked of every feed and nuget.org as usual, where
 NuGet itself would refuse it; Paket's feeds are not mapped.
 
-Python's tools are read in their own terms. A `uv.toml` beside a
-`pyproject.toml` replaces its `[tool.uv]` indexes, as in uv, while its
-`[tool.uv.sources]` still pins packages, to the directory's indexes or to an
-explicit index this machine's `uv.toml` names; `UV_NO_CONFIG` and
-`UV_CONFIG_FILE` leave a repository's `uv.toml` unread. Poetry's primary
-sources (after any of priority `default`) are asked in the order written, and
+Python's tools are read in their own terms. A repository's uv indexes are
+asked before those of the user's and the system's `uv.toml`, and its default
+index wins over theirs, as uv reads a project's configuration first; uv's
+variables still come before both. A `uv.toml` beside a `pyproject.toml`
+replaces its `[tool.uv]` indexes, as in uv, while its `[tool.uv.sources]`
+still pins packages, as uv resolves the names: to an index `UV_INDEX` or
+`UV_DEFAULT_INDEX` names, else to the `pyproject.toml`'s own
+`[[tool.uv.index]]`, never to a `uv.toml`'s; `UV_NO_CONFIG` and
+`UV_CONFIG_FILE` leave a repository's `uv.toml` unread. A flat index (an
+index with `format = "flat"`, `find-links`, `UV_FIND_LINKS`) is a page or a
+directory listing distribution files: its file names give the versions, and
+a file's PEP 658 `.metadata` its requirements, or, for a directory this
+machine names, the `METADATA` of a wheel in it. A repository's flat index is
+recorded only when it is a URL, untrusted like any repository index. Poetry's
+primary sources (after any of priority `default`) are asked in the order
+written, and
 PyPI only when one of them is a source named PyPI; its supplemental (and legacy
 secondary) sources are asked after them, or after PyPI when no source is
 primary, and a source named PyPI of any priority drops the implicit PyPI, as
 Poetry does. A `Pipfile`'s first source
 replaces PyPI and its others are asked beside it, as Pipenv passes them to
-pip. A PDM source named `pypi` replaces PyPI, and its `include_packages`
-patterns send the packages they match to that source alone. Poetry's
+pip. A PDM source named `pypi` replaces PyPI; a package some sources'
+`include_packages` patterns match is asked of those sources alone, and a
+source is never asked for a package its `exclude_packages` patterns match
+(nor PyPI, when the `pypi` source excludes it). Under PDM's
+`respect-source-order` its sources are asked in order around PyPI (after it
+when no source is named `pypi`). uv under `index-strategy`
+`unsafe-best-match` or with `find-links`, and PDM without
+`respect-source-order`, merge the versions all their indexes have: depphunter
+still asks the indexes in order and takes the first that has the package, and
+`--explain` says so once (`merged`). Poetry's
 `config.toml` repositories are where it publishes, not sources. When several
 of this machine's tools name a replacement for PyPI, pip's comes first, then
 uv's, then PDM's.
@@ -2024,7 +2043,8 @@ The report records six things:
   (`no-copy`); and a Bazel registry
   a `.bazelrc` names a credential helper for, or a Conan remote that wants a
   login only Conan's `auth_remote.py` plugin could supply, which is not run
-  (`helper-not-run`); and
+  (`helper-not-run`); a Python package asked of several indexes while uv or
+  PDM is configured to merge their versions (`merged`); and
 - **the questions nothing answered** — every package for which no answer was
   obtained, with the reason: no lock file covers it; its index is named only by
   the repository; it is private and its index is the public one; the proxy
