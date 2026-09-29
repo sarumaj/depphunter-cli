@@ -16,7 +16,8 @@ found where its tool finds it
 ([REQ-SUP-064](REQ-SUP-064-tool-configuration-locations.md)): npm's registry
 settings (`npm_config_registry` and `@scope:registry`, the user's and the
 global npmrc), Yarn Berry's `npmRegistryServer` and `npmScopes` registries
-(`YARN_NPM_REGISTRY_SERVER`, the home `.yarnrc.yml`), Yarn 1's `registry` and
+(`YARN_NPM_REGISTRY_SERVER`, the `.yarnrc.yml` files above the analyzed
+checkout and the home's, merged), Yarn 1's `registry` and
 `"@scope:registry"` (`~/.yarnrc`), Bun's `[install] registry` and
 `[install.scopes]` (the global bunfig), pip's `index-url` and `extra-index-url`
 (`PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL` and pip's configuration files), uv's and
@@ -106,13 +107,14 @@ manager, on the machine and in the repository.
 8. The home `.yarnrc.yml` (with `${VAR}` resolved), `~/.yarnrc` and the global
    bunfig yield trusted npm sources, a scope's registry serving the scope; a
    repository's `.yarnrc.yml`, `.yarnrc` and `bunfig.toml` yield untrusted
-   ones.
+   ones, and so does a `.yarnrc.yml` between the analyzed directory and the
+   top of its checkout
+   ([REQ-SUP-079](REQ-SUP-079-configuration-files-above-the-analyzed-directory.md)).
 
 ## Notes
 
 npm's own registry, when set, stays the replacement asked: it is found before
-Yarn's and Bun's. The `.yarnrc.yml` files Yarn reads between the project and
-the root are not read.
+Yarn's and Bun's.
 
 The profiles of Maven's settings activated by a property, the OS, the JDK or a
 file are not read: whether they are active depends on the build. The

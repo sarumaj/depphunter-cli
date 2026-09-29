@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang/nuget"
@@ -11,14 +12,16 @@ import (
 )
 
 // readNuGet takes the credentials this machine keeps for its NuGet feeds: those of
-// its NuGet.Config files, the NuGetPackageSourceCredentials_<source> variables a
-// pipeline sets, and the Azure Artifacts credential provider's
-// VSS_NUGET_EXTERNAL_FEED_ENDPOINTS.
+// its NuGet configuration files - the nuget.config files of the directories above
+// the analyzed one outside its checkout, the user's NuGet.Config and additional
+// files, the machine-wide files, closest first as NuGet reads them - the
+// NuGetPackageSourceCredentials_<source> variables a pipeline sets, and the Azure
+// Artifacts credential provider's VSS_NUGET_EXTERNAL_FEED_ENDPOINTS.
 //
 // Implements: REQ-AUTH-004, REQ-AUTH-022
 func (c *Store) readNuGet(m userconf.Machine) {
 	var files [][]byte
-	for _, name := range append(m.NuGetConfigs(), m.NuGetMachineConfigs()...) {
+	for _, name := range slices.Concat(m.NuGetConfigsAbove(), m.NuGetConfigs(), m.NuGetMachineConfigs()) {
 		if data, err := os.ReadFile(name); err == nil {
 			files = append(files, data)
 		}

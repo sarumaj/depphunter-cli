@@ -118,6 +118,7 @@ func TestRepositoryYarnAndBunCredentials(t *testing.T) {
 	files := write(t, map[string]string{
 		".yarnrc.yml": `npmRegistryServer: "https://yarn.corp/npm"
 npmAuthToken: "${NPM_TOKEN}"
+npmAlwaysAuth: true
 npmScopes:
   lit:
     npmRegistryServer: "https://literal.corp"
@@ -125,9 +126,13 @@ npmScopes:
   fb:
     npmRegistryServer: "https://fallback.corp"
     npmAuthToken: "${UNSET_HERE:-repo-default}"
+  held:
+    npmRegistryServer: "https://held.corp"
+    npmAuthToken: "${NPM_TOKEN}"
 npmRegistries:
   "https://ident.corp":
     npmAuthIdent: "${IDENT}"
+    npmAlwaysAuth: true
 `,
 		"bunfig.toml": `[install.scopes]
 bun = { url = "https://bun.corp/", username = "ci", password = "$BUN_PASS" }
@@ -175,13 +180,17 @@ url = "https://ci:written@bunurl.corp/"
 	// A registry this machine configures on the host vouches for it; the machine's
 	// own credential there is kept.
 	home := t.TempDir()
-	put(t, filepath.Join(home, ".npmrc"), "@corp:registry=https://yarn.corp/npm\n//bun.corp/:_authToken=machine\n@b:registry=https://bun.corp/\n")
+	put(t, filepath.Join(home, ".npmrc"), "@corp:registry=https://yarn.corp/npm\n//bun.corp/:_authToken=machine\n@b:registry=https://bun.corp/\n"+
+		"@h:registry=https://held.corp/\n//held.corp/:_authToken=machine\n")
 	s = run(home)
 	if got := authOf(s, "https://yarn.corp/npm/x"); got != "Bearer env-token" {
 		t.Errorf("machine host: %q", got)
 	}
 	if got := authOf(s, "https://bun.corp/x"); got != "Bearer machine" {
 		t.Errorf("the machine's credential was replaced: %q", got)
+	}
+	if got := authOf(s, "https://held.corp/@held%2fx/1.0.0"); got != "Bearer machine" {
+		t.Errorf("a scope's lent token took the machine's registry: %q", got)
 	}
 	if got := authOf(s, "https://ident.corp/x"); got != "" {
 		t.Errorf("a host the machine does not name was lent to: %q", got)

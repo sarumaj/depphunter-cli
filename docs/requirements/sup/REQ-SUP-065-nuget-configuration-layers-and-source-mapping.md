@@ -13,8 +13,14 @@ verification:
 
 Index discovery **shall** merge NuGet's configuration files as NuGet does,
 from the farthest to the closest: the machine-wide files (every `*.config` in
-NuGet's machine-wide `Config` directory), the user's `NuGet.Config`, then the
-repository's `nuget.config` files, a deeper one closer than a shallower one.
+NuGet's machine-wide `Config` directory), the additional user files of the
+`config` directory beside the user's `NuGet.Config`, the user's
+`NuGet.Config`, the `nuget.config` files of the directories above the
+analyzed one (those outside its checkout this machine's, those between it and
+the checkout's top the repository's;
+[REQ-SUP-079](REQ-SUP-079-configuration-files-above-the-analyzed-directory.md)),
+a closer directory's closer, then the repository's `nuget.config` files the
+scan finds, a deeper one closer than a shallower one.
 In each of `<packageSources>`, `<disabledPackageSources>`,
 `<packageSourceMapping>` and `<packageSourceCredentials>`, an entry of a closer
 file **shall** replace the same key of a farther one, and a `<clear/>` **shall**
@@ -62,6 +68,10 @@ never would.
    that names a machine key again makes it the repository's source; the
    machine-wide file's sources come first and the user file's URL wins their
    shared key.
+5. Sources come out farthest first: an additional user file's, the user
+   file's, a trusted one of a `nuget.config` above the checkout, an untrusted
+   one of a `nuget.config` between the analyzed directory and the checkout's
+   top, the project's.
 
 ## Notes
 
@@ -69,9 +79,7 @@ A package no pattern covers is asked as if there were no mapping (the feeds,
 then nuget.org), where NuGet itself would refuse to restore it: nothing is
 learned by refusing to look, and the public index is still never asked about a
 package a pattern covers. Paket's sources are not NuGet sources and are not
-mapped; a mapped package is not asked of them. NuGet reads the
-`nuget.config` files of the directories above a project up to the file
-system's root; only those in the repository are read, merged into one
-configuration for the whole repository (files in sibling directories are
-merged in path order), and the additional user files
-(`~/.nuget/config/*.config`) are not read.
+mapped; a mapped package is not asked of them. The repository's
+`nuget.config` files are merged into one configuration for the whole
+repository (files in sibling directories are merged in path order), where
+NuGet reads for each project only those of its own directory and above.

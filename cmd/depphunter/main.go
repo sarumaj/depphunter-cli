@@ -203,8 +203,10 @@ func run(ctx context.Context, settings config.Config) error {
 	home, _ := os.UserHomeDir()
 	// What this machine already holds for its registries and indexes. Read once: the
 	// index client, the container registries and the link check all send from it, and
-	// each credential goes only to the host it was written for.
-	credentials := auth.Read(home, os.Getenv)
+	// each credential goes only to the host it was written for. The files Yarn and
+	// NuGet read in the directories above a project are this machine's above the
+	// analyzed checkout.
+	credentials := auth.ReadFor(home, settings.Root, os.Getenv)
 	// What this organization owns: what was declared, plus what the machine already
 	// says about private Go modules (internal/scope), in the environment or in the
 	// file `go env -w` writes, as the go command reads them.
@@ -215,6 +217,7 @@ func run(ctx context.Context, settings config.Config) error {
 	}
 	options.Private = private.Match
 	indexes := index.NewDiscoverer(os.Getenv, home)
+	indexes.Root(settings.Root)
 	indexes.Config().Credentials(credentials)
 	indexes.Config().Trust(settings.TrustIndexes)
 	indexes.Config().Private(private.Match)

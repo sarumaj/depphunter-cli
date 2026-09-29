@@ -19,8 +19,11 @@ tool looks for it, reading the variables from the machine's environment only:
   (`npm_config_userconfig`, else `~/.npmrc`), then the global npmrc
   (`npm_config_globalconfig`, else `etc/npmrc` under `npm_config_prefix`).
 - Yarn Berry: `YARN_NPM_REGISTRY_SERVER`, then the file `YARN_RC_FILENAME`
-  names (else `.yarnrc.yml`) in the home directory, its `${VAR}` references
-  resolved from the environment; Yarn 1: `~/.yarnrc`.
+  names (else `.yarnrc.yml`) in each directory above the analyzed one outside
+  its checkout
+  ([REQ-SUP-079](REQ-SUP-079-configuration-files-above-the-analyzed-directory.md)),
+  then `~/.yarnrc.yml`, their `${VAR}` references resolved from the
+  environment; Yarn 1: `~/.yarnrc`.
 - Bun: `$XDG_CONFIG_HOME/.bunfig.toml` when it exists, else
   `~/.bunfig.toml`, its `$VAR` references resolved from the environment.
 - pip: its files in pip's load order, each setting replacing the same setting
@@ -55,7 +58,15 @@ tool looks for it, reading the variables from the machine's environment only:
 - containers: registries.conf and its drop-ins, and the Docker daemon's
   `daemon.json`
   ([REQ-SUP-068](REQ-SUP-068-container-registry-mirrors.md)).
-- NuGet: `%APPDATA%\NuGet\NuGet.Config` on Windows; then the machine-wide
+- NuGet: the `nuget.config` of each directory above the analyzed one outside
+  its checkout
+  ([REQ-SUP-079](REQ-SUP-079-configuration-files-above-the-analyzed-directory.md));
+  `%APPDATA%\NuGet\NuGet.Config` on Windows (elsewhere
+  `~/.nuget/NuGet/NuGet.Config` and `~/.config/NuGet/NuGet.Config`); the
+  additional user files, every `*.config` (elsewhere than on Windows also
+  `*.Config`) of the `config` directory beside the user's `NuGet.Config`
+  (`%APPDATA%\NuGet\config`, `~/.nuget/NuGet/config`) other than a
+  `NuGet.Config`, in name order; then the machine-wide
   `*.config` files of `NuGet\Config` under `%ProgramFiles(x86)%` (else
   `%ProgramFiles%`) on Windows, elsewhere under
   `NUGET_COMMON_APPLICATION_DATA`, else `/Library/Application Support` on
@@ -158,8 +169,10 @@ fixed `$HOME` paths missed the feed the machine actually uses.
 7. `MAVEN_HOME`'s settings, `GRADLE_USER_HOME`'s init scripts, `CLJ_CONFIG`'s
    and `$XDG_CONFIG_HOME/clojure`'s `deps.edn`, `LEIN_HOME` and a moved sbt
    repositories file are read instead of, or beside, the home defaults.
-8. `YARN_RC_FILENAME` renames the home Yarn file, and
-   `YARN_NPM_REGISTRY_SERVER` replaces its registry; Bun's
+8. `YARN_RC_FILENAME` renames the Yarn files above the analyzed directory
+   but not the home's `.yarnrc.yml`, and `YARN_NPM_REGISTRY_SERVER` replaces
+   their registry; NuGet's additional user files follow the user's
+   `NuGet.Config`; Bun's
    `$XDG_CONFIG_HOME/.bunfig.toml` wins over the home one.
 9. `UV_CONFIG_FILE` and `UV_NO_CONFIG`, `$XDG_CONFIG_DIRS` for uv's system
    file, `POETRY_CONFIG_DIR` and `PDM_CONFIG_FILE` are honored, and the

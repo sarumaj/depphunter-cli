@@ -1159,9 +1159,10 @@ tree following one would not terminate.
 
 Every external package records the index it comes from. depphunter reads both
 the index configuration present on this machine and the configuration the
-repository carries — `.npmrc`, including `@scope:registry`; `.yarnrc.yml`
-and `~/.yarnrc.yml` (`npmRegistryServer`, `npmScopes`,
-`YARN_NPM_REGISTRY_SERVER`); Yarn 1's `.yarnrc` and `~/.yarnrc`; Bun's
+repository carries — `.npmrc`, including `@scope:registry`; `.yarnrc.yml`,
+those of the directories above it and `~/.yarnrc.yml` (`npmRegistryServer`,
+`npmScopes`, `YARN_NPM_REGISTRY_SERVER`); Yarn 1's `.yarnrc` and
+`~/.yarnrc`; Bun's
 `bunfig.toml` and global bunfig (`[install] registry`, `[install.scopes]`);
 `pip.conf` and a requirements file's `--index-url` and `--extra-index-url`;
 uv's indexes in `pyproject.toml`, `uv.toml` and the user's and system's
@@ -1229,7 +1230,7 @@ and platform paths:
 | Tool       | Where, in the tool's order of precedence                                                                                                                                                                                                                                                                                                                                                                                                        |
 |------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | npm        | `npm_config_*` variables in any case (`npm_config_registry`, `npm_config_@scope:registry`, `npm_config_//host/:_authToken`; the lower-case spelling wins); the user's npmrc (`npm_config_userconfig`, else `~/.npmrc`); the global npmrc (`npm_config_globalconfig`, else `etc/npmrc` under `npm_config_prefix`; npm's built-in prefix is not guessed)                                                                                          |
-| Yarn       | `YARN_NPM_REGISTRY_SERVER`, `YARN_NPM_AUTH_TOKEN`, `YARN_NPM_AUTH_IDENT`; Yarn Berry's `.yarnrc.yml` in the home directory (the name `YARN_RC_FILENAME` gives it), `${VAR}` resolved from the environment; Yarn 1's `~/.yarnrc` (registries only: Yarn 1 takes credentials from the npmrc)                                                                                                                                                      |
+| Yarn       | `YARN_NPM_REGISTRY_SERVER`, `YARN_NPM_AUTH_TOKEN`, `_IDENT`, `_ALWAYS_AUTH`; Yarn Berry's file (named `YARN_RC_FILENAME`, else `.yarnrc.yml`) in each directory above the analyzed checkout, then `~/.yarnrc.yml`, merged key by key, `${VAR}` resolved from the environment; Yarn 1's `~/.yarnrc` (registries only: Yarn 1 takes credentials from the npmrc)                                                                                   |
 | Bun        | `$XDG_CONFIG_HOME/.bunfig.toml` when it exists, else `~/.bunfig.toml`, `$VAR` resolved from the environment                                                                                                                                                                                                                                                                                                                                     |
 | pip        | `PIP_INDEX_URL` and `PIP_EXTRA_INDEX_URL`; the file `PIP_CONFIG_FILE` names; the user's `pip.conf` (`$XDG_CONFIG_HOME/pip`, `~/Library/Application Support/pip` on macOS, `%APPDATA%\pip\pip.ini` on Windows, and the legacy `~/.pip`), skipped when `PIP_CONFIG_FILE` names an existing file; the site-wide `/etc/pip.conf`, `$XDG_CONFIG_DIRS/pip/pip.conf`, `%ProgramData%\pip\pip.ini`. `PIP_CONFIG_FILE=/dev/null` switches every file off |
 | uv         | `UV_DEFAULT_INDEX`, `UV_INDEX` and the legacy `UV_INDEX_URL`, `UV_EXTRA_INDEX_URL`; the file `UV_CONFIG_FILE` names alone; else the user's `uv.toml` (`$XDG_CONFIG_HOME/uv`, `~/.config/uv`; `%APPDATA%\uv` on Windows) and the system's (the first `$XDG_CONFIG_DIRS/uv/uv.toml`, else `/etc/uv/uv.toml`; `%ProgramData%\uv` on Windows). `UV_NO_CONFIG` reads no `uv.toml`, the repository's included                                         |
@@ -1241,7 +1242,7 @@ and platform paths:
 | registries | `CONTAINERS_REGISTRIES_CONF`, else `$XDG_CONFIG_HOME/containers/registries.conf` (`~/.config/...`) when it exists, else `/etc/containers/registries.conf`; then the `*.conf` of `/etc/containers/registries.conf.d` and the user's `registries.conf.d` (only the user's beside the user's file), by name                                                                                                                                        |
 | dockerd    | `daemon.json`: the rootless daemon's (`$XDG_CONFIG_HOME/docker`, `~/.config/docker`) when it exists, else `/etc/docker`; Docker Desktop's `~/.docker` on macOS and Windows, else `%ProgramData%\docker\config`                                                                                                                                                                                                                                  |
 | netrc      | `NETRC`; else `~/_netrc` on Windows when it exists; else `~/.netrc`                                                                                                                                                                                                                                                                                                                                                                             |
-| NuGet      | `%APPDATA%\NuGet\NuGet.Config` on Windows; elsewhere `~/.nuget/NuGet/NuGet.Config` and `~/.config/NuGet/NuGet.Config`; then the machine-wide `*.config` files of `NuGet\Config` under `%ProgramFiles(x86)%` on Windows, else under `NUGET_COMMON_APPLICATION_DATA`, `/Library/Application Support` (macOS) or `/etc/opt` (Linux)                                                                                                                |
+| NuGet      | `nuget.config` in each directory above the analyzed checkout; `%APPDATA%\NuGet\NuGet.Config` on Windows, else `~/.nuget/NuGet/NuGet.Config` and `~/.config/NuGet/NuGet.Config`, then the `*.config` of the `config` directory beside it; the machine-wide `*.config` of `NuGet\Config` under `%ProgramFiles(x86)%` on Windows, else `NUGET_COMMON_APPLICATION_DATA`, `/Library/Application Support` (macOS) or `/etc/opt` (Linux)               |
 | Composer   | one home, for repositories and credentials alike: `COMPOSER_HOME`; `%APPDATA%\Composer` on Windows; else the first that exists of `$XDG_CONFIG_HOME/composer` (`~/.config/composer`) and `~/.composer`                                                                                                                                                                                                                                          |
 | Bundler    | `BUNDLE_USER_CONFIG`; else `config` in `BUNDLE_USER_HOME`; else `~/.bundle/config`                                                                                                                                                                                                                                                                                                                                                              |
 | Maven      | `~/.m2/settings.xml`, then `conf/settings.xml` under `MAVEN_HOME`, else `M2_HOME` (the user's file wins); `-s` and `MAVEN_ARGS` are not followed                                                                                                                                                                                                                                                                                                |
@@ -1457,8 +1458,10 @@ dependency-confusion attack would plant it. A Cargo registry of
 `source` — and every other crate stays with crates.io.
 
 NuGet's configuration files are merged as NuGet merges them: the machine-wide
-files, the user's `NuGet.Config`, then the repository's `nuget.config` files (a
-deeper one over a shallower one), a closer file's entry replacing the same key
+files, the additional user files (`~/.nuget/NuGet/config/*.config`), the
+user's `NuGet.Config`, the `nuget.config` files of the directories above the
+analyzed one, then the repository's `nuget.config` files (a deeper one over a
+shallower one), a closer file's entry replacing the same key
 and a `<clear/>` dropping everything before it — so a repository's `<clear/>`
 drops this machine's feeds as well. A feed `<disabledPackageSources>` disables
 is not asked. Under `<packageSourceMapping>`, a package is asked only of the
@@ -1599,11 +1602,11 @@ written for and to no other.
 | Source                                                      | Holds                                                                                                          |
 |-------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
 | npm's user and global npmrc, `npm_config_//<host>/:<field>` | `_authToken`, `_auth`, and `username` with `_password`, per registry host and path                             |
-| the home `.yarnrc.yml`, `YARN_NPM_AUTH_TOKEN`/`_IDENT`      | Yarn Berry's `npmAuthToken` and `npmAuthIdent`: top level, `npmScopes`, `npmRegistries`                        |
+| this machine's `.yarnrc.yml` files, `YARN_NPM_AUTH_*`       | Yarn Berry's `npmAuthToken` and `npmAuthIdent`: top level, `npmScopes`, `npmRegistries`                        |
 | Bun's global bunfig                                         | `token`, or `username` and `password`, of `[install] registry` and `[install.scopes]`                          |
 | `~/.netrc` (`NETRC`; `~/_netrc` on Windows)                 | the machine/login/password triples git, curl, Go (unless `GOAUTH` says not) and pip read                       |
 | Maven's `settings.xml` (`~/.m2`, `MAVEN_HOME`)              | each `<server>`, matched to a `<mirror>`, profile `<repository>` or user `deps.edn` repository                 |
-| the user's and machine-wide `NuGet.Config`                  | `<packageSourceCredentials>` (`ClearTextPassword`), matched to its enabled `<packageSources>` entry            |
+| this machine's `NuGet.Config` and `nuget.config` files      | `<packageSourceCredentials>` (`ClearTextPassword`), matched to its enabled `<packageSources>` entry            |
 | `NuGetPackageSourceCredentials_<source>`                    | `Username=...;Password=...` for a source those files name, over its file entry                                 |
 | `VSS_NUGET_EXTERNAL_FEED_ENDPOINTS`                         | the Azure Artifacts credential provider's endpoint passwords                                                   |
 | `%NAME%` in a repository `nuget.config` or Paket `source`   | a pipeline secret for a repository feed, only when vouched for (below)                                         |
@@ -1796,8 +1799,23 @@ else registry.yarnpkg.com and registry.npmjs.org. `npmAuthToken` is sent as a
 Bearer token and `npmAuthIdent` (`user:password`) as Basic credentials; a
 `${VAR}` naming an unset variable without a fallback is dropped, as Yarn
 refuses it. What the npmrc holds for a registry wins over Yarn's and Bun's.
-Credentials are filed by registry, not by scope: two scopes on one registry
-share one.
+A Yarn credential goes only with the requests Yarn sends it with: a scope's
+with the scope's packages, a registry's with every package under
+`npmAlwaysAuth: true` (or `YARN_NPM_ALWAYS_AUTH`) and otherwise with the
+scoped packages only, so without it an unscoped package is asked
+anonymously, as Yarn asks. `YARN_NPM_SCOPES` is not read: Yarn refuses a map
+from the environment.
+
+**Files above the analyzed directory.** Yarn and NuGet also read their files
+(`.yarnrc.yml`, or the name `YARN_RC_FILENAME` gives it; `nuget.config`) in
+every directory above a project, and so does depphunter above the directory it
+analyzes. Up to the top of that directory's checkout (the nearest directory
+above it holding a `.git`) they are the repository's, like the files the scan
+finds: untrusted, and given no credential of this machine's. Above the
+checkout they are this machine's configuration — the `~/work/.yarnrc.yml`
+that points every project at the company registry — trusted, with their
+credentials read. Yarn's are merged key by key, the closest winning, the
+home's `.yarnrc.yml` last.
 
 **An npm credential serves its registry's path.** A key such as
 `//gitlab.corp/api/v4/projects/1/packages/npm/:_authToken` is sent only

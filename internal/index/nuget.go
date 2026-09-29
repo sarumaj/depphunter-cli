@@ -38,6 +38,27 @@ func projectNuGet(files []*scan.File) []nuget.ConfigFile {
 	return out
 }
 
+// nugetAbove reads the nuget.config files of the directories between the analyzed
+// directory and the top of its checkout (userconf.Machine.DirectoriesAbove),
+// closest first: NuGet reads them after the project's own, and they are the
+// repository's.
+//
+// Implements: REQ-SUP-065, REQ-SUP-079
+func (c *Config) nugetAbove() []nuget.ConfigFile {
+	repository, _ := c.m.DirectoriesAbove()
+	var out []nuget.ConfigFile
+	for _, directory := range repository {
+		if name := c.m.NuGetConfigIn(directory); name != "" {
+			if data, err := os.ReadFile(name); err == nil {
+				if config, ok := nuget.ParseConfig(data); ok {
+					out = append(out, config)
+				}
+			}
+		}
+	}
+	return out
+}
+
 // applyNuGet merges the repository's nuget.config files (project, closest first)
 // over this machine's and records what the merge says, replacing what an earlier
 // call recorded: the enabled package sources, asked beside nuget.org (this
