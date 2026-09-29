@@ -481,6 +481,60 @@ describe('the two kinds of tool', () => {
 // that are arithmetic: which wedge an angle falls in, and which tool a ring steps to.
 // Neither needs a browser, and both are what a walker feels when they flick the mouse
 // - so a wedge that is off by one is a tool taken by mistake in the middle of a chase.
+describe('the lights the walk camera carries', () => {
+  // Verifies: REQ-TOOL-012
+  it('light what is held the same wherever the walker stands and whichever way it faces', () => {
+    // A directional light shines from itself toward its target, and a target that is
+    // not in the scene graph never has its matrix brought up to date: it stays at the
+    // world origin, and the hands are then lit from wherever the middle of the map
+    // happens to be. The shading here is worked out as the renderer works it out -
+    // the scene's matrices updated, each light's direction taken from its world
+    // position to its target's and turned into view space - on a spread of surfaces
+    // facing every way in front of the lens.
+    const W = WALK.Walker.prototype;
+    const scene = { viewScene: new THREE.Scene(), walkCamera: new THREE.PerspectiveCamera() };
+    const w = {
+      scene, hud: { dataset: {} }, primary: TOOLS.rod, secondary: null, handsOff: false,
+      showTool: W.showTool, hideTool: W.hideTool, take: W.take,
+    };
+    w.showTool();
+    const lights = [];
+    w.lights.traverse(o => { if (o.isDirectionalLight) lights.push(o); });
+    assert.equal(lights.length, 3, 'the key, fill and rim are not all there');
+    const normals = [];
+    for (const x of [-1, 0, 1]) for (const y of [-1, 0, 1]) for (const z of [-1, 0, 1]) {
+      if (x || y || z) normals.push(new THREE.Vector3(x, y, z).normalize());
+    }
+    const from = new THREE.Vector3(), to = new THREE.Vector3();
+    const seen = (x, y, z, yaw, pitch) => {
+      const camera = scene.walkCamera;
+      camera.position.set(x, y, z);
+      camera.rotation.set(pitch, yaw, 0, 'YXZ');
+      scene.viewScene.updateMatrixWorld();
+      const directions = lights.map(light => {
+        from.setFromMatrixPosition(light.matrixWorld);
+        to.setFromMatrixPosition(light.target.matrixWorld);
+        return from.sub(to).transformDirection(camera.matrixWorldInverse).clone();
+      });
+      const shading = normals.map(n => lights.reduce((sum, light, i) => sum + light.intensity * Math.max(0, n.dot(directions[i])), 0));
+      return { directions, shading };
+    };
+    const here = seen(0.4, 0.5, -0.3, 0, 0);
+    // The key comes over the left shoulder: from the left, from above, from behind the lens.
+    const key = here.directions[0];
+    assert.ok(key.x < 0 && key.y > 0 && key.z > 0, `the key light comes from ${key.toArray().map(v => v.toFixed(2))} in view`);
+    for (const [x, y, z, yaw, pitch] of [[-310, 2.5, 275, 2.4, -0.3], [520, 40, -480, -1.1, 0.5], [3, 0.5, 900, Math.PI, 0]]) {
+      const there = seen(x, y, z, yaw, pitch);
+      there.directions.forEach((d, i) => assert.ok(d.distanceTo(here.directions[i]) < 1e-9,
+        `light ${i} at (${x}, ${z}) comes from ${d.toArray().map(v => v.toFixed(2))}, not ${here.directions[i].toArray().map(v => v.toFixed(2))}`));
+      there.shading.forEach((s, i) => assert.ok(Math.abs(s - here.shading[i]) < 1e-9,
+        `a surface facing ${normals[i].toArray().map(v => v.toFixed(2))} is lit ${s.toFixed(3)} at (${x}, ${z}), ${here.shading[i].toFixed(3)} near the middle`));
+    }
+    w.hideTool();
+    assert.equal(scene.walkCamera.parent, null);
+  });
+});
+
 describe('the tool switcher', () => {
   // Verifies: REQ-TOOL-054, REQ-TOOL-055, REQ-TOOL-070
   it('numbers the row it draws, left to right', () => {
