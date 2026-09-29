@@ -279,7 +279,7 @@ func TestTheReportSaysWhoAnswered(t *testing.T) {
 		{Ecosystem: Go, Package: "example.com/unversioned"},
 		{Ecosystem: NPM, Package: "react", Version: "18.3.1"},
 		{Ecosystem: Maven, Package: "com.google.guava", Version: "33.0.0-jre"},
-		{Ecosystem: "actions", Package: "actions/checkout", Version: "v4"},
+		{Ecosystem: "gitlab-ci", Package: "infra/pipelines", Version: "v4"},
 		{Ecosystem: Go, Package: "example.com/missing", Version: "v9.9.9"},
 	} {
 		c.Dependencies(ask)
@@ -302,7 +302,7 @@ func TestTheReportSaysWhoAnswered(t *testing.T) {
 		{"example.com/unversioned", trace.NoAnswer, trace.ReasonNoVersion},
 		{"react", trace.NoAnswer, trace.ReasonUntrusted},
 		{"com.google.guava", trace.NoAnswer, trace.ReasonUnsupported},
-		{"actions/checkout", trace.NoAnswer, trace.ReasonNoIndex},
+		{"infra/pipelines", trace.NoAnswer, trace.ReasonNoIndex},
 	} {
 		l, ok := got[want.packageName]
 		switch {

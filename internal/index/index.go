@@ -113,6 +113,15 @@ const (
 	// each recipe revision's conanfile.py through Conan's REST API v2 (see
 	// conanRecipe).
 	Conan = "conan"
+	// Actions is the ci plugin's island of GitHub Actions and reusable workflows,
+	// named owner/repository (lang.Target.Registry the path inside it); a GitHub
+	// REST API serves the files that say what each one runs (see
+	// actionDependencies).
+	Actions = "actions"
+	// PowerShell is the powershell plugin's island of PowerShell Gallery modules;
+	// the Gallery, like a repository Register-PSRepository names, serves NuGet's
+	// v2 OData API (see powershellModule).
+	PowerShell = "psgallery"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -170,6 +179,10 @@ var public = map[string]string{
 	CUE: "https://registry.cue.works",
 	// ConanCenter, the remote Conan 2 configures when nothing else is.
 	Conan: "https://center2.conan.io",
+	// github.com's REST API (see githubFile).
+	Actions: "https://api.github.com",
+	// The PSGallery repository PowerShellGet and PSResourceGet register.
+	PowerShell: "https://www.powershellgallery.com/api/v2",
 }
 
 // Clojars is the Maven repository Clojure's libraries are published to. Leiningen,
@@ -345,6 +358,9 @@ type Source struct {
 	// conanAllowed are a Conan remote's allowed_packages: the patterns of the
 	// references it is asked for, none for every one (see conanCandidates).
 	conanAllowed []string
+	// powershellName is the name a PowerShell repository is registered under,
+	// by which an install names it (see powershellRepository).
+	powershellName string
 }
 
 // Config is the index configuration of one analysis: what this machine knows, and
@@ -746,6 +762,9 @@ func (c *Config) candidates(ecosystem, packageName, registry string) []candidate
 	}
 	if ecosystem == Hex && registry != "" {
 		return c.hexRepositories(packageName, registry)
+	}
+	if ecosystem == PowerShell && registry != "" {
+		return c.powershellRepository(registry)
 	}
 	if ecosystem == NuGet {
 		// packageSourceMapping: a package a pattern covers is asked of the

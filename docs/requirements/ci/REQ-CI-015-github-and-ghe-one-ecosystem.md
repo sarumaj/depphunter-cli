@@ -29,5 +29,8 @@ the workflow alone.
 
 ## Notes
 
-Private-package handling itself belongs to scope `sup`. No test names the
-`actions` ecosystem in a `--private` pattern.
+Private-package handling itself belongs to scope `sup`. With `--online`, an
+action is asked of the GitHub instances this machine works with before
+github.com, and the map names the one that had it
+([REQ-SUP-077](../sup/REQ-SUP-077-github-actions-files.md)); an organization's
+own action (`actions:<glob>`) is not named to github.com there.

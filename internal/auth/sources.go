@@ -460,4 +460,5 @@ func (c *Store) readMachineSources(m userconf.Machine, lookPath func(string) (st
 	c.readCUE(m)
 	c.readSwiftPM(m)
 	c.readConan(m)
+	c.readGitHub(m)
 }

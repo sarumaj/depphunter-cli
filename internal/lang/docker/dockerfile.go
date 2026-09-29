@@ -375,3 +375,19 @@ func closing(s string, from int) int {
 func isAlnum(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
+
+// DockerfileImages resolves the images a Dockerfile builds on - its FROM, COPY
+// --from and RUN --mount from= images and its syntax frontend - as the plugin
+// resolves them in a Dockerfile of the repository. An image named by a variable
+// no ARG sets is left out: it names nothing that could be asked about.
+//
+// Implements: REQ-CI-016
+func DockerfileImages(source []byte) []lang.Target {
+	var out []lang.Target
+	for _, rawImport := range extractDockerfile(source).Imports {
+		if t := imageTarget(rawImport.Module, rawImport.Module); t.Package != "" && !t.Unresolved {
+			out = append(out, t)
+		}
+	}
+	return out
+}

@@ -43,6 +43,8 @@ func TestWorkflow(t *testing.T) {
 		"uses: octo-org/shared/.github/workflows/release.yml@a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0": {
 			Ecosystem: "actions", Package: "octo-org/shared",
 			Version: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0", Pinned: true,
+			// The path is where the index client reads the workflow.
+			Registry: ".github/workflows/release.yml",
 		},
 		"uses: ./.github/workflows/build.yml": {Local: ".github/workflows/build.yml"},
 	})

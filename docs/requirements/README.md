@@ -221,7 +221,7 @@ requirements of type `limitation` in their scopes:
   generated definitions, Scala 3 extension methods and given instances cannot
   be imported from another file.
 - GitHub Actions references from github.com and from GitHub Enterprise are one
-  ecosystem.
+  ecosystem; with `--online` this machine's instances are asked first.
 - Build arguments and environment variables are not read, so an image
   reference that depends on one is left as written; of Compose's `.env` files
   only the one beside the Compose file is read, and remote includes are not

@@ -51,3 +51,28 @@ func TestManifest(t *testing.T) {
 func TestSymbols(t *testing.T) {
 	langtest.CheckSymbols(t, analyze(t)["scripts/deploy.ps1"], map[string]string{"Deploy-App": "func", "Deployer": "class", "Deployer.Run": "method"})
 }
+
+// Verifies: REQ-PS-012
+func TestInstallCommands(t *testing.T) {
+	langtest.CheckImports(t, analyze(t)["scripts/install.ps1"], map[string]lang.Target{
+		"Install-Module PSScriptAnalyzer": {Ecosystem: "psgallery", Package: "PSScriptAnalyzer", Version: "1.21.0", Pinned: true},
+		// A module the repository's manifest does not declare is asked of the
+		// repository the command names.
+		"Install-Module InvokeBuild":     {Ecosystem: "psgallery", Package: "InvokeBuild", Version: "5.10", Registry: "CorpGallery"},
+		"Install-Module platyPS":         {Ecosystem: "psgallery", Package: "platyPS", Version: "5.10", Registry: "CorpGallery"},
+		"Install-PSResource Pester":      {Ecosystem: "psgallery", Package: "Pester", Version: "5.3.0"},
+		"Install-PSResource PSFramework": {Ecosystem: "psgallery", Package: "PSFramework", Version: "1.12.346", Pinned: true},
+		"Save-Module Plaster":            {Ecosystem: "psgallery", Package: "Plaster"},
+	})
+}
+
+// Verifies: REQ-PS-012
+func TestPSDependRequirements(t *testing.T) {
+	langtest.CheckImports(t, analyze(t)["requirements.psd1"], map[string]lang.Target{
+		"PSDepend: psake":         {Ecosystem: "psgallery", Package: "psake"},
+		"PSDepend: BuildHelpers":  {Ecosystem: "psgallery", Package: "BuildHelpers", Version: "2.0.16", Pinned: true},
+		"PSDepend: Pester":        {Ecosystem: "psgallery", Package: "Pester", Version: "5.3.0"},
+		"PSDepend: PSDeploy":      {Ecosystem: "psgallery", Package: "PSDeploy"},
+		"PSDepend: Configuration": {Ecosystem: "psgallery", Package: "Configuration", Version: "1.5.1", Pinned: true},
+	})
+}

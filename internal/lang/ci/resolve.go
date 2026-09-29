@@ -89,9 +89,11 @@ func (r *resolver) local(p string) lang.Target {
 
 // action resolves "owner/repo[/path][@ref]". The dependency is the repository: a
 // reference to a sub-directory still runs whatever that repository holds at reference.
-// Only a commit pins it - a tag can be moved to other code at any time.
+// Only a commit pins it - a tag can be moved to other code at any time. The path
+// inside the repository is kept as the target's Registry: it is where the index
+// client finds the action's metadata file, or the reusable workflow itself.
 //
-// Implements: REQ-CI-002, REQ-CI-011, REQ-CI-013, REQ-CI-014, REQ-CI-015
+// Implements: REQ-CI-002, REQ-CI-011, REQ-CI-013, REQ-CI-014, REQ-CI-015, REQ-CI-016
 func action(reference, requested string) lang.Target {
 	spec, version, _ := strings.Cut(reference, "@")
 	segments := strings.Split(spec, "/")
@@ -104,6 +106,7 @@ func action(reference, requested string) lang.Target {
 		Version:   version,
 		Pinned:    lang.Commit(version),
 		Floating:  version == "", // a local reusable workflow of another repository
+		Registry:  strings.Join(segments[2:], "/"),
 	}
 	if t.Pinned && requested != "" {
 		t.Requested = requested
