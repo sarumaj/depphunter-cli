@@ -150,7 +150,7 @@ func TestXcodeBrokenSettings(t *testing.T) {
 	if got := expandXcode("$(A)", map[string]string{"A": "$(A)"}, 0); !strings.Contains(got, unexpanded) {
 		t.Errorf("a self-referencing setting expanded to %q", got)
 	}
-	if elapsed := time.Since(start); elapsed > 20*time.Second {
+	if elapsed := time.Since(start); elapsed > langtest.TimeLimit(20*time.Second) {
 		t.Errorf("took %v", elapsed)
 	}
 }

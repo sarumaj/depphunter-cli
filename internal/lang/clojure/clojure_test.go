@@ -314,7 +314,7 @@ func TestTruncated(t *testing.T) {
 		for kind := range manifestNames {
 			readManifest(kind, []byte(s))
 		}
-		if d := time.Since(start); d > 5*time.Second {
+		if d := time.Since(start); d > langtest.TimeLimit(5*time.Second) {
 			t.Errorf("%q... took %v", s[:min(20, len(s))], d)
 		}
 	}

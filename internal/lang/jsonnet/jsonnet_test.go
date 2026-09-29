@@ -273,7 +273,7 @@ func TestTruncated(t *testing.T) {
 		source := []byte(strings.Repeat(unit, 200_000/len(unit)))
 		start := time.Now()
 		extractSource(source)
-		if d := time.Since(start); d > 2*time.Second {
+		if d := time.Since(start); d > langtest.TimeLimit(2*time.Second) {
 			t.Errorf("%q x %d: %v", unit, 200_000/len(unit), d)
 		}
 	}

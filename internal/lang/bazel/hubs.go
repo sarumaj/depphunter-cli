@@ -1,7 +1,10 @@
 package bazel
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"regexp"
 	"strings"
 
@@ -216,6 +219,8 @@ func readGoMod(source []byte) []lang.Target {
 
 // pnpm reads the versions a pnpm-lock.yaml resolved for every importer's direct
 // dependencies (rules_js' npm_translate_lock).
+//
+// Implements: REQ-BAZEL-009
 func (r *resolver) pnpm(w *workspace, h *hub, lockLabel string) {
 	p := w.labelPath(lockLabel)
 	if p == "" {
@@ -226,7 +231,7 @@ func (r *resolver) pnpm(w *workspace, h *hub, lockLabel string) {
 		return
 	}
 	type dependencyTable = map[string]any
-	var doc struct {
+	type pnpmLock struct {
 		Dependencies    dependencyTable `yaml:"dependencies"`
 		DevDependencies dependencyTable `yaml:"devDependencies"`
 		Importers       map[string]struct {
@@ -235,8 +240,21 @@ func (r *resolver) pnpm(w *workspace, h *hub, lockLabel string) {
 			OptionalDependencies dependencyTable `yaml:"optionalDependencies"`
 		} `yaml:"importers"`
 	}
-	if yaml.Unmarshal(source, &doc) != nil {
-		return
+	// Recent pnpm writes a document locking pnpm itself (its packageManager
+	// and config dependencies) before the project's lock: the project's is
+	// the last document, as the JavaScript plugin reads it.
+	var doc pnpmLock
+	decoder := yaml.NewDecoder(bytes.NewReader(source))
+	for {
+		var document pnpmLock
+		err := decoder.Decode(&document)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return
+		}
+		doc = document
 	}
 	all := []dependencyTable{doc.Dependencies, doc.DevDependencies}
 	for _, k := range sortedKeys(doc.Importers) {

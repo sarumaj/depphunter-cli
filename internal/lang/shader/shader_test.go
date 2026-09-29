@@ -188,7 +188,7 @@ func TestTruncated(t *testing.T) {
 			if _, err := (Plugin{}).Extract(&scan.File{Path: "x" + extension}, []byte(source)); err != nil {
 				t.Fatal(err)
 			}
-			if d := time.Since(start); d > 2*time.Second {
+			if d := time.Since(start); d > langtest.TimeLimit(2*time.Second) {
 				t.Errorf("%s %.20q (%d bytes): %v", extension, source, len(source), d)
 			}
 		}

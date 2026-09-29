@@ -106,7 +106,7 @@ func TestDeclarationsPathological(t *testing.T) {
 		for _, scala := range []bool{false, true} {
 			start := time.Now()
 			got := declared(declarations([]byte(test.source), scala))
-			if elapsed := time.Since(start); elapsed > 2*time.Second {
+			if elapsed := time.Since(start); elapsed > langtest.TimeLimit(2*time.Second) {
 				t.Errorf("%s (scala %v): %v", test.name, scala, elapsed)
 			}
 			if got != test.want && !(test.name == "package block never closed" && !scala) {
@@ -136,7 +136,7 @@ func TestDeclarationsTruncated(t *testing.T) {
 			}
 		}
 	}
-	if elapsed := time.Since(start); elapsed > 5*time.Second {
+	if elapsed := time.Since(start); elapsed > langtest.TimeLimit(5*time.Second) {
 		t.Errorf("sweep took %v", elapsed)
 	}
 }

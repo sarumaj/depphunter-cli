@@ -307,7 +307,7 @@ func TestTruncated(t *testing.T) {
 			start := time.Now()
 			extractSource(s, true)
 			extractSource(s, false)
-			if d := time.Since(start); d > 5*time.Second {
+			if d := time.Since(start); d > langtest.TimeLimit(5*time.Second) {
 				t.Errorf("%q x %d: %v", unit, len(s)/len(unit), d)
 			}
 		}

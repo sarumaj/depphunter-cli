@@ -24,7 +24,8 @@ requirements lock spells it, pinned by `==`; Gazelle's `go_deps`
 (`from_file` go.mod requirements, `module` tags) and `go_repository` by
 Gazelle's repository names (`@com_github_pkg_errors//:errors`) to Go
 modules; rules_js' `npm_translate_lock` (`//:node_modules/name`,
-`@npm//name`) to npm packages at the version pnpm-lock.yaml resolved; and
+`@npm//name`) to npm packages at the version pnpm-lock.yaml resolved (its
+last YAML document: recent pnpm writes one locking pnpm itself first); and
 rules_rust's crate_universe (`from_cargo` Cargo.lock, `crate.spec`,
 `crates_repository`) (`@crates//:name`) to crates. The artifacts, Go module
 tags and crate specs a manifest declares **shall** be imports of it.
@@ -42,3 +43,6 @@ packages are what OSV and the other plugins know.
    golang.org/x/sys v0.22.0; `:node_modules/lodash` is lodash 4.17.21;
    `@crates//:serde` is serde 1.0.204.
 2. Guava's lock entry gives failureaccess as its dependency.
+3. With a pnpm-lock.yaml whose first document locks pnpm 12.6.0 and whose
+   second locks the project, `@npm//lodash` is lodash 4.17.21 and
+   `@npm//pnpm` is not pinned.
