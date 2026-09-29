@@ -10,8 +10,9 @@ import { ChildProcess } from 'node:child_process';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
-import { Api, PackItem } from './api';
+import { Api, Finding, PackItem } from './api';
 import { BackpackView } from './backpack';
+import { FindingsView, nameOf, packItemFor } from './findings';
 import * as panel from './panel';
 import { StartError, start } from './server';
 import { binDirectoryFor, exposeOnPath } from './terminal';
@@ -37,6 +38,7 @@ let view: MapsView;
 let tree: DependencyTree;
 let treeView: vscode.TreeView<Row>;
 let backpack: BackpackView;
+let findings: FindingsView;
 /**
  * The session the two lower views are showing. One window may map several folders;
  * the panel shows the one whose map was opened last, which is the one being looked at.
@@ -66,8 +68,10 @@ export function activate(context: vscode.ExtensionContext): void {
   view = new MapsView(() => sessions);
   tree = new DependencyTree();
   backpack = new BackpackView();
+  // A finding is placed on the graph the tree shows, which is the one the map shows.
+  findings = new FindingsView(id => !!tree.graphModel?.byId.has(id));
   treeView = vscode.window.createTreeView('depphunter.tree', { treeDataProvider: tree, showCollapseAll: true });
-  context.subscriptions.push(log, status, view, tree, backpack, treeView,
+  context.subscriptions.push(log, status, view, tree, backpack, findings, treeView,
     // A tree that was hidden was not revealed, so opening the panel would show
     // nothing picked out although the map has had something selected all along.
     treeView.onDidChangeVisibility(e => e.visible && revealSelected(selected)),
@@ -85,12 +89,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('depphunter.select', (row: Row) => attached?.api.select(row.node.id).catch(noted)),
     vscode.commands.registerCommand('depphunter.openFile', (row: Row) => openFile(row)),
     vscode.commands.registerCommand('depphunter.showFinding', (it: PackItem) => showFinding(it)),
-    vscode.commands.registerCommand('depphunter.dropFinding', (it: PackItem) => dropFinding(it)),
+    vscode.commands.registerCommand('depphunter.dropFinding', (it: { id: string }) => dropFinding(it)),
+    vscode.commands.registerCommand('depphunter.catchFinding', (f?: Finding) => catchFinding(f)),
     vscode.commands.registerCommand('depphunter.export', () => exportGraph()),
     vscode.commands.registerCommand('depphunter.resolution', () => showResolution()),
     vscode.commands.registerCommand('depphunter.exportBackpack', () => exportBackpack()),
     vscode.window.registerTreeDataProvider('depphunter.maps', view),
     vscode.window.registerTreeDataProvider('depphunter.backpack', backpack),
+    vscode.window.registerTreeDataProvider('depphunter.findings', findings),
     vscode.workspace.onDidChangeWorkspaceFolders(e => {
       for (const folder of e.removed) end(folder.uri.fsPath);
       view.refresh();
@@ -177,6 +183,9 @@ async function attach(session: Session): Promise<void> {
       case 'backpack':
         void refreshSession(api);
         break;
+      case 'findings':
+        void refreshFindings(api);
+        break;
       case 'open':
         if (event.data.hex && typeof event.data.path === 'string') void openHex(session.root, event.data.path);
         break;
@@ -187,14 +196,14 @@ async function attach(session: Session): Promise<void> {
         // reconnection; attach has just read both.
         const first = !attached.greeted;
         attached.greeted = true;
-        if (!first && !event.data.resumed) void Promise.all([refreshGraph(api), refreshSession(api)]);
+        if (!first && !event.data.resumed) void Promise.all([refreshGraph(api), refreshSession(api), refreshFindings(api)]);
         break;
       }
     }
   });
   attached = { root: session.root, api, stream };
   treeView.title = `Dependencies: ${session.name}`;
-  await Promise.all([refreshGraph(api), refreshSession(api)]);
+  await Promise.all([refreshGraph(api), refreshSession(api), refreshFindings(api)]);
 }
 
 // Implements: REQ-EXT-002
@@ -203,7 +212,8 @@ function detach(): void {
   attached = undefined;
   selected = '';
   tree.setGraph(undefined);
-  backpack.setItems([]);
+  setPack([]);
+  findings.setFindings([]);
   treeView.title = 'Dependencies';
 }
 
@@ -213,7 +223,11 @@ async function refreshGraph(api: Api, force = false): Promise<void> {
     // to rebuild. Re-indexing a hundred thousand nodes to arrive at the same tree
     // is the sort of work nobody sees and everybody pays for.
     const graph = await api.graph(force);
-    if (graph && attached?.api === api) tree.setGraph(graph);
+    if (graph && attached?.api === api) {
+      tree.setGraph(graph);
+      // Findings are placed on the graph, so a new one may move them.
+      findings.setFindings(findings.contents);
+    }
   } catch (err) {
     noted(err);
   }
@@ -223,7 +237,7 @@ async function refreshSession(api: Api): Promise<void> {
   try {
     const state = await api.session();
     if (attached?.api !== api) return;
-    backpack.setItems(state.backpack ?? []);
+    setPack(state.backpack ?? []);
     revealSelected(state.selected);
   } catch (err) {
     noted(err);
@@ -233,7 +247,32 @@ async function refreshSession(api: Api): Promise<void> {
 // The Refresh command: somebody pressed it, so the graph is read again whether or
 // not the server thinks the panel already has it.
 function refreshPanel(): void {
-  if (attached) void Promise.all([refreshGraph(attached.api, true), refreshSession(attached.api)]);
+  if (attached) void Promise.all([refreshGraph(attached.api, true), refreshSession(attached.api), refreshFindings(attached.api)]);
+}
+
+/**
+ * Reads the scanners' findings for the Findings view. Nothing is shown while they are
+ * still being read: the server announces them (`findings`) when they are ready.
+ * Implements: REQ-EXT-035
+ */
+async function refreshFindings(api: Api): Promise<void> {
+  try {
+    const list = await api.findings();
+    if (attached?.api === api) findings.setFindings(list ?? []);
+  } catch (err) {
+    noted(err);
+  }
+}
+
+/**
+ * The backpack as the server has it, in both views: the Backpack view lists it and
+ * the Findings view marks what is in it. Every change goes through here, whichever
+ * client made it.
+ * Implements: REQ-EXT-036
+ */
+function setPack(items: PackItem[]): void {
+  backpack.setItems(items);
+  findings.setCaught(items.map(it => it.id));
 }
 
 /**
@@ -264,12 +303,55 @@ async function showFinding(it: PackItem): Promise<void> {
 }
 
 // Implements: REQ-EXT-011
-async function dropFinding(it: PackItem): Promise<void> {
+async function dropFinding(it: { id: string }): Promise<void> {
   if (!attached) return;
   const left = backpack.contents.filter(other => other.id !== it.id);
   try {
     await attached.api.setBackpack(left);
-    backpack.setItems(left);
+    setPack(left);
+  } catch (err) {
+    await report(err);
+  }
+}
+
+/** What the map's backpack holds at most (web/static/backpack.js), newest first. */
+const MAX_PACK = 500;
+
+/**
+ * Puts a finding in the backpack without walking up to its bug: the entry the map's
+ * own catch would make (findings.ts packItemFor), first in the list as the map puts
+ * it, handed up the way a removal is. The map takes it from the server's
+ * announcement, and its bug stops walking there. From the palette, with no finding
+ * given, it asks which of those not caught yet.
+ *
+ * Implements: REQ-EXT-036
+ */
+async function catchFinding(f?: Finding): Promise<void> {
+  if (!attached) {
+    void vscode.window.showInformationMessage('Open a map first: there are no findings to catch yet.');
+    return;
+  }
+  if (!f) {
+    const open = findings.getChildren().filter(x => !findings.isCaught(x.id));
+    if (!open.length) {
+      void vscode.window.showInformationMessage(findings.contents.length
+        ? 'Every finding is in the backpack already.'
+        : 'The scanners reported nothing on this map.');
+      return;
+    }
+    const chosen = await vscode.window.showQuickPick(open.map(x => ({
+      label: nameOf(x), description: `${x.severity || 'unknown'} · ${x.title}`, detail: x.ref || x.id, finding: x,
+    })), { title: 'Add to the Backpack', matchOnDescription: true, matchOnDetail: true });
+    if (!chosen) return;
+    f = chosen.finding;
+  }
+  const finding = f;
+  // Caught already: catching it again changes nothing, as on the map.
+  if (backpack.contents.some(it => it.id === finding.id)) return;
+  const items = [packItemFor(finding, findings.nodeOf(finding)), ...backpack.contents].slice(0, MAX_PACK);
+  try {
+    await attached.api.setBackpack(items);
+    setPack(items);
   } catch (err) {
     await report(err);
   }

@@ -16,7 +16,8 @@ import { Bugs, TAKE_MS } from './bugs.js';
 import { Pins } from './pins.js';
 import { Avatar } from './avatar.js';
 import { startTour, startWalkTour, walkTourPending } from './tour.js';
-import { Backpack } from './backpack.js';
+import { Backpack, catchFinding } from './backpack.js';
+import { FindingList, findingRows } from './findinglist.js';
 import { Stash } from './stash.js';
 import { indexFindings } from './findings.js';
 import { $, h, fmt, escapeHTML, whenUnlocked } from './dom.js';
@@ -65,6 +66,7 @@ let flames;       // ... and what that looks like, on the map and in the street
 let pins;         // the same findings, as markers over the map
 let avatar;       // where the walker stands, seen from the map
 let pack;         // what has been caught (backpack.js)
+let findingList;  // every finding on the map, as a list to catch from (findinglist.js)
 let stash;        // what the camera has photographed (stash.js)
 let aimX = 0;     // where the walk-mode tooltip was last placed
 // Opens the export menu, which bindExport owns; X reaches it from either view.
@@ -207,7 +209,7 @@ async function main() {
     // when the bug has finished arriving.
     // Implements: REQ-HUNT-015, REQ-HUNT-016
     onCatch: (f, node) => {
-      pack.add(f, node);
+      catchFinding(pack, state.findings, f, node);
       walker.health.caught(pack.counts.total);
       walker.drawHud();
       const { caught, total } = bugs.counts;
@@ -260,7 +262,24 @@ async function main() {
     // Implements: REQ-HUNT-029, REQ-HUNT-031
     onCatch: (f, kept) => {
       if (kept) pack.remove(f.id);
-      else pack.add(f, state.findings?.place(f));
+      else catchFinding(pack, state.findings, f);
+    },
+  });
+  // The same again, for every finding at once: a list of what the map shows, whose
+  // button is the same catch as the panel's and the street's.
+  // Implements: REQ-HUNT-049, REQ-HUNT-050, REQ-HUNT-051
+  findingList = new FindingList($('findings-list'), {
+    caught: id => pack.has(id),
+    onPoint: row => pointAt(row?.node),
+    onOpen: row => {
+      reveal(row.node);
+      panel.show(row.node, false, row.finding.id);
+    },
+    onToggle: ({ finding, node }, kept) => {
+      if (kept) pack.remove(finding.id);
+      else if (catchFinding(pack, state.findings, finding, node)) {
+        updateStatus(`${finding.severity}: ${finding.title} - in the backpack`);
+      }
     },
   });
 
@@ -415,6 +434,8 @@ function drawPack(_pack, fromServer = false) {
   $('pack-export').hidden = STATIC || !total;
   const list = $('pack-list');
   list.replaceChildren(...pack.items.map(it => packRow(it)));
+  // What is in the backpack is marked in the findings list, so that changes too.
+  drawFindings();
 }
 
 function packRow(it) {
@@ -455,6 +476,8 @@ let packing = () => {}; // calls off a backpack still waiting for the pointer (w
 // Implements: REQ-WALK-034, REQ-UI-014
 function setPackOpen(on) {
   packing();
+  // The two share a corner of the map, and one of them is enough to read at once.
+  if (on) setFindingsOpen(false);
   const show = () => {
     $('pack').hidden = !on;
     $('pack-btn').setAttribute('aria-expanded', on);
@@ -472,6 +495,67 @@ function setPackOpen(on) {
     show();
     walker.lockPointer();
   }
+}
+
+// ---------------------------------------------------------------- the findings list
+
+/**
+ * Redraws the findings list and its toolbar button. The button is there when the
+ * scanners reported anything and the map is being looked at from above: in the street
+ * the findings are bugs, and catching one there is the point of being there. Its count
+ * is what the list still has to catch, under the filters as they stand.
+ *
+ * Implements: REQ-HUNT-049
+ */
+function drawFindings() {
+  if (!findingList) return;
+  const any = !!state.findings?.all.length;
+  $('findings-btn').hidden = !any || !!walker?.active;
+  if (!any && !$('findings').hidden) setFindingsOpen(false);
+  const rows = findingRows(state.findings, state.vis.visible);
+  const left = rows.filter(row => !pack.has(row.finding.id)).length;
+  $('findings-count').hidden = !left;
+  $('findings-count').textContent = fmt.format(left);
+  if ($('findings').hidden) return;
+  findingList.draw(rows);
+  const hidden = (state.findings?.all.length || 0) - rows.length;
+  $('findings-summary').textContent = rows.length
+    ? `${fmt.format(rows.length)} on the map, ${fmt.format(left)} still to catch${hidden ? ` · ${fmt.format(hidden)} filtered out` : ''}`
+    : '';
+  $('findings-empty-note').hidden = rows.length > 0;
+}
+
+/**
+ * Opens or closes the list. `keyboard` puts the focus on its first row, for somebody
+ * who opened it with L and means to go on with the keys; a click leaves the focus
+ * where the pointer is.
+ */
+function setFindingsOpen(on, keyboard = false) {
+  if (on && (walker?.active || $('findings-btn').hidden)) return;
+  if (on) setPackOpen(false);
+  $('findings').hidden = !on;
+  $('findings-btn').setAttribute('aria-expanded', on);
+  if (on) drawFindings();
+  else pointAt(null);
+  if (on && keyboard) $('findings-list').firstElementChild?.focus();
+}
+
+/**
+ * Lights the building a finding is on: tinted the way pointing at it on the map does,
+ * and outlined the way selecting it does, since a tint alone is lost on an island of
+ * gray packages; null puts it out and gives the outline back to the selection. A
+ * building folded into a collapsed district lights the district, which is what
+ * stands for it on the map as it is drawn.
+ */
+function pointAt(node) {
+  const b = node && L && representativeOf(node);
+  const i = b ? L.boxes.indexOf(b) : -1;
+  scene.setOutline(b || focus?.selBox || null, pal.select);
+  if (i !== state.hovered) {
+    state.hovered = i;
+    recolor();
+  }
+  scene.requestRender();
 }
 
 // ---------------------------------------------------------------- git history
@@ -679,6 +763,7 @@ async function reload(changed) {
   drawFilters();
   drawLegend();
   relayout();
+  drawFindings(); // its rows lead to the new model's nodes
   if (state.selected) panel.show(state.selected, true); else panel.close();
   const time = new Date().toLocaleTimeString();
   updateStatus(changed.length ? `updated ${time} · ${fmt.format(changed.length)} changed (highlighted)` : `updated ${time}`);
@@ -897,6 +982,7 @@ function applyFilters() {
   relayout();
   drawLegend();
   updateStatus();
+  drawFindings();
 }
 
 // The badge counts filters beyond the defaults, so std-lib islands hidden at start do
@@ -1081,6 +1167,7 @@ function setWalking(on) {
     // after dying above all, came back with the mouse free.
     // Implements: REQ-WALK-010, REQ-WALK-037
     setPackOpen(false);
+    setFindingsOpen(false);
     panel.close();
     walker.enter(walkTarget(), representativeOf(model.root), L.bounds, !teaching);
     // A first walk is also flown in (walker.startArrival): held, the flight waits at
@@ -1097,6 +1184,7 @@ function setWalking(on) {
   $('walk').setAttribute('aria-pressed', on);
   $('map').parentElement.classList.toggle('walking', on);
   for (const el of mapOnly()) el.hidden = on;
+  drawFindings(); // its button is the map's, but only while there are findings
   // The counters would otherwise sit across the tool row in the corner they share.
   // Nothing can be moved out of the way without covering something else, so they
   // stack instead: the readout joins the top of the row's own column.
@@ -1534,6 +1622,8 @@ function bindControls() {
   $('fit').onclick = () => scene.fit(L.bounds);
   $('walk').onclick = () => setWalking(!walker.active);
   $('pack-btn').onclick = () => setPackOpen($('pack').hidden);
+  $('findings-btn').onclick = () => setFindingsOpen($('findings').hidden);
+  $('findings-close').onclick = () => { setFindingsOpen(false); $('findings-btn').focus(); };
   $('pack-close').onclick = () => setPackOpen(false);
   $('stash-btn').onclick = () => setStashOpen($('stash').hidden);
   $('stash-close').onclick = () => setStashOpen(false);
@@ -1601,7 +1691,12 @@ function bindControls() {
         if (document.pointerLockElement) document.exitPointerLock(); // a stray capture
         if (!$('stash').hidden) { setStashOpen(false); break; }
         if (!$('pack').hidden) { setPackOpen(false); break; }
+        if (!$('findings').hidden) { setFindingsOpen(false); $('findings-btn').focus(); break; }
         select(null);
+        break;
+      // The findings list is the map's: from the street, the findings are the bugs.
+      case 'l': case 'L':
+        if (!walker.active) setFindingsOpen($('findings').hidden, true);
         break;
       case 'g': case 'G':
         // The photographs, from the street as much as from the map.

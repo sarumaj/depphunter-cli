@@ -526,6 +526,7 @@ menu for any folder.
 | `depphunter: Show the Resolution Report`  | Which index each package resolved from, and how the walk proceeded |
 | `depphunter: Export the Graph`            | JSON, GraphML, DOT or a self-contained HTML map                    |
 | `depphunter: Export the Backpack`         | The collected findings as Markdown, CSV or JSON                    |
+| `depphunter: Add to the Backpack`         | Puts a finding in the backpack without walking to its bug          |
 | `depphunter: Refresh the Side Panel`      | Reads the graph and the backpack from the server again             |
 | `depphunter: Open Settings`               | The extension's settings, documented below                         |
 
@@ -537,7 +538,7 @@ offers to show its log or restart it.
 
 #### The panel beside the code
 
-The same panel holds two further views below **Maps**, both showing the map
+The same panel holds three further views below **Maps**, all showing the map
 opened most recently:
 
 - **Dependencies** presents the graph as a tree. A directory expands into its
@@ -553,6 +554,14 @@ opened most recently:
 - **Backpack** holds the findings collected while walking the map, ordered by
   severity, with those absent from the most recent scan marked as resolved at
   the end. Removing an entry here removes it from the map's backpack as well.
+
+- **Findings** lists everything the scanners reported, most severe first and
+  then by package or file, whether caught or not. The `+` beside an entry puts
+  it in the backpack exactly as catching its bug on the map would — the same
+  entry, recorded against the same building — and the map's bug stops walking;
+  an entry already in the backpack is marked so and offers `×` to take it out
+  again. `depphunter: Add to the Backpack` in the command palette asks which of
+  those not yet caught to add. A catch on the map is marked here as it happens.
 
 The Dependencies view's title bar holds the resolution report, the graph export
 and a refresh, and a file's row has a button that opens the file; the Backpack's
@@ -734,12 +743,13 @@ building.
 |----------------------|-------------------------------------------------------------------------------------------------------------------|
 | Find in the details  | search a file's source: every match highlighted, `Enter`/`Shift+Enter` or `↓`/`↑` step through them, `Esc` clears |
 | `+` beside a finding | add it to the backpack                                                                                            |
+| `L`                  | list every finding the map shows, to read or add to the backpack from (arrows move, `Enter` opens, `+` adds)      |
 | `B`                  | open the backpack                                                                                                 |
 | `G`                  | open the photographs the camera has taken; from the street each can be put up on the camera and looked at there   |
 | `X`                  | open the export menu                                                                                              |
 | `K`                  | save settings to the config file                                                                                  |
 | The figure           | the walker's last position in walk mode                                                                           |
-| `Esc`                | close the photographs or the backpack, or clear the selection                                                     |
+| `Esc`                | close the photographs, the backpack or the findings list, or clear the selection                                  |
 | `V`                  | enter walk mode                                                              ^                                    |
 | `?`                  | show all the controls                                                                                             |
 
@@ -922,6 +932,18 @@ in both cases the bug stops moving. Its contents survive a re-layout, a depth
 change and a reload. An entry is kept until it is cleared; once the scanners
 stop reporting it, it is struck through rather than removed, so that a resolved
 finding remains visible as such.
+
+The **findings list** (`L`, or **Findings** in the toolbar) is the map view's
+way to every finding at once: all of those on what the filters leave on the
+map, most severe first and then by package or file, each with its identifier,
+title and location. Pointing at a row highlights its building and picking it
+selects the building and opens the finding in the panel. The `+` at the end of
+a row is the same catch as the panel's `+` and the street's: the same backpack
+entry, the same building, the same update to the server — so the bug stops
+walking without anybody walking to it. A finding already in the backpack reads
+"in the backpack", and its `✓` takes it out again. The list is worked through
+with the keys as well: the arrows move, `Enter` opens, `+` adds and `Esc`
+closes. In walk mode the findings are bugs, and the list is left to the map.
 
 A repository is larger than it appears from within it, so the corner of the walk
 HUD carries a **tracker**: a sweep centered on the walker and rotating with them,

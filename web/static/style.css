@@ -1127,3 +1127,48 @@ dialog form { margin-top: 12px; text-align: right; }
 @media (max-width: 720px) {
   #pack { left: 8px; right: 8px; width: auto; }
 }
+
+/* Every finding the map shows, in the backpack's place and its manner: the two are
+   never open together (app.js), and a row here is a backpack entry waiting to be
+   caught. The button at the end of each row is that catch. */
+#findings {
+  position: absolute;
+  top: 12px; left: 12px;
+  width: min(460px, calc(100% - 24px));
+  max-height: min(70vh, 640px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  z-index: 4;
+}
+#findings header { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+#findings header h3 { margin: 0; font-size: 13px; white-space: nowrap; }
+#findings header .hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#findings header .close { border: none; font-size: 18px; line-height: 1; padding: 2px 8px; }
+#findings-list { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1; min-height: 0; }
+#findings-list li { display: flex; align-items: flex-start; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--grid); cursor: pointer; }
+#findings-list li:last-child { border-bottom: none; }
+#findings-list li:hover, #findings-list li:focus-visible { background: var(--grid); outline: none; }
+#findings-list li:focus-visible { box-shadow: inset 2px 0 0 var(--sev, var(--accent, #2a78d6)); }
+#findings-list .body { flex: 1; min-width: 0; }
+#findings-list .n, #findings-list .t, #findings-list .w { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#findings-list .n { font-weight: 600; }
+#findings-list .t { font-size: 12px; }
+#findings-list .w { color: var(--muted); font-size: 11px; }
+#findings-list .state { font-size: 11px; border: 1px solid var(--sev, var(--border)); border-radius: 10px; padding: 0 6px; color: var(--sev, var(--muted)); white-space: nowrap; text-transform: capitalize; }
+#findings-list li.kept .n, #findings-list li.kept .t { color: var(--muted); }
+#findings-list li.kept .state { text-transform: none; color: var(--muted); border-color: var(--border); }
+#findings-list .keep {
+  flex: 0 0 auto; width: 26px; height: 22px; padding: 0; line-height: 1; font-size: 14px;
+  border-radius: 6px; color: var(--text-2); cursor: pointer;
+}
+#findings-list .keep:hover, #findings-list .keep:focus-visible { color: var(--text); border-color: var(--text-2); }
+#findings-list .keep[aria-pressed="true"] { color: var(--sev, var(--accent)); border-color: var(--sev, var(--accent)); }
+#findings-empty-note { margin: 0; padding: 14px 12px; }
+#findings .foot { margin: 0; padding: 7px 12px; border-top: 1px solid var(--border); font-size: 11px; }
+@media (max-width: 720px) {
+  #findings { left: 8px; right: 8px; width: auto; }
+}

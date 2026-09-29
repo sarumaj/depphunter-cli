@@ -30,6 +30,24 @@ export interface PackItem {
   nodeId?: string;
   caughtAt?: number;
   fixed?: boolean;
+  fixedAt?: number;
+}
+
+/**
+ * One finding, as the server's findings document lists it (internal/findings.Finding):
+ * the fields the Findings view shows and places by.
+ */
+export interface Finding {
+  id: string;
+  severity: string;
+  title: string;
+  ref?: string;
+  source?: string;
+  path?: string;
+  line?: number;
+  ecosystem?: string;
+  package?: string;
+  version?: string;
 }
 
 export interface Session {
@@ -42,6 +60,8 @@ export type ServerEvent =
   | { name: 'graph'; data: { version: number; changed?: string[] } }
   | { name: 'selection'; data: { id: string; origin: string } }
   | { name: 'backpack'; data: { count: number; origin: string } }
+  // The scanner reports were read again and said something new.
+  | { name: 'findings'; data: { available: boolean } }
   // A binary file the map wants opened in a hex editor, sent to this client alone
   // because it asked for them (?opens=hex).
   | { name: 'open'; data: { path: string; hex: boolean } }
@@ -110,6 +130,19 @@ export class Api {
    */
   setBackpack(items: PackItem[]): Promise<void> {
     return this.send('PUT', '/api/backpack', { items, origin: this.origin });
+  }
+
+  /**
+   * What the scanners reported, or null while they are still being read (202) and
+   * when nothing was asked of them (204). A document read afterwards is announced on
+   * the event stream as `findings`.
+   * Implements: REQ-EXT-035
+   */
+  async findings(): Promise<Finding[] | null> {
+    const response = await this.fetch('GET', '/api/findings');
+    if (response.status !== 200 || !response.body.length) return null;
+    const set = JSON.parse(response.body.toString('utf8')) as { findings?: Finding[] | null };
+    return set.findings ?? [];
   }
 
   /** An export, as bytes, for whatever the user chose to save it as. */
