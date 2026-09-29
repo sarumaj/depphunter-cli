@@ -58,6 +58,8 @@ type Store struct {
 	// goNoNetrc says GOAUTH keeps the go command from sending the netrc's
 	// credentials to a module proxy; see ApplyGo.
 	goNoNetrc bool
+	// buf holds BUF_TOKEN's tokens for Buf Schema Registry hosts; see BufToken.
+	buf map[string]string
 }
 
 // secret is a credential of scoped: a Bearer token, a Basic "user:password", or

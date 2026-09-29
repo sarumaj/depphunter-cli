@@ -407,3 +407,17 @@ func (r *resolver) generated(m *module, p string) lang.Target {
 	}
 	return lang.Target{Ecosystem: ecosystemCUE, Package: guess(p)}
 }
+
+// ModuleDependencies reads the deps of a module.cue - a module's own, as a CUE
+// registry serves it beside the module's archive - as the targets the resolver
+// makes of them: each module path without its major version, pinned by the
+// version it names.
+//
+// Implements: REQ-CUE-012
+func ModuleDependencies(source []byte) []lang.Target {
+	var out []lang.Target
+	for _, d := range readModule(source).dependencies {
+		out = append(out, dependencyTarget(d))
+	}
+	return out
+}

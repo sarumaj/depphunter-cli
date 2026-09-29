@@ -19,9 +19,11 @@ A credential this machine holds for a host **shall not** vouch for an index the
 repository names on that host: such an index is known only when the user vouches
 for it, or when this machine's own configuration names it. The exceptions are the
 ecosystems whose package names carry their host, container images
-(`ghcr.io/org/app`) and Terraform registry modules (`app.terraform.io/org/name/aws`):
-there the host is the package's own, not an index put in front of it, and a
-credential for it means this machine pulls from it already.
+(`ghcr.io/org/app`), Terraform registry modules (`app.terraform.io/org/name/aws`)
+and Buf Schema Registry modules (`buf.example.com/org/module`, whose token
+buf keeps; REQ-SUP-072): there the host is the package's own, not an index put
+in front of it, and a credential for it means this machine pulls from it
+already.
 
 ## Rationale
 
@@ -41,8 +43,8 @@ the ecosystems whose credentials go by host, have the user's secret sent to it.
 2. The user's configuration and `--trust-index` are both honored.
 3. A repository's index on a host this machine holds a credential for is not
    known, and its packages are marked, until the user vouches for it.
-4. A container image or Terraform registry module on a host this machine holds a
-   credential for is known.
+4. A container image, Terraform registry module or Buf Schema Registry module
+   on a host this machine holds a credential for is known.
 
 ## Notes
 

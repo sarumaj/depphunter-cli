@@ -1094,37 +1094,37 @@ PureScript packages no `spago.lock` records and spago has not installed into
 has not fetched onto this machine (`dub.selections.json` is a flat list), Alire
 crates no `alire.lock` records and Alire has not fetched, Maven artifacts of
 Java, Kotlin, Scala and Clojure builds (Maven, Gradle without its lock files,
-sbt, tools.deps and Leiningen), and Bazel modules (a lock file since Bazel 7.2
-records versions only) — require `--online`, described below; the PowerShell
-Gallery, vcpkg, Conan 2 (whose lock is a flat list), Bioconductor packages no
-lock records, Swift packages that SwiftPM has not checked out under `.build`
+sbt, tools.deps and Leiningen), Bazel modules (a lock file since Bazel 7.2
+records versions only), Puppet modules r10k has not installed, Racket packages
+(raco keeps no lock file), Wally packages no `wally.lock` records, Buf Schema
+Registry modules (`buf.lock` is a flat list) and CUE modules missing from cue's
+module cache on this machine (`$CUE_CACHE_DIR`, else `cue` in the user's cache
+directory) — require `--online`, described below; the PowerShell Gallery, vcpkg,
+Conan 2 (whose lock is a flat list), Bioconductor packages no lock records,
+Swift packages that SwiftPM has not checked out under `.build`
 (`Package.resolved` is flat as well) and Terraform modules fetched from git or
-an archive are not resolved beyond the first level at present, and neither are
-Buf Schema Registry modules: `buf.lock` is a flat list, and the registry's API
-is not a package index depphunter asks. Content a CMake build fetches is not
-resolved beyond the first level either, nor are Carthage dependencies not
-checked out into `Carthage/Checkouts/` (`Cartfile.resolved` is flat), Wally
-packages no `wally.lock` records and Zig packages Zig has not fetched into
-`zig-pkg/` or its global cache (there is no Zig registry for `--online` to ask),
-nor Bazel's WORKSPACE repositories, nor niv and npins sources (their
-`sources.json` is flat), nor Crystal shards shards has not installed into `lib/`
-(`shard.lock` is flat, and shards are git repositories with no index to ask),
-nor the GitHub, git and HTTP files Paket fetches, nor fpm packages fpm has not
-fetched into `build/dependencies/` (fpm keeps no lock file, and its registry has
-no dependency API), nor haxelib libraries that neither lix pins nor haxelib
-installed (lib.haxe.org offers no JSON API to ask), nor Racket packages (raco
-keeps no lock file, and neither installed packages nor the package catalog are
-read). Quicklisp projects that neither Qlot installed into `.qlot/` nor ocicl
-into `systems/` need `--online` too: `qlfile.lock` and `ocicl.csv` are flat
-lists. A git submodule of a Foundry project depends on the submodules of its own
-`.gitmodules` when it is checked out; Soldeer packages are followed only where
-Soldeer installed them into `dependencies/` (`soldeer.lock` is flat, and
-Soldeer's registry is not asked), nor are nimble packages no `nimble.lock`
-records and nothing installed (`atlas.lock` is flat, and the package list has no
-dependencies to ask), nor CUE modules missing from cue's module cache on this
-machine (`$CUE_CACHE_DIR`, else `cue` in the user's cache directory), nor remote
-Dhall imports (they are not fetched), nor Puppet modules r10k has not installed
-(the Forge is not asked). A Terraform provider depends on nothing.
+an archive are not resolved beyond the first level at present. Content a CMake
+build fetches is not resolved beyond the first level either, nor are Carthage
+dependencies not checked out into `Carthage/Checkouts/` (`Cartfile.resolved` is
+flat) and Zig packages Zig has not fetched into `zig-pkg/` or its global cache
+(there is no Zig registry for `--online` to ask), nor Bazel's WORKSPACE
+repositories, nor niv and npins sources (their `sources.json` is flat), nor
+Crystal shards shards has not installed into `lib/` (`shard.lock` is flat, and
+shards are git repositories with no index to ask), nor the GitHub, git and HTTP
+files Paket fetches, nor fpm packages fpm has not fetched into
+`build/dependencies/` (fpm keeps no lock file, and its registry has no
+dependency API), nor haxelib libraries that neither lix pins nor haxelib
+installed (lib.haxe.org offers no JSON API to ask). Quicklisp projects that
+neither Qlot installed into `.qlot/` nor ocicl into `systems/` need `--online`
+too: `qlfile.lock` and `ocicl.csv` are flat lists. A git submodule of a Foundry
+project depends on the submodules of its own `.gitmodules` when it is checked
+out; Soldeer packages are followed only where Soldeer installed them into
+`dependencies/` (`soldeer.lock` is flat, and Soldeer's registry has no
+dependency data: its API serves each revision as a zip archive, which is not
+downloaded), nor are nimble packages no `nimble.lock` records and nothing
+installed (`atlas.lock` is flat, and the package list has no dependencies to
+ask), nor remote Dhall imports (they are not fetched). A Terraform provider
+depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1232,6 +1232,9 @@ and platform paths:
 | opam       | `OPAMROOT`, else `%LOCALAPPDATA%\opam` on Windows, else `~/.opam`: `repo/repos-config`, the root's `config` and the current switch's (`OPAMSWITCH`) `switch-config`, and the repository copies in `repo/`                                                                                                                                                                                                                                       |
 | Alire      | `ALIRE_SETTINGS_DIR` (Alire 1: `ALR_CONFIG`), else `%USERPROFILE%\.config\alire` on Windows, else `$XDG_CONFIG_HOME/alire` (`~/.config/alire`): `indexes/<name>/index.toml` and the checkout beside it                                                                                                                                                                                                                                          |
 | Julia      | `JULIA_DEPOT_PATH` (`;`-separated on Windows, else `:`; an empty entry is the default depot), else `~/.julia`: each depot's `registries/<Name>/` and `registries/<Name>.toml` with the archive it names                                                                                                                                                                                                                                         |
+| r10k       | `/etc/puppetlabs/r10k/r10k.yaml`, else `/etc/r10k.yaml`: `forge: baseurl` and `authorization_token`                                                                                                                                                                                                                                                                                                                                             |
+| cue        | `CUE_REGISTRY`; `logins.json` in `CUE_CONFIG_DIR`, else `cue` in the user configuration directory                                                                                                                                                                                                                                                                                                                                               |
+| buf        | `BUF_TOKEN`; the netrc entries `buf registry login` writes                                                                                                                                                                                                                                                                                                                                                                                      |
 
 Nothing is read from the repository through these variables' defaults; they
 only say where this machine's own files are.
@@ -1418,6 +1421,11 @@ ecosystems whose graph is held outside the repository:
 | dub                    | `<registry>/api/packages/<name>/<version>/info`, the newest release a specification admits from `<registry>/api/packages/<name>/info` when not exact (`DUB_REGISTRY` and the settings' `registryUrls` first, then code.dlang.org) | its, its sub-packages' and its default configuration's dependencies, not optional or path ones                   |
 | Alire crates           | `<index>/index/<first two letters>/<crate>/<crate>-<version>.toml`, from alr's checkout, else over HTTP (alire-index's `stable-1.4.0`); for a range, the newest release admitted, listed likewise (see opam)                      | its `depends-on`, every `case(...)` alternative                                                                  |
 | Quicklisp              | the dist's distinfo (`quicklisp.txt`, or `<dist>/<version>/distinfo.txt` for a dist version), then the `systems.txt` it names (read once); a qlfile's or `~/quicklisp`'s other dists first                                        | the dependencies of the project's own systems, each named by its project, without ASDF, UIOP and SBCL's contribs |
+| Puppet Forge           | `<api>/v3/releases/<slug>-<version>`, the newest release a range admits from `<api>/v3/modules/<slug>` when not exact (forgeapi.puppet.com, a Puppetfile's `forge`, r10k's `forge.baseurl`)                                       | its `metadata.json` `dependencies`, by slug, with their requirements                                             |
+| Racket                 | `<catalog>/pkg/<name>`, the entry's `dependencies` (pkgs.racket-lang.org)                                                                                                                                                         | its `dependencies`, `base` as the base collections, `#:version` a minimum                                        |
+| Wally                  | `<scope>/<name>` in the registry's GitHub repository (a manifest per line; `config.json`'s fallback registries when missing), from the registry wally.toml names                                                                  | its `dependencies` and `server-dependencies`, each from the registry its manifest names                          |
+| Buf Schema Registry    | `GraphService/GetGraph`, then `ModuleService/GetModules` and `OwnerService/GetOwners` (Connect JSON), at the registry the module name carries                                                                                     | its direct dependencies, each pinned by its commit, not another registry's                                       |
+| CUE modules            | the manifest `<registry>/v2/<module>/manifests/<version>`, then its module file blob (registry.cue.works, or where `CUE_REGISTRY` routes the module)                                                                              | its `deps`, each at the version it names                                                                         |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -1500,13 +1508,17 @@ written for and to no other.
 | `pub-tokens.json` in Dart's configuration directory         | `dart pub token add` tokens (or the variable an `env` entry names), per hosted URL                             |
 | `HEX_API_KEY`, `hex.config` (`HEX_HOME`, `~/.hex`)          | the Hex user key, `api_key` or OAuth token; each `hexpm:<org>` `auth_key`; `HEX_REPOS_KEY`                     |
 | rebar3's `hex.config` (`~/.config/rebar3`)                  | `hexpm` `api_key`, `$oauth` token; each `hexpm:<org>` `api_key` and `repo_key`                                 |
+| `BUF_TOKEN`, the netrc entry `buf registry login` writes    | a Buf Schema Registry token per host (a bare `BUF_TOKEN` for buf.build only)                                   |
+| cue's `logins.json` (`CUE_CONFIG_DIR`)                      | the tokens `cue login` stores, per registry host, over Docker's                                                |
+| r10k's `r10k.yaml`                                          | `forge: authorization_token`, for the paths of `forge: baseurl`                                                |
 | the index URL itself                                        | `https://user:password@host/simple`, as a private pip or Cargo mirror is set                                   |
 
 Between them these cover Nexus, Artifactory, Azure Artifacts, ProGet, GitHub
 Packages, Harbor, GHCR, a private crate registry, a private Terraform
 registry, Private Packagist, Satis, Repman and GitLab's Composer registry,
 Gemfury and the commercial gem servers Bundler is pointed at, private pub
-servers, and Hex organizations.
+servers, Hex organizations, a private Puppet Forge, Buf Schema Registry or CUE
+registry.
 
 Each file is looked for where its tool looks for it; see
 [Configuration locations](#configuration-locations).
@@ -2053,11 +2065,11 @@ the repository's `module.cue` selects. Files under `cue.mod/pkg`,
 `cue.mod/gen` and `cue.mod/usr` are not read as source. The package clause,
 top-level definitions (`#Name`) and fields are the symbols.
 
-OSV has no Jsonnet or CUE ecosystem, jsonnet-bundler has no registry, and
-CUE's central registry is an OCI registry that `--online` does not read, so
-neither kind of package is asked about by name and version; a jsonnet-bundler
-package locked to a commit of a repository on a public forge is asked about by
-that commit.
+OSV has no Jsonnet or CUE ecosystem, so neither kind of package is asked about
+by name and version; a jsonnet-bundler package locked to a commit of a
+repository on a public forge is asked about by that commit. jsonnet-bundler has
+no registry; with `--online` a CUE module's own dependencies are read from its
+registry (registry.cue.works, or the one `CUE_REGISTRY` routes it to).
 
 ### Dhall, Puppet and Rego
 
@@ -2121,9 +2133,9 @@ symbols.
 
 OSV has no Dhall or Puppet Forge ecosystem and Dhall has no registry; only a
 Dhall import URL or a git-fetched Puppet module naming a full commit of a
-repository on a public forge is asked about, by that commit.
-The Puppet Forge's API was not reachable when this was written, so
-`--online` asks nothing about Puppet modules either.
+repository on a public forge is asked about, by that commit. With `--online`
+the Forge (or the one a Puppetfile's `forge` line or r10k's `forge.baseurl`
+names) is asked for a module's dependencies.
 
 ### Shaders and GPU code
 
@@ -2697,9 +2709,10 @@ is Chez Scheme, Guile or R6RS), and nothing in a `compiled/` directory:
 Module-level definitions are the symbols (`define` as func or var, `class`
 values with their `define/public` methods, `struct`, macros, Typed Racket's
 `define-type`, and `module` submodules with their definitions as
-`sub.name`). Macros are not expanded, the package catalog is not asked (no
-`--online`) and installed packages are not read, and OSV has no Racket
-ecosystem, so Racket packages are not checked for advisories.
+`sub.name`). Macros are not expanded and installed packages are not read;
+with `--online` the package catalog (pkgs.racket-lang.org) is asked for a
+package's dependencies. OSV has no Racket ecosystem, so Racket packages are not
+checked for advisories.
 
 ### Common Lisp and Quicklisp
 
@@ -2885,7 +2898,10 @@ Messages (nested ones as `Outer.Inner`), enums, services, their rpc methods
 (`Service.Method`), `extend` blocks, oneofs and the package become the file's
 symbols. A type used from another file needs no edge of its own: protobuf
 requires importing the file that declares it. Only `buf.lock`'s commit, or a
-commit given as the ref, pins a module.
+commit given as the ref, pins a module. With `--online` a module's own
+dependencies are read from the registry its name carries (buf.build, or a
+private Buf Schema Registry this machine's buf credentials name); a remote
+plugin depends on nothing and is not asked.
 
 ### Shell scripts
 
@@ -3459,20 +3475,21 @@ the file a rockspec's `build.modules` maps it to, else to `?.lua` or
 their `lua/` (a Neovim plugin's), `src/` and `lib/`, then `.luarc.json`'s
 library; the standard library and LuaJIT's modules are a hidden island, and so
 are the modules host programs provide (Neovim's `vim.*`, LÖVE's `love.*`,
-OpenResty's `ngx.*` and bundled `resty.*` libraries, Lune's `@lune/*`).
-Anything else is a rock, found among what the rockspecs declare and
-`luarocks.lock` pins by a curated table (`lfs` is luafilesystem, `ssl` luasec)
-and the usual spellings of its name. Roblox's `require(script.Parent.X)` and
+OpenResty's `ngx.*` and bundled `resty.*` libraries, Lune's `@lune/*`). Anything
+else is a rock, found among what the rockspecs declare and `luarocks.lock` pins
+by a curated table (`lfs` is luafilesystem, `ssl` luasec) and the usual
+spellings of its name. Roblox's `require(script.Parent.X)` and
 `game:GetService("ReplicatedStorage").Shared.X` are placed as Rojo builds the
-game from its project files, Luau's `require("./x")`, `"@self/x"` and
-`.luaurc` aliases by path, and a path through a `Packages` folder to the Wally
-package `wally.toml` names so. `--resolve-depth` follows `wally.lock` and the
-rockspecs LuaRocks keeps for the rocks it installed into `lua_modules/` or
-`.luarocks/`. Rockspec dependencies and `wally.toml` entries are imports of what
-they name, and the top-level functions, methods, module tables, exported fields
-and Luau and Teal types are the files' symbols. Lua is read by a small lexer;
-the tree-sitter grammar took 3 to 5 ms per file and failed on Roblox's `.lua`
-files, which are Luau.
+game from its project files, Luau's `require("./x")`, `"@self/x"` and `.luaurc`
+aliases by path, and a path through a `Packages` folder to the Wally package
+`wally.toml` names so. `--resolve-depth` follows `wally.lock` and the rockspecs
+LuaRocks keeps for the rocks it installed into `lua_modules/` or `.luarocks/`,
+and with `--online` the Wally registry wally.toml names (a GitHub repository,
+read file by file). Rockspec dependencies and `wally.toml` entries are imports
+of what they name, and the top-level functions, methods, module tables, exported
+fields and Luau and Teal types are the files' symbols. Lua is read by a small
+lexer; the tree-sitter grammar took 3 to 5 ms per file and failed on Roblox's
+`.lua` files, which are Luau.
 
 Perl files (`.pl` unless it reads as Prolog, `.pm`, `.t`, `.psgi`,
 `Makefile.PL` and scripts whose `#!` line runs perl) are read for `use`,

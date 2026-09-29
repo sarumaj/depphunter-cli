@@ -69,6 +69,8 @@ type Client struct {
 	// juliaCopies are the registries installed in a Julia depot, an archive
 	// read once.
 	juliaCopies memo[*juliaCopy]
+	// wallyConfigs are the config.json files of Wally registries, read once.
+	wallyConfigs memo[*wallyConfiguration]
 	// qlSystems is what each Quicklisp dist's system index lists: one request
 	// per dist version rather than one per project.
 	qlSystems map[string]*qlIndex
@@ -407,11 +409,15 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 	if a, ok := c.cached(t, index); ok {
 		return a, nil
 	}
-	if t.Ecosystem == Go && t.Version == "" ||
+	if t.Ecosystem == Buf && t.Registry == BufPlugin {
+		// Implements: REQ-SUP-072
+		return answer{source: trace.NoAnswer, reason: trace.ReasonPlugin}, nil
+	}
+	if (t.Ecosystem == Go || t.Ecosystem == CUE) && t.Version == "" ||
 		t.Ecosystem == Opam && !opam.ExactVersion(t.Version) && c.unlisted(Opam, index) ||
 		t.Ecosystem == Alire && !alireExact(t.Version) && (!ada.ValidConstraint(t.Version) || c.unlisted(Alire, index)) {
-		// A module proxy serves a go.mod for one version; without one there is no
-		// document to ask for. An opam repository or Alire index served over HTTP
+		// A module proxy serves a go.mod for one version, a CUE registry a
+		// module.cue; without one there is no document to ask for. An opam repository or Alire index served over HTTP
 		// that cannot list its versions has none for a range either. Said here
 		// rather than deeper down so the report can say it, instead of recording
 		// an empty answer that looks like "no dependencies".
@@ -477,6 +483,16 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		dependencies, err = c.alireCrate(ctx, index, t)
 	case Quicklisp:
 		dependencies, err = c.quicklispProject(ctx, index, t)
+	case PuppetForge:
+		dependencies, err = c.forgeModule(ctx, index, t)
+	case Racket:
+		dependencies, err = c.racketPackage(ctx, index, t)
+	case Wally:
+		dependencies, err = c.wallyPackage(ctx, index, t)
+	case Buf:
+		dependencies, err = c.bufModule(ctx, index, t)
+	case CUE:
+		dependencies, err = c.cueModule(ctx, index, t)
 	case Maven:
 		if !strings.Contains(t.Package, ":") {
 			// A name without an artifact cannot be asked: a POM is addressed by
@@ -837,6 +853,9 @@ func (d dependency) registry(from lang.Target) string {
 	case from.Ecosystem == Julia:
 		// A registry's Deps.toml names each dependency's UUID.
 		return d.Registry
+	case from.Ecosystem == Wally:
+		// A Wally manifest names the registry its dependencies come from.
+		return d.Registry
 	case from.Ecosystem != Cargo:
 		return ""
 	case d.Registry == "":
@@ -858,8 +877,18 @@ func (d dependency) Pinned(ecosystem string) bool {
 	if ecosystem == Maven {
 		return lang.PinnedMaven(d.Version) // 1.2.3.RELEASE is one release, [1.0,2.0) is not
 	}
-	if ecosystem == Bazel {
-		return d.Version != "" // a registry's version is one release, whatever its shape (1.2.0.bcr.1)
+	if ecosystem == Bazel || ecosystem == Buf {
+		// A registry's version is one release, whatever its shape (1.2.0.bcr.1);
+		// a Buf Schema Registry commit is one commit.
+		return d.Version != ""
+	}
+	if ecosystem == Racket {
+		return false // a catalog's #:version is a minimum
+	}
+	if ecosystem == Wally {
+		// A bare version is a caret range in Wally; "=1.2.3" is one release.
+		version, exact := strings.CutPrefix(strings.TrimSpace(d.Version), "=")
+		return exact && lang.Pinned(version)
 	}
 	if ecosystem == NPM || ecosystem == Julia || ecosystem == Elm || ecosystem == PureScript {
 		// A registry's compat "1" is every 1.x; only a whole "1.2.3" is one release

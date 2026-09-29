@@ -58,6 +58,7 @@ const (
 	ReasonInstalled   = "installed from outside any index, so no index is asked about it"
 	ReasonNoKey       = "a private Hex organization's package is asked only with a key this machine holds for it"
 	ReasonBlocked     = "this machine's registries.conf blocks pulling the image, so no registry is asked"
+	ReasonPlugin      = "a code generation plugin, which depends on nothing a registry describes"
 )
 
 // Installed stands in for the index in the report's table of what resolved from
