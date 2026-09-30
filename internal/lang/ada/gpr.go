@@ -1,6 +1,7 @@
 package ada
 
 import (
+	"cmp"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -511,8 +512,6 @@ func directorySpec(s string) (directory string, recursive bool) {
 		s, recursive = d, true
 	}
 	s = strings.TrimSuffix(s, "/")
-	if s == "" {
-		s = "."
-	}
+	s = cmp.Or(s, ".")
 	return s, recursive
 }

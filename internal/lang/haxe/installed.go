@@ -1,6 +1,7 @@
 package haxe
 
 import (
+	"cmp"
 	"os"
 	"path"
 	"path/filepath"
@@ -135,9 +136,7 @@ func readInstall(l *lixLibrary, url, defined string) {
 		l.version, l.floating = defined, true
 	case strings.HasPrefix(url, "haxelib:"):
 		_, v, _ := strings.Cut(strings.TrimLeft(strings.TrimPrefix(url, "haxelib:"), "/"), "#")
-		if v == "" {
-			v = defined
-		}
+		v = cmp.Or(v, defined)
 		l.version, l.pinned, l.floating = v, v != "", v == ""
 	default:
 		u, reference, _ := strings.Cut(url, "#")

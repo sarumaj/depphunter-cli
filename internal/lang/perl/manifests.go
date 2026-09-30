@@ -2,6 +2,7 @@ package perl
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"regexp"
 	"sort"
@@ -190,9 +191,7 @@ func readCpanfile(tokens []token) []moduleRequirement {
 			if len(items[k]) == 1 && len(items[k+1]) == 1 && items[k+1][0].kind == tString {
 				switch items[k][0].text {
 				case "git", "url", "dist":
-					if r.origin == "" {
-						r.origin = items[k+1][0].text
-					}
+					r.origin = cmp.Or(r.origin, items[k+1][0].text)
 				}
 			}
 		}

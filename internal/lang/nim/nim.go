@@ -22,7 +22,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -108,30 +107,21 @@ func ignored(f *scan.File) bool {
 	return false
 }
 
-var dependenciesMemo sync.Map // absolute directory -> bool: its deps/ is what Atlas cloned
+var dependenciesMemo lang.Memo[string, bool] // absolute directory -> its deps/ is what Atlas cloned
 
 // atlasDependencies reports whether dir's deps/ holds installed packages: directory has a
 // .nimble file or an atlas.config, or deps/ has Atlas's atlas.config.
 func atlasDependencies(directory string) bool {
-	if v, ok := dependenciesMemo.Load(directory); ok {
-		return v.(bool)
-	}
-	found := false
-	if entries, err := os.ReadDir(directory); err == nil {
-		for _, e := range entries {
-			if n := e.Name(); strings.HasSuffix(n, ".nimble") || n == "atlas.config" || n == "atlas.workspace" {
-				found = true
-				break
+	return dependenciesMemo.Get(directory, func(directory string) bool {
+		if entries, err := os.ReadDir(directory); err == nil {
+			for _, e := range entries {
+				if n := e.Name(); strings.HasSuffix(n, ".nimble") || n == "atlas.config" || n == "atlas.workspace" {
+					return true
+				}
 			}
 		}
-	}
-	if !found {
-		// Lstat: a marker committed as a symbolic link says nothing of its target.
-		_, err := os.Lstat(filepath.Join(directory, "deps", "atlas.config"))
-		found = err == nil
-	}
-	dependenciesMemo.Store(directory, found)
-	return found
+		return lang.Present(filepath.Join(directory, "deps", "atlas.config"))
+	})
 }
 
 // Implements: REQ-NIM-009

@@ -7,12 +7,17 @@
 //
 // A nil *Store is valid and keeps nothing. That is what --no-cache comes to, and what
 // an unavailable cache directory comes to, so no caller has to ask which.
+//
+// The package also holds what every on-disk cache of depphunter writes with:
+// WriteAtomic, and Result for what was computed for one project - its git history,
+// its symbol references - rather than asked of somebody else.
 package store
 
 import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,18 +108,12 @@ func (s *Store) Put(key string, value any) {
 	if err != nil {
 		return
 	}
-	// A scratch file of its own rather than one named after the key: two writers
-	// asking about the same package at once - two depphunters over two folders, say -
-	// would otherwise write the same scratch file over each other, and the rename
-	// would publish whichever half won.
-	temporary, err := os.CreateTemp(s.directory, "put-*")
-	if err != nil {
-		return
-	}
-	_, err = temporary.Write(data)
-	if closeErr := temporary.Close(); err != nil || closeErr != nil || os.Rename(temporary.Name(), s.path(key)) != nil {
-		os.Remove(temporary.Name())
-	}
+	// Two writers asking about the same package at once - two depphunters over two
+	// folders, say - each publish a whole answer (WriteAtomic).
+	WriteAtomic(s.path(key), func(w io.Writer) error {
+		_, err := w.Write(data)
+		return err
+	})
 }
 
 // path is where an answer to key is kept. The key is whatever the caller finds

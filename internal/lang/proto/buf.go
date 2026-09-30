@@ -1,6 +1,7 @@
 package proto
 
 import (
+	"cmp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -93,10 +94,7 @@ func readBuf(class string, source []byte) *bufFile {
 			if n := scalar(d, "name"); n != "" { // v2
 				name = n
 			} else if owner, repository := scalar(d, "owner"), scalar(d, "repository"); owner != "" && repository != "" { // v1
-				remote := scalar(d, "remote")
-				if remote == "" {
-					remote = "buf.build"
-				}
+				remote := cmp.Or(scalar(d, "remote"), "buf.build")
 				name = remote + "/" + owner + "/" + repository
 			}
 			if name != "" {
@@ -112,9 +110,7 @@ func readBuf(class string, source []byte) *bufFile {
 	case classGen:
 		for _, pl := range items(lookup(root, "plugins")) {
 			reference := scalar(pl, "remote")
-			if reference == "" {
-				reference = scalar(pl, "plugin") // v1: a remote plugin when it names a host
-			}
+			reference = cmp.Or(reference, scalar(pl, "plugin")) // v1: a remote plugin when it names a host
 			if host, _, ok := strings.Cut(reference, "/"); ok && strings.Contains(host, ".") && !strings.HasPrefix(host, ".") {
 				b.plugins = append(b.plugins, entry{reference, pl.Line})
 			}

@@ -6,6 +6,7 @@
 package luarocks
 
 import (
+	"cmp"
 	"sort"
 	"strings"
 )
@@ -357,9 +358,7 @@ func Newest(versions []string, constraint string) string {
 			continue
 		}
 		if dev(v) {
-			if fallback == "" {
-				fallback = v
-			}
+			fallback = cmp.Or(fallback, v)
 			continue
 		}
 		return v

@@ -2,6 +2,7 @@ package zig
 
 import (
 	"bytes"
+	"cmp"
 	"os"
 	"path"
 	"path/filepath"
@@ -463,9 +464,7 @@ func (r *resolver) zonTarget(directory string, d zonDependency) lang.Target {
 	switch {
 	case d.hash != "":
 		t.Pinned = true
-		if t.Version == "" {
-			t.Version = hashVersion(d.hash)
-		}
+		t.Version = cmp.Or(t.Version, hashVersion(d.hash))
 	case lang.Commit(reference):
 		t.Pinned = true
 	case reference == "" || head:

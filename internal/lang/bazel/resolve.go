@@ -1,6 +1,7 @@
 package bazel
 
 import (
+	"cmp"
 	"encoding/json"
 	"path"
 	"path/filepath"
@@ -468,10 +469,7 @@ func (r *resolver) repositoryTarget(w *workspace, d *repositoryDeclaration) lang
 		}
 		return lang.Target{}
 	case "go_repository":
-		packageName := d.importpath
-		if packageName == "" {
-			packageName = d.name
-		}
+		packageName := cmp.Or(d.importpath, d.name)
 		t := lang.Target{Ecosystem: lang.EcosystemGo, Package: packageName}
 		if d.version != "" {
 			t.Version, t.Pinned = d.version, lang.Pinned(d.version)
@@ -499,9 +497,7 @@ func (r *resolver) repositoryTarget(w *workspace, d *repositoryDeclaration) lang
 	switch {
 	case d.hash != "":
 		t.Pinned = true
-		if t.Version == "" {
-			t.Version = d.hash
-		}
+		t.Version = cmp.Or(t.Version, d.hash)
 	case lang.Commit(reference):
 		t.Pinned = true
 	case reference == "" || head:
@@ -595,10 +591,7 @@ func (r *resolver) hubLabel(w *workspace, repository string, h *hub, l label) la
 		}
 		return r.pypi(w, repository, name)
 	case lang.EcosystemNPM:
-		name := l.packageName
-		if name == "" {
-			name = strings.TrimPrefix(l.target, "node_modules/")
-		}
+		name := cmp.Or(l.packageName, strings.TrimPrefix(l.target, "node_modules/"))
 		return npmTarget(h, name)
 	case lang.EcosystemCrates:
 		if t, ok := h.packages[normalizeCrate(l.target)]; ok {

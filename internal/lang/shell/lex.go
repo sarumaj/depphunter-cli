@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"cmp"
 	"strings"
 )
 
@@ -319,9 +320,7 @@ func (p *parser) command(nested bool) (c *command, end bool) {
 			case "<<", "<<-":
 				if w := p.token(); w.kind == tWord {
 					d, _ := w.w.text()
-					if d == "" {
-						d = strings.Trim(w.w.raw, `'"`)
-					}
+					d = cmp.Or(d, strings.Trim(w.w.raw, `'"`))
 					p.heredocs = append(p.heredocs, heredoc{delimiter: d, strip: t.operator == "<<-"})
 				} else {
 					p.unread(w)

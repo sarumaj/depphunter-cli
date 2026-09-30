@@ -2,6 +2,7 @@ package puppet
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"regexp"
 	"strings"
@@ -147,9 +148,7 @@ func readPuppetfile(source []byte) *puppetfile {
 			}
 		default:
 			d.packageName, d.forge = slug(name), true
-			if version == "" {
-				version = options["version"]
-			}
+			version = cmp.Or(version, options["version"])
 			d.version = version
 			d.pinned = !latest && lang.Pinned(version)
 			d.floating = !d.pinned

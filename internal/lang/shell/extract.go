@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"cmp"
 	"path"
 	"slices"
 	"strings"
@@ -403,10 +404,7 @@ func (x *extractor) module(w *word) (string, bool) {
 		}
 		return prefix + v, true
 	}
-	rest := strings.TrimPrefix(v[1:], "/")
-	if rest == "" {
-		rest = "."
-	}
+	rest := cmp.Or(strings.TrimPrefix(v[1:], "/"), ".")
 	return prefix + rest, true
 }
 

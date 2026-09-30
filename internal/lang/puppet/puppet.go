@@ -17,11 +17,9 @@
 package puppet
 
 import (
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -104,17 +102,9 @@ func installed(relative, absolute string) bool {
 	return false
 }
 
-var statMemo sync.Map // absolute path -> bool: it exists
+var statMemo lang.Memo[string, bool] // absolute path -> it exists
 
-func exists(p string) bool {
-	if v, ok := statMemo.Load(p); ok {
-		return v.(bool)
-	}
-	// Lstat: a marker committed as a symbolic link says nothing of its target.
-	_, err := os.Lstat(p)
-	statMemo.Store(p, err == nil)
-	return err == nil
-}
+func exists(p string) bool { return statMemo.Get(p, lang.Present) }
 
 // moduleLayout reports whether a directory is laid out as a Puppet module.
 func moduleLayout(directory string) bool {

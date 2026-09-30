@@ -1,6 +1,7 @@
 package purescript
 
 import (
+	"cmp"
 	"os"
 	"path"
 	"path/filepath"
@@ -62,8 +63,8 @@ type resolver struct {
 	// import cycle).
 	evaluated map[string]*dhall.Value
 	setWS     map[*dhall.Value]*workspace
-	setFile   map[string]*workspace // a packages.dhall's workspace
-	installed sync.Map              // dir -> *installedIndex
+	setFile   map[string]*workspace              // a packages.dhall's workspace
+	installed lang.Memo[string, *installedIndex] // directory -> its installed index
 }
 
 // Implements: REQ-PURESCRIPT-004, REQ-PURESCRIPT-005, REQ-PURESCRIPT-007
@@ -665,9 +666,7 @@ func (r *resolver) fromWorkspace(activeWorkspace *workspace, name, requested str
 			return r.localDirectory(e.directory, e.path)
 		case e.git != "":
 			reference := e.reference
-			if reference == "" {
-				reference = e.version // packages.dhall: version is the git reference
-			}
+			reference = cmp.Or(reference, e.version) // packages.dhall: version is the git reference
 			return lang.Target{Ecosystem: ecosystemPureScript, Package: gitName(e.git, e.subdirectory), Version: reference,
 				Pinned: lang.Commit(reference), Floating: reference == "", Origin: e.git}
 		case e.version != "":
@@ -725,8 +724,7 @@ func (r *resolver) installedIndex(directory string) *installedIndex {
 		absolute := filepath.Join(r.root, filepath.FromSlash(d))
 		spago, bower := filepath.Join(absolute, ".spago"), filepath.Join(absolute, "bower_components")
 		if repository.IsDirectory(spago) || repository.IsDirectory(bower) {
-			v, _ := r.installed.LoadOrStore(d, &installedIndex{})
-			index := v.(*installedIndex)
+			index := r.installed.LoadOrStore(d, &installedIndex{})
 			index.once.Do(func() { index.modules = readInstalled(repository, spago, bower) })
 			return index
 		}

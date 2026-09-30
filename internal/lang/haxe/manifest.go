@@ -2,6 +2,7 @@ package haxe
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"path"
 	"regexp"
@@ -413,10 +414,7 @@ func readProject(source []byte) *project {
 				add("include "+f, f, kindFile, line)
 			}
 		case "source", "classpath":
-			f := attribute("path")
-			if f == "" {
-				f = attribute("name")
-			}
+			f := cmp.Or(attribute("path"), attribute("name"))
 			if f != "" {
 				p.sources = append(p.sources, f)
 				add(tag+" "+f, f, kindCP, line)

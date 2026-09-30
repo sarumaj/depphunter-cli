@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"cmp"
 	"regexp"
 	"strings"
 
@@ -231,9 +232,7 @@ func (x *extractor) cargo(words []*word, i, line int) {
 	}
 	x.arguments(words, i, cargoValued, nil, func(w *word, s string) {
 		crate, v, _ := strings.Cut(s, "@")
-		if v == "" {
-			v = version
-		}
+		v = cmp.Or(v, version)
 		if crateName.MatchString(crate) {
 			x.packageName(prefix+" "+w.raw, ecosystemCrates, crate, v, line)
 		}
@@ -259,9 +258,7 @@ func (x *extractor) gem(words []*word, i, line int) {
 	}
 	x.arguments(words, i, gemValued, nil, func(w *word, s string) {
 		g, v, _ := strings.Cut(s, ":")
-		if v == "" {
-			v = version
-		}
+		v = cmp.Or(v, version)
 		if strings.HasSuffix(g, ".gem") || !crateName.MatchString(strings.ReplaceAll(g, ".", "_")) {
 			return
 		}

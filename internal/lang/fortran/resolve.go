@@ -1,6 +1,7 @@
 package fortran
 
 import (
+	"cmp"
 	"os"
 	"path"
 	"path/filepath"
@@ -256,9 +257,7 @@ func readCache(source []byte) map[string]*cached {
 			return strings.TrimSpace(s)
 		}
 		c := &cached{version: stringField("version"), rev: stringField("rev"), git: stringField("git")}
-		if c.rev == "" {
-			c.rev = stringField("revision")
-		}
+		c.rev = cmp.Or(c.rev, stringField("revision"))
 		out[name] = c
 	}
 	return out
@@ -512,10 +511,7 @@ func (r *resolver) cachedVersion(t *lang.Target, c *cached, d *dependency) {
 	if t.Pinned {
 		return
 	}
-	v := c.rev
-	if v == "" {
-		v = c.version
-	}
+	v := cmp.Or(c.rev, c.version)
 	if v == "" || v == t.Version {
 		return
 	}

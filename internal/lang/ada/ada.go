@@ -25,7 +25,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -90,30 +89,23 @@ func generated(f *scan.File) bool {
 	return false
 }
 
-var directoryFiles sync.Map // absolute directory + "\x00" + pattern -> bool
+var directoryFiles lang.Memo[string, bool] // absolute directory + "\x00" + pattern -> found
 
 // hasFile reports whether directory has a file matching pattern (a name, or *.gpr).
 func hasFile(directory, pattern string) bool {
-	key := directory + "\x00" + pattern
-	if v, ok := directoryFiles.Load(key); ok {
-		return v.(bool)
-	}
-	found := false
-	if strings.HasPrefix(pattern, "*") {
+	return directoryFiles.Get(directory+"\x00"+pattern, func(string) bool {
+		if !strings.HasPrefix(pattern, "*") {
+			return lang.Present(filepath.Join(directory, pattern))
+		}
 		if entries, err := os.ReadDir(directory); err == nil {
 			for _, e := range entries {
 				if !e.IsDir() && strings.EqualFold(path.Ext(e.Name()), pattern[1:]) {
-					found = true
-					break
+					return true
 				}
 			}
 		}
-	} else if _, err := os.Lstat(filepath.Join(directory, pattern)); err == nil {
-		// Lstat: a marker committed as a symbolic link says nothing of its target.
-		found = true
-	}
-	directoryFiles.Store(key, found)
-	return found
+		return false
+	})
 }
 
 // Class tells alire.toml apart from other TOML files.

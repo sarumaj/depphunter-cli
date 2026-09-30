@@ -11,6 +11,7 @@
 package nuget
 
 import (
+	"cmp"
 	"encoding/json"
 	"os"
 	"path"
@@ -154,9 +155,7 @@ func Read(all []*scan.File) *Store {
 					continue
 				}
 				if r := s.remote(d.Kind, d.Name); r != nil {
-					if r.reference == "" {
-						r.reference = d.Constraint
-					}
+					r.reference = cmp.Or(r.reference, d.Constraint)
 					if d.File != "" {
 						r.files = append(r.files, path.Base(d.File))
 					}
@@ -171,9 +170,7 @@ func Read(all []*scan.File) *Store {
 		}
 	}
 	for key, e := range s.msbuild.packages {
-		if e.declared == "" {
-			e.declared = central[key]
-		}
+		e.declared = cmp.Or(e.declared, central[key])
 	}
 	for _, f := range paketLocks {
 		data, err := os.ReadFile(f.AbsolutePath)
@@ -197,9 +194,7 @@ func Read(all []*scan.File) *Store {
 				continue
 			}
 			if r := s.remote(l.Kind, lockRemote(l)); r != nil {
-				if r.commit == "" {
-					r.commit = l.Version
-				}
+				r.commit = cmp.Or(r.commit, l.Version)
 				if l.Name != "" {
 					r.files = append(r.files, path.Base(l.Name))
 				}

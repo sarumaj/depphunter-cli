@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -28,9 +27,9 @@ type resolver struct {
 	root     string
 	files    map[string]bool
 	projects map[string]*project
-	order    []*project // shallowest first
-	jpath    []string   // JSONNET_PATH entries inside the repository
-	exists   sync.Map   // repository-relative path -> bool, for what scan does not list
+	order    []*project              // shallowest first
+	jpath    []string                // JSONNET_PATH entries inside the repository
+	exists   lang.Memo[string, bool] // repository-relative path -> it exists, for what scan does not list
 }
 
 // readFile reads a file on disk through lang.ReadBounded, nil when it cannot.
@@ -128,13 +127,10 @@ func (r *resolver) present(p string) bool {
 	if r.files[p] {
 		return true
 	}
-	if v, ok := r.exists.Load(p); ok {
-		return v.(bool)
-	}
-	fileInfo, err := lang.OpenRoot(r.root).Stat(filepath.Join(r.root, filepath.FromSlash(p)))
-	ok := err == nil && !fileInfo.IsDir()
-	r.exists.Store(p, ok)
-	return ok
+	return r.exists.Get(p, func(p string) bool {
+		fileInfo, err := lang.OpenRoot(r.root).Stat(filepath.Join(r.root, filepath.FromSlash(p)))
+		return err == nil && !fileInfo.IsDir()
+	})
 }
 
 // Implements: REQ-JSONNET-004, REQ-JSONNET-005, REQ-JSONNET-006

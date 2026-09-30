@@ -1,6 +1,7 @@
 package swift
 
 import (
+	"cmp"
 	"encoding/json"
 	"regexp"
 	"sort"
@@ -429,9 +430,7 @@ func readResolved(data []byte) []pin {
 	var out []pin
 	for _, p := range append(doc.Pins, doc.Object.Pins...) {
 		q := pin{identity: p.Identity, location: p.Location, revision: p.State.Revision, registry: p.Kind == "registry"}
-		if q.location == "" {
-			q.location = p.RepositoryURL
-		}
+		q.location = cmp.Or(q.location, p.RepositoryURL)
 		if q.identity == "" {
 			q.identity = identity(q.location)
 		}

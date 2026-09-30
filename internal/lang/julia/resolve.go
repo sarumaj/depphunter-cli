@@ -1,6 +1,7 @@
 package julia
 
 import (
+	"cmp"
 	"os"
 	"path"
 	"path/filepath"
@@ -526,9 +527,7 @@ func (r *resolver) entry(m *manifest, e *entry, segments []string, file string) 
 		return std(e.name)
 	}
 	v := e.version
-	if v == "" {
-		v = e.tree // a package added by URL without a version: its tree hash
-	}
+	v = cmp.Or(v, e.tree) // a package added by URL without a version: its tree hash
 	t := lang.Target{Ecosystem: ecosystemJulia, Package: e.name, Version: v, Pinned: v != "", Origin: e.repositoryURL, Registry: e.uuid}
 	t.Floating = v == ""
 	return t

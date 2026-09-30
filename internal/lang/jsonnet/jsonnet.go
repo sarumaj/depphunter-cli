@@ -21,7 +21,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -90,17 +89,8 @@ func ignored(f *scan.File) bool {
 	return false
 }
 
-var rootMemo sync.Map // absolute directory -> bool: it has a jsonnetfile.json
-
-func jbRoot(directory string) bool {
-	if v, ok := rootMemo.Load(directory); ok {
-		return v.(bool)
-	}
-	// Lstat: a marker committed as a symbolic link says nothing of its target.
-	_, err := os.Lstat(filepath.Join(directory, "jsonnetfile.json"))
-	rootMemo.Store(directory, err == nil)
-	return err == nil
-}
+// jbRoot reports whether an absolute directory has a jsonnetfile.json.
+var jbRoot = lang.MarkerMemo("jsonnetfile.json")
 
 // Implements: REQ-JSONNET-008
 func (Plugin) Ecosystems() []lang.Ecosystem {

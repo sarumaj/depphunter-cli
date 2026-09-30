@@ -1,12 +1,12 @@
 package cue
 
 import (
+	"cmp"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 
 	"golang.org/x/mod/modfile"
 	gomodule "golang.org/x/mod/module"
@@ -35,10 +35,10 @@ type resolver struct {
 	root        string
 	files       map[string]bool
 	modules     map[string]*module
-	order       []*module            // shallowest first
-	packages    map[string][]cueFile // directory -> its CUE files with their package names
-	directories sync.Map             // repository-relative directory -> exists on disk
-	cache       string               // cue's cache directory, where fetched modules are extracted
+	order       []*module               // shallowest first
+	packages    map[string][]cueFile    // directory -> its CUE files with their package names
+	directories lang.Memo[string, bool] // repository-relative directory -> exists on disk
+	cache       string                  // cue's cache directory, where fetched modules are extracted
 }
 
 // Implements: REQ-CUE-004, REQ-CUE-005, REQ-CUE-006, REQ-CUE-010
@@ -144,12 +144,9 @@ func join(directory, rest string) string {
 // isDirectory reports whether a repository directory exists on disk (the trees
 // under cue.mod are not scanned).
 func (r *resolver) isDirectory(p string) bool {
-	if v, ok := r.directories.Load(p); ok {
-		return v.(bool)
-	}
-	ok := lang.OpenRoot(r.root).IsDirectory(filepath.Join(r.root, filepath.FromSlash(p)))
-	r.directories.Store(p, ok)
-	return ok
+	return r.directories.Get(p, func(p string) bool {
+		return lang.OpenRoot(r.root).IsDirectory(filepath.Join(r.root, filepath.FromSlash(p)))
+	})
 }
 
 // splitImport splits an import path into the path without major version
@@ -160,9 +157,7 @@ func splitImport(spec string) (string, string) {
 		p, q = spec[:i], spec[i+1:]
 	}
 	p = stripMajor(p)
-	if q == "" {
-		q = path.Base(p)
-	}
+	q = cmp.Or(q, path.Base(p))
 	return p, q
 }
 

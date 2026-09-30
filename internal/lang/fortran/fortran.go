@@ -20,11 +20,9 @@
 package fortran
 
 import (
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/cpp"
@@ -97,17 +95,8 @@ func generated(f *scan.File) bool {
 	return false
 }
 
-var manifestDirectories sync.Map // absolute directory -> bool: it has an fpm.toml
-
-func hasManifest(directory string) bool {
-	if v, ok := manifestDirectories.Load(directory); ok {
-		return v.(bool)
-	}
-	// Lstat: a marker committed as a symbolic link says nothing of its target.
-	_, err := os.Lstat(filepath.Join(directory, "fpm.toml"))
-	manifestDirectories.Store(directory, err == nil)
-	return err == nil
-}
+// hasManifest reports whether an absolute directory has an fpm.toml.
+var hasManifest = lang.MarkerMemo("fpm.toml")
 
 // Class tells fpm.toml apart from other TOML files.
 //

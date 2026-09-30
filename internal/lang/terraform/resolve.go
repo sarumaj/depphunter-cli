@@ -1,6 +1,7 @@
 package terraform
 
 import (
+	"cmp"
 	"os"
 	"path"
 	"regexp"
@@ -268,9 +269,7 @@ func (r *resolver) moduleTarget(directory, source, version string) lang.Target {
 		}
 		return t
 	}
-	if version == "" {
-		version = s.reference // tfr://...?version=
-	}
+	version = cmp.Or(version, s.reference) // tfr://...?version=
 	t := lang.Target{Ecosystem: ecosystemModule, Package: s.packageName, Version: strings.TrimSpace(version)}
 	if v, ok := exactVersion(version); ok {
 		t.Version, t.Pinned = v, true
@@ -301,9 +300,7 @@ func (r *resolver) provider(directory, local string) lang.Target {
 	t := lang.Target{Ecosystem: ecosystemProvider, Package: source, Version: constraint}
 	if e, ok := r.lockFor(directory, source); ok {
 		t.Version, t.Pinned, t.Requested = e.version, true, constraint
-		if t.Requested == "" {
-			t.Requested = e.constraints
-		}
+		t.Requested = cmp.Or(t.Requested, e.constraints)
 		return t
 	}
 	if v, ok := exactVersion(constraint); ok && len(requiredProvider.constraints) == 1 {

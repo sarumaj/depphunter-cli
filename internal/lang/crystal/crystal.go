@@ -19,7 +19,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -74,17 +73,8 @@ func installed(f *scan.File) bool {
 	return false
 }
 
-var shardDirectories sync.Map // absolute directory -> bool: it has a shard.yml
-
-func hasShard(directory string) bool {
-	if v, ok := shardDirectories.Load(directory); ok {
-		return v.(bool)
-	}
-	// Lstat: a marker committed as a symbolic link says nothing of its target.
-	_, err := os.Lstat(filepath.Join(directory, "shard.yml"))
-	shardDirectories.Store(directory, err == nil)
-	return err == nil
-}
+// hasShard reports whether an absolute directory has a shard.yml.
+var hasShard = lang.MarkerMemo("shard.yml")
 
 // Class tells the shards files apart from other YAML files and from other lock
 // files.

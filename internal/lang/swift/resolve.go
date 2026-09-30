@@ -452,9 +452,7 @@ func (r *resolver) packageName(projects []*project, id, spelled string) lang.Tar
 		if q.registry {
 			t.Package = q.location
 		}
-		if t.Version == "" {
-			t.Version = q.revision
-		}
+		t.Version = cmp.Or(t.Version, q.revision)
 		if t.Version == "" {
 			t.Pinned, t.Floating = false, true
 		}
@@ -464,10 +462,7 @@ func (r *resolver) packageName(projects []*project, id, spelled string) lang.Tar
 		return t
 	}
 	if d == nil {
-		name := spelled
-		if name == "" {
-			name = id
-		}
+		name := cmp.Or(spelled, id)
 		if strings.Contains(name, "/") {
 			name = packageName(name)
 		}

@@ -1,6 +1,7 @@
 package dhall
 
 import (
+	"cmp"
 	"path"
 	"strings"
 
@@ -103,9 +104,7 @@ func remote(url, hash string) lang.Target {
 	switch {
 	case hash != "":
 		t.Pinned = true
-		if t.Version == "" {
-			t.Version = hash[:min(len(hash), len("sha256:")+12)]
-		}
+		t.Version = cmp.Or(t.Version, hash[:min(len(hash), len("sha256:")+12)])
 	case versionText == "", reference && !version(versionText) && !lang.Commit(versionText):
 		t.Floating = true // no version, or a branch
 	}

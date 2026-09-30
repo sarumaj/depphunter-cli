@@ -2,6 +2,7 @@ package nix
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -31,9 +32,7 @@ func readLock(source []byte) *lockFile {
 	if json.Unmarshal(source, &l) != nil || l.Nodes == nil {
 		return nil
 	}
-	if l.Root == "" {
-		l.Root = "root"
-	}
+	l.Root = cmp.Or(l.Root, "root")
 	return &l
 }
 

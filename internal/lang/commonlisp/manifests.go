@@ -2,6 +2,7 @@ package commonlisp
 
 import (
 	"bytes"
+	"cmp"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -86,9 +87,7 @@ func readQlfile(source []byte) qlfile {
 				arguments = arguments[1:]
 			}
 			e.url = "https://github.com/" + strings.TrimSuffix(repositories, ".git")
-			if e.name == "" {
-				e.name = repositories[strings.LastIndexByte(repositories, '/')+1:]
-			}
+			e.name = cmp.Or(e.name, repositories[strings.LastIndexByte(repositories, '/')+1:])
 		case "dist":
 			// dist <url> [version], or dist <name> <url> [version]
 			u, rest := arguments[0], arguments[1:]
@@ -175,9 +174,7 @@ func readLock(source []byte) qlock {
 		if init := options["initargs"]; init != nil && init.Kind == List {
 			io := plist(init.Kids)
 			e.dist = stringOf(io["distribution"])
-			if e.url == "" {
-				e.url = stringOf(io["remote-url"])
-			}
+			e.url = cmp.Or(e.url, stringOf(io["remote-url"]))
 			if r := stringOf(io["repos"]); e.url == "" && r != "" {
 				e.url = "https://github.com/" + r
 			}
