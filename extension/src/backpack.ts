@@ -9,24 +9,19 @@
 import * as vscode from 'vscode';
 
 import { PackItem } from './api';
+import { ListView } from './list';
 
 // Implements: REQ-EXT-010
-export class BackpackView implements vscode.TreeDataProvider<PackItem> {
-  private readonly changed = new vscode.EventEmitter<void>();
-  readonly onDidChangeTreeData = this.changed.event;
+export class BackpackView extends ListView<PackItem> {
   private items: PackItem[] = [];
 
   setItems(items: PackItem[]): void {
     this.items = items;
-    this.changed.fire();
+    this.refresh();
   }
 
   get contents(): PackItem[] {
     return this.items;
-  }
-
-  dispose(): void {
-    this.changed.dispose();
   }
 
   getChildren(element?: PackItem): PackItem[] {
@@ -43,11 +38,9 @@ export class BackpackView implements vscode.TreeDataProvider<PackItem> {
     item.id = it.id;
     item.description = [it.where && it.line ? `${it.where}:${it.line}` : it.where, it.fixed ? 'fixed' : it.severity]
       .filter(Boolean).join(' · ');
-    item.iconPath = it.fixed
-      // Gone from the latest scan. It stays in the backpack until it is cleared,
-      // because seeing what you caught turn green is the point of having caught it.
-      ? new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'))
-      : new vscode.ThemeIcon(icon(it.severity), new vscode.ThemeColor(color(it.severity)));
+    // Gone from the latest scan. It stays in the backpack until it is cleared,
+    // because seeing what you caught turn green is the point of having caught it.
+    item.iconPath = severityIcon(it.severity, !!it.fixed);
     item.contextValue = 'finding';
     item.tooltip = new vscode.MarkdownString(
       `**${it.severity || 'unknown'}** ${it.title}\n\n\`${it.id}\`${it.where ? `\n\n${it.where}` : ''}`);
@@ -56,33 +49,49 @@ export class BackpackView implements vscode.TreeDataProvider<PackItem> {
   }
 }
 
-const ORDER = ['unknown', 'info', 'low', 'medium', 'moderate', 'high', 'critical'];
-export const rank = (s: string) => ORDER.indexOf((s || 'unknown').toLowerCase());
+const NOTE = { icon: 'info', color: 'foreground' };
+const WARNING = { icon: 'warning', color: 'list.warningForeground' };
+const ERROR = { icon: 'error', color: 'list.errorForeground' };
 
-export function icon(severity: string): string {
-  switch ((severity || '').toLowerCase()) {
-    case 'critical':
-    case 'high':
-      return 'error';
-    case 'medium':
-    case 'moderate':
-    case 'low':
-      return 'warning';
-    default:
-      return 'info';
-  }
+/**
+ * Every severity a scanner reports, by its lowercase name: where it ranks (worst
+ * highest), and the icon and color its rows are drawn with.
+ */
+const SEVERITY: Record<string, { rank: number; icon: string; color: string }> = {
+  unknown: { rank: 0, ...NOTE },
+  info: { rank: 1, ...NOTE },
+  low: { rank: 2, ...WARNING },
+  medium: { rank: 3, ...WARNING },
+  moderate: { rank: 4, ...WARNING },
+  high: { rank: 5, ...ERROR },
+  critical: { rank: 6, ...ERROR },
+};
+
+/** A severity's entry, whatever its case; none for one no scanner here reports. No severity at all is unknown. */
+function severityOf(severity: string): (typeof SEVERITY)[string] | undefined {
+  const name = (severity || 'unknown').toLowerCase();
+  return Object.hasOwn(SEVERITY, name) ? SEVERITY[name] : undefined;
 }
 
+/** Where a severity ranks, worst highest; below every known one (-1) when it is not known. */
+export const rank = (severity: string) => severityOf(severity)?.rank ?? -1;
+
+/** The codicon a severity is drawn with. */
+export function icon(severity: string): string {
+  return severityOf(severity)?.icon ?? NOTE.icon;
+}
+
+/** The theme color of that icon. */
 export function color(severity: string): string {
-  switch ((severity || '').toLowerCase()) {
-    case 'critical':
-    case 'high':
-      return 'list.errorForeground';
-    case 'medium':
-    case 'moderate':
-    case 'low':
-      return 'list.warningForeground';
-    default:
-      return 'foreground';
-  }
+  return severityOf(severity)?.color ?? NOTE.color;
+}
+
+/**
+ * A finding's icon in a list: its severity's, or a green tick once it is `done` with -
+ * fixed since it was caught, or in the backpack already.
+ */
+export function severityIcon(severity: string, done: boolean): vscode.ThemeIcon {
+  return done
+    ? new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'))
+    : new vscode.ThemeIcon(icon(severity), new vscode.ThemeColor(color(severity)));
 }
