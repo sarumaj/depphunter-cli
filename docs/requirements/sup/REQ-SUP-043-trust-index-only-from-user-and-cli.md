@@ -13,7 +13,10 @@ verification:
 
 The system **shall** read `trust_indexes` only from the user's own
 configuration, the environment and the command line; a `trust_indexes` entry in
-a project configuration file **shall** be ignored.
+a project configuration file **shall** be ignored. `trust_indexes` is user-only
+because a project configuration file may set only the keys on an allow-list
+(REQ-CFG-018), and it is not on it: a setting that vouches for anything
+**shall not** be added to that list.
 
 A credential this machine holds for a host **shall not** vouch for an index the
 repository names on that host: such an index is known only when the user vouches
