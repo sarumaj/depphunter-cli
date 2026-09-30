@@ -261,7 +261,7 @@ func readNimbleLock(source []byte) []*locked {
 					return
 				}
 				for _, name := range lang.SortedKeys(task) {
-					add(name, task[name], lineOf(source, `"`+name+`"`))
+					add(name, task[name], max(lang.LineOf(source, `"`+name+`"`, 0), 1))
 				}
 			})
 		default:
@@ -356,13 +356,6 @@ func (l *liner) at(off int) int {
 		l.position = off
 	}
 	return l.line
-}
-
-func lineOf(source []byte, needle string) int {
-	if i := bytes.Index(source, []byte(needle)); i >= 0 {
-		return bytes.Count(source[:i], []byte{'\n'}) + 1
-	}
-	return 1
 }
 
 var configPath = regexp.MustCompile(`(?i)^-{0,2}(path|p)\s*[:=]\s*(.+)$`)

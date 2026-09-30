@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"bytes"
 	"regexp"
 	"strings"
 )
@@ -65,6 +66,17 @@ func NPMPackageName(specifier string) string {
 		return parts[0] + "/" + parts[1]
 	}
 	return parts[0]
+}
+
+// LineOf is the line of the first needle in source at or after byte offset
+// from, 0 when there is none.
+func LineOf(source []byte, needle string, from int) int {
+	from = min(max(from, 0), len(source))
+	i := bytes.Index(source[from:], []byte(needle))
+	if i < 0 {
+		return 0
+	}
+	return bytes.Count(source[:from+i], []byte("\n")) + 1
 }
 
 // jsonString matches a JSON string literal, capturing its contents.

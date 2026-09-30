@@ -360,11 +360,10 @@ func readMetaJSON(source []byte) *manifest {
 	}
 	m := &manifest{}
 	m.name, _ = doc["name"].(string)
-	lines := strings.Split(string(source), "\n")
 	add := func(h any, phase, relation string) {
 		modules, _ := h.(map[string]any)
 		for _, module := range sortedAny(modules) {
-			m.requirements = append(m.requirements, moduleRequirement{module: module, version: jsonString(modules[module]), phase: phase, relation: relation, line: lineOf(lines, `"`+module+`"`)})
+			m.requirements = append(m.requirements, moduleRequirement{module: module, version: jsonString(modules[module]), phase: phase, relation: relation, line: max(lang.LineOf(source, `"`+module+`"`, 0), 1)})
 		}
 	}
 	if prereqs, ok := doc["prereqs"].(map[string]any); ok {
@@ -407,16 +406,6 @@ func sortedAny(m map[string]any) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-// lineOf is the 1-based line of the first line containing s, else 1.
-func lineOf(lines []string, s string) int {
-	for i, l := range lines {
-		if strings.Contains(l, s) {
-			return i + 1
-		}
-	}
-	return 1
 }
 
 // readMetaYAML reads META.yml or MYMETA.yml (version 1.4, or version 2 written as

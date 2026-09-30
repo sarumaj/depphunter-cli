@@ -290,29 +290,19 @@ func readMetadata(source []byte) *metadata {
 	if raw.Dependencies == nil && raw.Support == nil && raw.Source == "" && raw.Requirements == nil {
 		return nil
 	}
-	m := &metadata{name: slug(raw.Name), version: raw.Version, line: lineOf(source, raw.Name, 0)}
+	m := &metadata{name: slug(raw.Name), version: raw.Version, line: max(lang.LineOf(source, `"`+raw.Name+`"`, 0), 1)}
 	from := 0
 	for _, d := range raw.Dependencies {
 		if !moduleName.MatchString(d.Name) {
 			continue
 		}
-		line := lineOf(source, d.Name, from)
+		line := max(lang.LineOf(source, `"`+d.Name+`"`, from), 1)
 		from = max(from, bytes.Index(source, []byte(`"`+d.Name+`"`)))
 		v := strings.TrimSpace(d.Version)
 		pinned := lang.Pinned(v)
 		m.dependencies = append(m.dependencies, &dependency{key: slug(d.Name), name: short(d.Name), packageName: slug(d.Name), version: v, pinned: pinned, floating: !pinned, forge: true, line: line})
 	}
 	return m
-}
-
-// lineOf is the line of the first quoted s at or after byte from.
-func lineOf(source []byte, s string, from int) int {
-	from = max(from, 0)
-	i := bytes.Index(source[from:], []byte(`"`+s+`"`))
-	if i < 0 {
-		return 1
-	}
-	return 1 + bytes.Count(source[:from+i], []byte("\n"))
 }
 
 // readFixtures reads puppetlabs_spec_helper's .fixtures.yml: the modules its
