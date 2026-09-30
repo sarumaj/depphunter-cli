@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/sarumaj/depphunter-cli/internal/cache"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
@@ -98,9 +101,26 @@ func Run(ctx context.Context, root string, options Options) (*graph.Graph, Stats
 		t.Trace(options.Trace)
 	}
 	options.Cache.BeginRun()
-	var parsed, cached atomic.Int64
-	var mu sync.Mutex
+	b := newBuilder(root, files, options)
+	counts := &counts{}
+	for _, p := range options.Plugins {
+		if err := b.runPlugin(ctx, p, root, files, options, counts); err != nil {
+			return nil, stats, err
+		}
+	}
+	b.relocate(options.Registry)
+	stats.Parsed, stats.Cached, stats.ParsedFiles = int(counts.parsed.Load()), int(counts.cached.Load()), counts.files
+	options.Trace.Summarize(b.g)
+	options.Trace.Finish()
+	options.Cache.EndRun()
+	return b.g, stats, nil
+}
 
+// newBuilder starts the graph: the root directory, and every scanned file under the
+// directories that hold it.
+//
+// Implements: REQ-LANG-014, REQ-LANG-020
+func newBuilder(root string, files []*scan.File, options Options) *builder {
 	b := &builder{
 		g:        &graph.Graph{Root: filepath.Base(root), GeneratedAt: time.Now().UTC(), Edges: []*graph.Edge{}},
 		nodes:    map[string]*graph.Node{},
@@ -117,7 +137,6 @@ func Run(ctx context.Context, root string, options Options) (*graph.Graph, Stats
 		}
 	}
 	b.add(&graph.Node{ID: graph.DirectoryID("."), Kind: graph.KindDirectory, Name: b.g.Root, Path: "."})
-	// Implements: REQ-LANG-014, REQ-LANG-020
 	for _, f := range files {
 		b.files[f.Path] = true
 		b.add(&graph.Node{
@@ -125,80 +144,92 @@ func Run(ctx context.Context, root string, options Options) (*graph.Graph, Stats
 			Parent: b.directory(path.Dir(f.Path)), Language: f.Language, LOC: f.LOC, Bytes: f.Size,
 		})
 	}
+	return b
+}
 
-	for _, p := range options.Plugins {
-		claimed := lang.Claimed(p, files)
-		if len(claimed) == 0 {
-			continue
+// counts is how many files a run parsed and how many it took from the cache, and
+// which were parsed.
+type counts struct {
+	parsed, cached atomic.Int64
+	mu             sync.Mutex
+	files          []string
+}
+
+// cachedExtractor extracts with p, or takes the extraction from the cache when the
+// file's content, p's version and its class of file are what they were.
+//
+// Implements: REQ-LANG-026, REQ-LANG-027, REQ-LANG-028
+func cachedExtractor(p lang.Plugin, c *cache.Cache, n *counts) lang.Extractor {
+	return func(f *scan.File, source []byte) (*lang.Extraction, error) {
+		key := cache.Key(p.Name(), p.Version(), lang.ClassOf(p, f), source)
+		if extraction, ok := c.Get(key); ok {
+			n.cached.Add(1)
+			return extraction, nil
 		}
-		r, err := p.Resolver(root, files)
-		if err != nil {
-			return nil, stats, fmt.Errorf("%s plugin: %w", p.Name(), err)
+		n.parsed.Add(1)
+		n.mu.Lock()
+		n.files = append(n.files, f.Path)
+		n.mu.Unlock()
+		extraction, err := p.Extract(f, source)
+		if err == nil {
+			c.Put(key, extraction)
 		}
-		// Implements: REQ-LANG-026, REQ-LANG-027, REQ-LANG-028
-		results := lang.ForEachFile(ctx, claimed, func(f *scan.File, source []byte) *lang.FileResult {
-			key := cache.Key(p.Name(), p.Version(), lang.ClassOf(p, f), source)
-			if extraction, ok := options.Cache.Get(key); ok {
-				cached.Add(1)
-				return lang.Apply(r, f.Path, extraction)
-			}
-			parsed.Add(1)
-			mu.Lock()
-			stats.ParsedFiles = append(stats.ParsedFiles, f.Path)
-			mu.Unlock()
-			extraction, err := p.Extract(f, source)
-			if err != nil {
-				return nil
-			}
-			options.Cache.Put(key, extraction)
-			return lang.Apply(r, f.Path, extraction)
-		})
-		if err := ctx.Err(); err != nil {
-			return nil, stats, err
-		}
-		ecosystems := map[string]lang.Ecosystem{}
-		for _, e := range p.Ecosystems() {
-			ecosystems[e.ID] = e
-		}
-		for _, f := range claimed {
-			if result := results[f.Path]; result != nil {
-				b.fileResult(f.Path, result, ecosystems)
-			}
-		}
-		// Only now, with every direct package of this plugin on the graph, is there
-		// something to walk out from.
-		// Implements: REQ-SUP-011, REQ-TRC-008
-		local, _ := r.(lang.Transitive)
-		switch {
-		case options.ResolveDepth == 0:
-		case local != nil || options.Registry != nil:
-			b.expand(ctx, chain{local: local, remote: options.Registry, report: options.Trace},
-				p.Name(), ecosystems, options.ResolveDepth)
-			if err := ctx.Err(); err != nil {
-				return nil, stats, err
-			}
-		default:
-			// Neither half of the answer is available: this ecosystem keeps its
-			// dependency graph outside the repository (Go modules, NuGet, Maven,
-			// containers) and nothing may be asked. Silence here is not "no
-			// dependencies", and the report is where the difference is kept.
-			options.Trace.Skip(p.Name(),
-				"the repository records no dependency graph for it, and --online was not given")
-		}
-		// Implements: REQ-TRC-017
-		if n, ok := r.(lang.Noter); ok {
-			for _, note := range n.Notes() {
-				note.Plugin = cmp.Or(note.Plugin, p.Name())
-				options.Trace.Note(note)
-			}
+		return extraction, err
+	}
+}
+
+// runPlugin puts what p finds in its files on the graph, walks out from the packages
+// they import as far as the options allow, and passes p's notes to the report.
+func (b *builder) runPlugin(ctx context.Context, p lang.Plugin, root string, files []*scan.File, options Options, n *counts) error {
+	claimed := lang.Claimed(p, files)
+	if len(claimed) == 0 {
+		return nil
+	}
+	r, err := p.Resolver(root, files)
+	if err != nil {
+		return fmt.Errorf("%s plugin: %w", p.Name(), err)
+	}
+	results := lang.Results(ctx, r, claimed, cachedExtractor(p, options.Cache, n))
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	ecosystems := map[string]lang.Ecosystem{}
+	for _, e := range p.Ecosystems() {
+		ecosystems[e.ID] = e
+	}
+	for _, f := range claimed {
+		if result := results[f.Path]; result != nil {
+			b.fileResult(f.Path, result, ecosystems)
 		}
 	}
-	b.relocate(options.Registry)
-	stats.Parsed, stats.Cached = int(parsed.Load()), int(cached.Load())
-	options.Trace.Summarize(b.g)
-	options.Trace.Finish()
-	options.Cache.EndRun()
-	return b.g, stats, nil
+	// Only now, with every direct package of this plugin on the graph, is there
+	// something to walk out from.
+	// Implements: REQ-SUP-011, REQ-TRC-008
+	local, _ := r.(lang.Transitive)
+	switch {
+	case options.ResolveDepth == 0:
+	case local != nil || options.Registry != nil:
+		b.expand(ctx, chain{local: local, remote: options.Registry, report: options.Trace},
+			p.Name(), ecosystems, options.ResolveDepth)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	default:
+		// Neither half of the answer is available: this ecosystem keeps its
+		// dependency graph outside the repository (Go modules, NuGet, Maven,
+		// containers) and nothing may be asked. Silence here is not "no
+		// dependencies", and the report is where the difference is kept.
+		options.Trace.Skip(p.Name(),
+			"the repository records no dependency graph for it, and --online was not given")
+	}
+	// Implements: REQ-TRC-017
+	if noter, ok := r.(lang.Noter); ok {
+		for _, note := range noter.Notes() {
+			note.Plugin = cmp.Or(note.Plugin, p.Name())
+			options.Trace.Note(note)
+		}
+	}
+	return nil
 }
 
 // relocate moves each package the registry found somewhere other than where it was
@@ -332,19 +363,16 @@ func (b *builder) expand(ctx context.Context, transitive lang.Transitive, plugin
 				// package depends on) is on the map already, and its own imports
 				// are what it needs: it gets the edge and is not asked about.
 				// Implements: REQ-MOD-010, REQ-JS-004
-				if dependency.Local != "" {
-					before := len(b.g.Edges)
-					b.edge(from, id, graph.EdgeDepends, 0)
-					edges += len(b.g.Edges) - before
-					continue
-				}
-				if !known {
+				if dependency.Local == "" && !known {
 					b.nodes[id].Transitive = true
 					added++
 				}
-				before := len(b.g.Edges)
-				b.edge(from, id, graph.EdgeDepends, 0)
-				edges += len(b.g.Edges) - before
+				if b.edge(from, id, graph.EdgeDepends, 0) {
+					edges++
+				}
+				if dependency.Local != "" {
+					continue
+				}
 				if !seen[id] {
 					seen[id] = true
 					next = append(next, id)
@@ -363,36 +391,22 @@ func (b *builder) expand(ctx context.Context, transitive lang.Transitive, plugin
 // Implements: REQ-SUP-031
 func (b *builder) ask(ctx context.Context, transitive lang.Transitive, level []string) [][]lang.Target {
 	answers := make([][]lang.Target, len(level))
-	workers := min(transitiveWorkers, len(level))
-	var wg sync.WaitGroup
-	work := make(chan int)
-	for range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range work {
-				if ctx.Err() != nil {
-					continue // canceled: what is left is not asked
-				}
-				dependencies := transitive.Dependencies(b.packages[level[i]])
-				sort.Slice(dependencies, func(a, c int) bool {
-					if dependencies[a].Ecosystem != dependencies[c].Ecosystem {
-						return dependencies[a].Ecosystem < dependencies[c].Ecosystem
-					}
-					if dependencies[a].Package != dependencies[c].Package {
-						return dependencies[a].Package < dependencies[c].Package
-					}
-					return dependencies[a].Local < dependencies[c].Local
-				})
-				answers[i] = dependencies
+	var group errgroup.Group
+	group.SetLimit(transitiveWorkers)
+	for i, id := range level {
+		group.Go(func() error {
+			if ctx.Err() != nil {
+				return nil // canceled: what is left is not asked
 			}
-		}()
+			dependencies := transitive.Dependencies(b.packages[id])
+			slices.SortFunc(dependencies, func(a, c lang.Target) int {
+				return cmp.Or(cmp.Compare(a.Ecosystem, c.Ecosystem), cmp.Compare(a.Package, c.Package), cmp.Compare(a.Local, c.Local))
+			})
+			answers[i] = dependencies
+			return nil
+		})
 	}
-	for i := range level {
-		work <- i
-	}
-	close(work)
-	wg.Wait()
+	group.Wait()
 	return answers
 }
 
@@ -429,18 +443,22 @@ func (b *builder) fileResult(file string, result *lang.FileResult, ecosystems ma
 	}
 }
 
-// edge adds one edge, at most once per pair.
+// edge adds one edge, at most once per pair, and reports whether it did.
 //
 // Implements: REQ-MOD-006
-func (b *builder) edge(from, to string, kind graph.EdgeKind, line int) {
+func (b *builder) edge(from, to string, kind graph.EdgeKind, line int) bool {
 	key := [2]string{from, to}
 	if b.edges[key] {
-		return
+		return false
 	}
 	b.edges[key] = true
 	b.g.Edges = append(b.g.Edges, &graph.Edge{From: from, To: to, Kind: kind, Line: line})
+	return true
 }
 
+// target is the node t names: a file or directory of the project, or an external
+// package, put on the graph with its ecosystem; "" for none.
+//
 // Implements: REQ-SUP-001, REQ-SUP-007, REQ-SUP-014, REQ-SUP-018, REQ-SUP-037, REQ-MOD-008
 func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) string {
 	if t.Local != "" {
@@ -455,16 +473,27 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 	if t.Ecosystem == "" || t.Package == "" {
 		return ""
 	}
+	n := b.packageNode(t, ecosystems)
+	b.attribute(n, t)
+	merge(n, t)
+	return n.ID
+}
+
+// packageNode is t's package node, added under its ecosystem's the first time; the
+// target that first named it is the one its own dependencies are asked with.
+func (b *builder) packageNode(t lang.Target, ecosystems map[string]lang.Ecosystem) *graph.Node {
 	ecosystem := ecosystems[t.Ecosystem]
-	name := ecosystem.Name
-	if name == "" {
-		name = t.Ecosystem
-	}
-	ecosystemID := b.add(&graph.Node{ID: graph.EcosystemID(t.Ecosystem), Kind: graph.KindEcosystem, Name: name, Std: ecosystem.Std}).ID
+	ecosystemID := b.add(&graph.Node{ID: graph.EcosystemID(t.Ecosystem), Kind: graph.KindEcosystem, Name: cmp.Or(ecosystem.Name, t.Ecosystem), Std: ecosystem.Std}).ID
 	n := b.add(&graph.Node{ID: graph.PackageID(t.Ecosystem, t.Package), Kind: graph.KindPackage, Name: t.Package, Parent: ecosystemID, Unresolved: t.Unresolved})
 	if _, ok := b.packages[n.ID]; !ok {
 		b.packages[n.ID] = t
 	}
+	return n
+}
+
+// attribute says where a package comes from: the index that serves it, and whether it
+// is the organization's own.
+func (b *builder) attribute(n *graph.Node, t lang.Target) {
 	if b.indexes != nil && n.Index == "" && n.Origin == "" && t.Origin == "" {
 		index, known := "", false
 		if ti, ok := b.indexes.(TargetIndexes); ok {
@@ -481,7 +510,6 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 	}
 	// Installed from outside every index, it is as good as the organization's own:
 	// asking an index or the vulnerability database about it could only disclose it.
-	// Implements: REQ-PY-015
 	// It resolves from where it was installed, not from the ecosystem's index, so it
 	// is attributed to no index and cannot be marked as coming from one nothing here
 	// vouches for.
@@ -489,23 +517,18 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 	if t.Origin != "" {
 		n.Private = true
 		n.Index, n.IndexUnknown = "", false
-		if n.Origin == "" {
-			n.Origin = t.Origin
-		}
+		n.Origin = cmp.Or(n.Origin, t.Origin)
 	}
-	if n.Version == "" {
-		n.Version = t.Version
-	}
-	if n.Git == "" {
-		n.Git = t.Git
-	}
+}
+
+// merge adds what another requester of the package says of it: the first version,
+// source and platform named stand.
+func merge(n *graph.Node, t lang.Target) {
+	n.Version = cmp.Or(n.Version, t.Version)
+	n.Git = cmp.Or(n.Git, t.Git)
 	// Implements: REQ-JS-018
-	if n.Platform == "" {
-		n.Platform = t.Platform
-	}
-	if n.Requested == "" {
-		n.Requested = t.Requested
-	}
+	n.Platform = cmp.Or(n.Platform, t.Platform)
+	n.Requested = cmp.Or(n.Requested, t.Requested)
 	// A package one manifest pins and another leaves open is only as fixed as its
 	// loosest requester, which is what a supply chain answers to. A version has to be
 	// known before it can be called floating, unless the plugin says the reference
@@ -513,5 +536,4 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 	if t.Floating || (!t.Pinned && (t.Version != "" || t.Requested != "")) {
 		n.Floating = true
 	}
-	return n.ID
 }
