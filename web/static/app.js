@@ -20,7 +20,7 @@ import { Backpack, catchFinding } from './backpack.js';
 import { FindingList, findingRows } from './findinglist.js';
 import { Stash } from './stash.js';
 import { indexFindings } from './findings.js';
-import { $, h, fmt, escapeHTML, whenUnlocked } from './dom.js';
+import { $, h, fmt, escapeHTML, badge, drawer, findingItem } from './dom.js';
 import { Color } from './vendor/three.module.min.js';
 
 const MAX_ARCS = 400;
@@ -420,10 +420,8 @@ function drawPack(_pack, fromServer = false) {
   if (!fromServer) pushBackpack(pack.items);
   scene?.requestRender();
   const { total, open, fixed } = pack.counts;
-  const btn = $('pack-btn'), count = $('pack-count');
-  btn.hidden = !(total || state.findings);
-  count.hidden = !total;
-  count.textContent = total;
+  $('pack-btn').hidden = !(total || state.findings);
+  badge($('pack-count'), total);
   $('pack-summary').textContent = total
     ? `${open} still open${fixed ? `, ${fixed} fixed since` : ''}`
     : '';
@@ -443,19 +441,16 @@ function packRow(it) {
     class: 'drop', type: 'button', title: 'Take it out of the backpack',
     onclick: e => { e.stopPropagation(); pack.remove(it.id); },
   }, '×');
-  return h('li', {
+  return findingItem({
     class: `${it.fixed ? 'fixed ' : ''}sev-${it.severity}`,
     title: it.fixed ? 'Gone from the latest scan' : it.title,
     tabindex: '0', role: 'button',
     onclick: () => openCaught(it),
     onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCaught(it); } },
-  },
-    h('span', { class: 'sev-dot' }),
-    h('span', { class: 'body' },
-      h('span', { class: 't' }, it.title),
-      h('span', { class: 'w' }, it.where + (it.line ? `:${it.line}` : ''))),
-    h('span', { class: 'state' }, it.fixed ? 'fixed' : it.severity),
-    drop);
+  }, [
+    h('span', { class: 't' }, it.title),
+    h('span', { class: 'w' }, it.where + (it.line ? `:${it.line}` : '')),
+  ], it.fixed ? 'fixed' : it.severity, drop);
 }
 
 // Opening one goes back to where it was caught: the building is revealed and selected
@@ -471,30 +466,21 @@ function openCaught(it) {
   panel.show(node, false, it.fixed ? undefined : it.id);
 }
 
-let packing = () => {}; // calls off a backpack still waiting for the pointer (whenUnlocked)
+// Reading is reading, on the street as much as over the map: the walker holds still
+// and lets go of the pointer while the backpack is open, and picks both up again
+// when it closes. It opens once the pointer is free, not while the lock is still
+// letting go.
+const packDrawer = drawer({
+  panel: 'pack', button: 'pack-btn', walker: () => walker, streetOnly: true,
+  hold: () => walker.setFrozen(true),
+  onShow: on => { if (on) drawPack(); },
+});
 
 // Implements: REQ-WALK-034, REQ-UI-014
 function setPackOpen(on) {
-  packing();
   // The two share a corner of the map, and one of them is enough to read at once.
   if (on) setFindingsOpen(false);
-  const show = () => {
-    $('pack').hidden = !on;
-    $('pack-btn').setAttribute('aria-expanded', on);
-    if (on) drawPack();
-  };
-  // Reading is reading, on the street as much as over the map: the walker holds still
-  // and lets go of the pointer while the backpack is open, and picks both up again
-  // when it closes. It opens once the pointer is free, not while the lock is still
-  // letting go.
-  if (!walker?.active) return show();
-  if (on) {
-    walker.setFrozen(true);
-    packing = whenUnlocked(show);
-  } else {
-    show();
-    walker.lockPointer();
-  }
+  packDrawer(on);
 }
 
 // ---------------------------------------------------------------- the findings list
@@ -514,8 +500,7 @@ function drawFindings() {
   if (!any && !$('findings').hidden) setFindingsOpen(false);
   const rows = findingRows(state.findings, state.vis.visible);
   const left = rows.filter(row => !pack.has(row.finding.id)).length;
-  $('findings-count').hidden = !left;
-  $('findings-count').textContent = fmt.format(left);
+  badge($('findings-count'), left, fmt.format(left));
   if ($('findings').hidden) return;
   findingList.draw(rows);
   const hidden = (state.findings?.all.length || 0) - rows.length;
@@ -802,17 +787,15 @@ function setLive(state) {
  * button is only drawn while walking - setWalking redraws this when that changes.
  */
 function drawStash() {
-  const btn = $('stash-btn'), list = $('stash-list');
-  btn.hidden = !stash.count;
-  $('stash-count').hidden = !stash.count;
-  $('stash-count').textContent = stash.count;
+  $('stash-btn').hidden = !stash.count;
+  badge($('stash-count'), stash.count);
   $('stash-summary').textContent = stash.count
     ? `${stash.count} this session - save the ones you want`
     : '';
   $('stash-empty-note').hidden = !!stash.count;
   // Only worth saying where there is both something to show and somewhere to show it.
   $('stash-show-note').hidden = !stash.count || !walker?.active;
-  list.replaceChildren(...stash.items.map(it => h('li', {},
+  $('stash-list').replaceChildren(...stash.items.map(it => h('li', {},
     h('img', { src: it.url, alt: '', loading: 'lazy' }),
     h('div', { class: 'what' },
       h('b', {}, `Photograph ${it.n}`),
@@ -827,26 +810,13 @@ function drawStash() {
   if (!stash.count) setStashOpen(false);
 }
 
-let stashing = () => {}; // as `packing`, for the photographs
-
+// Looking at them is reading, the same as the backpack: the walker holds still and
+// lets the pointer go while they are open, and takes both back when they close.
 // Implements: REQ-UI-014
-function setStashOpen(on) {
-  stashing();
-  const show = () => {
-    $('stash').hidden = !on;
-    $('stash-btn').setAttribute('aria-expanded', on);
-  };
-  // Looking at them is reading, the same as the backpack: the walker holds still and
-  // lets the pointer go while they are open, and takes both back when they close.
-  if (!walker?.active) return show();
-  if (on) {
-    walker.setFrozen(true);
-    stashing = whenUnlocked(show);
-  } else {
-    show();
-    walker.lockPointer();
-  }
-}
+const setStashOpen = drawer({
+  panel: 'stash', button: 'stash-btn', walker: () => walker, streetOnly: true,
+  hold: () => walker.setFrozen(true),
+});
 
 // ---------------------------------------------------------------- screenshot
 
@@ -990,8 +960,7 @@ function applyFilters() {
 function updateFilterBadge() {
   const ecosystemChanges = model.ecosystems.filter(e => state.filters.hiddenEcosystems.has(e.id) !== defaultHiddenEcosystems.has(e.id)).length;
   const active = state.filters.hiddenLangs.size + ecosystemChanges + (state.filters.path.trim() ? 1 : 0);
-  $('filter-count').hidden = !active;
-  $('filter-count').textContent = active;
+  badge($('filter-count'), active);
 }
 
 // Languages folded into the legend's "Other" entry.
@@ -1753,21 +1722,7 @@ function bindFilters() {
   // Opening waits for the pointer lock to let go (whenUnlocked), and the click-outside
   // handler only looks at a menu that is showing, so an event still delivered to the
   // locked canvas cannot shut it on the way in.
-  let pending = () => {};
-  const setOpen = (open, back = true) => {
-    pending();
-    const show = () => {
-      pop.hidden = !open;
-      btn.setAttribute('aria-expanded', open);
-    };
-    if (open) {
-      readAway();
-      pending = whenUnlocked(show);
-    } else {
-      show();
-      if (back && walker?.active) walker.lockPointer();
-    }
-  };
+  const setOpen = drawer({ panel: 'filters', button: 'filters-btn', walker: () => walker, hold: readAway });
   btn.onclick = () => setOpen(pop.hidden);
   document.addEventListener('pointerdown', e => { if (!pop.hidden && !e.target.closest('.filters')) setOpen(false, false); });
   btn.parentElement.addEventListener('keydown', e => {
@@ -1852,22 +1807,7 @@ function bindExport() {
   // shut because the pointer went elsewhere in the page it is not, and taking the
   // reticle back then would snatch the mouse out of whatever was being reached for.
   // Opening waits for the pointer lock to let go, as the filters' does.
-  let pending = () => {};
-  const setOpen = (open, back = true, then) => {
-    pending();
-    const show = () => {
-      pop.hidden = !open;
-      btn.setAttribute('aria-expanded', open);
-      then?.();
-    };
-    if (open) {
-      readAway();
-      pending = whenUnlocked(show);
-    } else {
-      show();
-      if (back && walker?.active) walker.lockPointer();
-    }
-  };
+  const setOpen = drawer({ panel: 'export', button: 'export-btn', walker: () => walker, hold: readAway });
   btn.onclick = () => setOpen(pop.hidden);
   /**
    * Opens the menu, from the map or from the street. It always opens rather than

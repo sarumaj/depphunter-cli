@@ -8,7 +8,7 @@ import { ancestors, boundaryEdges, unread, fileSize } from './model.js';
 import { whereOf } from './findings.js';
 import { BinaryFile, fetchBytes, fetchSource, fileURL } from './data.js';
 import { ago, formatDate } from './history.js';
-import { fmt, h, escapeHTML } from './dom.js';
+import { fmt, h, escapeHTML, catchToggle, sevDot } from './dom.js';
 
 // indexHost keeps the part of an index URL that identifies it on a stat tile.
 const indexHost = url => url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
@@ -212,7 +212,7 @@ export class Panel {
       class: `finding sev-${f.severity}`,
       onclick: () => { detail.hidden = !detail.hidden; },
       title: `${f.severity} · ${f.source}`,
-    }, h('i', { class: 'sev-dot' }), body, this.catchButton(f));
+    }, sevDot('i'), body, this.catchButton(f));
     row.dataset.finding = f.id;
     if (this.focus === f.id) {
       detail.hidden = false;
@@ -231,22 +231,11 @@ export class Panel {
    */
   catchButton(f) {
     if (!this.onCatch) return null;
-    const has = () => !!this.caught?.(f.id);
-    const button = h('button', {
-      class: 'catch', type: 'button',
-      onclick: e => {
-        e.stopPropagation(); // the row itself opens the detail
-        this.onCatch(f, has());
-        draw();
-      },
+    return catchToggle({
+      class: 'catch', live: true,
+      kept: () => !!this.caught?.(f.id),
+      onToggle: kept => this.onCatch(f, kept),
     });
-    const draw = () => {
-      button.classList.toggle('kept', has());
-      button.textContent = has() ? '✓' : '+';
-      button.title = has() ? 'In the backpack - press to take it out' : 'Put it in the backpack';
-    };
-    draw();
-    return button;
   }
 
   /**
