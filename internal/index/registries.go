@@ -201,23 +201,7 @@ type nuspecDependency struct {
 // nugetBase resolves a feed's service index to the flat container that serves nuspecs
 // and version listings, and remembers the answer.
 func (c *Client) nugetBase(ctx context.Context, index string) (string, error) {
-	c.mu.Lock()
-	base, ok := c.feeds[index]
-	c.mu.Unlock()
-	if ok {
-		return base, nil
-	}
-	base, err := c.readNuGetIndex(ctx, index)
-	if err != nil {
-		return "", err
-	}
-	c.mu.Lock()
-	if c.feeds == nil {
-		c.feeds = map[string]string{}
-	}
-	c.feeds[index] = base
-	c.mu.Unlock()
-	return base, nil
+	return c.feeds.get(index, func() (string, error) { return c.readNuGetIndex(ctx, index) })
 }
 
 func (c *Client) readNuGetIndex(ctx context.Context, index string) (string, error) {
@@ -345,38 +329,29 @@ func (c *Client) composerMetadataURL(ctx context.Context, index string) (string,
 		return index + "/p2/%package%.json", nil
 	}
 	key := Composer + " " + index
-	c.mu.Lock()
-	pattern, ok := c.feeds[key]
-	c.mu.Unlock()
-	if ok {
-		return pattern, nil
-	}
-	doc, err := getJSON[struct {
-		MetadataURL string `json:"metadata-url"`
-	}](ctx, c, index+"/packages.json")
-	if err != nil {
-		return "", err
-	}
-	// Relative to the repository's host, as Composer reads it. Not url.Parse: the
-	// placeholder is not a valid escape.
-	switch m := doc.MetadataURL; {
-	case m == "":
-	case strings.HasPrefix(m, "https://"), strings.HasPrefix(m, "http://"):
-		pattern = m
-	case strings.HasPrefix(m, "/"):
-		if u, err := url.Parse(index); err == nil {
-			pattern = u.Scheme + "://" + u.Host + m
+	return c.composerPatterns.get(key, func() (string, error) {
+		pattern := ""
+		doc, err := getJSON[struct {
+			MetadataURL string `json:"metadata-url"`
+		}](ctx, c, index+"/packages.json")
+		if err != nil {
+			return "", err
 		}
-	default:
-		pattern = index + "/" + m
-	}
-	c.mu.Lock()
-	if c.feeds == nil {
-		c.feeds = map[string]string{}
-	}
-	c.feeds[key] = pattern
-	c.mu.Unlock()
-	return pattern, nil
+		// Relative to the repository's host, as Composer reads it. Not url.Parse: the
+		// placeholder is not a valid escape.
+		switch m := doc.MetadataURL; {
+		case m == "":
+		case strings.HasPrefix(m, "https://"), strings.HasPrefix(m, "http://"):
+			pattern = m
+		case strings.HasPrefix(m, "/"):
+			if u, err := url.Parse(index); err == nil {
+				pattern = u.Scheme + "://" + u.Host + m
+			}
+		default:
+			pattern = index + "/" + m
+		}
+		return pattern, nil
+	})
 }
 
 // ---------------------------------------------------------------- RubyGems
@@ -628,57 +603,50 @@ func rRequirement(requirement string) string {
 // cranRepository reads a CRAN-like repository's src/contrib/PACKAGES: one DCF record per
 // package, with its Depends, Imports and LinkingTo.
 func (c *Client) cranRepository(ctx context.Context, index string) (map[string][]dependency, error) {
-	c.mu.Lock()
-	packages, ok := c.repositories[index]
-	c.mu.Unlock()
-	if ok {
-		return packages, nil
-	}
-	body, err := c.accept(ctx, strings.TrimRight(index, "/")+"/src/contrib/PACKAGES", "text/plain")
-	if err != nil {
-		return nil, err
-	}
-	packages = map[string][]dependency{}
-	for _, record := range strings.Split(strings.ReplaceAll(string(body), "\r\n", "\n"), "\n\n") {
-		fields := map[string]string{}
-		last := ""
-		for _, line := range strings.Split(record, "\n") {
-			if line == "" {
-				continue
-			}
-			if line[0] == ' ' || line[0] == '\t' {
-				fields[last] += " " + strings.TrimSpace(line)
-				continue
-			}
-			if k, v, ok := strings.Cut(line, ":"); ok {
-				last = k
-				fields[k] = strings.TrimSpace(v)
-			}
+	return c.repositories.get(index, func() (map[string][]dependency, error) {
+		body, err := c.accept(ctx, strings.TrimRight(index, "/")+"/src/contrib/PACKAGES", "text/plain")
+		if err != nil {
+			return nil, err
 		}
-		name := fields["Package"]
-		if name == "" {
-			continue
-		}
-		var out []dependency
-		seen := map[string]bool{}
-		for _, f := range []string{"Depends", "Imports", "LinkingTo"} {
-			for _, entry := range strings.Split(fields[f], ",") {
-				n, requirement, _ := strings.Cut(strings.TrimSpace(entry), "(")
-				n = strings.TrimSpace(n)
-				if n == "" || rBase[n] || seen[n] {
+		packages := map[string][]dependency{}
+		for _, record := range strings.Split(strings.ReplaceAll(string(body), "\r\n", "\n"), "\n\n") {
+			fields := map[string]string{}
+			last := ""
+			for _, line := range strings.Split(record, "\n") {
+				if line == "" {
 					continue
 				}
-				seen[n] = true
-				out = append(out, dependency{Name: n, Version: rRequirement(requirement)})
+				if line[0] == ' ' || line[0] == '\t' {
+					fields[last] += " " + strings.TrimSpace(line)
+					continue
+				}
+				if k, v, ok := strings.Cut(line, ":"); ok {
+					last = k
+					fields[k] = strings.TrimSpace(v)
+				}
 			}
+			name := fields["Package"]
+			if name == "" {
+				continue
+			}
+			var out []dependency
+			seen := map[string]bool{}
+			for _, f := range []string{"Depends", "Imports", "LinkingTo"} {
+				for _, entry := range strings.Split(fields[f], ",") {
+					n, requirement, _ := strings.Cut(strings.TrimSpace(entry), "(")
+					n = strings.TrimSpace(n)
+					if n == "" || rBase[n] || seen[n] {
+						continue
+					}
+					seen[n] = true
+					out = append(out, dependency{Name: n, Version: rRequirement(requirement)})
+				}
+			}
+			sortDependencies(out)
+			packages[name] = out
 		}
-		sortDependencies(out)
-		packages[name] = out
-	}
-	c.mu.Lock()
-	c.repositories[index] = packages
-	c.mu.Unlock()
-	return packages, nil
+		return packages, nil
+	})
 }
 
 // bioconductorPackage reads a Bioconductor package's dependencies from its release's
@@ -989,36 +957,29 @@ func (c *Client) terraformService(ctx context.Context, index, service string) (s
 		return index + "/v1/modules/", nil
 	}
 	key := "terraform " + index + " " + service
-	c.mu.Lock()
-	base, ok := c.feeds[key]
-	c.mu.Unlock()
-	if ok {
+	return c.terraformServices.get(key, func() (string, error) {
+		doc, err := getJSON[map[string]any](ctx, c, index+"/.well-known/terraform.json")
+		if err != nil {
+			return "", err
+		}
+		s, _ := doc[service].(string)
+		if s == "" {
+			return "", fmt.Errorf("%s does not serve %s", index, service)
+		}
+		reference, err := url.Parse(s)
+		if err != nil {
+			return "", err
+		}
+		root, err := url.Parse(index + "/")
+		if err != nil {
+			return "", err
+		}
+		base := root.ResolveReference(reference).String()
+		if !strings.HasSuffix(base, "/") {
+			base += "/"
+		}
 		return base, nil
-	}
-	doc, err := getJSON[map[string]any](ctx, c, index+"/.well-known/terraform.json")
-	if err != nil {
-		return "", err
-	}
-	s, _ := doc[service].(string)
-	if s == "" {
-		return "", fmt.Errorf("%s does not serve %s", index, service)
-	}
-	reference, err := url.Parse(s)
-	if err != nil {
-		return "", err
-	}
-	root, err := url.Parse(index + "/")
-	if err != nil {
-		return "", err
-	}
-	base = root.ResolveReference(reference).String()
-	if !strings.HasSuffix(base, "/") {
-		base += "/"
-	}
-	c.mu.Lock()
-	c.feeds[key] = base
-	c.mu.Unlock()
-	return base, nil
+	})
 }
 
 // terraformName normalizes a registry address the way the Terraform plugin names
@@ -1509,38 +1470,30 @@ const maxManifest = 64 << 20
 // rocksManifest reads a rocks server's manifest once: the zipped one the luarocks
 // client prefers, else the plain one.
 func (c *Client) rocksManifest(ctx context.Context, base string) (map[string][]string, error) {
-	c.mu.Lock()
-	m, ok := c.rocks[base]
-	c.mu.Unlock()
-	if ok {
-		return m, nil
-	}
-	var source []byte
-	if zipped, err := c.accept(ctx, base+"/manifest-5.1.zip", "application/zip, */*"); err == nil {
-		if zipReader, err := zip.NewReader(bytes.NewReader(zipped), int64(len(zipped))); err == nil {
-			for _, f := range zipReader.File {
-				if f.Name != "manifest-5.1" {
-					continue
-				}
-				if rc, err := f.Open(); err == nil {
-					source, _ = io.ReadAll(io.LimitReader(rc, maxManifest))
-					rc.Close()
+	return c.rocks.get(base, func() (map[string][]string, error) {
+		var source []byte
+		if zipped, err := c.accept(ctx, base+"/manifest-5.1.zip", "application/zip, */*"); err == nil {
+			if zipReader, err := zip.NewReader(bytes.NewReader(zipped), int64(len(zipped))); err == nil {
+				for _, f := range zipReader.File {
+					if f.Name != "manifest-5.1" {
+						continue
+					}
+					if rc, err := f.Open(); err == nil {
+						source, _ = io.ReadAll(io.LimitReader(rc, maxManifest))
+						rc.Close()
+					}
 				}
 			}
 		}
-	}
-	if source == nil {
-		plain, err := c.accept(ctx, base+"/manifest-5.1", "text/plain, */*")
-		if err != nil {
-			return nil, err
+		if source == nil {
+			plain, err := c.accept(ctx, base+"/manifest-5.1", "text/plain, */*")
+			if err != nil {
+				return nil, err
+			}
+			source = plain
 		}
-		source = plain
-	}
-	m = luarocks.ReadManifest(source)
-	c.mu.Lock()
-	c.rocks[base] = m
-	c.mu.Unlock()
-	return m, nil
+		return luarocks.ReadManifest(source), nil
+	})
 }
 
 // ---------------------------------------------------------------- CPAN
@@ -1662,42 +1615,39 @@ func (c *Client) cpanDependencies(ctx context.Context, base, dist string, relati
 // says; "" for a module it does not know.
 func (c *Client) cpanModule(ctx context.Context, base, module string) (string, error) {
 	key := "cpan-module|" + base + "|" + module
-	c.mu.Lock()
-	dist, ok := c.cpanModules[key]
-	c.mu.Unlock()
-	if ok {
+	if dist, ok := c.cpanModules.known(key); ok {
 		return dist, nil
 	}
 	if d, ok := store.Get[string](c.cache, key); ok {
-		return d, nil
+		return d, nil // not kept in memory: the disk cache's own lifetime applies
 	}
-	response, err := c.do(ctx, base+"/v1/module/"+url.PathEscape(module), "application/json", "")
-	if err != nil {
-		return "", err
-	}
-	defer response.Body.Close()
-	switch response.StatusCode {
-	case http.StatusOK:
-		body, err := readLimited(response)
+	return c.cpanModules.get(key, func() (string, error) {
+		dist := ""
+		response, err := c.do(ctx, base+"/v1/module/"+url.PathEscape(module), "application/json", "")
 		if err != nil {
 			return "", err
 		}
-		var m struct {
-			Distribution string `json:"distribution"`
+		defer response.Body.Close()
+		switch response.StatusCode {
+		case http.StatusOK:
+			body, err := readLimited(response)
+			if err != nil {
+				return "", err
+			}
+			var m struct {
+				Distribution string `json:"distribution"`
+			}
+			if err := json.Unmarshal(body, &m); err != nil {
+				return "", err
+			}
+			dist = m.Distribution
+		case http.StatusNotFound:
+		default:
+			return "", fmt.Errorf("%s/v1/module/%s: %s", base, module, response.Status)
 		}
-		if err := json.Unmarshal(body, &m); err != nil {
-			return "", err
-		}
-		dist = m.Distribution
-	case http.StatusNotFound:
-	default:
-		return "", fmt.Errorf("%s/v1/module/%s: %s", base, module, response.Status)
-	}
-	c.mu.Lock()
-	c.cpanModules[key] = dist
-	c.mu.Unlock()
-	c.cache.Put(key, dist)
-	return dist, nil
+		c.cache.Put(key, dist)
+		return dist, nil
+	})
 }
 
 // ---------------------------------------------------------------- opam

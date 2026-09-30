@@ -77,6 +77,40 @@ func (m *memo[T]) get(key string, read func() (T, error)) (T, error) {
 	return v, err
 }
 
+// lazy reads something once per key and keeps only what it read: a key that could
+// not be read is read again the next time it is asked for (memo waits failRetry).
+// The zero value is ready.
+type lazy[T any] struct {
+	mu  sync.Mutex
+	got map[string]T
+}
+
+// known is what was read for key, without reading it.
+func (l *lazy[T]) known(key string) (T, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	v, ok := l.got[key]
+	return v, ok
+}
+
+// get is what was read for key, reading it now if it has not been.
+func (l *lazy[T]) get(key string, read func() (T, error)) (T, error) {
+	if v, ok := l.known(key); ok {
+		return v, nil
+	}
+	v, err := read()
+	if err != nil {
+		return v, err
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.got == nil {
+		l.got = map[string]T{}
+	}
+	l.got[key] = v
+	return v, nil
+}
+
 // localCopy is the copy on this machine's disk of an index this machine's
 // configuration names, or "".
 func (c *Config) localCopy(ecosystem, index string) string {
