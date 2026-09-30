@@ -39,17 +39,16 @@ type sourceDirectory struct {
 }
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
-	byBase      map[string][]string // lower-case base name -> files
-	specs       map[string][]string // unit -> spec files
-	bodies      map[string][]string // unit -> body files (and subunits' files)
-	roots       map[string]bool     // first segments of the repository's units
-	gprs        map[string]*project
-	gprBase     map[string][]string // project file name without .gpr, lower case -> paths
-	crates      map[string]*crateDirectory
-	order       []*crateDirectory // shallowest first
-	own         map[string]bool
+	lang.Layout
+	byBase  map[string][]string // lower-case base name -> files
+	specs   map[string][]string // unit -> spec files
+	bodies  map[string][]string // unit -> body files (and subunits' files)
+	roots   map[string]bool     // first segments of the repository's units
+	gprs    map[string]*project
+	gprBase map[string][]string // project file name without .gpr, lower case -> paths
+	crates  map[string]*crateDirectory
+	order   []*crateDirectory // shallowest first
+	own     map[string]bool
 	// visible holds, per directory of an Ada source, the source directories of
 	// the projects that have it and of the projects those import.
 	visible map[string]map[*project]bool
@@ -60,7 +59,7 @@ type resolver struct {
 func newResolver(root string, all []*scan.File) *resolver {
 	_ = root
 	r := &resolver{
-		files: map[string]bool{}, directories: map[string]bool{}, byBase: map[string][]string{},
+		Layout: lang.NewLayout(), byBase: map[string][]string{},
 		specs: map[string][]string{}, bodies: map[string][]string{}, roots: map[string]bool{},
 		gprs: map[string]*project{}, gprBase: map[string][]string{}, crates: map[string]*crateDirectory{},
 		own: map[string]bool{}, visible: map[string]map[*project]bool{}, owners: map[string][]*project{},
@@ -70,12 +69,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if generated(f) {
 			continue
 		}
-		r.files[f.Path] = true
+		r.Add(f.Path)
 		base := lower(path.Base(f.Path))
 		r.byBase[base] = append(r.byBase[base], f.Path)
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
 		readable := lang.Readable(f)
 		switch {
 		case path.Base(f.Path) == "alire.toml" && readable:
@@ -188,7 +184,7 @@ func (r *resolver) readProjects(sources []*scan.File) {
 				continue
 			}
 			directory = path.Join(p.directory, directory)
-			if strings.HasPrefix(directory, "../") || directory == ".." {
+			if lang.ClimbsOut(directory) {
 				continue
 			}
 			p.directories = append(p.directories, sourceDirectory{directory: directory, recursive: recursive})
@@ -239,7 +235,7 @@ func (r *resolver) projectsOf(directory string) []*project {
 	for _, projectPath := range lang.SortedKeys(r.gprs) {
 		p := r.gprs[projectPath]
 		for _, sourceDirectory := range p.directories {
-			if directory == sourceDirectory.directory || sourceDirectory.recursive && (sourceDirectory.directory == "." || strings.HasPrefix(directory, sourceDirectory.directory+"/")) {
+			if directory == sourceDirectory.directory || sourceDirectory.recursive && lang.Within(directory, sourceDirectory.directory) {
 				out = append(out, p)
 				break
 			}
@@ -274,7 +270,7 @@ func (r *resolver) inProject(p *project, file string) []string {
 	for _, f := range r.byBase[lower(path.Base(file))] {
 		d := path.Dir(f)
 		for _, sourceDirectory := range p.directories {
-			if d == sourceDirectory.directory || sourceDirectory.recursive && (sourceDirectory.directory == "." || strings.HasPrefix(d, sourceDirectory.directory+"/")) {
+			if d == sourceDirectory.directory || sourceDirectory.recursive && lang.Within(d, sourceDirectory.directory) {
 				out = append(out, f)
 				break
 			}
@@ -365,7 +361,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		return r.project(file, rawImport.Module)
 	case kindDirectory:
 		directory, _ := directorySpec(rawImport.Module)
-		if t := path.Join(path.Dir(file), directory); t != "." && !strings.HasPrefix(t, "../") && r.directories[t] {
+		if t := path.Join(path.Dir(file), directory); t != "." && !strings.HasPrefix(t, "../") && r.Directories[t] {
 			return lang.Target{Local: t}
 		}
 	case kindMain:
@@ -377,7 +373,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 			return r.crate(c, rawImport.Module)
 		}
 	case kindProjectFile:
-		if t := path.Join(path.Dir(file), rawImport.Module); r.files[t] {
+		if t := path.Join(path.Dir(file), rawImport.Module); r.Files[t] {
 			return lang.Target{Local: t}
 		}
 	}
@@ -670,9 +666,9 @@ func (r *resolver) localCrate(directory, relative string) lang.Target {
 	}
 	d := path.Join(directory, relative)
 	switch {
-	case r.files[path.Join(d, "alire.toml")]:
+	case r.Files[path.Join(d, "alire.toml")]:
 		return lang.Target{Local: path.Join(d, "alire.toml")}
-	case d != "." && r.directories[d]:
+	case d != "." && r.Directories[d]:
 		return lang.Target{Local: d}
 	}
 	return lang.Target{}

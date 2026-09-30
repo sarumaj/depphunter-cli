@@ -18,11 +18,7 @@ type resolver struct {
 }
 
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{files: make(map[string]bool, len(all))}
-	for _, f := range all {
-		r.files[f.Path] = true
-	}
-	return r
+	return &resolver{files: lang.PathSet(all)}
 }
 
 // Resolve maps a relative path to the repository's file, a URL to its

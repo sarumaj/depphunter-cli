@@ -29,8 +29,7 @@ type manifest struct {
 }
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
+	lang.Layout
 	modules     map[string][]string // module (a.b.C) -> files declaring it
 	packages    map[string][]string // package (a.b) -> its modules' files
 	packageOf   map[string]string   // module file -> the package it declares
@@ -48,22 +47,20 @@ type resolver struct {
 
 // Implements: REQ-HAXE-004, REQ-HAXE-005, REQ-HAXE-006, REQ-HAXE-007, REQ-HAXE-008
 func newResolver(root string, all []*scan.File, getenv func(string) string) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{".": true}, modules: map[string][]string{},
+	r := &resolver{Layout: lang.NewLayout(), modules: map[string][]string{},
 		packages: map[string][]string{}, packageOf: map[string]string{}, firsts: map[string]bool{}, manifests: map[string]*manifest{},
 		byDirectory: map[string][]*manifest{}, own: map[string]string{}, lix: map[string]*lixScope{},
 		lixFile: map[string]*lixLibrary{}, installed: map[string]*installed{}, limeFiles: map[string]bool{}}
+	r.Directories["."] = true
 	var sources, projects []*scan.File
 	absolute := map[string]string{}
 	for _, f := range all {
 		if haxelibDirectory(f.Path) {
 			continue
 		}
-		r.files[f.Path] = true
+		r.Add(f.Path)
 		if !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize {
 			absolute[f.Path] = f.AbsolutePath
-		}
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
 		}
 		if f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
 			continue
@@ -114,7 +111,7 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 		if m.owner != "" {
 			if _, ok := r.own[strings.ToLower(m.owner)]; !ok {
 				directory := path.Dir(m.file)
-				if len(m.classPaths) > 0 && r.directories[m.classPaths[0]] {
+				if len(m.classPaths) > 0 && r.Directories[m.classPaths[0]] {
 					directory = m.classPaths[0]
 				}
 				r.own[strings.ToLower(m.owner)] = directory
@@ -223,11 +220,11 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		}
 		return lang.Target{}
 	case kindCP:
-		if d := path.Join(directory, rawImport.Module); lang.Inside(d) && (r.directories[d] || d == ".") {
+		if d := path.Join(directory, rawImport.Module); lang.Inside(d) && (r.Directories[d] || d == ".") {
 			return lang.Target{Local: d}
 		}
 	case kindHXML, kindFile:
-		if f := path.Join(directory, rawImport.Module); lang.Inside(f) && (r.files[f] || r.directories[f]) {
+		if f := path.Join(directory, rawImport.Module); lang.Inside(f) && (r.Has(f)) {
 			return lang.Target{Local: f}
 		}
 	case kindMain:
@@ -247,7 +244,7 @@ func (r *resolver) main(file, module string) lang.Target {
 		classPaths = m.classPaths
 	}
 	for _, classPath := range append(classPaths, path.Dir(file), path.Join(path.Dir(file), "src")) {
-		if f := path.Join(classPath, relative); r.files[f] {
+		if f := path.Join(classPath, relative); r.Files[f] {
 			return lang.Target{Local: f}
 		}
 	}
@@ -583,7 +580,7 @@ func (r *resolver) importHx(file string, rawImport lang.RawImport) []lang.Import
 	}
 	var out []lang.Import
 	for d := range lang.DirectoryAndAncestors(directory) {
-		if f := path.Join(d, "import.hx"); r.files[f] {
+		if f := path.Join(d, "import.hx"); r.Files[f] {
 			out = append(out, lang.Import{Spec: rawImport.Spec + " (" + f + ")", Line: rawImport.Line, Target: lang.Target{Local: f}})
 		}
 		if d == root {

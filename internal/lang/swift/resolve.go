@@ -16,12 +16,11 @@ import (
 )
 
 type resolver struct {
-	root        string
-	files       map[string]bool
-	directories map[string]bool
-	modules     map[string][]string // module -> directories of the targets building it, shallowest first
-	named       map[string][]string // directory base name -> directories holding Swift, shallowest first
-	targets     []string            // target directories, deepest first
+	root string
+	lang.Layout
+	modules map[string][]string // module -> directories of the targets building it, shallowest first
+	named   map[string][]string // directory base name -> directories holding Swift, shallowest first
+	targets []string            // target directories, deepest first
 	// projects are the directories with a Package.swift or an Xcode project,
 	// shallowest first.
 	projects []*project
@@ -45,7 +44,7 @@ type project struct {
 
 // Implements: REQ-SWIFT-004, REQ-SWIFT-007, REQ-SWIFT-009, REQ-SWIFT-010, REQ-SWIFT-011, REQ-SWIFT-013
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{root: root, files: map[string]bool{}, directories: map[string]bool{}, modules: map[string][]string{},
+	r := &resolver{root: root, Layout: lang.NewLayout(), modules: map[string][]string{},
 		named: map[string][]string{}, types: map[string][]string{}}
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
@@ -65,11 +64,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 	}
 	var swiftDirectories []string
 	for _, f := range sorted {
-		r.files[f.Path] = true
+		r.Add(f.Path)
 		repository.Add(f)
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
 		if strings.HasSuffix(f.Path, ".swift") && !buildOutput(f.Path) {
 			swiftDirectories = append(swiftDirectories, path.Dir(f.Path))
 		}
@@ -225,7 +221,7 @@ func (p *project) has(id string) bool {
 func (r *resolver) targetDirectory(directory string, t target) string {
 	if t.path != "" {
 		d := path.Join(directory, t.path)
-		if lang.Inside(d) && (r.directories[d] || d == ".") {
+		if lang.Inside(d) && (r.Directories[d] || d == ".") {
 			return d
 		}
 		return ""
@@ -238,7 +234,7 @@ func (r *resolver) targetDirectory(directory string, t target) string {
 		parents = []string{"Plugins"}
 	}
 	for _, parent := range parents {
-		if d := path.Join(directory, parent, t.name); r.directories[d] {
+		if d := path.Join(directory, parent, t.name); r.Directories[d] {
 			return d
 		}
 	}
@@ -308,7 +304,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		return r.packageName(r.projectsOf(file), strings.ToLower(rawImport.Module), rawImport.Module)
 	case kindPath:
 		d := path.Clean(path.Dir(file) + strings.TrimPrefix(rawImport.Module, "__DIR__"))
-		if lang.Inside(d) && r.directories[d] {
+		if lang.Inside(d) && r.Directories[d] {
 			return lang.Target{Local: d}
 		}
 	case kindType:
@@ -438,7 +434,7 @@ func (r *resolver) packageName(projects []*project, id, spelled string) lang.Tar
 		}
 	}
 	if d != nil && d.path != "" {
-		if lang.Inside(d.path) && r.directories[d.path] {
+		if lang.Inside(d.path) && r.Directories[d.path] {
 			return lang.Target{Local: d.path}
 		}
 		return lang.Target{}
@@ -480,7 +476,7 @@ func (r *resolver) packageName(projects []*project, id, spelled string) lang.Tar
 func (r *resolver) projectsOf(file string) []*project {
 	var out []*project
 	for i := len(r.projects) - 1; i >= 0; i-- {
-		if p := r.projects[i]; p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
+		if p := r.projects[i]; lang.Within(file, p.directory) {
 			out = append(out, p)
 		}
 	}
@@ -511,13 +507,13 @@ func (r *resolver) nearest(file string, directories []string) string {
 // Implements: REQ-SWIFT-011
 func (r *resolver) moduleOf(file string) string {
 	for _, d := range r.targets {
-		if d == "." || strings.HasPrefix(file, d+"/") {
+		if lang.Within(file, d) {
 			return d
 		}
 	}
 	base := "."
 	for i := len(r.projects) - 1; i >= 0; i-- {
-		if p := r.projects[i]; p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
+		if p := r.projects[i]; lang.Within(file, p.directory) {
 			base = p.directory
 			break
 		}
@@ -560,7 +556,7 @@ func (r *resolver) typeReference(file, name, imported string) lang.Target {
 			continue
 		}
 		if directory := r.module(file, m).Local; directory != "" {
-			if t := pick(func(c string) bool { return directory == "." || strings.HasPrefix(c, directory+"/") }); t.Local != "" {
+			if t := pick(func(c string) bool { return lang.Within(c, directory) }); t.Local != "" {
 				return t
 			}
 		}

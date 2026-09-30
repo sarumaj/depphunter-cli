@@ -40,8 +40,7 @@ type pins struct {
 }
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool // directories holding files
+	lang.Layout
 	// systems are the repository's systems by name; fileSystems the systems
 	// whose components include a file; asdDirectories the systems defined in each
 	// directory's .asd files.
@@ -118,7 +117,7 @@ func besideOcicl(directory string) bool {
 // Implements: REQ-COMMONLISP-005, REQ-COMMONLISP-006, REQ-COMMONLISP-011, REQ-COMMONLISP-012
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{
-		files: map[string]bool{}, directories: map[string]bool{}, systems: map[string]*sysReference{},
+		Layout: lang.NewLayout(), systems: map[string]*sysReference{},
 		fileSystems: map[string][]*sysReference{}, asdDirectories: map[string][]*sysReference{},
 		packages: map[string][]string{}, nicknames: map[string]map[string]string{}, stems: map[string][]string{}, registered: map[string]string{}, pins: map[string]*pins{},
 		installed: map[string]*installedSystem{},
@@ -128,18 +127,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if ignored(f) {
 			continue
 		}
-		r.files[f.Path] = true
+		r.Add(f.Path)
 		stem := strings.TrimSuffix(f.Path, path.Ext(f.Path))
 		r.stems[stem] = append(r.stems[stem], f.Path)
-		for d := path.Dir(f.Path); ; d = path.Dir(d) {
-			if r.directories[d] {
-				break
-			}
-			r.directories[d] = true
-			if d == "." || d == "/" {
-				break
-			}
-		}
 		if !lang.Readable(f) {
 			continue
 		}
@@ -151,6 +141,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 		case lispSource(f):
 			sources = append(sources, f)
 		}
+	}
+	if len(r.Files) > 0 {
+		r.Directories["."] = true // the top level is a directory here, as soon as it holds a file
 	}
 	for _, f := range asds {
 		source, err := os.ReadFile(f.AbsolutePath)
@@ -384,7 +377,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	switch kind {
 	case kindComponent:
 		p := path.Join(path.Dir(file), rawImport.Module)
-		if r.files[p] && p != file {
+		if r.Files[p] && p != file {
 			return lang.Target{Local: p}
 		}
 		// A component class of the system's own (a static file with a type
@@ -399,7 +392,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 				continue
 			}
 			for _, c := range []string{p, p + ".lisp"} {
-				if r.files[c] && c != file {
+				if r.Files[c] && c != file {
 					return lang.Target{Local: c}
 				}
 			}
@@ -460,7 +453,7 @@ func (r *resolver) localSystem(file, system string) (lang.Target, bool) {
 	}
 	if reference.system.pis && rest != "" {
 		for _, extension := range []string{".lisp", ".lsp", ".cl"} {
-			if p := path.Join(reference.root(), rest) + extension; r.files[p] {
+			if p := path.Join(reference.root(), rest) + extension; r.Files[p] {
 				if p == file {
 					return lang.Target{}, true
 				}
@@ -648,7 +641,7 @@ func qlTarget(e qlEntry, project string) lang.Target {
 // it is in the repository, else a package from that path.
 func (r *resolver) localSource(e qlEntry, directory string) lang.Target {
 	if !path.IsAbs(e.url) && !strings.HasPrefix(e.url, "~") {
-		if p := path.Join(directory, e.url); r.directories[p] && !strings.HasPrefix(p, "../") && p != "." {
+		if p := path.Join(directory, e.url); r.Directories[p] && !strings.HasPrefix(p, "../") && p != "." {
 			return lang.Target{Local: p}
 		}
 	}

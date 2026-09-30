@@ -50,12 +50,12 @@ func includePath(file, name string) (string, bool) {
 		return "", false
 	}
 	p := path.Join(path.Dir(file), name)
-	return p, p != ".." && !strings.HasPrefix(p, "../")
+	return p, !lang.ClimbsOut(p)
 }
 
 // include resolves an import: of cabal.project to the project file it names.
 func (r *resolver) include(file, name string) lang.Target {
-	if p, ok := includePath(file, name); ok && r.files[p] {
+	if p, ok := includePath(file, name); ok && r.Files[p] {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}

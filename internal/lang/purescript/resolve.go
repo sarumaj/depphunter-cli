@@ -50,9 +50,8 @@ type project struct {
 }
 
 type resolver struct {
-	root          string
-	files         map[string]bool
-	directories   map[string]bool
+	root string
+	lang.Layout
 	projects      []*project
 	byFile        map[string]*project // by manifest
 	wsByDirectory map[string]*workspace
@@ -69,15 +68,12 @@ type resolver struct {
 
 // Implements: REQ-PURESCRIPT-004, REQ-PURESCRIPT-005, REQ-PURESCRIPT-007
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{root: root, files: map[string]bool{}, directories: map[string]bool{}, byFile: map[string]*project{},
+	r := &resolver{root: root, Layout: lang.NewLayout(), byFile: map[string]*project{},
 		wsByDirectory: map[string]*workspace{}, owner: map[string]*project{}, test: map[string]bool{},
 		modules: map[string][]string{}, evaluated: map[string]*dhall.Value{}, setWS: map[*dhall.Value]*workspace{}, setFile: map[string]*workspace{}}
 	var sources []*scan.File
 	for _, f := range all {
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
+		r.Add(f.Path)
 		if path.Ext(f.Path) == ".purs" && !installedPath(f.Path) && !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize {
 			sources = append(sources, f)
 		}
@@ -182,7 +178,7 @@ func (r *resolver) readYAML(all []*scan.File) {
 		}
 		for name, p := range workspace.lock.locals {
 			if _, ok := workspace.locals[name]; !ok {
-				if d := path.Join(workspace.directory, p); lang.Inside(d) && (r.files[path.Join(d, "spago.yaml")]) {
+				if d := path.Join(workspace.directory, p); lang.Inside(d) && (r.Files[path.Join(d, "spago.yaml")]) {
 					workspace.locals[name] = path.Join(d, "spago.yaml")
 				}
 			}
@@ -245,7 +241,7 @@ func (r *resolver) loadDhall(file string) *dhall.Value {
 	if v, ok := r.evaluated[file]; ok {
 		return v // nil while in progress: a cycle
 	}
-	if !r.files[file] || len(r.evaluated) > 1000 {
+	if !r.Files[file] || len(r.evaluated) > 1000 {
 		return nil
 	}
 	source, ok := lang.OpenRoot(r.root).ReadBounded(filepath.Join(r.root, filepath.FromSlash(file)))
@@ -292,7 +288,7 @@ func (r *resolver) globBase(directory, glob string) string {
 		literal = path.Dir(glob[:i+1])
 	}
 	for d := range lang.DirectoryAndAncestors(directory) {
-		if p := path.Join(d, literal); lang.Inside(p) && (r.directories[p] || r.files[p] || p == ".") {
+		if p := path.Join(d, literal); lang.Inside(p) && (r.Has(p) || p == ".") {
 			return path.Join(d, glob)
 		}
 	}
@@ -420,7 +416,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		return r.module(file, rawImport.Module)
 	case kindFFI:
 		// The JavaScript companion of a module with foreign imports.
-		if js := strings.TrimSuffix(file, ".purs") + ".js"; r.files[js] {
+		if js := strings.TrimSuffix(file, ".purs") + ".js"; r.Files[js] {
 			return lang.Target{Local: js}
 		}
 	case kindDependency:
@@ -489,7 +485,7 @@ func (r *resolver) module(file, module string) lang.Target {
 			if t.Local != "" {
 				// A local package: the module's file in it.
 				directory := t.Local
-				if !r.directories[directory] {
+				if !r.Directories[directory] {
 					directory = path.Dir(directory)
 				}
 				for _, c := range candidates {
@@ -690,11 +686,11 @@ func (r *resolver) localDirectory(base, relative string) lang.Target {
 		return lang.Target{}
 	}
 	for _, m := range []string{"spago.yaml", "spago.dhall"} {
-		if f := path.Join(d, m); r.files[f] {
+		if f := path.Join(d, m); r.Files[f] {
 			return lang.Target{Local: f}
 		}
 	}
-	if r.directories[d] {
+	if r.Directories[d] {
 		return lang.Target{Local: d}
 	}
 	return lang.Target{}

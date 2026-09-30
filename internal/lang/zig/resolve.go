@@ -76,11 +76,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{root: root, files: map[string]bool{}, directories: map[string]bool{}, packages: map[string]*zigPackage{},
 		rootOf: map[string]string{}, all: all, hashes: map[string][]fetched{}, dependencies: map[string][]lang.Target{}, found: map[string]bool{}}
 	var sources []*scan.File
+	layout := lang.Layout{Files: r.files, Directories: r.directories}
 	for _, f := range all {
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
+		layout.Add(f.Path)
 		base := path.Base(f.Path)
 		if skipped(f.Path) {
 			continue
@@ -295,7 +293,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 // else (generated, outside the repository) is dropped.
 func (r *resolver) local(p string, directories bool) lang.Target {
 	p = path.Clean(p)
-	if p == "." || p == ".." || strings.HasPrefix(p, "../") {
+	if p == "." || lang.ClimbsOut(p) {
 		return lang.Target{}
 	}
 	if r.files[p] || directories && r.directories[p] {

@@ -29,31 +29,24 @@ type dependency struct {
 }
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
-	byBase      map[string][]string // file name -> the project files so named
-	work        map[string]*config  // directory -> its buf.work.yaml or v2 buf.yaml
-	modules     map[string]*config  // directory -> its v1 (or v1beta1) buf.yaml
-	all         []*config           // every buf.yaml, shallowest first
-	locks       map[string]map[string]locked
-	protoc      []protocRoot // the -I directories build scripts give protoc
+	lang.Layout
+	byBase  map[string][]string // file name -> the project files so named
+	work    map[string]*config  // directory -> its buf.work.yaml or v2 buf.yaml
+	modules map[string]*config  // directory -> its v1 (or v1beta1) buf.yaml
+	all     []*config           // every buf.yaml, shallowest first
+	locks   map[string]map[string]locked
+	protoc  []protocRoot // the -I directories build scripts give protoc
 }
 
 // newResolver reads every Buf configuration and lock file of the repository.
 //
 // Implements: REQ-PROTO-004, REQ-PROTO-005, REQ-PROTO-007
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, byBase: map[string][]string{},
+	r := &resolver{Layout: lang.NewLayout(), byBase: map[string][]string{},
 		work: map[string]*config{}, modules: map[string]*config{}, locks: map[string]map[string]locked{}}
 	var configs []*scan.File
 	for _, f := range all {
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-			if d == "." {
-				break
-			}
-		}
+		r.Add(f.Path)
 		base := path.Base(f.Path)
 		r.byBase[base] = append(r.byBase[base], f.Path)
 		switch fileClass(f.Path) {
@@ -62,6 +55,9 @@ func newResolver(all []*scan.File) *resolver {
 				configs = append(configs, f)
 			}
 		}
+	}
+	if len(r.Files) > 0 {
+		r.Directories["."] = true // the top level is a directory here, as soon as it holds a file
 	}
 	sort.Slice(configs, func(i, j int) bool { return configs[i].Path < configs[j].Path })
 	for _, f := range configs {
@@ -105,7 +101,7 @@ func newResolver(all []*scan.File) *resolver {
 	for _, c := range r.all {
 		c.lock = r.locks[c.directory]
 	}
-	r.protoc = readProtocRoots(all, r.directories)
+	r.protoc = readProtocRoots(all, r.Directories)
 	sort.SliceStable(r.all, func(i, j int) bool { return lang.Depth(r.all[i].directory) < lang.Depth(r.all[j].directory) })
 	return r
 }
@@ -184,7 +180,7 @@ func sortedLocks(m map[string]locked) []string {
 func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	switch rawImport.Name {
 	case kindDirectory:
-		if p := path.Join(path.Dir(file), rawImport.Module); r.directories[p] && !strings.HasPrefix(p, "../") {
+		if p := path.Join(path.Dir(file), rawImport.Module); r.Directories[p] && !strings.HasPrefix(p, "../") {
 			return lang.Target{Local: p}
 		}
 		return lang.Target{}
@@ -253,7 +249,7 @@ func (r *resolver) resolveImport(file, name string) lang.Target {
 		return lang.Target{}
 	}
 	name = path.Clean(name)
-	if name == ".." || strings.HasPrefix(name, "../") {
+	if lang.ClimbsOut(name) {
 		return lang.Target{}
 	}
 	current := r.scopeOf(file)
@@ -298,7 +294,7 @@ func heuristic(file string) []string {
 
 func (r *resolver) find(roots []string, name string) string {
 	for _, root := range roots {
-		if p := path.Join(root, name); r.files[p] {
+		if p := path.Join(root, name); r.Files[p] {
 			return p
 		}
 	}

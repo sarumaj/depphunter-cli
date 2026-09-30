@@ -39,8 +39,7 @@ func init() {
 var probeExtensions = []string{".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".json", ".vue"}
 
 type resolver struct {
-	files        map[string]bool
-	directories  map[string]bool
+	lang.Layout
 	dependencies map[string]map[string]string // package.json dir -> dependency -> version range
 	locks        map[string]map[string]string // lock file (or importer) dir -> package -> exact version
 	byName       map[string]string            // workspace package name -> its directory
@@ -65,17 +64,14 @@ type pathRule struct {
 
 func newResolver(all []*scan.File) *resolver {
 	r := &resolver{
-		files: map[string]bool{}, directories: map[string]bool{}, dependencies: map[string]map[string]string{},
+		Layout: lang.NewLayout(), dependencies: map[string]map[string]string{},
 		locks: map[string]map[string]string{}, byName: map[string]string{}, configs: map[string]*tsconfig{},
 		kits: map[string]bool{}, tree: newTree(),
 	}
 	byPath := map[string]*scan.File{}
 	for _, f := range all {
-		r.files[f.Path] = true
+		r.Add(f.Path)
 		byPath[f.Path] = f
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
 	}
 	yarn := map[string]yarnDescriptors{} // yarn.lock dir -> its descriptors
 	var bunDirectories []string          // bun.lock directories, in path order
@@ -110,7 +106,7 @@ func newResolver(all []*scan.File) *resolver {
 			// npm-shrinkwrap.json is package-lock.json's format under the name a
 			// published package's lock takes; beside one, npm reads only it.
 			// Implements: REQ-JS-007
-			if path.Base(f.Path) == "package-lock.json" && r.files[path.Join(directory, "npm-shrinkwrap.json")] {
+			if path.Base(f.Path) == "package-lock.json" && r.Files[path.Join(directory, "npm-shrinkwrap.json")] {
 				continue
 			}
 			var lock packageLock
@@ -141,7 +137,7 @@ func newResolver(all []*scan.File) *resolver {
 			r.tree.addPnpmTree(lock)
 		case "bun.lockb":
 			// Implements: REQ-JS-017, REQ-TRC-017
-			if !r.files[path.Join(directory, "bun.lock")] && !r.files[path.Join(directory, "yarn.lock")] {
+			if !r.Files[path.Join(directory, "bun.lock")] && !r.Files[path.Join(directory, "yarn.lock")] {
 				r.Note(f.Path, trace.NoteUnread, "Bun's binary lock file is not read: nothing here pins "+
 					"what it installed or records its edges; `bun install --save-text-lockfile` writes bun.lock, "+
 					"which is read")
@@ -161,7 +157,7 @@ func newResolver(all []*scan.File) *resolver {
 	// Implements: REQ-JS-008
 	for lockDirectory, descriptors := range yarn {
 		for packageDirectory, dependencies := range r.dependencies {
-			if lockDirectory != "." && packageDirectory != lockDirectory && !strings.HasPrefix(packageDirectory, lockDirectory+"/") {
+			if !lang.WithinOrEqual(packageDirectory, lockDirectory) {
 				continue
 			}
 			pinned := map[string]string{}
@@ -309,10 +305,10 @@ func splitPackage(spec string) (string, string) {
 // Implements: REQ-JS-002
 func (r *resolver) probe(p string) (lang.Target, bool) {
 	p = path.Clean(p)
-	if strings.HasPrefix(p, "../") || p == ".." {
+	if lang.ClimbsOut(p) {
 		return lang.Target{}, false
 	}
-	if r.files[p] {
+	if r.Files[p] {
 		return lang.Target{Local: p}, true
 	}
 	bases := []string{p}
@@ -323,17 +319,17 @@ func (r *resolver) probe(p string) (lang.Target, bool) {
 	}
 	for _, b := range bases {
 		for _, extension := range probeExtensions {
-			if r.files[b+extension] {
+			if r.Files[b+extension] {
 				return lang.Target{Local: b + extension}, true
 			}
 		}
 	}
 	for _, extension := range probeExtensions {
-		if index := path.Join(p, "index"+extension); r.files[index] {
+		if index := path.Join(p, "index"+extension); r.Files[index] {
 			return lang.Target{Local: index}, true
 		}
 	}
-	if r.directories[p] {
+	if r.Directories[p] {
 		return lang.Target{Local: p}, true
 	}
 	return lang.Target{}, false

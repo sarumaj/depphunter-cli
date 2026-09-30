@@ -32,11 +32,10 @@ type project struct {
 }
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
-	projects    map[string]*project // by directory: the package whose recipe is there
-	single      map[string]*project // by file: a single-file package
-	inlines     []*project
+	lang.Layout
+	projects map[string]*project // by directory: the package whose recipe is there
+	single   map[string]*project // by file: a single-file package
+	inlines  []*project
 	// installed maps a module to the dub package installed on this machine that
 	// provides it, for the packages the repository declares or selects.
 	installed map[string]string
@@ -45,22 +44,19 @@ type resolver struct {
 
 // Implements: REQ-DLANG-004, REQ-DLANG-005, REQ-DLANG-006, REQ-DLANG-008
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, projects: map[string]*project{},
+	r := &resolver{Layout: lang.NewLayout(), projects: map[string]*project{},
 		single: map[string]*project{}, installed: map[string]string{}, recipes: map[string]*recipe{}}
 	repository := lang.NewSource(root)
 	for _, f := range all {
 		if dubDirectory(f.Path) {
 			continue
 		}
-		r.files[f.Path] = true
+		r.Add(f.Path)
 		repository.Add(f)
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
 	}
-	r.directories["."] = true
+	r.Directories["."] = true
 	var manifests []string
-	for relative := range r.files {
+	for relative := range r.Files {
 		if b := path.Base(relative); b == "dub.json" || b == "dub.sdl" {
 			manifests = append(manifests, relative)
 		}
@@ -101,7 +97,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		}
 	}
-	for _, relative := range sortedKeys(r.files) {
+	for _, relative := range sortedKeys(r.Files) {
 		if extension := path.Ext(relative); extension == ".d" || extension == ".di" {
 			absolute, _ := repository.Absolute(relative)
 			if recipe := readSingle(absolute); recipe != nil {
@@ -175,7 +171,7 @@ func dubDirectory(p string) bool {
 func (r *resolver) paths(p *project) (imports, stringImports []string) {
 	add := func(list []string, p string) []string {
 		p = path.Clean(p)
-		if strings.HasPrefix(p, "../") || p == ".." || strings.HasPrefix(p, "/") {
+		if !lang.Inside(p) {
 			return list
 		}
 		for _, q := range list {
@@ -197,7 +193,7 @@ func (r *resolver) paths(p *project) (imports, stringImports []string) {
 			continue
 		}
 		for _, defaultDirectory := range []string{"source", "src"} {
-			if d := path.Join(p.directory, defaultDirectory); r.directories[d] {
+			if d := path.Join(p.directory, defaultDirectory); r.Directories[d] {
 				imports = add(imports, d)
 			}
 		}
@@ -206,7 +202,7 @@ func (r *resolver) paths(p *project) (imports, stringImports []string) {
 		for _, q := range recipe.stringPaths {
 			stringImports = add(stringImports, path.Join(p.directory, q))
 		}
-	} else if d := path.Join(p.directory, "views"); r.directories[d] {
+	} else if d := path.Join(p.directory, "views"); r.Directories[d] {
 		stringImports = add(stringImports, d)
 	}
 	return imports, stringImports
@@ -232,7 +228,7 @@ func (r *resolver) projectOf(file string) *project {
 
 func under(file string, directories []string) bool {
 	for _, d := range directories {
-		if d == "." || strings.HasPrefix(file, d+"/") {
+		if lang.Within(file, d) {
 			return true
 		}
 	}
@@ -256,7 +252,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		}
 		return lang.Target{Ecosystem: ecosystemDub, Package: base(rawImport.Module)}
 	case kindSubPath:
-		if d := path.Join(path.Dir(file), rawImport.Module); r.directories[d] && !strings.HasPrefix(d, "../") {
+		if d := path.Join(path.Dir(file), rawImport.Module); r.Directories[d] && !strings.HasPrefix(d, "../") {
 			return lang.Target{Local: d}
 		}
 	}
@@ -299,7 +295,7 @@ func (r *resolver) probe(directory, module string) string {
 		return ""
 	}
 	for _, f := range []string{p + ".d", p + ".di", p + "/package.d", p + "/package.di"} {
-		if r.files[f] {
+		if r.Files[f] {
 			return f
 		}
 	}
@@ -355,7 +351,7 @@ func (r *resolver) roots(file string, p *project) []string {
 	}
 	if p == nil {
 		for _, d := range []string{"source", "src", "import"} {
-			if r.directories[d] {
+			if r.Directories[d] {
 				add(d)
 			}
 		}
@@ -554,7 +550,7 @@ func (r *resolver) dubTarget(p *project, name string) lang.Target {
 	}
 	d, dp := r.dependency(p, name)
 	if d != nil && d.path != "" {
-		if directory := path.Join(dp.directory, d.path); r.directories[directory] && !strings.HasPrefix(directory, "../") {
+		if directory := path.Join(dp.directory, d.path); r.Directories[directory] && !strings.HasPrefix(directory, "../") {
 			return lang.Target{Local: directory}
 		}
 		return lang.Target{}
@@ -563,7 +559,7 @@ func (r *resolver) dubTarget(p *project, name string) lang.Target {
 	if s := p.selections[b]; s != nil {
 		switch {
 		case s.path != "":
-			if directory := path.Join(p.root.directory, s.path); r.directories[directory] && !strings.HasPrefix(directory, "../") {
+			if directory := path.Join(p.root.directory, s.path); r.Directories[directory] && !strings.HasPrefix(directory, "../") {
 				return lang.Target{Local: directory}
 			}
 			return lang.Target{}
@@ -610,14 +606,14 @@ func (r *resolver) stringImport(file, name string) lang.Target {
 		directories = append(directories, p.strings...)
 	} else {
 		for d := range lang.Ancestors(file) {
-			if v := path.Join(d, "views"); r.directories[v] {
+			if v := path.Join(d, "views"); r.Directories[v] {
 				directories = append(directories, v)
 			}
 		}
 	}
 	directories = append(directories, path.Dir(file))
 	for _, d := range directories {
-		if f := path.Join(d, name); r.files[f] && !strings.HasPrefix(f, "../") {
+		if f := path.Join(d, name); r.Files[f] && !strings.HasPrefix(f, "../") {
 			return lang.Target{Local: f}
 		}
 	}

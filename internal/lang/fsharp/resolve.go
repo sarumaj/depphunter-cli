@@ -43,14 +43,11 @@ const maxHops = 64
 // Implements: REQ-FSHARP-004, REQ-FSHARP-005
 func newResolver(all []*scan.File) *resolver {
 	r := &resolver{
-		Store: nuget.Read(all), files: map[string]bool{}, index: map[string][]declared{},
+		Store: nuget.Read(all), files: lang.PathSet(all), index: map[string][]declared{},
 		prefixes: map[string]bool{}, places: map[string][]place{}, reach: map[string]map[string]bool{},
 	}
 	references := map[string][]string{}
 	var sources []*scan.File
-	for _, f := range all {
-		r.files[f.Path] = true
-	}
 	for _, f := range all {
 		if f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
 			continue

@@ -10,6 +10,7 @@ import (
 
 	"github.com/kballard/go-shellquote"
 
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -451,7 +452,7 @@ func searchEntries(project string, values []string, directories map[string]bool)
 				continue
 			}
 			directory := relativeDirectory(path.Join(project, word))
-			if directory == ".." || strings.HasPrefix(directory, "../") || !directories[directory] {
+			if lang.ClimbsOut(directory) || !directories[directory] {
 				continue
 			}
 			entry.directory = directory

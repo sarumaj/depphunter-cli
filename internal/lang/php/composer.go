@@ -143,7 +143,7 @@ func readProject(root, relative, absolute string) (*project, []mapping) {
 		}
 		if lockedPackage.Dist.Type == "path" && lockedPackage.Dist.URL != "" && !path.IsAbs(lockedPackage.Dist.URL) {
 			// A path repository: the package's code is in this repository.
-			if packageDirectory := path.Join(directory, filepath.ToSlash(lockedPackage.Dist.URL)); packageDirectory != ".." && !strings.HasPrefix(packageDirectory, "../") {
+			if packageDirectory := path.Join(directory, filepath.ToSlash(lockedPackage.Dist.URL)); !lang.ClimbsOut(packageDirectory) {
 				local = append(local, mappings(packageDirectory, lockedPackage.Autoload)...)
 				continue
 			}
@@ -224,7 +224,7 @@ func readLock(repository lang.Root, absolute string) ([]lockedPackage, bool) {
 //
 // Implements: REQ-PHP-008
 func readInstalled(root, directory string) []lockedPackage {
-	if root == "" || directory == ".." || strings.HasPrefix(directory, "../") {
+	if root == "" || lang.ClimbsOut(directory) {
 		return nil
 	}
 	data, ok := lang.OpenRoot(root).ReadBounded(filepath.Join(root, filepath.FromSlash(directory), "vendor", "composer", "installed.json"))

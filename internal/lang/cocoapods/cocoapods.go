@@ -98,11 +98,10 @@ type project struct {
 
 // Index is what the project's CocoaPods and Carthage manifests say, per directory.
 type Index struct {
-	root        string
-	projects    []*project        // shallowest first
-	own         map[string]string // pod name built here (podspec name, module name) -> podspec path
-	directories map[string]bool
-	files       map[string]bool
+	root     string
+	projects []*project        // shallowest first
+	own      map[string]string // pod name built here (podspec name, module name) -> podspec path
+	layout   lang.Layout       // the files of the repository and the directories holding them
 }
 
 // Read reads the manifests among the scanned files; a Podfile.lock or
@@ -111,7 +110,7 @@ type Index struct {
 //
 // Implements: REQ-OBJC-007, REQ-OBJC-008, REQ-OBJC-010, REQ-OBJC-011
 func Read(root string, all []*scan.File) *Index {
-	x := &Index{root: root, own: map[string]string{}, directories: map[string]bool{}, files: map[string]bool{}}
+	x := &Index{root: root, own: map[string]string{}, layout: lang.NewLayout()}
 	byDirectory := map[string]*project{}
 	get := func(directory string) *project {
 		p := byDirectory[directory]
@@ -127,10 +126,7 @@ func Read(root string, all []*scan.File) *Index {
 	repository := lang.NewSource(root)
 	for _, f := range sorted {
 		repository.Add(f)
-		x.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !x.directories[d]; d = path.Dir(d) {
-			x.directories[d] = true
-		}
+		x.layout.Add(f.Path)
 	}
 	read := func(relative string) (string, bool) {
 		data, ok := repository.Read(relative)
@@ -223,7 +219,7 @@ func vendored(p string) bool {
 func (x *Index) projectsOf(file string) []*project {
 	var out []*project
 	for i := len(x.projects) - 1; i >= 0; i-- {
-		if p := x.projects[i]; p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
+		if p := x.projects[i]; lang.Within(file, p.directory) {
 			out = append(out, p)
 		}
 	}
@@ -383,18 +379,18 @@ func exact(requirement string) (string, bool) {
 // directory has one, else the directory; nothing when neither is in the project.
 func (x *Index) local(p, root string) lang.Target {
 	p = path.Clean(p)
-	if strings.HasPrefix(p, "../") || p == ".." || path.IsAbs(p) {
+	if !lang.Inside(p) {
 		return lang.Target{}
 	}
-	if x.files[p] {
+	if x.layout.Files[p] {
 		return lang.Target{Local: p}
 	}
 	for _, name := range []string{root + ".podspec", root + ".podspec.json"} {
-		if f := path.Join(p, name); x.files[f] {
+		if f := path.Join(p, name); x.layout.Files[f] {
 			return lang.Target{Local: f}
 		}
 	}
-	if x.directories[p] {
+	if x.layout.Directories[p] {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}

@@ -25,15 +25,14 @@ type project struct {
 }
 
 type resolver struct {
-	root        string
-	files       map[string]bool
-	directories map[string]bool
-	projects    map[string]*project
-	order       []*project          // shallowest first
-	configs     map[string][]string // directory -> the search dirs its configurations add
-	stdRoots    []string            // directories holding Nim's standard library (lib/ of Nim's repository)
-	global      []*installed        // the nimble directory's packages the manifests name
-	byAbsolute  map[string]*installed
+	root string
+	lang.Layout
+	projects   map[string]*project
+	order      []*project          // shallowest first
+	configs    map[string][]string // directory -> the search dirs its configurations add
+	stdRoots   []string            // directories holding Nim's standard library (lib/ of Nim's repository)
+	global     []*installed        // the nimble directory's packages the manifests name
+	byAbsolute map[string]*installed
 }
 
 // readFile reads a file on disk through lang.ReadBounded, nil when it cannot.
@@ -50,7 +49,7 @@ func readFile(absolute string) []byte {
 //
 // Implements: REQ-NIM-004, REQ-NIM-005, REQ-NIM-006, REQ-NIM-007, REQ-NIM-011
 func newResolver(root string, all []*scan.File, getenv func(string) string) *resolver {
-	r := &resolver{root: root, files: map[string]bool{}, directories: map[string]bool{}, projects: map[string]*project{},
+	r := &resolver{root: root, Layout: lang.NewLayout(), projects: map[string]*project{},
 		configs: map[string][]string{}, byAbsolute: map[string]*installed{}}
 	repository := lang.OpenRoot(root)
 	onDisk := func(relative string) []byte {
@@ -65,10 +64,7 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 		if ignored(f) {
 			continue
 		}
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
+		r.Add(f.Path)
 		switch c := class(f.Path); {
 		case strings.HasPrefix(c, classNimble):
 			nimbles = append(nimbles, f)
@@ -85,7 +81,7 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 		n := readNimble(data, strings.TrimSuffix(path.Base(f.Path), ".nimble"))
 		p := &project{directory: directory, nimble: n, dependencies: n.dependencies, sourceRoot: directory}
 		if n.sourceDirectory != "" {
-			if d := path.Join(directory, n.sourceDirectory); r.directories[d] {
+			if d := path.Join(directory, n.sourceDirectory); r.Directories[d] {
 				p.sourceRoot = d
 			}
 		}
@@ -111,12 +107,12 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 	for _, p := range r.order {
 		p.develop = r.readDevelop(p.directory, onDisk)
 	}
-	for d := range r.directories {
-		if path.Base(d) == "lib" && r.files[d+"/system.nim"] && r.directories[d+"/pure"] {
+	for d := range r.Directories {
+		if path.Base(d) == "lib" && r.Files[d+"/system.nim"] && r.Directories[d+"/pure"] {
 			r.stdRoots = append(r.stdRoots, d)
 		}
 	}
-	if r.files["system.nim"] && r.directories["pure"] {
+	if r.Files["system.nim"] && r.Directories["pure"] {
 		r.stdRoots = append(r.stdRoots, ".")
 	}
 	sort.Strings(r.stdRoots)
@@ -233,7 +229,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	case kindBin:
 		if p := r.projects[path.Dir(file)]; p != nil {
 			for _, f := range []string{path.Join(p.sourceRoot, rawImport.Module+".nim"), path.Join(p.directory, rawImport.Module+".nim")} {
-				if r.files[f] {
+				if r.Files[f] {
 					return lang.Target{Local: f}
 				}
 			}
@@ -257,7 +253,7 @@ func (r *resolver) pathTarget(file, value string) lang.Target {
 	if d == "" {
 		return lang.Target{}
 	}
-	if !absolute && !strings.HasPrefix(d, "..") && (r.directories[d] || d == ".") {
+	if !absolute && !strings.HasPrefix(d, "..") && (r.Directories[d] || d == ".") {
 		return lang.Target{Local: d}
 	}
 	full := d
@@ -274,13 +270,13 @@ func (r *resolver) pathTarget(file, value string) lang.Target {
 // case (std/compileSettings is compilesettings.nim).
 func (r *resolver) probe(directory, module string) string {
 	f := path.Join(directory, module+".nim")
-	if strings.HasPrefix(f, "../") || f == ".." {
+	if lang.ClimbsOut(f) {
 		return ""
 	}
-	if r.files[f] {
+	if r.Files[f] {
 		return f
 	}
-	if lower := path.Join(directory, strings.ToLower(module)+".nim"); r.files[lower] {
+	if lower := path.Join(directory, strings.ToLower(module)+".nim"); r.Files[lower] {
 		return lower
 	}
 	return ""
@@ -330,7 +326,7 @@ func (r *resolver) module(file, module string) lang.Target {
 	if base := path.Base(module); strings.Contains(base, ".") {
 		// `include "nimble.paths"`: a file named with its extension.
 		for _, d := range append([]string{directory}, r.searchRoots(file)...) {
-			if f := path.Join(d, module); r.files[f] {
+			if f := path.Join(d, module); r.Files[f] {
 				return lang.Target{Local: f}
 			}
 		}
@@ -436,7 +432,7 @@ func (r *resolver) packageModule(file, module string) lang.Target {
 	}
 	// A directory of the project (a module missing from it) is not a package.
 	for _, root := range append([]string{path.Dir(file)}, r.searchRoots(file)...) {
-		if r.directories[path.Join(root, first)] {
+		if r.Directories[path.Join(root, first)] {
 			return lang.Target{}
 		}
 	}
@@ -538,7 +534,7 @@ func (r *resolver) target(p *project, name string) lang.Target {
 			// A package from a directory: the directory when it is the
 			// repository's, else a floating package from there.
 			if !path.IsAbs(directory) {
-				if local := path.Join(p.directory, directory); r.directories[local] {
+				if local := path.Join(p.directory, directory); r.Directories[local] {
 					return lang.Target{Local: local}
 				}
 			}

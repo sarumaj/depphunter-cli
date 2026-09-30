@@ -25,8 +25,7 @@ type project struct {
 }
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
+	lang.Layout
 	projects    []*project          // sorted by directory
 	byDirectory map[string]*project // by directory
 	home        string              // ELM_HOME
@@ -48,12 +47,9 @@ func elmHome() string {
 
 // Implements: REQ-ELM-004, REQ-ELM-005, REQ-ELM-007
 func newResolver(root string, all []*scan.File, home string) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, byDirectory: map[string]*project{}, home: home}
+	r := &resolver{Layout: lang.NewLayout(), byDirectory: map[string]*project{}, home: home}
 	for _, f := range all {
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
+		r.Add(f.Path)
 	}
 	for _, f := range all {
 		if path.Base(f.Path) != "elm.json" || inElmStuff(f.Path) {
@@ -173,7 +169,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		}
 	case kindSourceDirectory:
 		if p := r.byDirectory[path.Dir(file)]; p != nil {
-			if d := path.Join(p.directory, rawImport.Module); lang.Inside(d) && (r.directories[d] || d == ".") {
+			if d := path.Join(p.directory, rawImport.Module); lang.Inside(d) && (r.Directories[d] || d == ".") {
 				return lang.Target{Local: d}
 			}
 		}
@@ -204,7 +200,7 @@ func (r *resolver) module(file, module string) lang.Target {
 	}
 	for _, c := range candidates {
 		for _, root := range c.roots {
-			if f := path.Join(root, relative+extension); r.files[f] {
+			if f := path.Join(root, relative+extension); r.Files[f] {
 				return lang.Target{Local: f}
 			}
 		}

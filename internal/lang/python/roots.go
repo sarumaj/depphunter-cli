@@ -30,7 +30,7 @@ type importRoot struct {
 
 // serves reports whether the root applies to an import made in file.
 func (root importRoot) serves(file string) bool {
-	return root.scope == "" || root.scope == "." || strings.HasPrefix(file, root.scope+"/")
+	return root.scope == "" || lang.Within(file, root.scope)
 }
 
 // declaredRoot is an import root a project file or the environment declares, before
@@ -100,7 +100,7 @@ func (finder *rootFinder) inside(base, entry string) (string, bool) {
 		return "", false // another platform's absolute path, or a home directory
 	}
 	directory := path.Join(base, strings.ReplaceAll(entry, `\`, "/"))
-	if directory == "." || !finder.resolver.pyDirectories[directory] {
+	if directory == "." || !finder.resolver.Directories[directory] {
 		return "", false
 	}
 	return directory, true
@@ -358,7 +358,7 @@ func (finder *rootFinder) insideFile(base, entry string) (string, bool) {
 		base, entry = ".", filepath.ToSlash(relative)
 	}
 	file := path.Join(base, strings.ReplaceAll(entry, `\`, "/"))
-	if file == ".." || strings.HasPrefix(file, "../") || strings.HasPrefix(file, "/") {
+	if !lang.Inside(file) {
 		return "", false
 	}
 	return file, true

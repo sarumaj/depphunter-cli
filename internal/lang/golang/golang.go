@@ -117,7 +117,7 @@ func loadModules(all []*scan.File) ([]*module, error) {
 
 func owner(modules []*module, file string) *module {
 	for _, m := range modules {
-		if m.directory == "." || strings.HasPrefix(file, m.directory+"/") {
+		if lang.Within(file, m.directory) {
 			return m
 		}
 	}

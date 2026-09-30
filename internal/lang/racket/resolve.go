@@ -181,7 +181,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 // probe returns a file of the repository at p, or at p with .rkt for a .ss
 // path (Racket reads x.rkt for a require of x.ss when it exists).
 func (r *resolver) probe(p string) string {
-	if strings.HasPrefix(p, "../") || p == ".." {
+	if lang.ClimbsOut(p) {
 		return ""
 	}
 	if r.files[p] {

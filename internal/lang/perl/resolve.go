@@ -236,7 +236,7 @@ func (r *resolver) roots(file string, libraries []string) []string {
 }
 
 func (r *resolver) local(p string) bool {
-	return p != ".." && !strings.HasPrefix(p, "../") && r.files[p] && !ignored(p)
+	return !lang.ClimbsOut(p) && r.files[p] && !ignored(p)
 }
 
 // module resolves a module name: a project file under the roots, a core module, a

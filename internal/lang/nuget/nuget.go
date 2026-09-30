@@ -234,7 +234,7 @@ func Read(all []*scan.File) *Store {
 func (s *Store) root(file string) *set {
 	var best *set
 	for _, r := range s.roots {
-		if r.directory == "." || strings.HasPrefix(file, r.directory+"/") {
+		if lang.Within(file, r.directory) {
 			if best == nil || lang.Depth(r.directory) > lang.Depth(best.directory) {
 				best = r
 			}

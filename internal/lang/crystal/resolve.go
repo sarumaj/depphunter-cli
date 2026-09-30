@@ -22,36 +22,32 @@ type project struct {
 }
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
-	sources     []string            // every .cr file, sorted, for globs
-	projects    map[string]*project // by directory
-	libC        map[string][]string // a src/ directory with lib_c/ -> its target triples
-	order       []*project          // shallowest first
-	paths       []string            // CRYSTAL_PATH's directories of the repository
+	lang.Layout
+	sources  []string            // every .cr file, sorted, for globs
+	projects map[string]*project // by directory
+	libC     map[string][]string // a src/ directory with lib_c/ -> its target triples
+	order    []*project          // shallowest first
+	paths    []string            // CRYSTAL_PATH's directories of the repository
 }
 
 // Implements: REQ-CRYSTAL-004, REQ-CRYSTAL-005, REQ-CRYSTAL-006, REQ-CRYSTAL-008
 func newResolver(root string, all []*scan.File, getenv func(string) string) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, projects: map[string]*project{}}
+	r := &resolver{Layout: lang.NewLayout(), projects: map[string]*project{}}
 	// shard.lock is often ignored by git in libraries, and lib/ always is.
 	repository := lang.NewSource(root)
 	for _, f := range all {
 		if installed(f) {
 			continue
 		}
-		r.files[f.Path] = true
+		r.Add(f.Path)
 		repository.Add(f)
 		if path.Ext(f.Path) == ".cr" {
 			r.sources = append(r.sources, f.Path)
 		}
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
 	}
 	sort.Strings(r.sources)
 	r.libC = map[string][]string{}
-	for d := range r.directories {
+	for d := range r.Directories {
 		if library := path.Dir(d); path.Base(library) == "lib_c" {
 			r.libC[path.Dir(library)] = append(r.libC[path.Dir(library)], path.Base(d))
 		}
@@ -65,7 +61,7 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 			return triples[i] < triples[j]
 		})
 	}
-	for relative := range r.files {
+	for relative := range r.Files {
 		if path.Base(relative) != "shard.yml" {
 			continue
 		}
@@ -122,7 +118,7 @@ func (r *resolver) crystalPath(root, value string) []string {
 			}
 		}
 		d := path.Clean(filepath.ToSlash(e))
-		if (d == "." || r.directories[d]) && !slices.Contains(out, d) {
+		if (d == "." || r.Directories[d]) && !slices.Contains(out, d) {
 			out = append(out, d)
 		}
 	}
@@ -188,7 +184,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	case kindRequire:
 		return r.require(file, rawImport.Module)
 	case kindMain:
-		if p := path.Join(path.Dir(file), rawImport.Module); r.files[p] {
+		if p := path.Join(path.Dir(file), rawImport.Module); r.Files[p] {
 			return lang.Target{Local: p}
 		}
 		return lang.Target{}
@@ -221,19 +217,19 @@ func glob(spec string) (directory string, recursive, ok bool) {
 // compiler's rule for a directory). base "" is the repository root.
 func (r *resolver) probe(base, spec string) string {
 	p := path.Join(base, spec)
-	if strings.HasPrefix(p, "../") || p == ".." {
+	if lang.ClimbsOut(p) {
 		return ""
 	}
 	if strings.HasSuffix(p, ".cr") {
-		if r.files[p] {
+		if r.Files[p] {
 			return p
 		}
 		return ""
 	}
-	if r.files[p+".cr"] {
+	if r.Files[p+".cr"] {
 		return p + ".cr"
 	}
-	if f := path.Join(p, path.Base(p)+".cr"); r.files[f] {
+	if f := path.Join(p, path.Base(p)+".cr"); r.Files[f] {
 		return f
 	}
 	return ""
@@ -357,7 +353,7 @@ func (r *resolver) inShard(directory, spec string) string {
 	first, rest, ok := strings.Cut(spec, "/")
 	if !ok {
 		for _, f := range []string{path.Join(directory, "src", first+".cr"), path.Join(directory, first+".cr")} {
-			if r.files[f] {
+			if r.Files[f] {
 				return f
 			}
 		}
@@ -419,7 +415,7 @@ func (r *resolver) shardTarget(p *project, name string) lang.Target {
 		local = l.path
 	}
 	if local != "" {
-		if directory := path.Join(p.directory, local); r.directories[directory] {
+		if directory := path.Join(p.directory, local); r.Directories[directory] {
 			return lang.Target{Local: directory}
 		}
 		return lang.Target{}
@@ -499,7 +495,7 @@ func (r *resolver) Expand(file string, rawImport lang.RawImport) ([]lang.Import,
 			}
 		}
 		for _, root := range r.globRoots(file, directory) {
-			if r.directories[root] {
+			if r.Directories[root] {
 				base = root
 				break
 			}

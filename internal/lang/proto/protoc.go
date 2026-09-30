@@ -63,7 +63,7 @@ func readProtocRoots(all []*scan.File, directories map[string]bool) []protocRoot
 		script := path.Dir(f.Path)
 		for _, d := range protocFlags(string(source)) {
 			for _, p := range []string{path.Join(script, d), path.Clean(d)} {
-				if directories[p] && p != ".." && !strings.HasPrefix(p, "../") {
+				if directories[p] && !lang.ClimbsOut(p) {
 					if r := (protocRoot{script, p}); !slices.Contains(out, r) {
 						out = append(out, r)
 					}

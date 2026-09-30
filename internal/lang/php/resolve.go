@@ -12,10 +12,9 @@ import (
 )
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
-	projects    []*project // shallowest first
-	local       []mapping  // every project's own autoload rules, longest prefix first
+	lang.Layout
+	projects []*project // shallowest first
+	local    []mapping  // every project's own autoload rules, longest prefix first
 	// declared maps a lower-case fully qualified class, function or constant name to
 	// the project file declaring it, and a namespace to the directory of its first
 	// file: the classes of a classmap, of a project without composer.json, and those
@@ -26,14 +25,11 @@ type resolver struct {
 
 // Implements: REQ-PHP-005, REQ-PHP-008
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, declared: map[string]string{}, namespaces: map[string]string{}}
+	r := &resolver{Layout: lang.NewLayout(), declared: map[string]string{}, namespaces: map[string]string{}}
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
 	for _, f := range sorted {
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
+		r.Add(f.Path)
 		switch {
 		case path.Base(f.Path) == "composer.json":
 			if p, local := readProject(root, f.Path, f.AbsolutePath); p != nil {
@@ -147,7 +143,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 func (r *resolver) projectsOf(file string) []*project {
 	var out []*project
 	for i := len(r.projects) - 1; i >= 0; i-- {
-		if p := r.projects[i]; p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
+		if p := r.projects[i]; lang.Within(file, p.directory) {
 			out = append(out, p)
 		}
 	}
@@ -183,7 +179,7 @@ func (r *resolver) localFile(qualifiedName, kind string) (lang.Target, bool) {
 		}
 		relative = strings.ReplaceAll(strings.TrimPrefix(relative, `\`), `\`, "/") + ".php"
 		for _, d := range m.directories {
-			if p := path.Join(d, relative); r.files[p] {
+			if p := path.Join(d, relative); r.Files[p] {
 				return lang.Target{Local: p}, true
 			}
 		}
@@ -210,11 +206,11 @@ func (r *resolver) localNamespace(qualifiedName string) (lang.Target, bool) {
 			relative = strings.ReplaceAll(qualifiedName, `\`, "/")
 		}
 		for _, d := range m.directories {
-			if p := path.Join(d, relative); r.directories[p] {
+			if p := path.Join(d, relative); r.Directories[p] {
 				return lang.Target{Local: p}, true
 			}
 		}
-		if d := m.directories[0]; d == "." || r.directories[d] {
+		if d := m.directories[0]; d == "." || r.Directories[d] {
 			return lang.Target{Local: d}, true
 		}
 	}
@@ -339,10 +335,10 @@ func (r *resolver) include(file, p string) lang.Target {
 
 func (r *resolver) localPath(p string) lang.Target {
 	p = path.Clean(p)
-	if p == ".." || strings.HasPrefix(p, "../") {
+	if lang.ClimbsOut(p) {
 		return lang.Target{}
 	}
-	if r.files[p] || r.directories[p] {
+	if r.Has(p) {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}

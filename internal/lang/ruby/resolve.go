@@ -11,13 +11,12 @@ import (
 )
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
-	gemspecs    map[string][]string // directory -> its *.gemspec files
-	projects    []*project          // shallowest first
-	loadPath    []string            // every project's gem lib directories
-	rails       []*railsApp         // deepest first
-	own         map[string]string   // gems the repository builds -> gemspec (or directory)
+	lang.Layout
+	gemspecs map[string][]string // directory -> its *.gemspec files
+	projects []*project          // shallowest first
+	loadPath []string            // every project's gem lib directories
+	rails    []*railsApp         // deepest first
+	own      map[string]string   // gems the repository builds -> gemspec (or directory)
 }
 
 // railsApp is a Rails application: the directory holding config/application.rb, and
@@ -31,17 +30,14 @@ type railsApp struct {
 
 // Implements: REQ-RUBY-005, REQ-RUBY-007, REQ-RUBY-010
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, gemspecs: map[string][]string{}, own: map[string]string{}}
+	r := &resolver{Layout: lang.NewLayout(), gemspecs: map[string][]string{}, own: map[string]string{}}
 	repository := lang.NewSource(root)
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
 	gemfiles := map[string]string{} // directory -> Gemfile name
 	for _, f := range sorted {
-		r.files[f.Path] = true
+		r.Add(f.Path)
 		repository.Add(f)
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
 		switch base := path.Base(f.Path); {
 		case base == "Gemfile" || base == "gems.rb":
 			if _, ok := gemfiles[path.Dir(f.Path)]; !ok || base == "Gemfile" {
@@ -114,7 +110,7 @@ func (r *resolver) zeitwerk(app, config string) *railsApp {
 		prefix = "app/"
 	}
 	var roots []string
-	for d := range r.directories {
+	for d := range r.Directories {
 		rest, ok := strings.CutPrefix(d, prefix)
 		if !ok {
 			continue
@@ -132,7 +128,7 @@ func (r *resolver) zeitwerk(app, config string) *railsApp {
 	sort.Strings(roots)
 	sort.Strings(a.appDirectories)
 	var namespaces []string
-	for f := range r.files {
+	for f := range r.Files {
 		if !strings.HasSuffix(f, ".rb") {
 			continue
 		}
@@ -210,7 +206,7 @@ func (r *resolver) rubyFile(p string) lang.Target {
 		return lang.Target{}
 	}
 	for _, candidate := range []string{p + ".rb", p} {
-		if r.files[candidate] {
+		if r.Files[candidate] {
 			return lang.Target{Local: candidate}
 		}
 	}
@@ -218,7 +214,7 @@ func (r *resolver) rubyFile(p string) lang.Target {
 }
 
 func (r *resolver) localPath(p string) lang.Target {
-	if lang.Inside(p) && (r.files[p] || r.directories[p]) {
+	if lang.Inside(p) && (r.Has(p)) {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}
@@ -290,7 +286,7 @@ func (r *resolver) loadPathOf(file string) []string {
 	var out []string
 	seen := map[string]bool{}
 	add := func(d string) {
-		if !seen[d] && (r.directories[d] || d == ".") {
+		if !seen[d] && (r.Directories[d] || d == ".") {
 			seen[d] = true
 			out = append(out, d)
 		}
@@ -304,7 +300,7 @@ func (r *resolver) loadPathOf(file string) []string {
 		add(d)
 	}
 	for _, app := range r.rails {
-		if app.directory == "." || strings.HasPrefix(file, app.directory+"/") {
+		if lang.Within(file, app.directory) {
 			for _, d := range app.appDirectories {
 				add(d)
 			}
@@ -401,7 +397,7 @@ func (r *resolver) load(file, p string) lang.Target {
 func (r *resolver) projectsOf(file string) []*project {
 	var out []*project
 	for i := len(r.projects) - 1; i >= 0; i-- {
-		if p := r.projects[i]; p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
+		if p := r.projects[i]; lang.Within(file, p.directory) {
 			out = append(out, p)
 		}
 	}
@@ -420,7 +416,7 @@ func (r *resolver) projectsOf(file string) []*project {
 func (r *resolver) constant(file, name, nest string) lang.Target {
 	var app *railsApp
 	for _, a := range r.rails {
-		if a.directory == "." || strings.HasPrefix(file, a.directory+"/") {
+		if lang.Within(file, a.directory) {
 			app = a
 			break
 		}
