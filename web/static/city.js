@@ -28,6 +28,7 @@
 
 import * as THREE from './vendor/three.module.min.js';
 import { plants } from './models.js';
+import { looksGLSL } from './buildings.js';
 
 /** Box kinds as the shaders see them (attribute aKind). */
 export function kindCode(b) {
@@ -96,8 +97,11 @@ attribute float aKind;
 attribute float aFade;     // 1: dimmed, drawn plain (MapScene.setColors)
 attribute vec3 aBoxCenter; // base center, for non-instanced boxes
 attribute vec3 aBoxSize;
+attribute vec4 aBuild;     // the building's type, variant, lift and full height (buildings.js)
 varying vec3 vLP;          // position relative to the box's base center, world units
 varying vec3 vObjN;
+varying vec3 vWorld;       // where the fragment is drawn, for the angle it is seen at
+flat varying vec4 vBuild;
 // Per box. Flat: interpolation noise in a seed, run through a hash, speckles windows.
 flat varying vec3 vSize;
 flat varying float vKind;
@@ -111,11 +115,14 @@ export const CITY_VERT_BODY = `
   vSize = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
   vLP = transformed * vSize;
   vSeed = instanceMatrix[3].xz;
+  vWorld = bendWorld((modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz);
 #else
   vSize = aBoxSize;
   vLP = transformed - aBoxCenter;
   vSeed = aBoxCenter.xz;
+  vWorld = bendWorld((modelMatrix * vec4(transformed, 1.0)).xyz);
 #endif
+  vBuild = aBuild;
   vObjN = normal;
   vKind = aKind;
   vFade = aFade;
@@ -123,12 +130,22 @@ export const CITY_VERT_BODY = `
 
 /** Fragment declarations: surface functions, all in linear color. */
 // Implements: REQ-CITY-001, REQ-CITY-002
-export const CITY_FRAG_HEAD = NOISE_GLSL + `
+export const CITY_FRAG_HEAD = NOISE_GLSL + looksGLSL() + `
 uniform float uBend;
 uniform float uNight;
-uniform float uStyle; // 0 city, 1 circuit board, 2 galaxy
+// 0 city, 1 circuit board, 2 galaxy. The boxes' material is compiled once per style
+// (MapScene.bendable) with the style as a constant, so each program carries only its
+// own painters: a uniform branch still costs its code on some GPUs, and in the
+// software renderer headless browsers use it costs as though every branch ran.
+#ifdef CITY_STYLE
+#define uStyle CITY_STYLE
+#else
+uniform float uStyle;
+#endif
 varying vec3 vLP;
 varying vec3 vObjN;
+varying vec3 vWorld;
+flat varying vec4 vBuild;
 flat varying vec3 vSize;
 flat varying float vKind;
 flat varying float vFade;
@@ -538,96 +555,451 @@ vec3 stairs(vec3 c, float u, float faceW, float v, float h) {
   return mix(tread, vec3(0.2) * dark(0.5), band(abs(u), 0.13, 0.16, wu)); // stringers
 }
 
-// A flat roof: gravel, a parapet, and per building either a plant room with a couple
-// of air-conditioning units or rows of solar panels.
-// Implements: REQ-CITY-014
+// ------------------------------------------------------------------ the city's buildings
+
+// Which type a box is drawn as (buildings.js): the facades and roofs below are laid
+// out by it. Every material is the box's own color at some brightness, or a neutral
+// one (glass, frames, metal) over a small share of the face: the type is read from
+// the form, never from a hue.
+
+float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+// What a window reflects: the reflected ray's height picks between the street, the
+// horizon and the sky, gray more than blue, so glass never reads as a color of its
+// own. At night the sky in the glass is as dark as the sky.
+vec3 skyIn(vec3 n, vec3 view) {
+  vec3 r = reflect(-view, n);
+  vec3 day = mix(vec3(0.3, 0.31, 0.32), vec3(0.62, 0.68, 0.76), smoothstep(-0.05, 0.5, r.y));
+  day *= mix(0.55, 1.0, smoothstep(-0.35, 0.0, r.y));
+  vec3 night = mix(vec3(0.012, 0.013, 0.018), vec3(0.03, 0.035, 0.055), smoothstep(-0.05, 0.5, r.y));
+  return mix(day, night, uNight);
+}
+
+// Glass reflects more the flatter it is seen (Fresnel): head on it shows the room,
+// along the street the sky.
+float fresnel(vec3 n, vec3 view) {
+  float c = clamp(dot(n, view), 0.0, 1.0);
+  return 0.06 + 0.94 * pow(1.0 - c, 5.0);
+}
+
+// A room's light: warm or cool by floor (an office floor is lit by tubes, a flat by
+// lamps), dimmer by day, when it has the daylight to compete with.
+vec3 lampFor(float floorId, float id, float coolShare) {
+  vec3 warm = vec3(1.0, 0.72, 0.38), cool = vec3(0.74, 0.86, 1.0);
+  return mix(warm, cool, step(floorId, coolShare)) * (0.55 + 0.45 * id) * mix(0.4, 1.0, uNight);
+}
+
+// One pane: the room behind it and the sky in front of it. The room is darker towards
+// its middle, where the eye sees deepest into it, and a lit one brightest there too.
+// One window in three has blinds drawn part-way down and one in four curtains to the
+// sides; their slats and folds go before the pane does. f: where in the pane (0..1
+// across and up); fw: the pixel footprint of that.
+vec3 pane(vec3 base, vec2 f, vec2 fw, float id, float tint, vec3 lamp, float lit, vec3 sky, float glancing) {
+  vec2 e = min(f, 1.0 - f);
+  float depth = smoothstep(0.0, 1.0, min(e.x, e.y) * 2.0);
+  vec3 room = vec3(0.05, 0.051, 0.055) * (1.0 - 0.6 * depth);
+  room = mix(room, lamp * (0.75 + 0.25 * depth), lit);
+  float fine = 1.0 - smoothstep(0.06, 0.16, max(fw.x, fw.y));
+  float kind = fract(id * 7.13);
+  if (kind < 0.34) {
+    float drop = 0.15 + 0.75 * fract(id * 3.71);
+    float slat = mix(0.7, band(fract(f.y * 10.0), 0.15, 0.85, fw.y * 10.0), fine);
+    vec3 blind = mix(vec3(0.46, 0.45, 0.42) * dark(0.2), lamp * 0.55, lit) * (0.72 + 0.28 * slat);
+    room = mix(room, blind, smoothstep(1.0 - drop - fw.y, 1.0 - drop + fw.y, f.y));
+  } else if (kind < 0.6) {
+    float side = 0.1 + 0.2 * fract(id * 5.3);
+    float fold = mix(0.5, 0.5 + 0.5 * sin(f.x * 50.0), fine * (1.0 - smoothstep(0.02, 0.06, fw.x)));
+    vec3 cloth = mix(vec3(0.5, 0.48, 0.44) * dark(0.2), lamp * 0.62, lit) * (0.78 + 0.22 * fold);
+    room = mix(room, cloth, 1.0 - band(f.x, side, 1.0 - side, fw.x));
+  }
+  // Tinted glass carries the building's own color at the sky's brightness.
+  vec3 glass = sky * mix(vec3(1.0), base / max(max(base.r, max(base.g, base.b)), 0.05), tint);
+  return mix(room, glass, clamp(glancing * (1.0 - 0.7 * lit) + tint * 0.3, 0.0, 1.0));
+}
+
+/**
+ * What a facade averages to once its windows are below a pixel: the wall at its
+ * type's brightness and the glass over its type's share of the face. buildings.js
+ * facadeFar is the same sum, which is what the tests hold the type table to.
+ */
+vec3 facadeFar(vec3 base, int look, float variant) {
+  float litShare = mix(0.08, 0.4, uNight);
+  float lampOn = litShare * mix(0.6, 0.5, uNight);
+  vec3 wall = base * LOOK_TONE[look] * (0.92 + 0.16 * variant) * dark(0.5);
+  vec3 glass = mix(LOOK_GLASS, base * 0.45, LOOK_TINT[look]);
+  vec3 window = glass * dark(0.12) * (1.0 - lampOn) + LOOK_LAMP * 0.8 * lampOn;
+  return mix(wall, window, LOOK_SHARE[look]);
+}
+
+// English bond: a course of stretchers, then a course of headers half as long and
+// centered on the joints below, with mortar lighter than the brick; each brick a
+// little lighter or darker than the next, never another color.
+vec3 brickBond(vec3 wall, float u, float v, vec2 seed) {
+  float course = v / 0.022;
+  float row = floor(course);
+  float header = step(0.5, mod(row, 2.0));
+  float brick = mix(0.064, 0.032, header);
+  float x = u / brick + 0.5 * header;
+  vec2 bw = vec2(fwidth(u) / brick, fwidth(course)) + 1e-4;
+  float bfar = smoothstep(0.25, 0.55, max(bw.x, bw.y));
+  float mortar = 1.0 - band(fract(x), 0.06, 0.94, bw.x) * band(fract(course), 0.14, 0.86, bw.y);
+  wall *= mix(0.84 + 0.32 * hash12(vec2(floor(x), row) + seed), 1.0, bfar);
+  return mix(wall, wall * 1.3 + 0.018, mortar * (1.0 - bfar) * 0.55);
+}
+
+// A canvas awning over a shop window: stripes of the building's color, darkened,
+// and off-white - or plain - with a scalloped hem. y: 0 at the hem, 1 at the wall.
+vec3 awning(vec3 base, float u, float y, float striped) {
+  float s = u / 0.034, ws = fwidth(s) + 1e-4;
+  float stripe = mix(band(fract(s), 0.0, 0.5, ws), 0.5, smoothstep(0.3, 0.8, ws)) * striped;
+  vec3 c = mix(base * 0.5, vec3(0.78, 0.77, 0.73), stripe * 0.8) * dark(0.4);
+  c *= 0.8 + 0.2 * y; // the canvas slopes away from the light at the hem
+  return c;
+}
+
+// Large-scale shading, at any distance: darker where two faces meet and, on the
+// ground floor, towards the foot, with grime splashed up it.
+vec3 facadeShade(vec3 c, float u, float v, float edge, vec2 seed) {
+  c *= mix(0.84, 1.0, smoothstep(0.0, 0.05, edge));
+  if (vBuild.z < 0.01) {
+    float grime = mix(vnoise(vec2(u * 12.0, 3.0) + seed), 0.5, smoothstep(0.3, 1.0, fwidth(u * 12.0)));
+    c *= mix(0.68 + 0.08 * grime, 1.0, smoothstep(0.0, 0.2, v));
+  }
+  return c;
+}
+
+/**
+ * A facade: whole bays across the face, STORY-high stories, laid out by the
+ * building's type.
+ *
+ * - residential: framed windows, and on every bay or every other one a French
+ *   window onto a balcony with a painted railing;
+ * - office: a curtain wall of tinted glass between dark mullions, a spandrel of the
+ *   building's color at each floor, a glass lobby;
+ * - brick: English bond, sash windows with stone lintels and sills, a string course
+ *   and a toothed cornice;
+ * - panel: precast panels with their seams showing, one window each;
+ * - deco: piers running the full height, dark spandrels, and a stone band at each
+ *   setback;
+ * - warehouse: ribbed cladding, clerestory windows under the eaves, roll-up doors;
+ * - mixed: a stone-faced shop floor (two on taller ones) under flats or brick.
+ *
+ * Ground floors have shopfronts under awnings and a door, or a lobby. Stains run down
+ * from the windows, the foot and the corners are darker, and the space under a
+ * cornice is in its shadow. At night rooms are lit warm or cool by floor.
+ *
+ * v: height above the building's ground; H: the building's full height; top: the
+ * height of this piece's roof (below H on the lower tiers of a setback tower).
+ *
+ * Implements: REQ-CITY-013, REQ-CITY-032
+ */
+vec3 facade(vec3 base, float u, float faceW, float v, float H, float roofAt, vec2 seed, vec3 n) {
+  int look = int(vBuild.x + 0.5);
+  int type = look;
+  float variant = vBuild.y;
+  float podiumTop = STORY * (H > 1.6 ? 2.0 : 1.0);
+  bool podium = type == MIXED && v < podiumTop;
+  if (type == MIXED) type = variant < 0.5 ? RESIDENTIAL : BRICK;
+  float bayW = type == OFFICE ? 0.13 : type == PANEL ? 0.3 : type == WAREHOUSE ? 0.45 : type == DECO ? 0.19 : type == BRICK ? 0.22 : 0.26;
+  float bays = max(1.0, floor(faceW / bayW));
+  vec2 cell = vec2((u + faceW * 0.5) / (faceW / bays), v / STORY);
+  vec2 f = fract(cell), w = fwidth(cell) + 1e-4;
+  vec2 bay = floor(cell);
+  float far = smoothstep(0.3, 0.7, max(w.x, w.y));
+  float id = hash12(bay + seed * 1.37);
+  float top = roofAt - v;             // how far below this piece's roof
+  float wv = fwidth(v) + 1e-4;
+  float edge = faceW * 0.5 - abs(u);
+  // Seen from far enough away there is nothing to draw but the average: most of a
+  // map's facades, most of the time, and the one path that has to be cheap.
+  if (far > 0.99) return facadeShade(facadeFar(base, look, variant), u, v, edge, seed);
+  bool ground = bay.y < 0.5;
+  bool cornice = top < 0.075;
+  vec3 view = normalize(cameraPosition - vWorld);
+  vec3 sky = skyIn(n, view);
+  float glancing = fresnel(n, view);
+
+  // The wall: the box's color at the type's brightness, a little lighter or darker
+  // and rougher or smoother per building.
+  float rough = 0.6 + 0.8 * fract(variant * 7.7);
+  vec3 wall = base * LOOK_TONE[look] * (0.92 + 0.16 * variant);
+  wall *= 1.0 + 0.12 * rough * (vnoise(vec2(u, v) * 22.0 + seed) - 0.5) * (1.0 - far);
+  if (podium) {
+    // Stone facing: smooth, lighter, with rusticated joints.
+    wall *= 1.12;
+    float joint = band(fract(v / 0.075), 0.0, 0.08, wv / 0.075);
+    wall *= 1.0 - 0.25 * joint * (1.0 - smoothstep(0.2, 0.5, wv / 0.075));
+  } else if (type == BRICK) {
+    wall = brickBond(wall, u, v, seed);
+  } else if (type == PANEL) {
+    wall *= mix(0.93 + 0.14 * hash12(bay + seed * 2.1), 1.0, far);
+    float seam = 1.0 - band(f.x, 0.015, 0.985, w.x) * band(f.y, 0.02, 0.98, w.y);
+    wall *= 1.0 - 0.38 * seam * (1.0 - far);
+    wall *= 1.0 + 0.08 * (vnoise(vec2(u, v) * 90.0 + seed) - 0.5) * (1.0 - smoothstep(0.3, 1.0, fwidth(u * 90.0)));
+  } else if (type == WAREHOUSE) {
+    float rib = u / 0.028, rw = fwidth(rib);
+    wall *= 0.9 + 0.2 * mix(0.5 + 0.5 * cos(rib * 6.2832), 0.5, smoothstep(0.3, 0.8, rw));
+  } else if (type == DECO) {
+    float pier = 1.0 - band(f.x, 0.16, 0.84, w.x);
+    wall *= mix(1.0, 1.14, pier * (1.0 - far));
+  }
+  wall *= dark(0.5);
+
+  // The windows: where in the bay, how framed, how divided.
+  vec4 rect = vec4(0.2, 0.8, 0.28, 0.86);   // x0, x1, y0, y1 within the bay
+  float frameW = 0.035, mullion = 1.0, transom = 0.0;
+  vec3 frame = mix(wall, vec3(0.62, 0.62, 0.6) * dark(0.45), 0.6);
+  float tint = LOOK_TINT[look];
+  float balcony = 0.0;
+  if (type == OFFICE) { rect = vec4(0.04, 0.96, 0.25, 0.97); frameW = 0.0; mullion = 0.0; }
+  else if (type == BRICK) { rect = vec4(0.27, 0.73, 0.26, 0.8); frameW = 0.05; transom = 0.55; }
+  else if (type == PANEL) { rect = vec4(0.19, 0.81, 0.3, 0.8); frameW = 0.03; frame = mix(wall, vec3(0.5) * dark(0.45), 0.6); }
+  else if (type == DECO) { rect = vec4(0.23, 0.77, 0.2, 0.9); frameW = 0.02; transom = 0.82; frame = vec3(0.12, 0.12, 0.13) * dark(0.5); }
+  else if (type == RESIDENTIAL) {
+    // French windows onto the balconies: on every bay, or every other one.
+    float every = variant < 0.5 ? 1.0 : 2.0;
+    balcony = step(mod(bay.x + floor(variant * 10.0), every), 0.5);
+    if (balcony > 0.5) rect = vec4(0.24, 0.76, 0.04, 0.86);
+  }
+  float upper = (ground || cornice || podium) ? 0.0 : 1.0;
+  if (type == WAREHOUSE) upper = 0.0;
+  float inWin = band(f.x, rect.x, rect.y, w.x) * band(f.y, rect.z, rect.w, w.y) * upper;
+  float inFrame = band(f.x, rect.x - frameW, rect.y + frameW, w.x) * band(f.y, rect.z - frameW, rect.w + frameW, w.y) * upper * (1.0 - inWin);
+  vec2 size = rect.yw - rect.xz;
+  vec2 pf = (f - rect.xz) / size, pfw = w / size;
+  float fine = 1.0 - smoothstep(0.08, 0.2, max(pfw.x, pfw.y));
+  float bars = max(mullion * band(pf.x, 0.47, 0.53, pfw.x), transom > 0.0 ? band(pf.y, transom - 0.025, transom + 0.025, pfw.y) : 0.0) * fine;
+
+  // The rooms: lit by some share of them, whole floors of an office at once.
+  float floorId = hash12(vec2(bay.y, seed.x * 0.13 + seed.y * 0.71));
+  float coolShare = type == OFFICE ? 0.75 : type == PANEL ? 0.35 : type == DECO ? 0.5 : 0.15;
+  vec3 lamp = lampFor(floorId, id, coolShare);
+  float litShare = mix(0.08, 0.4, uNight);
+  float lit = step(1.0 - litShare, id);
+  if (type == OFFICE || type == DECO) lit = max(lit, step(1.0 - mix(0.02, 0.25, uNight), fract(floorId * 13.7)));
+
+  vec3 c = wall;
+  if (type == OFFICE && upper > 0.5) {
+    // Between the panes, dark mullions; under them, the spandrel.
+    float mull = 1.0 - band(f.x, 0.04, 0.96, w.x);
+    c = mix(c, vec3(0.08, 0.085, 0.09) * dark(0.6), mull * (1.0 - far));
+    c = mix(c, c * 0.75, band(f.y, 0.21, 0.25, w.y) * (1.0 - far));
+  }
+  if (type == DECO && upper > 0.5) {
+    // Dark spandrels between the windows of a bay, the piers left standing proud.
+    float inner = band(f.x, 0.16, 0.84, w.x);
+    float span = inner * (1.0 - band(f.y, rect.z, rect.w, w.y));
+    c = mix(c, c * 0.62, span * (1.0 - far));
+    c = mix(c, c * 1.5, span * band(f.y, 0.06, 0.09, w.y) * (1.0 - far)); // a thin bright rule across it
+  }
+  // Sills under the windows, and a stone lintel over them in brick.
+  if (type != OFFICE && type != DECO && upper > 0.5) {
+    float sill = band(f.x, rect.x - 0.05, rect.y + 0.05, w.x) * band(f.y, rect.z - frameW - 0.05, rect.z - frameW, w.y);
+    c = mix(c, wall * 1.3 + 0.02 * dark(0.5), sill * (1.0 - balcony));
+    if (type == BRICK) {
+      float lintel = band(f.x, rect.x - 0.06, rect.y + 0.06, w.x) * band(f.y, rect.w + frameW, rect.w + frameW + 0.08, w.y);
+      c = mix(c, mix(wall, vec3(0.7, 0.69, 0.66) * dark(0.45), 0.6), lintel);
+    }
+  }
+  c = mix(c, frame, inFrame);
+  if (inWin > 0.0) c = mix(c, mix(pane(base, pf, pfw, id, tint, lamp, lit, sky, glancing), frame, bars), inWin);
+  // A painted balcony on the French windows: its slab edge and a railing of bars.
+  if (balcony > 0.5 && upper > 0.5) {
+    float rail = band(f.x, 0.08, 0.92, w.x) * band(f.y, 0.0, 0.33, w.y);
+    float bar = band(fract(f.x * bays * faceW / 0.035), 0.0, 0.3, w.x * bays * faceW / 0.035);
+    vec3 railing = mix(c * 0.55, vec3(0.1, 0.1, 0.11) * dark(0.6), 0.6 * bar * (1.0 - smoothstep(0.1, 0.3, w.x * 20.0)));
+    railing = mix(railing, wall * 1.2, band(f.y, 0.0, 0.07, w.y)); // the slab's edge
+    railing = mix(railing, vec3(0.2, 0.2, 0.21) * dark(0.6), band(f.y, 0.3, 0.33, w.y)); // the handrail
+    c = mix(c, railing, rail * (1.0 - far));
+  }
+
+  // The ground floor: a lobby, loading doors, or shops under awnings with a door.
+  float doorBay = floor(hash12(seed + 2.0) * bays);
+  float isDoor = 1.0 - step(0.5, abs(bay.x - doorBay));
+  if (ground && type != WAREHOUSE) {
+    vec3 shopLamp = vec3(1.0, 0.8, 0.55) * mix(0.2, 0.9, uNight);
+    if (type == OFFICE) {
+      float glassFront = band(f.x, 0.03, 0.97, w.x) * band(f.y, 0.0, 0.9, w.y);
+      vec2 lf = vec2(f.x, f.y / 0.9);
+      c = mix(c, vec3(0.08, 0.085, 0.09) * dark(0.6), 1.0 - band(f.y, 0.0, 0.9, w.y));
+      if (glassFront > 0.0) c = mix(c, pane(base, lf, w, id * 0.5 + 0.5, tint, shopLamp, 0.6 + 0.4 * uNight, sky, glancing), glassFront);
+      c = mix(c, vec3(0.06) * dark(0.6), isDoor * band(f.x, 0.3, 0.7, w.x) * band(f.y, 0.0, 0.7, w.y) * (1.0 - band(f.x, 0.34, 0.66, w.x) * band(f.y, 0.04, 0.66, w.y)));
+    } else if (type == PANEL && !podium) {
+      float small = band(f.x, 0.3, 0.7, w.x) * band(f.y, 0.4, 0.78, w.y) * (1.0 - isDoor);
+      if (small > 0.0) c = mix(c, pane(base, (f - vec2(0.3, 0.4)) / vec2(0.4, 0.38), w / vec2(0.4, 0.38), id, tint, lamp, lit, sky, glancing), small);
+    } else {
+      float shop = band(f.x, 0.07, 0.93, w.x) * band(f.y, 0.06, 0.6, w.y) * (1.0 - isDoor);
+      vec2 sf = (f - vec2(0.07, 0.06)) / vec2(0.86, 0.54);
+      c = mix(c, vec3(0.1, 0.1, 0.105) * dark(0.6), band(f.x, 0.05, 0.95, w.x) * band(f.y, 0.04, 0.62, w.y) * (1.0 - isDoor));
+      if (shop > 0.0) c = mix(c, pane(base, sf, w / vec2(0.86, 0.54), id * 0.3 + 0.7, tint, shopLamp, mix(0.5, 1.0, uNight), sky, glancing), shop);
+      // The awning over it, and the fascia board over that.
+      float awn = band(f.y, 0.62, 0.8, w.y) * band(f.x, 0.04, 0.96, w.x) * (1.0 - isDoor) * step(0.35, fract(variant * 3.3 + bay.x * 0.37));
+      c = mix(c, awning(base, u, (f.y - 0.62) / 0.18, step(0.5, fract(variant * 5.1))), awn * (1.0 - far));
+      c = mix(c, wall * 0.45, band(f.y, 0.82, 0.95, w.y) * band(f.x, 0.02, 0.98, w.x) * (1.0 - isDoor) * (1.0 - far));
+    }
+    // The entrance: a door in a stone surround, lit from inside at night.
+    float surround = isDoor * band(f.x, 0.24, 0.76, w.x) * band(f.y, 0.0, 0.8, w.y);
+    float door = isDoor * band(f.x, 0.3, 0.7, w.x) * band(f.y, 0.0, 0.74, w.y);
+    c = mix(c, mix(wall, vec3(0.62, 0.61, 0.58) * dark(0.45), 0.6), surround);
+    vec3 leaf = mix(vec3(0.16, 0.12, 0.09) * dark(0.5), vec3(1.0, 0.8, 0.55) * 0.7, uNight * 0.7);
+    leaf *= 1.0 - 0.35 * band(f.x, 0.49, 0.51, w.x);            // two leaves
+    leaf = mix(leaf, sky * 0.8, band(f.y, 0.4, 0.68, w.y) * band(fract(f.x * 2.5), 0.15, 0.85, w.x * 2.5) * 0.7); // their glazing
+    c = mix(c, leaf, door);
+  }
+  if (type == WAREHOUSE) {
+    // A strip of windows under the eaves, a sign band below it, and along the
+    // ground roll-up doors with a personnel door beside one.
+    float strip = band(top, 0.05, 0.12, wv);
+    float sm = u / 0.09, smw = fwidth(sm) + 1e-4;
+    vec2 sf = vec2(fract(sm), (0.12 - top) / 0.07);
+    if (strip > 0.0) c = mix(c, mix(pane(base, sf, vec2(smw, wv / 0.07), hash12(vec2(floor(sm), 3.0) + seed), tint, lamp, lit, sky, glancing), vec3(0.1) * dark(0.6), band(sf.x, 0.0, 0.08, smw) * (1.0 - far)), strip);
+    c = mix(c, wall * 0.62, band(top, 0.13, 0.17, wv));
+    float doorH = min(0.27, roofAt - 0.2);
+    float dx = f.x;
+    float dock = step(0.5, mod(bay.x, 2.0) + step(bays, 1.5)) * band(dx, 0.14, 0.86, w.x) * band(v, 0.0, doorH, wv);
+    float open = step(0.8, hash12(bay + seed * 3.3));
+    float ribs = mix(0.5 + 0.5 * cos(v / 0.012 * 6.2832), 0.5, smoothstep(0.3, 0.8, wv / 0.012));
+    vec3 shutter = mix(vec3(0.36, 0.37, 0.38) * (0.85 + 0.15 * ribs), vec3(0.03) + vec3(1.0, 0.75, 0.45) * 0.35 * uNight, open) * dark(0.45);
+    c = mix(c, vec3(0.12, 0.12, 0.13) * dark(0.6), band(dx, 0.11, 0.89, w.x) * band(v, 0.0, doorH + 0.025, wv) * (1.0 - dock) * step(0.5, mod(bay.x, 2.0) + step(bays, 1.5)));
+    c = mix(c, shutter, dock);
+    c = mix(c, vec3(0.03), band(dx, 0.1, 0.14, w.x) * band(v, 0.0, 0.05, wv) + band(dx, 0.86, 0.9, w.x) * band(v, 0.0, 0.05, wv)); // bumpers
+    float man = isDoor * (1.0 - step(0.5, mod(bay.x, 2.0))) * band(dx, 0.42, 0.62, w.x) * band(v, 0.0, 0.2, wv) * step(1.5, bays);
+    c = mix(c, vec3(0.2, 0.21, 0.22) * dark(0.5), man);
+  }
+  // The crown: a cornice (toothed on brick) or a metal coping, and a stone band
+  // at each setback of an art-deco tower.
+  if (cornice) {
+    if (type == OFFICE || type == WAREHOUSE) {
+      c = mix(wall * 0.9, vec3(0.3, 0.31, 0.32) * dark(0.5), band(top, 0.0, 0.018, wv));
+    } else {
+      c = wall * 1.18;
+      if (type == BRICK) c = mix(c, c * 0.62, band(top, 0.03, 0.045, wv) * band(fract(u / 0.03), 0.25, 0.65, fwidth(u) / 0.03 + 1e-4) * (1.0 - far));
+      c = mix(c, c * 0.8, band(top, 0.0, 0.012, wv));
+    }
+  }
+  if (type == DECO) {
+    for (int k = 0; k < 2; k++) {
+      float at = H * (k == 0 ? 0.72 : 0.86);
+      float d = at - v;
+      c = mix(c, wall * 1.25, band(d, 0.0, 0.05, wv) * step(at, roofAt + 0.01));
+    }
+  }
+  if (type == BRICK && !podium) c = mix(c, wall * 1.2, band(v, STORY - 0.02, STORY + 0.02, wv)); // the string course
+  if (podium) c = mix(c, wall * 0.9, band(v, podiumTop - 0.025, podiumTop, wv));
+
+  // Weathering: stains run down from the windows and the cornice, more on rough walls.
+  float sx = u * 30.0 + seed.x * 7.0, sfw = fwidth(sx);
+  float streak = smoothstep(0.55, 0.85, vnoise(vec2(sx, v * 1.3 + seed.y)));
+  streak = mix(streak, 0.12, smoothstep(0.3, 1.0, sfw));
+  c *= 1.0 - 0.13 * rough * streak * (1.0 - inWin);
+  // The shadow a cornice throws on the wall under it.
+  if (type != OFFICE && type != WAREHOUSE) c *= 1.0 - 0.22 * band(top, 0.075, 0.13, wv);
+
+  return facadeShade(mix(c, facadeFar(base, look, variant), far), u, v, edge, seed);
+}
+
+/**
+ * A flat roof: gravel inside a parapet that throws its shadow on it, and on it what
+ * its type carries:
+ *
+ * - warehouse: a sawtooth of north lights, glazing and ribbed metal;
+ * - office: a plant penthouse and a window-cleaning track; a helipad from HELIPAD up;
+ * - deco: stepped rings up to the base of a spire;
+ * - brick: tar, chimneys and a timber water tank;
+ * - residential: some planted as green roofs;
+ * - the rest: a plant room with air-conditioning units, or rows of solar panels.
+ *
+ * Implements: REQ-CITY-014, REQ-CITY-032
+ */
 vec3 roof(vec3 base, vec3 lp, vec3 sz, float e) {
+  int type = int(vBuild.x + 0.5);
+  float variant = vBuild.y, H = vBuild.w;
   float w = fwidth(e) + 1e-4;
   vec2 gw = fwidth(lp.xz * 60.0);
   float gravel = mix(vnoise(lp.xz * 60.0 + vSeed), 0.5, smoothstep(0.4, 1.0, max(gw.x, gw.y)));
   vec3 c = base * 0.8 * (0.9 + 0.2 * vnoise(lp.xz * 16.0 + vSeed)) * (0.9 + 0.2 * gravel);
-  c = mix(c, base * 1.08, 1.0 - smoothstep(0.035 - w, 0.035 + w, e)); // parapet
-  float style = hash12(vSeed * 0.37 + 11.0);
-  if (style > 0.6 && min(sz.x, sz.z) > 0.6) {
-    // Solar panels in rows, inside the parapet.
-    vec2 t = lp.xz / vec2(0.1, 0.16);
-    vec2 tw = fwidth(t) + 1e-4;
-    float panel = band(fract(t.x), 0.08, 0.92, tw.x) * band(fract(t.y), 0.1, 0.75, tw.y) * smoothstep(0.08 - w, 0.08 + w, e);
-    vec3 cell = mix(vec3(0.05, 0.08, 0.16), vec3(0.12, 0.18, 0.3), band(fract(t.x * 3.0), 0.45, 0.55, tw.x * 3.0));
-    c = mix(c, cell * dark(0.4), panel * (1.0 - 0.5 * smoothstep(0.3, 0.6, max(tw.x, tw.y))));
-    return c * dark(0.55);
+  vec2 q = lp.xz;
+  float inside = smoothstep(0.075 - w, 0.075 + w, e);
+  float small = min(sz.x, sz.z);
+  if (type == WAREHOUSE) {
+    float t = (variant < 0.5 ? q.x : q.y) / 0.2, tw = fwidth(t) + 1e-4;
+    float s = fract(t);
+    vec3 north = mix(vec3(0.07, 0.08, 0.09), vec3(1.0, 0.78, 0.5) * 0.6, uNight * step(0.4, hash12(vec2(floor(t), 1.0) + vSeed)));
+    vec3 saw = mix(base * (0.6 + 0.4 * s), north, band(s, 0.0, 0.3, tw));
+    saw = mix(saw, mix(base * 0.8, north, 0.3), smoothstep(0.3, 0.8, tw));
+    c = mix(c, saw, inside);
+  } else if (type == OFFICE) {
+    c = mix(c, vec3(0.1, 0.1, 0.11), band(e, 0.1, 0.114, w)); // the cleaning cradle's track
+    if (H >= HELIPAD_H && small > 0.7) {
+      float r = length(q) / (small * 0.36);
+      float rw = fwidth(r) + 1e-4;
+      vec2 hq = q / (small * 0.36);
+      float letter = (band(abs(hq.x), 0.24, 0.36, rw) * band(abs(hq.y), 0.0, 0.42, rw)
+        + band(abs(hq.y), 0.0, 0.05, rw) * band(abs(hq.x), 0.0, 0.3, rw));
+      vec3 pad = vec3(0.16, 0.165, 0.17) * (0.9 + 0.1 * gravel);
+      pad = mix(pad, vec3(0.82, 0.82, 0.78), max(band(r, 0.78, 0.86, rw), min(letter, 1.0)) * (1.0 - smoothstep(0.1, 0.3, rw)));
+      c = mix(c, pad, 1.0 - smoothstep(1.0 - rw, 1.0 + rw, r));
+      c = mix(c, c * 0.7, band(r, 1.0, 1.08, rw));
+    } else {
+      vec2 at = (vec2(hash12(vSeed + 1.7), hash12(vSeed + 8.1)) - 0.5) * sz.xz * 0.25;
+      vec2 d = abs(q - at) - sz.xz * vec2(0.22, 0.16);
+      float room = 1.0 - smoothstep(-w, w, max(d.x, d.y));
+      float louver = band(fract((q.x - at.x) / 0.02), 0.0, 0.5, fwidth(q.x) / 0.02 + 1e-4) * (1.0 - smoothstep(0.3, 0.7, fwidth(q.x) / 0.02));
+      c = mix(c, vec3(0.38, 0.385, 0.39) * (0.9 + 0.12 * louver), room);
+    }
+  } else if (type == DECO) {
+    float ring = floor(e / 0.07);
+    c *= 1.0 + 0.1 * mod(ring, 2.0) * (1.0 - smoothstep(0.3, 0.8, fwidth(e / 0.07)));
+    c = mix(c, c * 0.72, band(fract(e / 0.07), 0.0, 0.12, fwidth(e / 0.07) + 1e-4) * (1.0 - smoothstep(0.3, 0.8, fwidth(e / 0.07))));
+    c = mix(c, vec3(0.18, 0.18, 0.19), 1.0 - smoothstep(0.06 - w, 0.06 + w, length(q)));
+  } else if (type == BRICK) {
+    c = base * 0.55 * (0.85 + 0.3 * vnoise(q * 9.0 + vSeed)) * (0.92 + 0.16 * gravel);
+    for (int i = 0; i < 2; i++) {
+      vec2 chimney = (vec2(hash12(vSeed + float(i) * 4.3), hash12(vSeed + float(i) * 2.9 + 3.0)) - 0.5) * sz.xz * 0.7;
+      vec2 d = abs(q - chimney);
+      c = mix(c, base * 0.42, 1.0 - smoothstep(0.04 - w, 0.04 + w, max(d.x, d.y * 1.6)));
+    }
+    {
+      vec2 tank = (vec2(hash12(vSeed + 6.1), hash12(vSeed + 1.3)) - 0.5) * sz.xz * 0.4;
+      float r = length(q - tank);
+      c = mix(c, vec3(0.3, 0.25, 0.2) * (0.9 + 0.1 * band(fract(atan(q.y - tank.y, q.x - tank.x) * 5.0), 0.0, 0.5, 0.2)), 1.0 - smoothstep(0.09 - w, 0.09 + w, r));
+      c = mix(c, c * 0.6, band(r, 0.075, 0.09, w));
+    }
+  } else if (type == RESIDENTIAL && variant < 0.22 && small > 0.6) {
+    // A green roof: sedum in beds between gravel walks. It is a little green, never
+    // enough to be taken for another building's color.
+    vec2 beds = q / 0.18, bw = fwidth(beds) + 1e-4;
+    float bed = band(fract(beds.x), 0.1, 0.9, bw.x) * band(fract(beds.y), 0.1, 0.9, bw.y);
+    bed = mix(bed, 0.64, smoothstep(0.3, 0.7, max(bw.x, bw.y)));
+    vec3 sedum = mix(base * 0.62, vec3(0.16, 0.24, 0.09), 0.4) * (0.75 + 0.5 * vnoise(q * 40.0 + vSeed));
+    c = mix(c, sedum, bed * inside);
+  } else {
+    float solar = hash12(vSeed * 0.37 + 11.0);
+    if (solar > 0.6 && small > 0.6) {
+      vec2 t = q / vec2(0.1, 0.16);
+      vec2 tw = fwidth(t) + 1e-4;
+      float panel = band(fract(t.x), 0.08, 0.92, tw.x) * band(fract(t.y), 0.1, 0.75, tw.y) * smoothstep(0.08 - w, 0.08 + w, e);
+      vec3 cell = mix(vec3(0.05, 0.08, 0.16), vec3(0.12, 0.18, 0.3), band(fract(t.x * 3.0), 0.45, 0.55, tw.x * 3.0));
+      c = mix(c, cell * dark(0.4), panel * (1.0 - 0.5 * smoothstep(0.3, 0.6, max(tw.x, tw.y))));
+    } else {
+      vec2 at = (vec2(hash12(vSeed), hash12(vSeed + 5.3)) - 0.5) * sz.xz * 0.35;
+      vec2 d = abs(q - at);
+      float s = small * 0.15;
+      float unit = 1.0 - smoothstep(s - w, s + w, max(d.x, d.y)); // a rooftop plant room
+      c = mix(c, vec3(0.3, 0.31, 0.33), unit * 0.85);
+      for (int i = 0; i < 2; i++) {
+        vec2 ac = (vec2(hash12(vSeed + float(i) * 7.1), hash12(vSeed + float(i) * 3.3 + 1.0)) - 0.5) * sz.xz * 0.6;
+        vec2 qa = abs(q - ac);
+        float box = 1.0 - smoothstep(0.045 - w, 0.045 + w, max(qa.x, qa.y));
+        float fan = 1.0 - smoothstep(0.025 - w, 0.025 + w, length(q - ac));
+        c = mix(c, mix(vec3(0.55, 0.56, 0.57), vec3(0.12), fan), box * (1.0 - unit));
+      }
+    }
   }
-  vec2 at = (vec2(hash12(vSeed), hash12(vSeed + 5.3)) - 0.5) * sz.xz * 0.35;
-  vec2 q = abs(lp.xz - at);
-  float s = min(sz.x, sz.z) * 0.15;
-  float unit = 1.0 - smoothstep(s - w, s + w, max(q.x, q.y)); // a rooftop plant room
-  c = mix(c, vec3(0.3, 0.31, 0.33), unit * 0.85);
-  for (int i = 0; i < 2; i++) {
-    vec2 ac = (vec2(hash12(vSeed + float(i) * 7.1), hash12(vSeed + float(i) * 3.3 + 1.0)) - 0.5) * sz.xz * 0.6;
-    vec2 qa = abs(lp.xz - ac);
-    float box = 1.0 - smoothstep(0.045 - w, 0.045 + w, max(qa.x, qa.y));
-    float fan = 1.0 - smoothstep(0.025 - w, 0.025 + w, length(lp.xz - ac));
-    c = mix(c, mix(vec3(0.55, 0.56, 0.57), vec3(0.12), fan), box * (1.0 - unit));
-  }
+  // The parapet, its coping lighter, and the shadow it throws inside.
+  c = mix(c, c * 0.72, band(e, 0.035, 0.065, w));
+  c = mix(c, base * 1.08, 1.0 - smoothstep(0.035 - w, 0.035 + w, e));
   return c * dark(0.55);
-}
-
-// A facade: whole window bays across the face, 0.3-unit stories, a shopfront with one
-// door on the ground floor and a cornice on top. Each building picks a style: brick
-// with framed windows, concrete panels, or (tall ones) a glass curtain wall. Lit
-// windows glow, more of them at night.
-// Implements: REQ-CITY-013
-vec3 facade(vec3 base, float u, float faceW, float v, float h, vec2 seed) {
-  float bays = max(1.0, floor(faceW / 0.24));
-  vec2 cell = vec2((u + faceW * 0.5) / (faceW / bays), v / 0.3);
-  vec2 f = fract(cell), w = fwidth(cell) + 1e-4;
-  float far = smoothstep(0.3, 0.7, max(w.x, w.y));
-  float id = hash12(floor(cell) + seed * 1.37);
-  float ground = 1.0 - step(1.0, cell.y);
-  float top = step(h - 0.07, v);
-  float style = hash12(vSeed * 0.37 + 11.0);
-  bool tower = h > 2.4 && style > 0.45;
-  bool brick = !tower && style < 0.5;
-
-  vec3 wall = base * (0.92 + 0.12 * vnoise(vec2(u, v) * 26.0));
-  if (brick) {
-    vec2 bt = vec2(u, v) / vec2(0.06, 0.025);
-    bt.x += 0.5 * mod(floor(bt.y), 2.0);
-    vec2 bw = fwidth(bt) + 1e-4;
-    float bfar = smoothstep(0.3, 0.6, max(bw.x, bw.y));
-    float mortar = 1.0 - band(fract(bt.x), 0.06, 0.94, bw.x) * band(fract(bt.y), 0.12, 0.88, bw.y);
-    wall *= 0.9 + 0.2 * mix(hash12(floor(bt) + seed), 0.5, bfar);
-    wall = mix(wall, wall * 1.3 + 0.015, mortar * (1.0 - bfar) * 0.6);
-  } else if (!tower) {
-    wall *= 1.0 - 0.12 * (band(f.x, 0.0, 0.025, w.x) + band(f.x, 0.975, 1.0, w.x)) * (1.0 - far); // panel joints
-  }
-  wall *= dark(0.5);
-  wall = mix(wall, wall * 1.2, top);
-  wall *= 1.0 - 0.18 * band(f.y, 0.94, 1.0, w.y) * (1.0 - far); // floor lines
-
-  float upper = (1.0 - ground) * (1.0 - top);
-  float win = tower
-    ? band(f.x, 0.04, 0.96, w.x) * band(f.y, 0.14, 0.94, w.y) * upper
-    : band(f.x, 0.2, 0.8, w.x) * band(f.y, 0.3, 0.82, w.y) * upper;
-  float frame = tower ? 0.0 : band(f.x, 0.16, 0.84, w.x) * band(f.y, 0.26, 0.86, w.y) * upper * (1.0 - win);
-  float sill = tower ? 0.0 : band(f.x, 0.14, 0.86, w.x) * band(f.y, 0.2, 0.26, w.y) * upper;
-  float doorBay = floor(hash12(seed + 2.0) * bays);
-  float isDoor = 1.0 - step(0.5, abs(floor(cell.x) - doorBay));
-  float door = band(f.x, 0.28, 0.72, w.x) * band(f.y, 0.0, 0.72, w.y) * ground * isDoor;
-  float shop = band(f.x, 0.06, 0.94, w.x) * band(f.y, 0.08, 0.72, w.y) * ground * (1.0 - top) * (1.0 - isDoor);
-
-  float litShare = mix(0.1, 0.55, uNight);
-  float lit = step(1.0 - litShare, id);
-  vec3 glass = mix(vec3(0.16, 0.22, 0.3), vec3(0.01, 0.014, 0.02), uNight) * (0.7 + 0.6 * hash12(floor(cell) + seed));
-  if (tower) glass = mix(glass, mix(vec3(0.3, 0.42, 0.55), vec3(0.02, 0.03, 0.05), uNight), clamp(v / h, 0.0, 1.0) * 0.6); // the sky, reflected
-  vec3 warm = vec3(1.0, 0.7, 0.32) * (0.55 + 0.45 * id);
-  vec3 c = mix(wall, wall * 0.55, frame);
-  c = mix(c, wall * 1.35 + 0.02 * dark(0.5), sill);
-  c = mix(c, mix(glass, warm, lit), win);
-  c = mix(c, mix(glass * 1.4, warm, uNight * 0.8), shop);
-  c = mix(c, mix(vec3(0.16, 0.1, 0.06) * dark(0.5), warm * 0.8, uNight * 0.6), door);
-  vec3 avg = mix(wall, mix(glass, warm, litShare), mix(tower ? 0.6 : 0.3, 0.45, uNight));
-  return mix(c, avg, far);
 }
 
 // Walls of dressed stone: courses of blocks, every other course offset.
@@ -699,7 +1071,7 @@ vec3 cityTexture(vec3 base) {
     vec2 seed = vSeed + n.xz * 3.1;
     if (circuit) c = chipFace(base, u, faceW, lp.y, sz.y, seed);
     else if (galaxy) c = crystalFace(base, u, faceW, lp.y, sz.y, seed);
-    else c = facade(base, u, faceW, lp.y, sz.y, seed);
+    else return facade(base, u, faceW, lp.y + vBuild.z, vBuild.w, vBuild.z + sz.y, seed, n);
   }
   // Anything standing on something is darker where the two meet. There are no lights
   // in this scene and so no shadows either, and without this a building floats over

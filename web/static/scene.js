@@ -11,6 +11,7 @@
 
 import * as THREE from './vendor/three.module.min.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
+import { buildParameters } from './buildings.js';
 import { kindCode, CITY_VERT_HEAD, CITY_VERT_BODY, CITY_FRAG_HEAD, CITY_FRAG_BODY, makeSky, waterMaterial, makeProps, setNight, roadUniforms, setRoads } from './city.js';
 
 const ISO_POLAR = Math.acos(1 / Math.sqrt(3)); // true isometric elevation (35.26°)
@@ -160,6 +161,7 @@ export class MapScene {
     if (this.style === id) return;
     this.style = id;
     this.curve.uStyle.value = STYLE_CODES[id] ?? 0;
+    this.material.needsUpdate = true; // the boxes' program is the style's own (bendable)
     // Two of the three have something moving in them, and the map view is drawn on
     // demand, so they have to ask for a ticker. The style knows; nobody else has to.
     this.setAnimated(MOVES.has(id));
@@ -207,7 +209,8 @@ export class MapScene {
 
   /**
    * Patches a material to bend its vertices onto the planet while walking; city
-   * materials (the boxes) also get walk mode's facades and streets.
+   * materials (the boxes) also get walk mode's facades and streets, compiled for
+   * the current style (setStyle recompiles them).
    *
    * Implements: REQ-CITY-002
    */
@@ -218,12 +221,12 @@ export class MapScene {
       if (city) {
         Object.assign(shader.uniforms, this.roads);
         body += CITY_VERT_BODY;
-        shader.fragmentShader = CITY_FRAG_HEAD + shader.fragmentShader
+        shader.fragmentShader = `#define CITY_STYLE ${(STYLE_CODES[this.style] ?? 0).toFixed(1)}\n` + CITY_FRAG_HEAD + shader.fragmentShader
           .replace('#include <color_fragment>', '#include <color_fragment>\n' + CITY_FRAG_BODY);
       }
       shader.vertexShader = BEND_GLSL + (city ? CITY_VERT_HEAD : '') + shader.vertexShader.replace('#include <project_vertex>', body);
     };
-    material.customProgramCacheKey = () => (city ? 'bend-city' : 'bend');
+    material.customProgramCacheKey = () => (city ? `bend-city-${this.style}` : 'bend');
     return material;
   }
 
@@ -283,6 +286,9 @@ export class MapScene {
     const geo = this.unitBox.clone();
     geo.setAttribute('aKind', new THREE.InstancedBufferAttribute(Float32Array.from(boxes, kindCode), 1));
     geo.setAttribute('aFade', new THREE.InstancedBufferAttribute(new Float32Array(boxes.length), 1));
+    const build = new Float32Array(boxes.length * 4);
+    boxes.forEach((b, i) => build.set(buildParameters(b), i * 4));
+    geo.setAttribute('aBuild', new THREE.InstancedBufferAttribute(build, 4));
     const mesh = new THREE.InstancedMesh(geo, this.material, boxes.length);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
     boxes.forEach((b, i) => {
@@ -815,14 +821,15 @@ const SHADE = { top: 1, px: 0.62, nx: 0.62, pz: 0.78, nz: 0.78 };
  * length (heights need no split: the bend keeps verticals straight). Bottoms are
  * left out; they face the planet. Attributes: position, normal, color (set by
  * setColors), shade (face brightness), box (the box index), and for city.js aKind,
- * aBoxCenter (base center) and aBoxSize. userData.ranges maps a box index to its
- * vertex range, so one box can be repainted without walking the whole buffer.
+ * aBoxCenter (base center), aBoxSize and aBuild (buildings.js). userData.ranges
+ * maps a box index to its vertex range, so one box can be repainted without walking
+ * the whole buffer.
  */
 function tessellate(boxes) {
   const area = boxes.reduce((a, b) => a + b.w * b.d, 0);
   const cell = Math.max(0.75, Math.sqrt(area / 150000)); // bounds the vertex count
-  const positions = [], shade = [], box = [], index = [], normal = [], kind = [], center = [], size = [];
-  let current;
+  const positions = [], shade = [], box = [], index = [], normal = [], kind = [], center = [], size = [], build = [];
+  let current, parameters;
   const quadGrid = (i, s, n, nu, nv, at) => {
     const base = positions.length / 3;
     for (let v = 0; v <= nv; v++) for (let u = 0; u <= nu; u++) {
@@ -833,6 +840,7 @@ function tessellate(boxes) {
       kind.push(kindCode(current));
       center.push(current.x, current.y, current.z);
       size.push(current.w, Math.max(current.h, 0.01), current.d);
+      build.push(...parameters);
     }
     for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) {
       const a = base + v * (nu + 1) + u, b = a + 1, c = a + nu + 1, d = c + 1;
@@ -847,6 +855,7 @@ function tessellate(boxes) {
     const nx = Math.max(1, Math.ceil(b.w / cell)), nz = Math.max(1, Math.ceil(b.d / cell));
     const i = b.i;
     current = b;
+    parameters = buildParameters(b);
     quadGrid(i, SHADE.top, [0, 1, 0], nx, nz, (u, v) => [x0 + u * b.w, y1, z0 + v * b.d]);
     quadGrid(i, SHADE.pz, [0, 0, 1], nx, 1, (u, v) => [x0 + u * b.w, y1 - v * (y1 - y0), z1]);
     quadGrid(i, SHADE.nz, [0, 0, -1], nx, 1, (u, v) => [x1 - u * b.w, y1 - v * (y1 - y0), z0]);
@@ -863,6 +872,7 @@ function tessellate(boxes) {
   geo.setAttribute('aKind', new THREE.Float32BufferAttribute(kind, 1));
   geo.setAttribute('aBoxCenter', new THREE.Float32BufferAttribute(center, 3));
   geo.setAttribute('aBoxSize', new THREE.Float32BufferAttribute(size, 3));
+  geo.setAttribute('aBuild', new THREE.Float32BufferAttribute(build, 4));
   geo.setAttribute('aFade', new THREE.Float32BufferAttribute(new Float32Array(positions.length / 3), 1));
   geo.setIndex(index);
   geo.userData.ranges = ranges;
