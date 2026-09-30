@@ -14,6 +14,7 @@ import { OrbitControls } from './vendor/OrbitControls.js';
 import { buildParameters } from './buildings.js';
 import { Details, tiersOf } from './details.js';
 import { cull } from './lod.js';
+import { Resolution } from './resolution.js';
 import { kindCode, CITY_VERT_HEAD, CITY_VERT_BODY, CITY_FRAG_HEAD, CITY_FRAG_BODY, makeSky, waterMaterial, makeProps, setNight, roadUniforms, setRoads } from './city.js';
 
 const ISO_POLAR = Math.acos(1 / Math.sqrt(3)); // true isometric elevation (35.26°)
@@ -33,7 +34,10 @@ export class MapScene {
   constructor(container) {
     this.container = container;
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.pixelRatio = Math.min(window.devicePixelRatio, 2);
+    this.renderer.setPixelRatio(this.pixelRatio);
+    this.resolution = new Resolution();
+    this.drawn = -Infinity; // when the last frame asked for was drawn
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
@@ -122,12 +126,29 @@ export class MapScene {
     this.requestRender();
   }
 
-  requestRender() {
+  /**
+   * Draws on the next frame. `tick`: for the ticker alone, which is not a move - its
+   * frames are slow on purpose and say nothing of how fast the GPU is (resolution.js).
+   * A move asked for within CONTINUOUS of the frame before is timed against it, and
+   * one drawn smaller is drawn in full again once the map has rested SHARPEN.
+   *
+   * Implements: REQ-PERF-011
+   */
+  requestRender(tick = false) {
+    this.moving ||= !tick;
     if (this.pending) return;
     this.pending = true;
+    const asked = performance.now();
     requestAnimationFrame(() => {
       this.pending = false;
+      if (this.moving && !this.walking) {
+        this.resolution.frame(performance.now(), asked - this.drawn < CONTINUOUS);
+        clearTimeout(this.sharpen);
+        if (this.resolution.scale < 1) this.sharpen = setTimeout(() => { this.resolution.rest(); this.requestRender(true); }, SHARPEN);
+      }
+      this.moving = false;
       this.renderNow();
+      this.drawn = performance.now();
       this.onRender?.();
     });
   }
@@ -200,7 +221,7 @@ export class MapScene {
     this.ticker = 0;
     if (!on) return;
     this.ticker = setInterval(() => {
-      if (!this.walking && document.visibilityState === 'visible') this.requestRender();
+      if (!this.walking && document.visibilityState === 'visible') this.requestRender(true);
     }, TICK);
   }
 
@@ -246,6 +267,7 @@ export class MapScene {
   setWalking(on, radius) {
     this.walking = on;
     this.curve.uBend.value = on ? 1 : 0;
+    this.resolution.rest();
     if (radius) this.setRadius(radius);
     this.controls.enabled = !on;
     this.scene.fog = on ? new THREE.Fog(this.colors.sky, 30, 160) : null;
@@ -684,10 +706,16 @@ export class MapScene {
    * one: a photograph taken with the camera cannot have the camera in it, and a hand
    * across the corner of a picture is the same mistake as a thumb over the lens.
    *
-   * Implements: REQ-TOOL-001, REQ-HUNT-039
+   * `sharp` draws it at the canvas's full resolution whatever the frame rate
+   * (resolution.js): a picture to keep.
+   *
+   * Implements: REQ-TOOL-001, REQ-HUNT-039, REQ-PERF-011
    */
-  renderNow(hands = true) {
+  renderNow(hands = true, sharp = false) {
     const r = this.renderer;
+    if (this.walking && !sharp) this.resolution.frame(performance.now());
+    const ratio = this.pixelRatio * (sharp ? 1 : this.resolution.scale);
+    if (r.getPixelRatio() !== ratio) r.setPixelRatio(ratio);
     // Whatever moves by itself - clouds, water, the drift of the void - reads this,
     // so it has to be set per frame and not only where the walker is placed.
     this.curve.uTime.value = performance.now() / 1000;
@@ -860,6 +888,9 @@ export class MapScene {
 // Slower than the display refreshes, because a drift of dust does not need 60 of
 // these a second and a map left open should not cost one.
 const TICK = 66;
+// How long the map rests before a frame drawn smaller is drawn again in full, and
+// how soon after a frame the next has to be asked for to be timed against it.
+const SHARPEN = 300, CONTINUOUS = 50;
 
 const WATER_DEPTH = 0.45;
 // The isometric sea: just above the land boxes' base (layout LAND_H below the
