@@ -125,3 +125,41 @@ func TestCollectSurvivesAReportItCannotRead(t *testing.T) {
 		t.Error("nothing was said about the report that would not parse")
 	}
 }
+
+// A report the repository names is read inside it: one committed as a symbolic
+// link out of the repository is not read - it could be any file of this
+// machine - while one linked from inside it is, as is a report outside the
+// repository that only this machine's configuration can name.
+//
+// Verifies: REQ-LANG-031, REQ-FND-001
+func TestReportLinkedOutOfTheRepositoryIsNotRead(t *testing.T) {
+	root := copyReports(t, "trivy.json")
+	outside := filepath.Join(t.TempDir(), "trivy.json")
+	data, err := os.ReadFile(filepath.Join("testdata", "trivy.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outside, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "reports", "out.json")); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
+	if err := os.Symlink("trivy.json", filepath.Join(root, "reports", "in.json")); err != nil {
+		t.Fatal(err)
+	}
+	for _, testCase := range []struct {
+		report string
+		read   bool
+	}{
+		{"reports/trivy.json", true},
+		{"reports/in.json", true},
+		{"reports/out.json", false},
+		{outside, true}, // named by this machine: read as it is
+	} {
+		set := Collect(context.Background(), Options{Root: root, Reports: []string{testCase.report}})
+		if read := len(set.Findings) > 0; read != testCase.read || set.Partial == testCase.read {
+			t.Errorf("%s: %d findings, partial %v, want read %v", testCase.report, len(set.Findings), set.Partial, testCase.read)
+		}
+	}
+}

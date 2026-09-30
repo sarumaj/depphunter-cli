@@ -51,11 +51,13 @@ func readFile(absolute string) []byte {
 func newResolver(root string, all []*scan.File, getenv func(string) string) *resolver {
 	r := &resolver{root: root, files: map[string]bool{}, directories: map[string]bool{}, projects: map[string]*project{},
 		configs: map[string][]string{}, byAbsolute: map[string]*installed{}}
+	repository := lang.OpenRoot(root)
 	onDisk := func(relative string) []byte {
 		if root == "" {
 			return nil
 		}
-		return readFile(filepath.Join(root, filepath.FromSlash(relative)))
+		data, _ := repository.ReadBounded(filepath.Join(root, filepath.FromSlash(relative)))
+		return data
 	}
 	var nimbles, configs []*scan.File
 	for _, f := range all {
@@ -92,9 +94,9 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 		p.atlas = readAtlasLock(onDisk(path.Join(directory, "atlas.lock")))
 		if root != "" {
 			absolute := filepath.Join(root, filepath.FromSlash(directory))
-			p.packages = append(p.packages, readPackages(filepath.Join(absolute, "nimbledeps"), true, nil, nil)...)
-			if dependencies := atlasDependenciesDirectory(absolute); dependencies != "" {
-				p.packages = append(p.packages, readAtlas(dependencies)...)
+			p.packages = append(p.packages, readPackages(repository, filepath.Join(absolute, "nimbledeps"), true, nil, nil)...)
+			if dependencies := atlasDependenciesDirectory(repository, absolute); dependencies != "" {
+				p.packages = append(p.packages, readAtlas(repository, dependencies)...)
 			}
 			p.packages = append(p.packages, fromPaths(readConfig(onDisk(path.Join(directory, "nimble.paths"))))...)
 		}
@@ -168,7 +170,7 @@ func (r *resolver) readGlobal(getenv func(string) string) {
 	if len(want) == 0 {
 		return
 	}
-	r.global = readPackages(directory, false, want, prefer)
+	r.global = readPackages(lang.Machine, directory, false, want, prefer)
 	for _, installedPackage := range r.global {
 		r.byAbsolute[filepath.Clean(installedPackage.root)] = installedPackage
 	}

@@ -439,7 +439,7 @@ func TestAtlasCheckoutOrigin(t *testing.T) {
 	os.WriteFile(filepath.Join(packageName, "chronos.nimble"), []byte("version = \"4.0.0\"\n"), 0o644)
 	os.WriteFile(filepath.Join(packageName, "chronos.nim"), []byte(""), 0o644)
 	os.WriteFile(filepath.Join(packageName, ".git", "config"), []byte("[remote \"origin\"]\n\turl = https://github.com/status-im/nim-chronos\n"), 0o644)
-	got := readAtlas(directory)
+	got := readAtlas(lang.OpenRoot(directory), directory)
 	if len(got) != 1 || got[0].name != "chronos" || got[0].url != "https://github.com/status-im/nim-chronos" || !got[0].modules["chronos"] {
 		t.Fatalf("%+v", got)
 	}

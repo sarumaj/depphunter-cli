@@ -619,7 +619,11 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := config.SaveUI(s.config.ConfigFile, ui); err != nil {
+	save := config.SaveUI
+	if s.config.ConfigFile == filepath.Join(s.config.Root, config.ProjectFile) {
+		save = config.SaveProjectUI // the repository's own file
+	}
+	if err := save(s.config.ConfigFile, ui); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

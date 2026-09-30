@@ -7,6 +7,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -17,6 +18,8 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
 const ProjectFile = ".depphunter.yaml"
@@ -423,8 +426,9 @@ func uiDefaults(v *viper.Viper, pairs []string) error {
 //
 // Implements: REQ-CFG-004, REQ-CFG-010
 func mergeFile(v *viper.Viper, name string, required, trusted bool) error {
-	data, err := os.ReadFile(name)
-	if errors.Is(err, os.ErrNotExist) && !required {
+	data, err := readConfigFile(name, trusted)
+	// A project file that is a link out of the repository is as good as none.
+	if (errors.Is(err, os.ErrNotExist) || errors.Is(err, lang.ErrOutside)) && !required {
 		return nil
 	}
 	if err != nil {
@@ -500,6 +504,23 @@ func lowercaseKeys(m map[string]any) map[string]any {
 		out[strings.ToLower(key)] = value
 	}
 	return out
+}
+
+// readConfigFile reads a configuration file. The project's, untrusted, comes
+// with the repository and is read inside it (its directory): committed as a
+// symbolic link out of the repository, it is refused rather than followed.
+//
+// Implements: REQ-LANG-031
+func readConfigFile(name string, trusted bool) ([]byte, error) {
+	if trusted {
+		return os.ReadFile(name)
+	}
+	f, err := lang.OpenRoot(filepath.Dir(name)).Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(f)
 }
 
 // stringList is a list as YAML decodes it ([]any), or as confine returns it, as strings.

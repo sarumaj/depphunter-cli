@@ -2,7 +2,6 @@ package cpp
 
 import (
 	"encoding/json"
-	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/kballard/go-shellquote"
 
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -47,9 +47,10 @@ func readCompileDB(root string, all []*scan.File) *compileDB {
 	if real, err := filepath.EvalSymlinks(absoluteRoot); err == nil {
 		absoluteRoot = real
 	}
+	repository := lang.OpenRoot(absoluteRoot)
 	candidates := []string{filepath.Join(absoluteRoot, "compile_commands.json")}
 	for _, pattern := range []string{"build*", "cmake-build-*"} {
-		directories, _ := filepath.Glob(filepath.Join(absoluteRoot, pattern, "compile_commands.json"))
+		directories, _ := repository.Glob(filepath.Join(absoluteRoot, pattern, "compile_commands.json"))
 		candidates = append(candidates, directories...)
 	}
 	for _, f := range all {
@@ -63,12 +64,8 @@ func readCompileDB(root string, all []*scan.File) *compileDB {
 			continue
 		}
 		seen[c] = true
-		fileInfo, err := os.Stat(c)
-		if err != nil || !fileInfo.Mode().IsRegular() || fileInfo.Size() > maxCompileDB {
-			continue
-		}
-		data, err := os.ReadFile(c)
-		if err != nil {
+		data, ok := repository.ReadLimited(c, maxCompileDB)
+		if !ok {
 			continue
 		}
 		var entries []command

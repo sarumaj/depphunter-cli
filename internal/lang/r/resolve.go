@@ -35,7 +35,7 @@ type resolver struct {
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, named: map[string]*rpkg{},
 		definitions: map[string]map[string][]string{}}
-	repository := lang.NewSource(root, lang.SourceOptions{})
+	repository := lang.NewSource(root)
 	var sources []*scan.File
 	scopes := map[string]bool{".": true}
 	// Where a lock may be: beside a DESCRIPTION or an .Rproj, where renv keeps its

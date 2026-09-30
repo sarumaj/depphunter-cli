@@ -55,7 +55,7 @@ func ignored(p string) bool {
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, byName: map[string]*packageInfo{},
 		byDirectory: map[string]*packageInfo{}, modules: map[string][]string{}, boots: map[string][]string{}}
-	repository := lang.NewSource(root, lang.SourceOptions{})
+	repository := lang.NewSource(root)
 	projectDirectories := map[string]bool{}
 	var sources []*scan.File
 	hpack := map[string]*scan.File{}

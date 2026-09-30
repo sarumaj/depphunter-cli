@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
 // packageDirectories are the directories dub fetches packages into, most specific
@@ -15,26 +17,33 @@ import (
 // %LOCALAPPDATA%\dub\packages).
 //
 // Implements: REQ-DLANG-008
-func packageDirectories(root string) []string {
-	var out []string
+func packageDirectories(root string) []packageDirectory {
+	var out []packageDirectory
 	if root != "" {
-		out = append(out, filepath.Join(root, ".dub", "packages"))
+		out = append(out, packageDirectory{lang.OpenRoot(root), filepath.Join(root, ".dub", "packages")})
 	}
 	if h := os.Getenv("DUB_HOME"); h != "" {
-		return append(out, filepath.Join(h, "packages"))
+		return append(out, packageDirectory{lang.Machine, filepath.Join(h, "packages")})
 	}
 	if h := os.Getenv("DPATH"); h != "" {
-		return append(out, filepath.Join(h, "dub", "packages"))
+		return append(out, packageDirectory{lang.Machine, filepath.Join(h, "dub", "packages")})
 	}
 	if runtime.GOOS == "windows" {
 		if h := os.Getenv("LOCALAPPDATA"); h != "" {
-			return append(out, filepath.Join(h, "dub", "packages"))
+			return append(out, packageDirectory{lang.Machine, filepath.Join(h, "dub", "packages")})
 		}
 	}
 	if h, err := os.UserHomeDir(); err == nil {
-		out = append(out, filepath.Join(h, ".dub", "packages"))
+		out = append(out, packageDirectory{lang.Machine, filepath.Join(h, ".dub", "packages")})
 	}
 	return out
+}
+
+// packageDirectory is a directory dub fetches packages into and how it is read:
+// the repository's .dub/packages through its Root, the others through Machine.
+type packageDirectory struct {
+	files     lang.Root
+	directory string
 }
 
 // maxInstalledFiles bounds the modules read from one installed package.
@@ -70,8 +79,9 @@ func (r *resolver) readInstalled(root string, projects []*project) {
 	if len(wanted) == 0 {
 		return
 	}
-	for _, directory := range packageDirectories(root) {
-		entries, err := os.ReadDir(directory)
+	for _, d := range packageDirectories(root) {
+		files, directory := d.files, d.directory
+		entries, err := files.ReadDir(directory)
 		if err != nil {
 			continue
 		}
@@ -83,7 +93,7 @@ func (r *resolver) readInstalled(root string, projects []*project) {
 			n := e.Name()
 			if _, ok := wanted[n]; ok {
 				// New layout: <name>/<version>/<name>/.
-				if entries, err := os.ReadDir(filepath.Join(directory, n)); err == nil {
+				if entries, err := files.ReadDir(filepath.Join(directory, n)); err == nil {
 					for _, v := range entries {
 						if v.IsDir() {
 							found[n] = append(found[n], filepath.Join(directory, n, v.Name()))
@@ -95,7 +105,7 @@ func (r *resolver) readInstalled(root string, projects []*project) {
 			// Old layout: <name>-<version>/<name>/.
 			for name := range wanted {
 				if strings.HasPrefix(n, name+"-") {
-					if fileInfo, err := os.Stat(filepath.Join(directory, n, name)); err == nil && fileInfo.IsDir() {
+					if files.IsDirectory(filepath.Join(directory, n, name)) {
 						found[name] = append(found[name], filepath.Join(directory, n))
 					}
 				}
@@ -109,7 +119,7 @@ func (r *resolver) readInstalled(root string, projects []*project) {
 			if packageName == "" {
 				continue
 			}
-			r.indexInstalled(name, filepath.Join(packageName, name))
+			r.indexInstalled(files, name, filepath.Join(packageName, name))
 		}
 	}
 }
@@ -166,11 +176,11 @@ func compareVersions(a, b string) int {
 func notDigit(r rune) bool { return r < '0' || r > '9' }
 
 // readRecipeDirectory reads the recipe in directory: dub.json, else dub.sdl.
-func readRecipeDirectory(directory string) *recipe {
-	if data, err := os.ReadFile(filepath.Join(directory, "dub.json")); err == nil {
+func readRecipeDirectory(files lang.Root, directory string) *recipe {
+	if data, ok := files.ReadBounded(filepath.Join(directory, "dub.json")); ok {
 		return readJSONRecipe(data)
 	}
-	if data, err := os.ReadFile(filepath.Join(directory, "dub.sdl")); err == nil {
+	if data, ok := files.ReadBounded(filepath.Join(directory, "dub.sdl")); ok {
 		return readSDLRecipe(data)
 	}
 	return nil
@@ -179,8 +189,8 @@ func readRecipeDirectory(directory string) *recipe {
 // indexInstalled records an installed package's recipe (with its sub-package
 // directories' recipes as inline ones) and maps the modules under its import
 // directories to it.
-func (r *resolver) indexInstalled(name, directory string) {
-	found := readRecipeDirectory(directory)
+func (r *resolver) indexInstalled(files lang.Root, name, directory string) {
+	found := readRecipeDirectory(files, directory)
 	if found == nil {
 		return
 	}
@@ -195,13 +205,13 @@ func (r *resolver) indexInstalled(name, directory string) {
 			continue
 		}
 		subpackageDirectory := filepath.Join(directory, filepath.FromSlash(s.path))
-		if subrecipe := readRecipeDirectory(subpackageDirectory); subrecipe != nil {
+		if subrecipe := readRecipeDirectory(files, subpackageDirectory); subrecipe != nil {
 			parts = append(parts, part{subpackageDirectory, subrecipe})
 			found.subs = append(found.subs, subPackage{inline: subrecipe})
 		}
 	}
 	r.recipes[name] = found
-	files := 0
+	count := 0
 	for _, part := range parts {
 		var directories []string
 		for _, set := range []struct {
@@ -215,14 +225,14 @@ func (r *resolver) indexInstalled(name, directory string) {
 				continue
 			}
 			for _, defaultDirectory := range []string{"source", "src"} {
-				if fileInfo, err := os.Stat(filepath.Join(part.directory, defaultDirectory)); err == nil && fileInfo.IsDir() {
+				if files.IsDirectory(filepath.Join(part.directory, defaultDirectory)) {
 					directories = append(directories, filepath.Join(part.directory, defaultDirectory))
 				}
 			}
 		}
 		for _, d := range directories {
-			filepath.WalkDir(d, func(p string, e fs.DirEntry, err error) error {
-				if err != nil || files >= maxInstalledFiles {
+			files.WalkDir(d, func(p string, e fs.DirEntry, err error) error {
+				if err != nil || count >= maxInstalledFiles {
 					return filepath.SkipDir
 				}
 				if e.IsDir() {
@@ -239,7 +249,7 @@ func (r *resolver) indexInstalled(name, directory string) {
 				if err != nil {
 					return nil
 				}
-				files++
+				count++
 				module := strings.TrimSuffix(filepath.ToSlash(relative), extension)
 				module = strings.ReplaceAll(strings.TrimSuffix(module, "/package"), "/", ".")
 				if _, ok := r.installed[module]; !ok && module != "" && module != "package" {

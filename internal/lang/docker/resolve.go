@@ -1,7 +1,6 @@
 package docker
 
 import (
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -165,12 +164,8 @@ func (r *resolver) path(directory, written, environmentDirectory string) (string
 // read returns a file of the repository, nil when it cannot be read or is too large
 // to parse.
 func (r *resolver) read(p string) []byte {
-	absolute := filepath.Join(r.root, filepath.FromSlash(p))
-	if info, err := os.Stat(absolute); err != nil || !info.Mode().IsRegular() || info.Size() > lang.MaxParseSize {
-		return nil
-	}
-	source, err := os.ReadFile(absolute)
-	if err != nil {
+	source, ok := lang.OpenRoot(r.root).ReadBounded(filepath.Join(r.root, filepath.FromSlash(p)))
+	if !ok {
 		return nil
 	}
 	return source

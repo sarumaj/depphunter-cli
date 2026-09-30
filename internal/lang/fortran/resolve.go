@@ -66,7 +66,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		case path.Base(f.Path) == "fpm.toml":
 			if source, err := os.ReadFile(f.AbsolutePath); err == nil {
 				p := &project{directory: path.Dir(f.Path), m: readManifest(source)}
-				p.readBuild(filepath.Dir(f.AbsolutePath))
+				p.readBuild(lang.OpenRoot(root), filepath.Dir(f.AbsolutePath))
 				r.projects[p.directory] = p
 				r.order = append(r.order, p)
 			}
@@ -184,14 +184,14 @@ func mentionsModule(source []byte) bool {
 // their sources define.
 //
 // Implements: REQ-FORTRAN-008
-func (p *project) readBuild(absoluteDirectory string) {
+func (p *project) readBuild(repository lang.Root, absoluteDirectory string) {
 	p.cache, p.installed, p.modules = map[string]*cached{}, map[string]*installed{}, map[string]string{}
 	build := filepath.Join(absoluteDirectory, "build")
-	if source, err := os.ReadFile(filepath.Join(build, "cache.toml")); err == nil {
+	if source, ok := repository.ReadBounded(filepath.Join(build, "cache.toml")); ok {
 		p.cache = readCache(source)
 	}
 	dependencies := filepath.Join(build, "dependencies")
-	entries, err := os.ReadDir(dependencies)
+	entries, err := repository.ReadDir(dependencies)
 	if err != nil {
 		return
 	}
@@ -201,12 +201,12 @@ func (p *project) readBuild(absoluteDirectory string) {
 		}
 		directory := filepath.Join(dependencies, e.Name())
 		in := &installed{m: &manifest{dependencies: map[string]*dependency{}}}
-		if source, err := os.ReadFile(filepath.Join(directory, "fpm.toml")); err == nil {
+		if source, ok := repository.ReadBounded(filepath.Join(directory, "fpm.toml")); ok {
 			in.m = readManifest(source)
 		}
 		p.installed[e.Name()] = in
 		n := 0
-		filepath.WalkDir(directory, func(q string, d os.DirEntry, err error) error {
+		repository.WalkDir(directory, func(q string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
@@ -220,10 +220,9 @@ func (p *project) readBuild(absoluteDirectory string) {
 				return nil
 			}
 			n++
-			if fileInfo, err := d.Info(); err != nil || fileInfo.Size() > lang.MaxParseSize {
-				return nil
-			}
-			if source, err := os.ReadFile(q); err == nil {
+			// Measured once open: a symbolic link's own size (d.Info) says
+			// nothing of its target's.
+			if source, ok := repository.ReadBounded(q); ok {
 				modules, _ := definedModules(source, fixedExtensions[path.Ext(q)])
 				for _, m := range modules {
 					if _, ok := p.modules[m]; !ok {

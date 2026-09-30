@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -94,7 +93,13 @@ func (c *Config) projectConan(files []*scan.File, k sink) {
 			continue
 		}
 		seen[home] = true
-		if data, err := os.ReadFile(filepath.Join(home, "remotes.json")); err == nil {
+		// A home in the repository is the repository's, and read inside it; one
+		// elsewhere is this machine's, where Conan itself would look.
+		files := lang.Machine
+		if repository := lang.OpenRoot(root); repository.Contains(home) {
+			files = repository
+		}
+		if data, ok := files.ReadBounded(filepath.Join(home, "remotes.json")); ok {
 			parseConanRemotes(data, k)
 		}
 	}
@@ -106,9 +111,10 @@ func (c *Config) projectConan(files []*scan.File, k sink) {
 // "" when there is none, or the first .conanrc names none (Conan then takes
 // CONAN_HOME's).
 func conanrcHome(directory, root, userHome string) string {
+	repository := lang.OpenRoot(root)
 	for {
-		data, err := os.ReadFile(filepath.Join(directory, ".conanrc"))
-		if err == nil {
+		data, ok := repository.ReadBounded(filepath.Join(directory, ".conanrc"))
+		if ok {
 			for _, line := range strings.Split(string(data), "\n") {
 				key, value, ok := strings.Cut(strings.TrimRight(line, "\r"), "=")
 				if !ok || strings.HasPrefix(line, "#") || key != "conan_home" {

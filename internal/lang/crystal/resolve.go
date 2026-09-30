@@ -1,7 +1,6 @@
 package crystal
 
 import (
-	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -36,7 +35,7 @@ type resolver struct {
 func newResolver(root string, all []*scan.File, getenv func(string) string) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, projects: map[string]*project{}}
 	// shard.lock is often ignored by git in libraries, and lib/ always is.
-	repository := lang.NewSource(root, lang.SourceOptions{})
+	repository := lang.NewSource(root)
 	for _, f := range all {
 		if installed(f) {
 			continue
@@ -89,7 +88,7 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 			}
 		}
 		if root != "" {
-			p.readInstalled(filepath.Join(root, filepath.FromSlash(directory), "lib"))
+			p.readInstalled(lang.OpenRoot(root), filepath.Join(root, filepath.FromSlash(directory), "lib"))
 		}
 		r.projects[directory] = p
 		r.order = append(r.order, p)
@@ -137,16 +136,19 @@ func (r *resolver) crystalPath(root, value string) []string {
 // shard (a library commits none; a shard only a dependency needs is often left
 // out of an older one).
 //
+// lib/ is under the repository and read through its Root: the symlink of a path
+// dependency outside the repository is not followed.
+//
 // Implements: REQ-CRYSTAL-008
-func (p *project) readInstalled(library string) {
-	if data, ok := lang.ReadCapped(filepath.Join(library, ".shards.info")); ok {
+func (p *project) readInstalled(repository lang.Root, library string) {
+	if data, ok := repository.ReadBounded(filepath.Join(library, ".shards.info")); ok {
 		for name, l := range readLock(data) {
 			if p.lock[name] == nil {
 				p.lock[name] = l
 			}
 		}
 	}
-	entries, err := os.ReadDir(library)
+	entries, err := repository.ReadDir(library)
 	if err != nil {
 		return
 	}
@@ -155,11 +157,11 @@ func (p *project) readInstalled(library string) {
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
-		if info, err := os.Stat(filepath.Join(library, name)); err != nil || !info.IsDir() {
+		if !repository.IsDirectory(filepath.Join(library, name)) {
 			continue
 		}
 		sh := &shard{dependencies: map[string]*dependency{}}
-		if data, err := os.ReadFile(filepath.Join(library, name, "shard.yml")); err == nil {
+		if data, ok := repository.ReadBounded(filepath.Join(library, name, "shard.yml")); ok {
 			sh = readShard(data)
 		}
 		p.installed[name] = sh

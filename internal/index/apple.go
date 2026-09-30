@@ -383,7 +383,13 @@ func projectSwiftPM(files []*scan.File, k sink) {
 			continue
 		}
 		seen[directory] = true
-		if data, err := os.ReadFile(filepath.Join(directory, ".swiftpm", "configuration", "registries.json")); err == nil {
+		// The repository's root, else (a file list without one) the manifest's
+		// directory: .swiftpm is read inside it.
+		root := directory
+		if relative := filepath.FromSlash(f.Path); strings.HasSuffix(f.AbsolutePath, relative) {
+			root = strings.TrimSuffix(f.AbsolutePath, relative)
+		}
+		if data, ok := lang.OpenRoot(root).ReadBounded(filepath.Join(directory, ".swiftpm", "configuration", "registries.json")); ok {
 			parseSwiftRegistries(data, k)
 		}
 	}

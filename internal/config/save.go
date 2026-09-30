@@ -14,11 +14,24 @@ import (
 //
 // Implements: REQ-CFG-013, REQ-CFG-014
 func SaveUI(file string, ui UI) error {
+	return saveUI(file, ui, true)
+}
+
+// SaveProjectUI is SaveUI for the project's own file, which is read inside the
+// repository: committed as a symbolic link out of it, it is not read (and so
+// not copied into the file written).
+//
+// Implements: REQ-CFG-013, REQ-LANG-031
+func SaveProjectUI(file string, ui UI) error {
+	return saveUI(file, ui, false)
+}
+
+func saveUI(file string, ui UI, trusted bool) error {
 	if err := ui.Validate(); err != nil {
 		return err
 	}
 	var doc yaml.Node
-	data, err := os.ReadFile(file)
+	data, err := readConfigFile(file, trusted)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 	case err != nil:

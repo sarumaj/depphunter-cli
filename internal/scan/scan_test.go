@@ -160,6 +160,7 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-LANG-031
 func TestScanSkipsSymlinksInGit(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("no git")

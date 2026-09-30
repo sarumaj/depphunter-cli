@@ -1,7 +1,6 @@
 package lua
 
 import (
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -80,8 +79,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, suffixes: map[string][]string{},
 		forward: map[string]string{}, rev: map[string]string{}, luaurc: map[string]map[string]string{},
 		models: map[string]*rojoNode{}}
+	repository := lang.OpenRoot(root)
 	read := func(relative string) ([]byte, bool) {
-		return lang.ReadCapped(filepath.Join(root, filepath.FromSlash(relative)))
+		return repository.ReadBounded(repository.Join(relative))
 	}
 	var rockspecs, wallies, rojos []string
 	for _, f := range all {
@@ -186,7 +186,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		for _, tree := range []string{"lua_modules", ".luarocks"} {
 			if t := path.Join(directory, tree); !seen[t] {
 				seen[t] = true
-				if rocks := readTree(filepath.Join(root, filepath.FromSlash(t))); len(rocks) > 0 {
+				if rocks := readTree(repository, filepath.Join(root, filepath.FromSlash(t))); len(rocks) > 0 {
 					r.trees = append(r.trees, rocks)
 				}
 			}
@@ -254,24 +254,24 @@ func newResolver(root string, all []*scan.File) *resolver {
 // Of two versions of a rock the newer is kept.
 //
 // Implements: REQ-LUA-013
-func readTree(tree string) map[string]*installedRock {
+func readTree(repository lang.Root, tree string) map[string]*installedRock {
 	out := map[string]*installedRock{}
 	base := filepath.Join(tree, "lib", "luarocks")
-	luas, _ := os.ReadDir(base)
+	luas, _ := repository.ReadDir(base)
 	for _, l := range luas {
 		if !l.IsDir() || !strings.HasPrefix(l.Name(), "rocks-") {
 			continue
 		}
-		rocks, _ := os.ReadDir(filepath.Join(base, l.Name()))
+		rocks, _ := repository.ReadDir(filepath.Join(base, l.Name()))
 		for _, rock := range rocks {
-			versions, _ := os.ReadDir(filepath.Join(base, l.Name(), rock.Name()))
+			versions, _ := repository.ReadDir(filepath.Join(base, l.Name(), rock.Name()))
 			for _, v := range versions {
 				name, version := rock.Name(), v.Name()
 				if old := out[name]; old != nil && luarocks.Compare(old.version, version) >= 0 {
 					continue
 				}
 				spec := filepath.Join(base, l.Name(), name, version, name+"-"+version+".rockspec")
-				if b, ok := lang.ReadCapped(spec); ok {
+				if b, ok := repository.ReadBounded(spec); ok {
 					out[name] = &installedRock{version: version, spec: luarocks.ReadRockspec(b)}
 				}
 			}

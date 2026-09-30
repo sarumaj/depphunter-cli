@@ -110,7 +110,8 @@ func exists(p string) bool {
 	if v, ok := statMemo.Load(p); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(p)
+	// Lstat: a marker committed as a symbolic link says nothing of its target.
+	_, err := os.Lstat(p)
 	statMemo.Store(p, err == nil)
 	return err == nil
 }

@@ -2,7 +2,6 @@ package elm
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -21,8 +20,9 @@ func toolingElm(root, directory string) string {
 	if root == "" {
 		return ""
 	}
+	repository := lang.OpenRoot(root)
 	for d := range lang.DirectoryAndAncestors(directory) {
-		if source, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(d), "elm-tooling.json")); err == nil {
+		if source, ok := repository.ReadBounded(filepath.Join(root, filepath.FromSlash(d), "elm-tooling.json")); ok {
 			var raw struct {
 				Tools map[string]any `json:"tools"`
 			}

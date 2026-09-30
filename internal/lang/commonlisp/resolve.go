@@ -107,7 +107,8 @@ func besideOcicl(directory string) bool {
 	if v, ok := ociclDirectories.Load(directory); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(path.Join(directory, "ocicl.csv"))
+	// Lstat: a marker committed as a symbolic link says nothing of its target.
+	_, err := os.Lstat(path.Join(directory, "ocicl.csv"))
 	ociclDirectories.Store(directory, err == nil)
 	return err == nil
 }
@@ -203,16 +204,17 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 		return r.pinDirectories[i] < r.pinDirectories[j]
 	})
+	repository := lang.OpenRoot(root)
 	for _, d := range r.pinDirectories {
 		if root == "" {
 			break
 		}
 		p, base := r.pins[d], filepath.Join(root, filepath.FromSlash(d))
 		if len(p.ql) > 0 || len(p.lock) > 0 {
-			r.readInstalled(filepath.Join(base, ".qlot", "dists"), p)
+			r.readInstalled(repository, filepath.Join(base, ".qlot", "dists"), p)
 		}
 		if len(p.ocicl) > 0 {
-			r.readInstalled(filepath.Join(base, "systems"), p)
+			r.readInstalled(repository, filepath.Join(base, "systems"), p)
 		}
 	}
 	for n := range r.installed {
@@ -231,20 +233,19 @@ const maxInstalledFiles = 100_000
 // implementation modules it requires. A system already read is kept.
 //
 // Implements: REQ-COMMONLISP-012
-func (r *resolver) readInstalled(directory string, p *pins) {
+func (r *resolver) readInstalled(repository lang.Root, directory string, p *pins) {
 	n := 0
-	filepath.WalkDir(directory, func(f string, e fs.DirEntry, err error) error {
+	repository.WalkDir(directory, func(f string, e fs.DirEntry, err error) error {
 		if n++; err != nil || n > maxInstalledFiles {
 			return nil
 		}
 		if e.IsDir() || !strings.EqualFold(filepath.Ext(f), ".asd") {
 			return nil
 		}
-		if info, err := e.Info(); err != nil || info.Size() > lang.MaxParseSize {
-			return nil
-		}
-		source, err := os.ReadFile(f)
-		if err != nil {
+		// Measured once open: a symbolic link's own size (e.Info) says
+		// nothing of its target's.
+		source, ok := repository.ReadBounded(f)
+		if !ok {
 			return nil
 		}
 		for _, s := range read(source).systems {

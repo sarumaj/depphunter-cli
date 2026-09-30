@@ -724,3 +724,43 @@ func TestProjectConfigSetsOnlyAllowedKeys(t *testing.T) {
 			trusted.Online, trusted.Editor, trusted.TrustIndexes)
 	}
 }
+
+// The project file comes with the repository and is read inside it: committed
+// as a symbolic link out of the repository it is as good as none, and saving
+// the view into it neither reads nor copies what it points at. A link within
+// the repository is followed.
+//
+// Verifies: REQ-LANG-031, REQ-CFG-004
+func TestProjectFileLinkedOutOfTheRepositoryIsNotRead(t *testing.T) {
+	root, elsewhere := t.TempDir(), t.TempDir()
+	outside := filepath.Join(elsewhere, "secret.yaml")
+	write(t, outside, "exclude: [outside]\n")
+	if err := os.Symlink(outside, filepath.Join(root, ProjectFile)); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
+	config, err := load(t, []string{root}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(config.Exclude, "outside") {
+		t.Errorf("exclude = %v: the file outside the repository was read", config.Exclude)
+	}
+	if err := SaveProjectUI(config.ConfigFile, Default().UI); err == nil {
+		t.Error("the view was saved over a link out of the repository")
+	}
+	if data, _ := os.ReadFile(outside); string(data) != "exclude: [outside]\n" {
+		t.Errorf("the file outside became %q", data)
+	}
+
+	inside := t.TempDir()
+	write(t, filepath.Join(inside, "shared.yaml"), "exclude: [inside]\n")
+	if err := os.Symlink("shared.yaml", filepath.Join(inside, ProjectFile)); err != nil {
+		t.Fatal(err)
+	}
+	if config, err = load(t, []string{inside}, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(config.Exclude, "inside") {
+		t.Errorf("exclude = %v: a link within the repository was not followed", config.Exclude)
+	}
+}

@@ -83,13 +83,14 @@ func newResolver(root string, all []*scan.File) *resolver {
 				absoluteDirectory := filepath.Dir(f.AbsolutePath)
 				// Alire 1.1 and later keep the lock file in alire/; before, it
 				// sat beside the manifest.
+				repository := lang.OpenRoot(root)
 				for _, l := range []string{filepath.Join(absoluteDirectory, "alire", "alire.lock"), filepath.Join(absoluteDirectory, "alire.lock")} {
-					if source, err := os.ReadFile(l); err == nil {
+					if source, ok := repository.ReadBounded(l); ok {
 						c.lock = readLock(source)
 						break
 					}
 				}
-				c.readInstalled(absoluteDirectory)
+				c.readInstalled(repository, absoluteDirectory)
 				c.readShared(sharedReleases(os.Getenv))
 				r.crates[c.directory] = c
 				r.order = append(r.order, c)

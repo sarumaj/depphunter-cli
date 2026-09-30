@@ -74,8 +74,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 	}
 	// Manifests are often not committed; they are looked for on disk beside every
 	// project too.
+	repository := lang.OpenRoot(root)
 	for directory := range r.byDirectory {
-		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(directory)))
+		entries, err := repository.ReadDir(filepath.Join(root, filepath.FromSlash(directory)))
 		if err != nil {
 			continue
 		}
@@ -89,8 +90,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 			continue
 		}
 		file := path.Join(directory, best)
-		source, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
-		if err != nil || len(source) > 8*lang.MaxParseSize {
+		source, ok := repository.ReadLimited(filepath.Join(root, filepath.FromSlash(file)), 8*lang.MaxParseSize)
+		if !ok {
 			continue
 		}
 		m := readManifest(source)

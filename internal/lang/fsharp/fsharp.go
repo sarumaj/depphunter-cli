@@ -86,7 +86,8 @@ func hasPaket(directory string) bool {
 	if v, ok := paketDirectories.Load(directory); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(filepath.Join(directory, "paket.dependencies"))
+	// Lstat: a marker committed as a symbolic link says nothing of its target.
+	_, err := os.Lstat(filepath.Join(directory, "paket.dependencies"))
 	paketDirectories.Store(directory, err == nil)
 	return err == nil
 }

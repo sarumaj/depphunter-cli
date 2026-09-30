@@ -70,13 +70,13 @@ func newResolver(root string, all []*scan.File, cache string) *resolver {
 			}
 		case path.Ext(f.Path) == ".cue" && !ignored(f.Path):
 			directory := path.Dir(f.Path)
-			r.packages[directory] = append(r.packages[directory], cueFile{f.Path, packageName(readFile(f.AbsolutePath, 64<<10))})
+			r.packages[directory] = append(r.packages[directory], cueFile{f.Path, packageName(readFile(lang.Machine, f.AbsolutePath, 64<<10))})
 		}
 	}
 	for _, directory := range lang.SortedKeys(r.modules) {
 		m := r.modules[directory]
 		r.order = append(r.order, m)
-		if source := readFile(filepath.Join(root, filepath.FromSlash(directory), "cue.mod", "module.cue"), lang.MaxParseSize); source != nil {
+		if source := readFile(lang.OpenRoot(root), filepath.Join(root, filepath.FromSlash(directory), "cue.mod", "module.cue"), lang.MaxParseSize); source != nil {
 			m.file = readModule(source)
 		}
 		if goModFile, ok := lang.NearestAtOrAbove(gomods, directory); ok {
@@ -147,8 +147,7 @@ func (r *resolver) isDirectory(p string) bool {
 	if v, ok := r.directories.Load(p); ok {
 		return v.(bool)
 	}
-	fileInfo, err := os.Stat(filepath.Join(r.root, filepath.FromSlash(p)))
-	ok := err == nil && fileInfo.IsDir()
+	ok := lang.OpenRoot(r.root).IsDirectory(filepath.Join(r.root, filepath.FromSlash(p)))
 	r.directories.Store(p, ok)
 	return ok
 }
@@ -302,7 +301,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	if err != nil {
 		return nil
 	}
-	source := readFile(filepath.Join(r.cache, "mod", "extract", filepath.FromSlash(p)+"@"+v, "cue.mod", "module.cue"), lang.MaxParseSize)
+	source := readFile(lang.Machine, filepath.Join(r.cache, "mod", "extract", filepath.FromSlash(p)+"@"+v, "cue.mod", "module.cue"), lang.MaxParseSize)
 	if source == nil {
 		return nil
 	}
@@ -348,7 +347,7 @@ func guess(p string) string {
 func (r *resolver) vendored(m *module, p string) lang.Target {
 	base := path.Join(m.root, "cue.mod", "pkg")
 	for d := p; d != "." && d != ""; d = path.Dir(d) {
-		if source := readFile(filepath.Join(r.root, filepath.FromSlash(path.Join(base, d)), "cue.mod", "module.cue"), 64<<10); source != nil {
+		if source := readFile(lang.OpenRoot(r.root), filepath.Join(r.root, filepath.FromSlash(path.Join(base, d)), "cue.mod", "module.cue"), 64<<10); source != nil {
 			if modulePath := readModule(source).path; modulePath != "" {
 				return lang.Target{Ecosystem: ecosystemCUE, Package: modulePath}
 			}

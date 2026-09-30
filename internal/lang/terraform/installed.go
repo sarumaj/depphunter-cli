@@ -33,7 +33,7 @@ func readInstalled(root, directory string) []installedModule {
 	if root == "" {
 		return nil
 	}
-	source, ok := lang.ReadCapped(filepath.Join(root, filepath.FromSlash(directory), ".terraform", "modules", "modules.json"))
+	source, ok := lang.OpenRoot(root).ReadBounded(filepath.Join(root, filepath.FromSlash(directory), ".terraform", "modules", "modules.json"))
 	if !ok {
 		return nil
 	}

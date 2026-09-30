@@ -2,7 +2,6 @@ package bazel
 
 import (
 	"encoding/json"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -117,13 +116,7 @@ func (r *resolver) read(p string) ([]byte, bool) {
 	if p == "" || strings.HasPrefix(p, "../") || p == ".." {
 		return nil, false
 	}
-	full := filepath.Join(r.root, filepath.FromSlash(p))
-	info, err := os.Stat(full)
-	if err != nil || info.IsDir() || info.Size() > 8*lang.MaxParseSize {
-		return nil, false
-	}
-	source, err := os.ReadFile(full)
-	return source, err == nil
+	return lang.OpenRoot(r.root).ReadLimited(filepath.Join(r.root, filepath.FromSlash(p)), 8*lang.MaxParseSize)
 }
 
 // workspaceOf is the workspace a file belongs to: the nearest directory above it

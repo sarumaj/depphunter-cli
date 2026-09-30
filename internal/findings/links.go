@@ -2,8 +2,8 @@ package findings
 
 import (
 	"context"
+	"io"
 	"net/http"
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sarumaj/depphunter-cli/internal/auth"
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/markdown"
 	"github.com/sarumaj/depphunter-cli/internal/store"
 )
@@ -45,7 +46,7 @@ func checkLinks(ctx context.Context, root string, docs []string, web *Web,
 	external := map[string][]*Finding{} // url -> where it is written
 
 	for _, doc := range docs {
-		source, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(doc)))
+		source, err := readDocument(root, doc)
 		if err != nil {
 			logFormat("links: %s: %v", doc, err)
 			partial = true
@@ -74,7 +75,7 @@ func checkLinks(ctx context.Context, root string, docs []string, web *Web,
 				if !ok {
 					continue // a mail address, a fragment of a URL, a path out of the repository
 				}
-				info, err := os.Stat(filepath.Join(root, filepath.FromSlash(target)))
+				info, err := lang.OpenRoot(root).Stat(filepath.Join(root, filepath.FromSlash(target)))
 				if err != nil {
 					out = append(out, broken(doc, l, Medium, referenceMissingFile, target+" is not there"))
 					continue
@@ -157,7 +158,7 @@ func (c *anchorCache) of(p string, source []byte) map[string]bool {
 	}
 	if source == nil {
 		var err error
-		if source, err = os.ReadFile(filepath.Join(c.root, filepath.FromSlash(p))); err != nil {
+		if source, err = readDocument(c.root, p); err != nil {
 			c.read[p] = nil
 			return nil
 		}
@@ -294,4 +295,15 @@ func (w *Web) ask(ctx context.Context, method, u string) (int, error) {
 	}
 	response.Body.Close()
 	return response.StatusCode, nil
+}
+
+// readDocument reads a document of the repository through its Root: a link
+// out of the repository is not followed, not even to learn its headings.
+func readDocument(root, p string) ([]byte, error) {
+	f, err := lang.OpenRoot(root).Open(filepath.Join(root, filepath.FromSlash(p)))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(f)
 }

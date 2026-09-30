@@ -86,7 +86,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 	r.readBower(all)
 	if root != "" {
 		for _, workspace := range r.workspaces() {
-			workspace.installed = readSpagoInstalled(filepath.Join(root, filepath.FromSlash(workspace.directory), ".spago"))
+			workspace.installed = readSpagoInstalled(lang.OpenRoot(root), filepath.Join(root, filepath.FromSlash(workspace.directory), ".spago"))
 		}
 	}
 	sort.Slice(r.projects, func(i, j int) bool {
@@ -142,7 +142,7 @@ func (r *resolver) readYAML(all []*scan.File) {
 				e.directory = directory
 				activeWorkspace.extra[e.name] = e
 			}
-			if source, err := os.ReadFile(filepath.Join(r.root, filepath.FromSlash(directory), "spago.lock")); err == nil {
+			if source, ok := lang.OpenRoot(r.root).ReadBounded(filepath.Join(r.root, filepath.FromSlash(directory), "spago.lock")); ok {
 				activeWorkspace.lock = readLock(source)
 				if activeWorkspace.lock != nil && activeWorkspace.set == "" {
 					activeWorkspace.set = activeWorkspace.lock.set
@@ -247,7 +247,7 @@ func (r *resolver) loadDhall(file string) *dhall.Value {
 	if !r.files[file] || len(r.evaluated) > 1000 {
 		return nil
 	}
-	source, ok := lang.ReadCapped(filepath.Join(r.root, filepath.FromSlash(file)))
+	source, ok := lang.OpenRoot(r.root).ReadBounded(filepath.Join(r.root, filepath.FromSlash(file)))
 	if !ok {
 		return nil
 	}
@@ -440,7 +440,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		if workspace := r.wsByDirectory[path.Dir(file)]; workspace != nil {
 			return r.fromWorkspace(workspace, rawImport.Module, "")
 		}
-		if source, err := os.ReadFile(filepath.Join(r.root, filepath.FromSlash(file))); err == nil {
+		if source, ok := lang.OpenRoot(r.root).ReadBounded(filepath.Join(r.root, filepath.FromSlash(file))); ok {
 			if l := readLock(source); l != nil {
 				return r.fromWorkspace(&workspace{directory: path.Dir(file), lock: l}, rawImport.Module, "")
 			}
@@ -720,24 +720,25 @@ const maxInstalledFiles = 100_000
 //
 // Implements: REQ-PURESCRIPT-007
 func (r *resolver) installedIndex(directory string) *installedIndex {
+	repository := lang.OpenRoot(r.root)
 	for d := range lang.DirectoryAndAncestors(directory) {
 		absolute := filepath.Join(r.root, filepath.FromSlash(d))
 		spago, bower := filepath.Join(absolute, ".spago"), filepath.Join(absolute, "bower_components")
-		if lang.IsDirectory(spago) || lang.IsDirectory(bower) {
+		if repository.IsDirectory(spago) || repository.IsDirectory(bower) {
 			v, _ := r.installed.LoadOrStore(d, &installedIndex{})
 			index := v.(*installedIndex)
-			index.once.Do(func() { index.modules = readInstalled(spago, bower) })
+			index.once.Do(func() { index.modules = readInstalled(repository, spago, bower) })
 			return index
 		}
 	}
 	return &installedIndex{}
 }
 
-func readInstalled(spago, bower string) map[string]string {
+func readInstalled(repository lang.Root, spago, bower string) map[string]string {
 	modules := map[string]string{}
 	count := 0
 	addSource := func(packageName, source string) {
-		filepath.WalkDir(source, func(p string, d os.DirEntry, err error) error {
+		repository.WalkDir(source, func(p string, d os.DirEntry, err error) error {
 			if err != nil || count > maxInstalledFiles {
 				return filepath.SkipDir
 			}
@@ -753,40 +754,40 @@ func readInstalled(spago, bower string) map[string]string {
 			return nil
 		})
 	}
-	entries, _ := os.ReadDir(filepath.Join(spago, "p"))
+	entries, _ := repository.ReadDir(filepath.Join(spago, "p"))
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
 		directory := filepath.Join(spago, "p", e.Name())
-		if lang.IsDirectory(filepath.Join(directory, "src")) {
+		if repository.IsDirectory(filepath.Join(directory, "src")) {
 			if name, _, ok := splitNameVersion(e.Name()); ok {
 				addSource(name, filepath.Join(directory, "src"))
 			}
 			continue
 		}
-		references, _ := os.ReadDir(directory)
+		references, _ := repository.ReadDir(directory)
 		for _, reference := range references {
-			if source := filepath.Join(directory, reference.Name(), "src"); reference.IsDir() && lang.IsDirectory(source) {
+			if source := filepath.Join(directory, reference.Name(), "src"); reference.IsDir() && repository.IsDirectory(source) {
 				addSource(e.Name(), source)
 				break
 			}
 		}
 	}
-	entries, _ = os.ReadDir(spago)
+	entries, _ = repository.ReadDir(spago)
 	for _, e := range entries {
 		if !e.IsDir() || e.Name() == "p" {
 			continue
 		}
-		versions, _ := os.ReadDir(filepath.Join(spago, e.Name()))
+		versions, _ := repository.ReadDir(filepath.Join(spago, e.Name()))
 		for _, v := range versions {
-			if source := filepath.Join(spago, e.Name(), v.Name(), "src"); v.IsDir() && lang.IsDirectory(source) {
+			if source := filepath.Join(spago, e.Name(), v.Name(), "src"); v.IsDir() && repository.IsDirectory(source) {
 				addSource(e.Name(), source)
 				break
 			}
 		}
 	}
-	entries, _ = os.ReadDir(bower)
+	entries, _ = repository.ReadDir(bower)
 	for _, e := range entries {
 		if name, ok := strings.CutPrefix(e.Name(), "purescript-"); ok && e.IsDir() {
 			addSource(name, filepath.Join(bower, e.Name(), "src"))
@@ -801,19 +802,19 @@ func readInstalled(spago, bower string) map[string]string {
 // <name>/<version>/. A package without a manifest it can read is left out.
 //
 // Implements: REQ-PURESCRIPT-008
-func readSpagoInstalled(spago string) map[string]*installedPackage {
+func readSpagoInstalled(repository lang.Root, spago string) map[string]*installedPackage {
 	out := map[string]*installedPackage{}
 	add := func(name, version string, pinned bool, directory string) bool {
 		if out[name] != nil {
 			return true
 		}
-		dependencies, ok := manifestDependencies(directory)
+		dependencies, ok := manifestDependencies(repository, directory)
 		if ok {
 			out[name] = &installedPackage{version: version, pinned: pinned, dependencies: dependencies}
 		}
 		return ok
 	}
-	entries, _ := os.ReadDir(filepath.Join(spago, "p"))
+	entries, _ := repository.ReadDir(filepath.Join(spago, "p"))
 	for _, e := range entries {
 		directory := filepath.Join(spago, "p", e.Name())
 		if !e.IsDir() {
@@ -822,19 +823,19 @@ func readSpagoInstalled(spago string) map[string]*installedPackage {
 		if name, version, ok := splitNameVersion(e.Name()); ok && add(name, version, true, directory) {
 			continue
 		}
-		references, _ := os.ReadDir(directory)
+		references, _ := repository.ReadDir(directory)
 		for _, reference := range references {
 			if reference.IsDir() && add(e.Name(), reference.Name(), lang.Commit(reference.Name()), filepath.Join(directory, reference.Name())) {
 				break
 			}
 		}
 	}
-	entries, _ = os.ReadDir(spago)
+	entries, _ = repository.ReadDir(spago)
 	for _, e := range entries {
 		if !e.IsDir() || e.Name() == "p" {
 			continue
 		}
-		versions, _ := os.ReadDir(filepath.Join(spago, e.Name()))
+		versions, _ := repository.ReadDir(filepath.Join(spago, e.Name()))
 		for _, v := range versions {
 			if v.IsDir() && add(e.Name(), v.Name(), lang.Commit(v.Name()), filepath.Join(spago, e.Name(), v.Name())) {
 				break
@@ -847,9 +848,9 @@ func readSpagoInstalled(spago string) map[string]*installedPackage {
 // manifestDependencies are the dependencies an installed package's manifest lists (not
 // its test dependencies): spago.yaml's, else spago.dhall's, else the registry's
 // purs.json's. ok is false when it has none of them readable.
-func manifestDependencies(directory string) (dependencies []string, ok bool) {
+func manifestDependencies(repository lang.Root, directory string) (dependencies []string, ok bool) {
 	read := func(name string) []byte {
-		source, _ := lang.ReadCapped(filepath.Join(directory, name))
+		source, _ := repository.ReadBounded(filepath.Join(directory, name))
 		return source
 	}
 	if m := readSpagoYAML(read("spago.yaml")); m != nil && m.isPackage {

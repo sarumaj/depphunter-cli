@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/npmconf"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 	"github.com/sarumaj/depphunter-cli/internal/userconf"
@@ -105,8 +106,9 @@ func (c *Config) readYarnFiles(files []*scan.File) yarnFiles {
 		}
 	}
 	repository, _ := c.m.DirectoriesAbove()
+	checkout := checkoutRoot(repository)
 	for _, directory := range repository {
-		if data, err := os.ReadFile(filepath.Join(directory, c.yarnRCFilename())); err == nil {
+		if data, ok := checkout.ReadBounded(filepath.Join(directory, c.yarnRCFilename())); ok {
 			y.above = append(y.above, data)
 		}
 	}
@@ -218,4 +220,14 @@ func (c *Config) lendNpm(registry, packages string, bearer bool, value string) {
 	if c.vouched(NPM, registry, u) {
 		c.credentials.LendRegistry(registry, packages, bearer, value)
 	}
+}
+
+// checkoutRoot reads the files of the checkout's directories above the analyzed
+// one (userconf.Machine.DirectoriesAbove, closest first): they are the
+// repository's, and read only inside it, through the Root of its top.
+func checkoutRoot(repository []string) lang.Root {
+	if len(repository) == 0 {
+		return lang.Root{}
+	}
+	return lang.OpenRoot(repository[len(repository)-1])
 }

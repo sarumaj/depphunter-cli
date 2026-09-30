@@ -652,12 +652,12 @@ func (r *resolver) Installed(t lang.Target) bool {
 	return r.installed[k] != nil
 }
 
-// exists reports whether an absolute path exists, remembered.
-func (r *resolver) exists(p string) bool {
+// exists reports whether an absolute path exists through files, remembered.
+func (r *resolver) exists(files lang.Root, p string) bool {
 	if v, ok := r.probed.Load(p); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(p)
+	_, err := files.Stat(p)
 	r.probed.Store(p, err == nil)
 	return err == nil
 }
@@ -665,13 +665,15 @@ func (r *resolver) exists(p string) bool {
 // installedFor is the library installed for a file (lix's cache, a haxelib
 // repository) whose class path has the module, "" when none has.
 func (r *resolver) installedFor(file string, segments []string, wild bool) string {
-	try := func(classPaths []string) bool {
+	// lix's class paths are in its cache on this machine; a local library's
+	// are read through the repository's Root.
+	try := func(files lang.Root, classPaths []string) bool {
 		for _, classPath := range classPaths {
-			if wild && r.exists(filepath.Join(classPath, filepath.Join(segments...))) {
+			if wild && r.exists(files, filepath.Join(classPath, filepath.Join(segments...))) {
 				return true
 			}
 			for n := len(segments); n >= 1; n-- {
-				if upper(segments[n-1]) && r.exists(filepath.Join(classPath, filepath.Join(segments[:n]...)+".hx")) {
+				if upper(segments[n-1]) && r.exists(files, filepath.Join(classPath, filepath.Join(segments[:n]...)+".hx")) {
 					return true
 				}
 			}
@@ -687,15 +689,15 @@ func (r *resolver) installedFor(file string, segments []string, wild bool) strin
 		k := strings.ToLower(d.name)
 		seen[k] = true
 		if s != nil && s.libraries[k] != nil {
-			if try(s.libraries[k].absolute) {
+			if try(lang.Machine, s.libraries[k].absolute) {
 				return s.libraries[k].name
 			}
-		} else if in := r.installed[k]; in != nil && try(in.classPaths) {
+		} else if in := r.installed[k]; in != nil && try(in.files, in.classPaths) {
 			return in.name
 		}
 	}
 	for _, k := range lang.SortedKeys(r.installed) {
-		if in := r.installed[k]; !seen[k] && in.local && try(in.classPaths) {
+		if in := r.installed[k]; !seen[k] && in.local && try(in.files, in.classPaths) {
 			return in.name
 		}
 	}
