@@ -34,7 +34,7 @@ const REQUIRED = ['id', 'title', 'scope', 'type', 'priority', 'status', 'verific
 const ID = /^REQ-[A-Z0-9]+-\d{3}$/;
 const ANNOTATION = /\b(Implements|Verifies):\s*(REQ-[A-Z0-9]+-\d{3}(?:\s*,\s*REQ-[A-Z0-9]+-\d{3})*)/g;
 // Paths never annotated: third-party code, fixtures and the specification itself.
-const SKIP = [/(^|\/)vendor\//, /(^|\/)node_modules\//, /(^|\/)testdata\//, /^docs\//, /^tools\/reqtrace\.mjs$/];
+const SKIP = [/(^|\/)vendor\//, /(^|\/)node_modules\//, /(^|\/)testdata\//, /^docs\//, /^scripts\/reqtrace\.mjs$/];
 const TEXT = /(\.(go|m?js|ts|py|sh|ya?ml|css|html)|(^|\/)go\.mod)$/;
 
 const errors = [];
