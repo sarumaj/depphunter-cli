@@ -2,12 +2,15 @@
 import potpack from './vendor/potpack.js';
 
 import { bulk } from './model.js';
+import { FACADE, STORY } from './buildings.js';
 
 // Archipelago layout: the repository is a mainland of nested terraces, each external
 // ecosystem an island in rings around it. Positions derive only from the hierarchy and the
 // expansion state, so the same repository always produces the same map.
 
-const FILE = 1.0;        // building footprint
+// A building's footprint grows with its facade (buildings.js FACADE), so a face
+// holds as many windows as it was laid out with; its height is data and does not.
+const FILE = FACADE;
 const GAP = 0.35;        // between siblings
 const PAD = 0.55;        // inside a terrace
 const TERRACE = 0.28;    // terrace thickness
@@ -32,7 +35,8 @@ export function layout(model, state) {
   const { visible, counts } = state.vis;
   const scale = SCALES[state.heightScale] || SCALES.sqrt;
   const maxLoc = maxFileLoc(model.root);
-  const height = loc => 0.2 + scale(Math.min(1, (loc || 0) / maxLoc)) * MAX_H;
+  // At least a story: a door in a building shorter than itself is no door.
+  const height = loc => STORY * FACADE + scale(Math.min(1, (loc || 0) / maxLoc)) * MAX_H;
   const maxImporters = model.ecosystems.flatMap(e => e.children).reduce((a, p) => Math.max(a, p.importers), 1);
   const packageHeight = n => 0.3 + scale(n.importers / maxImporters) * MAX_H * 0.5;
 
@@ -57,7 +61,7 @@ export function layout(model, state) {
         s = { w: FILE, d: FILE };
       }
     } else if (n.kind === 'dir' && !expanded(n)) {
-      const side = Math.max(1.4, Math.sqrt(counts.get(n.id).fileCount) * (FILE + GAP) * 0.75);
+      const side = Math.max(1.4 * FILE, Math.sqrt(counts.get(n.id).fileCount) * (FILE + GAP) * 0.75);
       s = { w: side, d: side };
     } else { // expanded dir or ecosystem
       const items = n.children.filter(c => c.kind !== 'symbol' && visible(c)).map(c => ({ n: c, ...measure(c) }));

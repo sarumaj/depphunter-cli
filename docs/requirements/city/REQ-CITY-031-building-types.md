@@ -17,6 +17,9 @@ be drawn as one of seven types - a residential slab with balconies, an office
 tower with a glass curtain wall, a brick walk-up, a concrete panel block, an
 art-deco tower with setbacks, a warehouse, and a mixed-use building with shops
 under flats - chosen from a hash of its node's id and from its proportions only.
+Facades **shall** be drawn in the walker's proportions: a story 0.84 units high
+(2.8 times the 0.3 a facade is laid out with), a door a little taller than the
+walker, with the windows, balconies, awnings and cornices scaled alike.
 
 ## Rationale
 
@@ -30,7 +33,7 @@ same building every time it is seen.
 1. The same box gets the same type on every run, whatever its position, color
    or dimming.
 2. Every type occurs on a large map.
-3. Only boxes lower than 0.75 units and at least 0.9 units across are
+3. Only boxes lower than 1.3 units and at least 0.9 units across are
    warehouses; only boxes at least 5.4 units high are art-deco towers; symbol
    plots are brick, panel or office pavilions.
 

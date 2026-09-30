@@ -63,11 +63,11 @@ describe('building details', () => {
       for (const d of D.detailsOf(b).filter(d => d.kind === 'balcony')) {
         balconies++;
         assert.ok(type === B.TYPE.residential || (type === B.TYPE.mixed && variant < 0.5), B.ARCHETYPES[type]);
-        const story = (d.matrix[13] - b.y) / B.STORY;
+        const story = (d.matrix[13] - b.y) / (B.STORY * B.FACADE);
         assert.ok(Math.abs(story - Math.round(story)) < 1e-6 && story >= 1, `a balcony at story ${story}`);
         // Centered on a bay of the residential layout.
         const along = Math.abs(d.matrix[12] - b.x) < 1e-6 ? d.matrix[14] - b.z : d.matrix[12] - b.x;
-        const faceW = 1, bay = faceW / Math.floor(faceW / D.bayWidth(B.TYPE.residential));
+        const faceW = b.w, bay = faceW / Math.floor(faceW / B.FACADE / D.bayWidth(B.TYPE.residential));
         const at = (Math.abs(along) + faceW / 2) / bay - 0.5;
         assert.ok(Math.abs(at - Math.round(at)) < 1e-6 || Math.abs(Math.abs(along) - faceW / 2) < 1e-6, `off its bay: ${at}`);
       }

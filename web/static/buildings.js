@@ -17,14 +17,30 @@
 export const ARCHETYPES = ['residential', 'office', 'brick', 'panel', 'deco', 'warehouse', 'mixed'];
 export const TYPE = Object.freeze(Object.fromEntries(ARCHETYPES.map((name, i) => [name, i])));
 
-/** One story, in world units: the height the facades and every balcony are laid out on. */
+/**
+ * How many times larger than they are laid out the facades are drawn: their stories,
+ * bays, windows and doors, and the balconies, awnings and cornices on them. Laid out
+ * at 1, a story is 0.3 units and a door not half as tall as the walker; the scale puts
+ * them in the walker's proportions without changing how tall a building is, which is
+ * data.
+ */
+export const FACADE = 2.8;
+
+/** One story, as a facade is laid out: FACADE times this in world units. */
 export const STORY = 0.3;
 
-// Proportions that decide between types. A box lower than LOW is one or two stories:
-// a shed or warehouse when it is broad, a small shop or pavilion otherwise. From
+// Proportions that decide between types. A box lower than LOW is a story or so: a
+// shed or warehouse when it is broad, a small shop or pavilion otherwise. From
 // TOWER up a building is a tower, and from DECO up a tower may be an art-deco one
 // with setbacks; HELIPAD is where a flat office roof gets a landing pad.
-export const LOW = 0.75, TOWER = 3.6, DECO = 5.4, HELIPAD = 7;
+export const LOW = 1.3, TOWER = 3.6, DECO = 5.4, HELIPAD = 7;
+
+/**
+ * Whether a box is ground rather than something standing on it: land, a terrace, a
+ * collapsed directory's block, drawn in walk mode as tessellated ground that bends
+ * with the planet (MapScene.showGround) and never given a building's details.
+ */
+export const isGround = b => b.kind !== 'building' && b.kind !== 'package' && b.kind !== 'symbol' && Math.max(b.w, b.d) > 1.5;
 
 /**
  * How each type reads from a distance, as the shaders average it (city.js
@@ -155,6 +171,7 @@ const vec3 LOOK_GLASS = vec3(${GLASS.map(v => v.toFixed(4)).join(', ')});
 const vec3 LOOK_LAMP = vec3(${LAMP.map(v => v.toFixed(4)).join(', ')});
 ${ARCHETYPES.map((name, i) => `const int ${name.toUpperCase()} = ${i};`).join('\n')}
 const float STORY = ${STORY.toFixed(4)};
+const float FACADE = ${FACADE.toFixed(4)};
 const float HELIPAD_H = ${HELIPAD.toFixed(4)};
 const float DECO_H = ${DECO.toFixed(4)};
 `;

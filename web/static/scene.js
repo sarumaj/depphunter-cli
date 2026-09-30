@@ -11,7 +11,7 @@
 
 import * as THREE from './vendor/three.module.min.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
-import { buildParameters } from './buildings.js';
+import { buildParameters, isGround } from './buildings.js';
 import { Details, tiersOf } from './details.js';
 import { cull } from './lod.js';
 import { Resolution } from './resolution.js';
@@ -378,7 +378,7 @@ export class MapScene {
       this.scene.remove(this.ground);
       this.ground.geometry.dispose();
     }
-    this.ground = new THREE.Mesh(tessellate(boxes.filter(isLarge)), this.material);
+    this.ground = new THREE.Mesh(tessellate(boxes.filter(isGround)), this.material);
     this.ground.frustumCulled = false; // bent vertices leave the flat bounding sphere
     this.scene.add(this.ground);
     if (this.props) {
@@ -505,7 +505,7 @@ export class MapScene {
     this.mesh.frustumCulled = !this.walking;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
     this.boxes.forEach((b, i) => {
-      if (!isLarge(b)) return;
+      if (!isGround(b)) return;
       const k = this.walking ? 0 : 1;
       this.mesh.setMatrixAt(i, m.compose(p.set(b.x, b.y, b.z), q, s.set(b.w * k, Math.max(b.h, 0.01) * k, b.d * k)));
     });
@@ -1041,8 +1041,6 @@ function occludedBySphere(eye, p, c, r) {
   const t = -b - Math.sqrt(disc);
   return t > 0 && t < distance - 0.01;
 }
-
-const isLarge = b => Math.max(b.w, b.d) > 1.5;
 
 // Face brightness, as in shadedBox: top, +x, -x, +z, -z.
 const SHADE = { top: 1, px: 0.62, nx: 0.62, pz: 0.78, nz: 0.78 };
