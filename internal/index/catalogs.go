@@ -256,26 +256,19 @@ func (c *Client) forgeModule(ctx context.Context, index string, t lang.Target) (
 	version := strings.TrimSpace(t.Version)
 	var release forgeRelease
 	if _, _, exact := semanticVersion(version); exact && !strings.HasPrefix(version, "v") {
-		body, err := c.get(ctx, base+"releases/"+slug+"-"+url.PathEscape(version))
-		if err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal(body, &release); err != nil {
+		var err error
+		if release, err = getJSON[forgeRelease](ctx, c, base+"releases/"+slug+"-"+url.PathEscape(version)); err != nil {
 			return nil, err
 		}
 	} else {
-		body, err := c.get(ctx, base+"modules/"+slug)
-		if err != nil {
-			return nil, err
-		}
-		var doc struct {
+		doc, err := getJSON[struct {
 			CurrentRelease forgeRelease `json:"current_release"`
 			Releases       []struct {
 				Version   string          `json:"version"`
 				DeletedAt json.RawMessage `json:"deleted_at"`
 			} `json:"releases"`
-		}
-		if err := json.Unmarshal(body, &doc); err != nil {
+		}](ctx, c, base+"modules/"+slug)
+		if err != nil {
 			return nil, err
 		}
 		var versions []string
@@ -291,11 +284,7 @@ func (c *Client) forgeModule(ctx context.Context, index string, t lang.Target) (
 		case chosen == doc.CurrentRelease.Version:
 			release = doc.CurrentRelease
 		default:
-			body, err := c.get(ctx, base+"releases/"+slug+"-"+url.PathEscape(chosen))
-			if err != nil {
-				return nil, err
-			}
-			if err := json.Unmarshal(body, &release); err != nil {
+			if release, err = getJSON[forgeRelease](ctx, c, base+"releases/"+slug+"-"+url.PathEscape(chosen)); err != nil {
 				return nil, err
 			}
 		}
@@ -439,12 +428,8 @@ func (c *Client) wallyPackage(ctx context.Context, index string, t lang.Target) 
 // wallyConfig is a Wally registry's config.json, read once.
 func (c *Client) wallyConfig(ctx context.Context, base string) (*wallyConfiguration, error) {
 	return c.wallyConfigs.get(base, func() (*wallyConfiguration, error) {
-		body, err := c.accept(ctx, base+"/config.json", "*/*")
+		configuration, err := acceptJSON[wallyConfiguration](ctx, c, base+"/config.json", "*/*")
 		if err != nil {
-			return nil, err
-		}
-		var configuration wallyConfiguration
-		if err := json.Unmarshal(body, &configuration); err != nil {
 			return nil, err
 		}
 		return &configuration, nil
@@ -663,11 +648,7 @@ func (c *Client) bufCall(ctx context.Context, index, host, procedure string, req
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return &statusError{url: address, status: response.Status, code: response.StatusCode}
-	}
-	data, err := readLimited(response)
+	data, err := readOK(response, address)
 	if err != nil {
 		return err
 	}

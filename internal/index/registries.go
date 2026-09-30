@@ -225,17 +225,13 @@ func (c *Client) readNuGetIndex(ctx context.Context, index string) (string, erro
 	if !strings.HasSuffix(address, ".json") {
 		address += "/index.json" // a feed named by its root rather than its document
 	}
-	body, err := c.get(ctx, address)
-	if err != nil {
-		return "", err
-	}
-	var doc struct {
+	doc, err := getJSON[struct {
 		Resources []struct {
 			ID   string `json:"@id"`
 			Type string `json:"@type"`
 		} `json:"resources"`
-	}
-	if err := json.Unmarshal(body, &doc); err != nil {
+	}](ctx, c, address)
+	if err != nil {
 		return "", err
 	}
 	for _, r := range doc.Resources {
@@ -252,14 +248,10 @@ func (c *Client) nugetVersion(ctx context.Context, base, id, want string) (strin
 	if lang.Pinned(want) {
 		return strings.ToLower(strings.Trim(strings.TrimPrefix(strings.TrimSpace(want), "["), "[]")), nil
 	}
-	body, err := c.accept(ctx, fmt.Sprintf("%s/%s/index.json", base, id), "application/json")
-	if err != nil {
-		return "", err
-	}
-	var doc struct {
+	doc, err := getJSON[struct {
 		Versions []string `json:"versions"`
-	}
-	if err := json.Unmarshal(body, &doc); err != nil {
+	}](ctx, c, fmt.Sprintf("%s/%s/index.json", base, id))
+	if err != nil {
 		return "", err
 	}
 	newest := ""
@@ -290,14 +282,10 @@ func (c *Client) composerPackage(ctx context.Context, index string, t lang.Targe
 		return nil, err
 	}
 	name := strings.ToLower(t.Package)
-	body, err := c.get(ctx, strings.ReplaceAll(pattern, "%package%", name))
-	if err != nil {
-		return nil, err
-	}
-	var doc struct {
+	doc, err := getJSON[struct {
 		Packages map[string][]map[string]json.RawMessage `json:"packages"`
-	}
-	if err := json.Unmarshal(body, &doc); err != nil {
+	}](ctx, c, strings.ReplaceAll(pattern, "%package%", name))
+	if err != nil {
 		return nil, err
 	}
 	versions := expandComposer(doc.Packages[name])
@@ -363,14 +351,10 @@ func (c *Client) composerMetadataURL(ctx context.Context, index string) (string,
 	if ok {
 		return pattern, nil
 	}
-	body, err := c.get(ctx, index+"/packages.json")
-	if err != nil {
-		return "", err
-	}
-	var doc struct {
+	doc, err := getJSON[struct {
 		MetadataURL string `json:"metadata-url"`
-	}
-	if err := json.Unmarshal(body, &doc); err != nil {
+	}](ctx, c, index+"/packages.json")
+	if err != nil {
 		return "", err
 	}
 	// Relative to the repository's host, as Composer reads it. Not url.Parse: the
@@ -468,21 +452,17 @@ func (c *Client) rubygemsPackage(ctx context.Context, index string, t lang.Targe
 //
 // Implements: REQ-SUP-046
 func (c *Client) pubPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
-	body, err := c.accept(ctx, strings.TrimRight(index, "/")+"/api/packages/"+t.Package, "application/vnd.pub.v2+json")
-	if err != nil {
-		return nil, err
-	}
 	type version struct {
 		Version string `json:"version"`
 		Pubspec struct {
 			Dependencies map[string]any `json:"dependencies"`
 		} `json:"pubspec"`
 	}
-	var doc struct {
+	doc, err := acceptJSON[struct {
 		Latest   version   `json:"latest"`
 		Versions []version `json:"versions"`
-	}
-	if err := json.Unmarshal(body, &doc); err != nil {
+	}](ctx, c, strings.TrimRight(index, "/")+"/api/packages/"+t.Package, "application/vnd.pub.v2+json")
+	if err != nil {
 		return nil, err
 	}
 	chosen := doc.Latest
@@ -521,18 +501,14 @@ func (c *Client) pubPackage(ctx context.Context, index string, t lang.Target) ([
 // Implements: REQ-SUP-047
 func (c *Client) hexPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	base := strings.TrimRight(index, "/") + "/packages/" + url.PathEscape(t.Package)
-	body, err := c.accept(ctx, base, "application/json")
-	if err != nil {
-		return nil, err
-	}
-	var packageName struct {
+	packageName, err := getJSON[struct {
 		Latest    string `json:"latest_stable_version"`
 		LatestAny string `json:"latest_version"`
 		Releases  []struct {
 			Version string `json:"version"`
 		} `json:"releases"`
-	}
-	if err := json.Unmarshal(body, &packageName); err != nil {
+	}](ctx, c, base)
+	if err != nil {
 		return nil, err
 	}
 	version := cmp.Or(packageName.Latest, packageName.LatestAny)
@@ -544,17 +520,13 @@ func (c *Client) hexPackage(ctx context.Context, index string, t lang.Target) ([
 	if version == "" {
 		return nil, nil
 	}
-	body, err = c.accept(ctx, base+"/releases/"+url.PathEscape(version), "application/json")
-	if err != nil {
-		return nil, err
-	}
-	var release struct {
+	release, err := getJSON[struct {
 		Requirements map[string]struct {
 			Requirement string `json:"requirement"`
 			Optional    bool   `json:"optional"`
 		} `json:"requirements"`
-	}
-	if err := json.Unmarshal(body, &release); err != nil {
+	}](ctx, c, base+"/releases/"+url.PathEscape(version))
+	if err != nil {
 		return nil, err
 	}
 	var out []dependency
@@ -756,14 +728,10 @@ var hackageStd = map[string]bool{
 // Implements: REQ-SUP-049
 func (c *Client) hackagePackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	base := strings.TrimRight(index, "/") + "/package/"
-	body, err := c.accept(ctx, base+url.PathEscape(t.Package)+"/preferred", "application/json")
-	if err != nil {
-		return nil, err
-	}
-	var preference struct {
+	preference, err := getJSON[struct {
 		Normal []string `json:"normal-version"`
-	}
-	if err := json.Unmarshal(body, &preference); err != nil {
+	}](ctx, c, base+url.PathEscape(t.Package)+"/preferred")
+	if err != nil {
 		return nil, err
 	}
 	version := ""
@@ -780,7 +748,7 @@ func (c *Client) hackagePackage(ctx context.Context, index string, t lang.Target
 		return nil, errAbsent // no normal release here: another repository may have one
 	}
 	id := url.PathEscape(t.Package + "-" + version)
-	body, err = c.accept(ctx, base+id+"/"+url.PathEscape(t.Package)+".cabal", "text/plain")
+	body, err := c.accept(ctx, base+id+"/"+url.PathEscape(t.Package)+".cabal", "text/plain")
 	if err != nil {
 		return nil, err
 	}
@@ -930,10 +898,6 @@ func (c *Client) terraformModule(ctx context.Context, index string, t lang.Targe
 	for i := range parts {
 		parts[i] = url.PathEscape(parts[i])
 	}
-	body, err := c.get(ctx, base+strings.Join(parts, "/")+"/versions")
-	if err != nil {
-		return nil, err
-	}
 	type module struct {
 		Path      string `json:"path"`
 		Providers []struct {
@@ -943,7 +907,7 @@ func (c *Client) terraformModule(ctx context.Context, index string, t lang.Targe
 			Name, Source, Version string
 		} `json:"dependencies"`
 	}
-	var doc struct {
+	doc, err := getJSON[struct {
 		Modules []struct {
 			Versions []struct {
 				Version    string   `json:"version"`
@@ -951,8 +915,8 @@ func (c *Client) terraformModule(ctx context.Context, index string, t lang.Targe
 				Submodules []module `json:"submodules"`
 			} `json:"versions"`
 		} `json:"modules"`
-	}
-	if err := json.Unmarshal(body, &doc); err != nil {
+	}](ctx, c, base+strings.Join(parts, "/")+"/versions")
+	if err != nil {
 		return nil, err
 	}
 	if len(doc.Modules) == 0 {
@@ -1031,12 +995,8 @@ func (c *Client) terraformService(ctx context.Context, index, service string) (s
 	if ok {
 		return base, nil
 	}
-	body, err := c.get(ctx, index+"/.well-known/terraform.json")
+	doc, err := getJSON[map[string]any](ctx, c, index+"/.well-known/terraform.json")
 	if err != nil {
-		return "", err
-	}
-	var doc map[string]any
-	if err := json.Unmarshal(body, &doc); err != nil {
 		return "", err
 	}
 	s, _ := doc[service].(string)
@@ -1293,12 +1253,7 @@ func (c *Client) ociGet(ctx context.Context, index, repository, address, accept 
 			return nil, err
 		}
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		// Typed, so that a registry's 404 reads as "not found" (notFound).
-		return nil, &statusError{url: address, status: response.Status, code: response.StatusCode}
-	}
-	return readLimited(response)
+	return readOK(response, address) // typed, so that a registry's 404 reads as "not found"
 }
 
 // ociToken asks for the pull token a registry's challenge describes.
@@ -1650,12 +1605,8 @@ type cpanRelease struct {
 
 // cpanRelease reads one of MetaCPAN's release documents.
 func (c *Client) cpanRelease(ctx context.Context, address string) (*cpanRelease, error) {
-	body, err := c.get(ctx, address)
+	relative, err := getJSON[cpanRelease](ctx, c, address)
 	if err != nil {
-		return nil, err
-	}
-	var relative cpanRelease
-	if err := json.Unmarshal(body, &relative); err != nil {
 		return nil, err
 	}
 	return &relative, nil
@@ -1667,18 +1618,14 @@ func (c *Client) cpanRelease(ctx context.Context, address string) (*cpanRelease,
 // Implements: REQ-SUP-053
 func (c *Client) cpanSearch(ctx context.Context, base, dist, version string) (*cpanRelease, error) {
 	q := url.Values{"q": {`distribution:"` + dist + `" AND version:"` + version + `"`}, "size": {"1"}}
-	body, err := c.get(ctx, base+"/v1/release/_search?"+q.Encode())
-	if err != nil {
-		return nil, err
-	}
-	var found struct {
+	found, err := getJSON[struct {
 		Hits struct {
 			Hits []struct {
 				Source cpanRelease `json:"_source"`
 			} `json:"hits"`
 		} `json:"hits"`
-	}
-	if err := json.Unmarshal(body, &found); err != nil {
+	}](ctx, c, base+"/v1/release/_search?"+q.Encode())
+	if err != nil {
 		return nil, err
 	}
 	for _, h := range found.Hits.Hits {
@@ -1981,15 +1928,11 @@ func (c *Client) bazelModule(ctx context.Context, index string, t lang.Target) (
 	base := strings.TrimRight(index, "/") + "/modules/" + url.PathEscape(t.Package) + "/"
 	version := strings.TrimSpace(t.Version)
 	if version == "" {
-		body, err := c.get(ctx, base+"metadata.json")
-		if err != nil {
-			return nil, err
-		}
-		var metadata struct {
+		metadata, err := getJSON[struct {
 			Versions       []string          `json:"versions"`
 			YankedVersions map[string]string `json:"yanked_versions"`
-		}
-		if err := json.Unmarshal(body, &metadata); err != nil {
+		}](ctx, c, base+"metadata.json")
+		if err != nil {
 			return nil, err
 		}
 		for i := len(metadata.Versions) - 1; i >= 0; i-- { // listed oldest first
@@ -2040,12 +1983,8 @@ func (c *Client) elmPackage(ctx context.Context, index string, t lang.Target) ([
 	base := strings.TrimRight(index, "/") + "/packages/" + url.PathEscape(author) + "/" + url.PathEscape(name) + "/"
 	version := strings.TrimSpace(t.Version)
 	if _, exact := elmVersion(version); !exact {
-		body, err := c.get(ctx, base+"releases.json")
+		releases, err := getJSON[map[string]int64](ctx, c, base+"releases.json") // version -> publication time
 		if err != nil {
-			return nil, err
-		}
-		var releases map[string]int64 // version -> publication time
-		if err := json.Unmarshal(body, &releases); err != nil {
 			return nil, err
 		}
 		low, high, ranged := elmRange(version)
@@ -2061,14 +2000,10 @@ func (c *Client) elmPackage(ctx context.Context, index string, t lang.Target) ([
 		}
 		version = best
 	}
-	body, err := c.get(ctx, base+url.PathEscape(version)+"/elm.json")
-	if err != nil {
-		return nil, err
-	}
-	var doc struct {
+	doc, err := getJSON[struct {
 		Dependencies map[string]string `json:"dependencies"`
-	}
-	if err := json.Unmarshal(body, &doc); err != nil {
+	}](ctx, c, base+url.PathEscape(version)+"/elm.json")
+	if err != nil {
 		return nil, err
 	}
 	out := make([]dependency, 0, len(doc.Dependencies))
@@ -2145,14 +2080,10 @@ func (c *Client) purescriptPackage(ctx context.Context, index string, t lang.Tar
 	base := strings.TrimRight(index, "/")
 	version := strings.TrimPrefix(strings.TrimSpace(t.Version), "v")
 	if _, exact := purescriptVersion(version); !exact {
-		body, err := c.get(ctx, base+"/registry/main/metadata/"+name+".json")
-		if err != nil {
-			return nil, err
-		}
-		var metadata struct {
+		metadata, err := getJSON[struct {
 			Published map[string]json.RawMessage `json:"published"`
-		}
-		if err := json.Unmarshal(body, &metadata); err != nil {
+		}](ctx, c, base+"/registry/main/metadata/"+name+".json")
+		if err != nil {
 			return nil, err
 		}
 		best, bestV := "", [3]int{}
@@ -2264,22 +2195,15 @@ func (c *Client) dubPackage(ctx context.Context, index string, t lang.Target) ([
 	version := strings.TrimPrefix(strings.TrimSpace(t.Version), "==")
 	var info map[string]json.RawMessage
 	if _, exact := dubVersion(version); exact && !strings.Contains(version, "-") {
-		body, err := c.get(ctx, base+"/"+url.PathEscape(version)+"/info")
-		if err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal(body, &info); err != nil {
+		var err error
+		if info, err = getJSON[map[string]json.RawMessage](ctx, c, base+"/"+url.PathEscape(version)+"/info"); err != nil {
 			return nil, err
 		}
 	} else {
-		body, err := c.get(ctx, base+"/info")
-		if err != nil {
-			return nil, err
-		}
-		var packageName struct {
+		packageName, err := getJSON[struct {
 			Versions []map[string]json.RawMessage `json:"versions"`
-		}
-		if err := json.Unmarshal(body, &packageName); err != nil {
+		}](ctx, c, base+"/info")
+		if err != nil {
 			return nil, err
 		}
 		best, bestV := -1, [3]int{}

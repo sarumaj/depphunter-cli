@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -463,14 +462,10 @@ var (
 func (c *Client) githubList(ctx context.Context, r githubRepository, directory string) ([]string, error) {
 	address := githubAPI + "/repos/" + r.repository + "/contents/" + directory + "?ref=" + url.QueryEscape(r.reference)
 	return c.listings.get(address, func() ([]string, error) {
-		body, err := c.accept(ctx, address, "application/vnd.github+json")
-		if err != nil {
-			return nil, err
-		}
-		var entries []struct {
+		entries, err := acceptJSON[[]struct {
 			Name string `json:"name"`
-		}
-		if err := json.Unmarshal(body, &entries); err != nil {
+		}](ctx, c, address, "application/vnd.github+json")
+		if err != nil {
 			return nil, err
 		}
 		out := make([]string, 0, len(entries))
