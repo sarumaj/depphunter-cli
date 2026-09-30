@@ -39,6 +39,7 @@ export class MapScene {
     this.resolution = new Resolution();
     this.drawn = -Infinity; // when the last frame asked for was drawn
     this.depthFirstOn = true;
+    this.stats = null;      // the readout (stats.js), when the address asks for one
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
@@ -753,7 +754,9 @@ export class MapScene {
    * Implements: REQ-TOOL-001, REQ-HUNT-039, REQ-PERF-011
    */
   renderNow(hands = true, sharp = false) {
-    const r = this.renderer;
+    const r = this.renderer, started = performance.now();
+    r.info.autoReset = false; // counted over every pass of the frame
+    r.info.reset();
     if (this.walking && !sharp) this.resolution.frame(performance.now());
     const ratio = this.pixelRatio * (sharp ? 1 : this.resolution.scale);
     if (r.getPixelRatio() !== ratio) r.setPixelRatio(ratio);
@@ -774,6 +777,7 @@ export class MapScene {
       r.render(this.viewScene, this.walkCamera);
       r.autoClear = true;
     }
+    this.stats?.frame(performance.now(), performance.now() - started, r.info.render);
     return r.domElement;
   }
 

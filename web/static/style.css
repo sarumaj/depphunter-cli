@@ -1172,3 +1172,11 @@ dialog form { margin-top: 12px; text-align: right; }
 @media (max-width: 720px) {
   #findings { left: 8px; right: 8px; width: auto; }
 }
+
+/* The rendering readout (stats.js, ?stats). */
+.render-stats {
+  position: fixed; right: 8px; bottom: 36px; z-index: 1000; display: grid; gap: 4px; padding: 6px 8px; border-radius: 4px;
+  background: rgb(0 0 0 / 0.85); color: #e8e8e8; font: 11px/1.4 ui-monospace, monospace;
+}
+.render-stats pre { margin: 0; font: inherit; }
+.render-stats label { display: flex; gap: 4px; align-items: center; cursor: pointer; }
