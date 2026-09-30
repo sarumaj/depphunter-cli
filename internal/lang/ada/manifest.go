@@ -1,7 +1,6 @@
 package ada
 
 import (
-	"regexp"
 	"sort"
 	"strings"
 
@@ -43,25 +42,25 @@ func readManifest(source []byte) *manifest {
 	if _, err := toml.Decode(string(source), &raw); err != nil {
 		return m
 	}
-	lines := keyLines(source)
+	lines := lang.TOMLKeyLines(source)
 	m.name, _ = raw["name"].(string)
 	m.name = strings.ToLower(strings.TrimSpace(m.name))
 	m.version, _ = raw["version"].(string)
 	eachTable(raw["depends-on"], func(t map[string]any) {
-		dependsOn(t, func(name, constraint string) {
-			name = strings.ToLower(name)
+		dependsOn(t, func(key, constraint string) {
+			name := strings.ToLower(key)
 			if _, ok := m.dependencies[name]; !ok {
-				m.dependencies[name] = &dependency{name: name, constraint: strings.TrimSpace(constraint), line: lines.find("depends-on", name)}
+				m.dependencies[name] = &dependency{name: name, constraint: strings.TrimSpace(constraint), line: max(lines.Within("depends-on", key), 1)}
 			}
 		})
 	})
 	eachTable(raw["pins"], func(t map[string]any) {
-		for name, v := range t {
-			name = strings.ToLower(name)
+		for key, v := range t {
+			name := strings.ToLower(key)
 			if _, ok := m.pins[name]; ok {
 				continue
 			}
-			p := &pin{name: name, line: lines.find("pins", name)}
+			p := &pin{name: name, line: max(lines.Line("pins", key), 1)}
 			switch v := v.(type) {
 			case map[string]any:
 				stringField := func(k string) string {
@@ -76,7 +75,7 @@ func readManifest(source []byte) *manifest {
 		}
 	})
 	strings_(raw["project-files"], func(s string) {
-		m.projectFiles = append(m.projectFiles, item{s, lines.find("", "project-files")})
+		m.projectFiles = append(m.projectFiles, item{s, max(lines.Line("", "project-files"), 1)})
 	})
 	return m
 }
@@ -137,51 +136,6 @@ func strings_(v any, function func(string)) {
 	}
 }
 
-// lineIndex finds the line of a key: BurntSushi's decoder keeps no positions.
-type lineIndex []keyLine
-
-type keyLine struct {
-	section, key string
-	line         int
-}
-
-var (
-	headerRe = regexp.MustCompile(`^\s*\[\[?\s*([^\]]+?)\s*\]\]?`)
-	keyRe    = regexp.MustCompile(`^\s*("[^"]*"|'[^']*'|[A-Za-z0-9_.\-]+)\s*=`)
-)
-
-func keyLines(source []byte) lineIndex {
-	var out lineIndex
-	section := ""
-	for n, line := range strings.Split(string(source), "\n") {
-		if m := headerRe.FindStringSubmatch(line); m != nil {
-			section = strings.ReplaceAll(strings.ReplaceAll(m[1], `"`, ""), "'", "")
-			out = append(out, keyLine{section: section, line: n + 1})
-			continue
-		}
-		if m := keyRe.FindStringSubmatch(line); m != nil {
-			k := strings.Trim(m[1], `"'`)
-			out = append(out, keyLine{section: section, key: k, line: n + 1})
-		}
-	}
-	return out
-}
-
-// find is the line of key (case-insensitive) in a section starting with
-// prefix, or of a [prefix.key] header.
-func (x lineIndex) find(prefix, key string) int {
-	key = strings.ToLower(key)
-	for _, k := range x {
-		if !strings.HasPrefix(k.section, prefix) {
-			continue
-		}
-		if strings.ToLower(k.key) == key || k.key == "" && prefix != "" && strings.ToLower(k.section) == prefix+"."+key {
-			return k.line
-		}
-	}
-	return 1
-}
-
 // extractManifest turns an alire.toml into imports: its dependencies, the
 // crates it pins without depending on them, and its project files.
 //
@@ -204,14 +158,10 @@ func extractManifest(source []byte) *lang.Extraction {
 	sort.SliceStable(extraction.Imports, func(i, j int) bool { return extraction.Imports[i].Line < extraction.Imports[j].Line })
 	if m.name != "" {
 		var symbols lang.SymbolSet
-		symbols.Add(m.name, "crate", lines1(source, "name"))
+		symbols.Add(m.name, "crate", max(lang.TOMLKeyLines(source).Line("", "name"), 1))
 		extraction.Symbols = symbols.List()
 	}
 	return extraction
-}
-
-func lines1(source []byte, key string) int {
-	return keyLines(source).find("", key)
 }
 
 // lockState is a crate of an Alire lock file's solution.

@@ -60,9 +60,9 @@ func readManifest(source []byte) *manifest {
 	if _, err := toml.Decode(string(source), &raw); err != nil {
 		return m
 	}
-	lines := newLines(source)
+	lines := lang.TOMLKeyLines(source)
 	m.name, _ = raw["name"].(string)
-	m.nameLine = lines.key("", "name")
+	m.nameLine = lines.Line("", "name")
 	readDependencies(raw["dependencies"], false, "dependencies", lines, m.dependencies)
 	if feats, ok := raw["features"].(map[string]any); ok {
 		for _, f := range lang.SortedKeys(feats) {
@@ -76,7 +76,7 @@ func readManifest(source []byte) *manifest {
 	if library, ok := raw["library"].(map[string]any); ok {
 		if s, ok := library["source-dir"].(string); ok && s != "" {
 			m.sourceDirectory = s
-			m.sourceLine = lines.key("library", "source-dir")
+			m.sourceLine = lines.Line("library", "source-dir")
 		}
 		if include := stringList(library["include-dir"]); len(include) > 0 {
 			m.includeDirectories = include
@@ -87,9 +87,9 @@ func readManifest(source []byte) *manifest {
 			m.externalModules = append(m.externalModules, strings.ToLower(e))
 		}
 		m.link = stringList(b["link"])
-		m.buildLine = lines.key("build", "external-modules")
+		m.buildLine = lines.Line("build", "external-modules")
 		if m.buildLine == 0 {
-			m.buildLine = lines.key("build", "link")
+			m.buildLine = lines.Line("build", "link")
 		}
 	}
 	for _, kind := range []string{"executable", "test", "example"} {
@@ -103,7 +103,9 @@ func readManifest(source []byte) *manifest {
 			if s, ok := e["main"].(string); ok && s != "" {
 				p.main = s
 			}
-			p.line = lines.array(kind, n)
+			if elements := lines.Elements(kind); n < len(elements) {
+				p.line = elements[n]
+			}
 			m.programs = append(m.programs, p)
 		}
 	}
@@ -118,7 +120,7 @@ func readManifest(source []byte) *manifest {
 	return m
 }
 
-func readDependencies(v any, dev bool, section string, lines *tomlLines, into map[string]*dependency) {
+func readDependencies(v any, dev bool, section string, lines *lang.KeyLines, into map[string]*dependency) {
 	table, ok := v.(map[string]any)
 	if !ok {
 		return
@@ -127,7 +129,7 @@ func readDependencies(v any, dev bool, section string, lines *tomlLines, into ma
 		if name == "" || into[name] != nil {
 			continue
 		}
-		d := &dependency{name: name, dev: dev, line: lines.key(section, name)}
+		d := &dependency{name: name, dev: dev, line: lines.Line(section, name)}
 		switch e := table[name].(type) {
 		case string:
 			d.metadata, d.metaSet = e, true
@@ -161,76 +163,6 @@ func stringList(v any) []string {
 		return out
 	}
 	return nil
-}
-
-// tomlLines finds where keys of a TOML file are written, for import lines:
-// BurntSushi/toml does not report positions of decoded keys.
-type tomlLines struct {
-	lines []string
-}
-
-func newLines(source []byte) *tomlLines {
-	return &tomlLines{lines: strings.Split(string(source), "\n")}
-}
-
-// header is a table header line's name: [a.b] -> a.b, [[a]] -> a.
-func header(l string) (string, bool) {
-	t := strings.TrimSpace(l)
-	if !strings.HasPrefix(t, "[") {
-		return "", false
-	}
-	if i := strings.Index(t, "#"); i > 0 {
-		t = strings.TrimSpace(t[:i])
-	}
-	t = strings.Trim(t, "[]")
-	return strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(t), " ", ""), `"`, ""), true
-}
-
-// key is the first line that writes key in table section ("" for the top
-// level), as `key = ...`, `key.x = ...` or its own [section.key] header; 0 when
-// not found.
-func (tl *tomlLines) key(section, key string) int {
-	current := ""
-	for i, l := range tl.lines {
-		if h, ok := header(l); ok {
-			current = h
-			if section != "" && h == section+"."+key || section == "" && h == key {
-				return i + 1
-			}
-			if section != "" && strings.HasPrefix(h, section+"."+key+".") {
-				return i + 1
-			}
-			continue
-		}
-		t := strings.TrimSpace(l)
-		t = strings.TrimPrefix(t, `"`)
-		t = strings.TrimPrefix(t, `'`)
-		if current == section && strings.HasPrefix(t, key) {
-			rest := strings.TrimLeft(strings.TrimPrefix(strings.TrimPrefix(t[len(key):], `"`), `'`), " \t")
-			if strings.HasPrefix(rest, "=") || strings.HasPrefix(rest, ".") {
-				return i + 1
-			}
-		}
-		if section != "" && current == "" && strings.HasPrefix(t, section+".") {
-			if rest := strings.TrimPrefix(t, section+"."); strings.HasPrefix(rest, key) {
-				return i + 1 // dependencies.x = { ... } at the top level
-			}
-		}
-	}
-	return 0
-}
-
-// array is the header line of the n-th [[name]] entry.
-func (tl *tomlLines) array(name string, n int) int {
-	for i, l := range tl.lines {
-		if strings.TrimSpace(l) == "[["+name+"]]" || strings.HasPrefix(strings.TrimSpace(l), "[["+name+"]]") {
-			if n == 0 {
-				return i + 1
-			}
-			n--
-		}
-	}
-	return 0
 }
 
 // extractManifest makes each dependency of fpm.toml an import of the package it

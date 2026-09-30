@@ -51,6 +51,15 @@ func Imports(t *testing.T, result *lang.FileResult) map[string]lang.Target {
 	return out
 }
 
+// ImportLines maps the module of each import an extraction found to its line.
+func ImportLines(extraction *lang.Extraction) map[string]int {
+	out := map[string]int{}
+	for _, rawImport := range extraction.Imports {
+		out[rawImport.Module] = rawImport.Line
+	}
+	return out
+}
+
 // CheckImports asserts that res imports exactly want (spec -> target).
 func CheckImports(t *testing.T, result *lang.FileResult, want map[string]lang.Target) {
 	t.Helper()

@@ -37,8 +37,8 @@ type project struct {
 	sources    map[string]packageSource
 	extensions map[string][]string // extension -> the weak dependencies it needs
 	workspace  []string            // [workspace] projects, Pkg 1.12
-	lines      map[string]int      // "section.key" -> line
-	manifest   *manifest           // the manifest resolving it, if any
+	lines      *lang.KeyLines
+	manifest   *manifest // the manifest resolving it, if any
 }
 
 type packageSource struct{ path, url, rev string }
@@ -50,7 +50,7 @@ func readProject(source []byte) *project {
 		return nil
 	}
 	p := &project{dependencies: map[string]string{}, section: map[string]string{}, compat: map[string]string{},
-		sources: map[string]packageSource{}, extensions: map[string][]string{}, lines: keyLines(source)}
+		sources: map[string]packageSource{}, extensions: map[string][]string{}, lines: lang.TOMLKeyLines(source)}
 	p.name, _ = doc["name"].(string)
 	p.uuid, _ = doc["uuid"].(string)
 	for _, section := range dependencySections {
@@ -116,41 +116,6 @@ func readProject(source []byte) *project {
 	return p
 }
 
-var (
-	tableHeader = regexp.MustCompile(`^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$`)
-	keyLine     = regexp.MustCompile(`^\s*("([^"]+)"|[A-Za-z0-9_\-]+)\s*=`)
-)
-
-// keyLines maps "table.key" to the line of each key of a TOML file (1-based), and
-// each table header to its line; the first occurrence wins.
-func keyLines(source []byte) map[string]int {
-	out := map[string]int{}
-	table := ""
-	for i, l := range strings.Split(string(source), "\n") {
-		if m := tableHeader.FindStringSubmatch(l); m != nil {
-			table = strings.ReplaceAll(m[1], `"`, "")
-			if _, ok := out[table]; !ok {
-				out[table] = i + 1
-			}
-			continue
-		}
-		if m := keyLine.FindStringSubmatch(l); m != nil {
-			k := m[1]
-			if m[2] != "" {
-				k = m[2]
-			}
-			key := k
-			if table != "" {
-				key = table + "." + k
-			}
-			if _, ok := out[key]; !ok {
-				out[key] = i + 1
-			}
-		}
-	}
-	return out
-}
-
 // extractProject makes a Project.toml's dependencies (every section), workspace
 // projects and extensions imports; the package's name is its symbol.
 //
@@ -163,12 +128,12 @@ func extractProject(source []byte) *lang.Extraction {
 	}
 	var set lang.SymbolSet
 	if p.name != "" {
-		set.Add(p.name, "package", p.lines["name"])
+		set.Add(p.name, "package", p.lines.Line("", "name"))
 	}
 	for _, section := range dependencySections {
 		for _, name := range lang.SortedKeys(p.section) {
 			if p.section[name] == section {
-				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: section + "." + name, Module: name, Name: kindDependency + "\n" + section, Line: p.lines[section+"."+name]})
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: section + "." + name, Module: name, Name: kindDependency + "\n" + section, Line: p.lines.Line(section, name)})
 			}
 		}
 	}
@@ -176,17 +141,17 @@ func extractProject(source []byte) *lang.Extraction {
 	// an import of each, as written.
 	for _, section := range dependencySections[1:] {
 		for name := range p.dependencies {
-			if p.section[name] != section && p.lines[section+"."+name] > 0 {
-				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: section + "." + name, Module: name, Name: kindDependency + "\n" + section, Line: p.lines[section+"."+name]})
+			if p.section[name] != section && p.lines.Line(section, name) > 0 {
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: section + "." + name, Module: name, Name: kindDependency + "\n" + section, Line: p.lines.Line(section, name)})
 			}
 		}
 	}
 	for _, w := range p.workspace {
-		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "workspace.projects " + w, Module: w, Name: kindMember, Line: p.lines["workspace.projects"]})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "workspace.projects " + w, Module: w, Name: kindMember, Line: p.lines.Line("workspace", "projects")})
 	}
 	for _, extension := range lang.SortedKeys(p.extensions) {
-		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "extensions." + extension, Module: extension, Name: kindExtension, Line: p.lines["extensions."+extension]})
-		set.Add(extension, "extension", p.lines["extensions."+extension])
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "extensions." + extension, Module: extension, Name: kindExtension, Line: p.lines.Line("extensions", extension)})
+		set.Add(extension, "extension", p.lines.Line("extensions", extension))
 	}
 	extraction.Symbols = append(extraction.Symbols, set.List()...)
 	sort.SliceStable(extraction.Imports, func(i, j int) bool { return extraction.Imports[i].Line < extraction.Imports[j].Line })
@@ -308,10 +273,10 @@ func extractArtifacts(source []byte) *lang.Extraction {
 	if _, err := toml.Decode(string(source), &doc); err != nil {
 		return extraction
 	}
-	lines := keyLines(source)
+	lines := lang.TOMLKeyLines(source)
 	var set lang.SymbolSet
 	for _, name := range lang.SortedKeys(doc) {
-		set.Add(name, "artifact", lines[name])
+		set.Add(name, "artifact", lines.Line("", name))
 	}
 	extraction.Symbols = set.List()
 	return extraction
