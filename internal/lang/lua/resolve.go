@@ -87,7 +87,6 @@ func newResolver(root string, all []*scan.File) *resolver {
 	return r
 }
 
-// read reads a file of the repository by its slash-separated relative path.
 func (r *resolver) read(relative string) ([]byte, bool) {
 	return r.repository.ReadBounded(r.repository.Join(relative))
 }
@@ -131,7 +130,6 @@ func (r *resolver) indexFiles(all []*scan.File) (rockspecs, wallies, rojos []str
 	return rockspecs, wallies, rojos
 }
 
-// addModuleRoots adds the module roots a lua-language-server configuration names.
 func (r *resolver) addModuleRoots(directory string, source []byte) {
 	r.luarc = append(r.luarc, readLuarc(source, directory)...)
 }

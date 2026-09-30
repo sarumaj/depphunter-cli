@@ -104,112 +104,154 @@ type Store struct {
 // Read builds the store from the project files, props files, Paket files and lock
 // files among all.
 func Read(all []*scan.File) *Store {
-	s := &Store{ids: map[string]string{}, lockSpelled: map[string]bool{}, msbuild: newSet(""), remotes: map[string]*remote{}}
-	central := map[string]string{}
-	var locks, paketLocks, references []*scan.File
-	byDirectory := map[string]*set{}
+	r := &reader{Store: &Store{ids: map[string]string{}, lockSpelled: map[string]bool{}, msbuild: newSet(""), remotes: map[string]*remote{}},
+		byDirectory: map[string]*set{}, central: map[string]string{}}
+	r.indexRoots(all)
+	r.readManifests(all)
+	r.readPaketLocks()
+	r.readReferences()
+	for _, f := range r.locks {
+		readPackagesLock(r.Store, f)
+	}
+	return r.Store
+}
+
+type reader struct {
+	*Store
+	byDirectory map[string]*set   // the Paket roots
+	central     map[string]string // lower-case id -> version, from PackageVersion items
+	// The files read once every manifest is: paket.lock, paket.references and
+	// packages.lock.json.
+	paketLocks, references, locks []*scan.File
+}
+
+func (r *reader) indexRoots(all []*scan.File) {
 	for _, f := range all {
 		if f.Binary || f.TooLarge {
 			continue
 		}
 		if path.Base(f.Path) == "paket.dependencies" {
 			d := path.Dir(f.Path)
-			byDirectory[d] = newSet(d)
-			s.roots = append(s.roots, byDirectory[d])
+			r.byDirectory[d] = newSet(d)
+			r.roots = append(r.roots, r.byDirectory[d])
 		}
 	}
-	sort.SliceStable(s.roots, func(i, j int) bool { return lang.Depth(s.roots[i].directory) < lang.Depth(s.roots[j].directory) })
+	sort.SliceStable(r.roots, func(i, j int) bool { return lang.Depth(r.roots[i].directory) < lang.Depth(r.roots[j].directory) })
+}
+
+// readManifests reads the MSBuild files and paket.dependencies, then gives every
+// MSBuild package without a version its central one.
+func (r *reader) readManifests(all []*scan.File) {
+	readers := map[string]func(*scan.File){
+		"Directory.Packages.props": r.readMSBuild,
+		"Directory.Build.props":    r.readMSBuild,
+		"paket.dependencies":       r.readPaketDependencies,
+		"paket.lock":               func(f *scan.File) { r.paketLocks = append(r.paketLocks, f) },
+		"paket.references":         func(f *scan.File) { r.references = append(r.references, f) },
+		"packages.lock.json":       func(f *scan.File) { r.locks = append(r.locks, f) },
+	}
 	for _, f := range all {
 		if f.Binary || f.TooLarge {
 			continue
 		}
 		base := path.Base(f.Path)
-		switch {
-		case IsProject(base) || base == "Directory.Packages.props" || base == "Directory.Build.props":
-			data, err := os.ReadFile(f.AbsolutePath)
-			if err != nil {
-				continue
-			}
-			for _, it := range ReadProject(data).Items {
-				switch it.Kind {
-				case "PackageVersion":
-					if it.Include != "" {
-						s.spell(it.Include)
-						central[strings.ToLower(it.Include)] = it.Version
-					}
-				case "PackageReference", "GlobalPackageReference":
-					if it.Include != "" {
-						s.declare(s.msbuild, MainGroup, it.Include, it.Version, false)
-					}
-				}
-			}
-		case base == "paket.dependencies":
-			data, err := os.ReadFile(f.AbsolutePath)
-			if err != nil {
-				continue
-			}
-			dependencies, _ := ParseDependencies(data)
-			for _, d := range dependencies {
-				if d.Kind == "nuget" {
-					s.declare(byDirectory[path.Dir(f.Path)], d.Group, d.Name, d.Constraint, true)
-					continue
-				}
-				if r := s.remote(d.Kind, d.Name); r != nil {
-					r.reference = cmp.Or(r.reference, d.Constraint)
-					if d.File != "" {
-						r.files = append(r.files, path.Base(d.File))
-					}
-				}
-			}
-		case base == "paket.lock":
-			paketLocks = append(paketLocks, f)
-		case base == "paket.references":
-			references = append(references, f)
-		case base == "packages.lock.json":
-			locks = append(locks, f)
+		if IsProject(base) {
+			r.readMSBuild(f)
+		} else if read := readers[base]; read != nil {
+			read(f)
 		}
 	}
-	for key, e := range s.msbuild.packages {
-		e.declared = cmp.Or(e.declared, central[key])
+	for key, e := range r.msbuild.packages {
+		e.declared = cmp.Or(e.declared, r.central[key])
 	}
-	for _, f := range paketLocks {
+}
+
+func (r *reader) readMSBuild(f *scan.File) {
+	data, err := os.ReadFile(f.AbsolutePath)
+	if err != nil {
+		return
+	}
+	for _, it := range ReadProject(data).Items {
+		if it.Include == "" {
+			continue
+		}
+		switch it.Kind {
+		case "PackageVersion":
+			r.spell(it.Include)
+			r.central[strings.ToLower(it.Include)] = it.Version
+		case "PackageReference", "GlobalPackageReference":
+			r.declare(r.msbuild, MainGroup, it.Include, it.Version, false)
+		}
+	}
+}
+
+func (r *reader) readPaketDependencies(f *scan.File) {
+	data, err := os.ReadFile(f.AbsolutePath)
+	if err != nil {
+		return
+	}
+	dependencies, _ := ParseDependencies(data)
+	for _, d := range dependencies {
+		if d.Kind == "nuget" {
+			r.declare(r.byDirectory[path.Dir(f.Path)], d.Group, d.Name, d.Constraint, true)
+			continue
+		}
+		if remote := r.remote(d.Kind, d.Name); remote != nil {
+			remote.reference = cmp.Or(remote.reference, d.Constraint)
+			if d.File != "" {
+				remote.files = append(remote.files, path.Base(d.File))
+			}
+		}
+	}
+}
+
+func (r *reader) readPaketLocks() {
+	for _, f := range r.paketLocks {
+		r.readPaketLock(f)
+	}
+	sort.SliceStable(r.roots, func(i, j int) bool { return lang.Depth(r.roots[i].directory) < lang.Depth(r.roots[j].directory) })
+}
+
+func (r *reader) readPaketLock(f *scan.File) {
+	data, err := os.ReadFile(f.AbsolutePath)
+	if err != nil {
+		return
+	}
+	root := r.byDirectory[path.Dir(f.Path)]
+	if root == nil { // a lock without its paket.dependencies still pins
+		root = newSet(path.Dir(f.Path))
+		r.byDirectory[root.directory] = root
+		r.roots = append(r.roots, root)
+	}
+	// The Main group first, so a package several groups lock takes Main's version.
+	entries := ParseLock(data)
+	sort.SliceStable(entries, func(i, j int) bool {
+		return strings.EqualFold(entries[i].Group, MainGroup) && !strings.EqualFold(entries[j].Group, MainGroup)
+	})
+	for _, l := range entries {
+		if l.Kind == "nuget" {
+			r.lock(root, l.Group, l.Name, l.Version, l.Dependencies)
+			continue
+		}
+		if remote := r.remote(l.Kind, lockRemote(l)); remote != nil {
+			remote.commit = cmp.Or(remote.commit, l.Version)
+			if l.Name != "" {
+				remote.files = append(remote.files, path.Base(l.Name))
+			}
+		}
+	}
+}
+
+// readReferences reads paket.references, which names what a project uses: a
+// package it names is declared for the namespace rule even when only a lock lists
+// it.
+func (r *reader) readReferences() {
+	for _, f := range r.references {
 		data, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
-		root := byDirectory[path.Dir(f.Path)]
-		if root == nil { // a lock without its paket.dependencies still pins
-			root = newSet(path.Dir(f.Path))
-			byDirectory[root.directory] = root
-			s.roots = append(s.roots, root)
-		}
-		// The Main group first, so a package several groups lock takes Main's version.
-		entries := ParseLock(data)
-		sort.SliceStable(entries, func(i, j int) bool {
-			return strings.EqualFold(entries[i].Group, MainGroup) && !strings.EqualFold(entries[j].Group, MainGroup)
-		})
-		for _, l := range entries {
-			if l.Kind == "nuget" {
-				s.lock(root, l.Group, l.Name, l.Version, l.Dependencies)
-				continue
-			}
-			if r := s.remote(l.Kind, lockRemote(l)); r != nil {
-				r.commit = cmp.Or(r.commit, l.Version)
-				if l.Name != "" {
-					r.files = append(r.files, path.Base(l.Name))
-				}
-			}
-		}
-	}
-	sort.SliceStable(s.roots, func(i, j int) bool { return lang.Depth(s.roots[i].directory) < lang.Depth(s.roots[j].directory) })
-	// paket.references names what a project uses: a package it names is declared
-	// for the namespace rule even when only a lock lists it.
-	for _, f := range references {
-		data, err := os.ReadFile(f.AbsolutePath)
-		if err != nil {
-			continue
-		}
-		root := s.root(f.Path)
+		root := r.root(f.Path)
 		if root == nil {
 			continue
 		}
@@ -223,10 +265,6 @@ func Read(all []*scan.File) *Store {
 			}
 		}
 	}
-	for _, f := range locks {
-		readPackagesLock(s, f)
-	}
-	return s
 }
 
 // root is the Paket root governing a file: the nearest directory above it with a

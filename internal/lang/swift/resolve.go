@@ -23,11 +23,9 @@ type resolver struct {
 	targets []string            // target directories, deepest first
 	// projects are the directories with a Package.swift or an Xcode project,
 	// shallowest first.
-	projects []*project
-	types    map[string][]string // type name -> files declaring it at the top level
-	pods     *cocoapods.Index    // what Podfiles and Cartfiles declare
-	// repository reads the repository's files while the resolver is built, and
-	// byDirectory is its projects by directory.
+	projects    []*project
+	types       map[string][]string // type name -> files declaring it at the top level
+	pods        *cocoapods.Index    // what Podfiles and Cartfiles declare
 	repository  *lang.Source
 	byDirectory map[string]*project
 	lang.NoteList
@@ -79,8 +77,8 @@ func (r *resolver) projectAt(directory string) *project {
 	return p
 }
 
-// indexFiles records every file in the layout and returns the directories holding
-// Swift outside build output, the candidates for an Xcode project's modules.
+// indexFiles returns the directories holding Swift outside build output: the
+// candidates for an Xcode project's modules.
 func (r *resolver) indexFiles(sorted []*scan.File) (swiftDirectories []string) {
 	for _, f := range sorted {
 		r.Add(f.Path)
@@ -159,8 +157,6 @@ func (r *resolver) readWorkspaceResolved(file, directory string) {
 	r.noteResolved(file, path.Dir(d), len(pins))
 }
 
-// readPackage reads a Package.swift: the packages it depends on, the products they
-// give, and the directories of its targets, each a module.
 func (r *resolver) readPackage(manifest string) {
 	directory := path.Dir(manifest)
 	source, _ := r.read(manifest)

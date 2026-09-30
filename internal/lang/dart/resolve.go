@@ -50,13 +50,23 @@ type resolver struct {
 // The notes a resolver keeps reach --explain only through lang.Noter.
 var _ lang.Noter = (*resolver)(nil)
 
-// Implements: REQ-DART-004, REQ-DART-006, REQ-DART-007, REQ-DART-009
+// Implements: REQ-DART-009
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{Layout: lang.NewLayout()}
 	// pubspec.lock and pubspec_overrides.yaml are git-ignored as often as not; what is
 	// on disk beside a pubspec is what pub resolved with.
 	repository := lang.NewSource(root)
-	var pubspecs, melos []string
+	pubspecs, melos := r.indexFiles(repository, all)
+	for _, f := range pubspecs {
+		r.readPackage(repository, f)
+	}
+	r.linkWorkspaces()
+	r.linkMelos(repository, melos)
+	sort.SliceStable(r.packages, func(i, j int) bool { return lang.Depth(r.packages[i].directory) > lang.Depth(r.packages[j].directory) })
+	return r
+}
+
+func (r *resolver) indexFiles(repository *lang.Source, all []*scan.File) (pubspecs, melos []string) {
 	for _, f := range all {
 		r.Add(f.Path)
 		repository.Add(f)
@@ -69,58 +79,87 @@ func newResolver(root string, all []*scan.File) *resolver {
 	}
 	sort.Strings(pubspecs)
 	sort.Strings(melos)
-	byDirectory := map[string]*pubPackage{}
-	for _, f := range pubspecs {
-		source, _ := repository.Read(f)
-		spec, err := readPubspec(source)
-		if err != nil {
-			continue
-		}
-		p := &pubPackage{directory: path.Dir(f), spec: spec, dependencies: map[string]*dependency{}}
-		for _, section := range []string{"dev_dependencies", "dependencies", "dependency_overrides"} {
-			for _, d := range spec.dependencies {
-				if d.section == section {
-					p.dependencies[d.name] = d
-				}
-			}
-		}
-		if source, ok := repository.Read(path.Join(p.directory, "pubspec_overrides.yaml")); ok {
-			if o, err := readPubspec(source); err == nil {
-				for _, d := range o.dependencies {
-					p.dependencies[d.name] = d
-				}
-			}
-		}
-		if source, ok := repository.Read(path.Join(p.directory, "pubspec.lock")); ok {
-			p.lock, p.lockDirectory = readLock(source), p.directory
-			// Implements: REQ-DART-007, REQ-TRC-017
-			if lock := path.Join(p.directory, "pubspec.lock"); len(p.lock) > 0 {
-				if !repository.Listed(lock) {
-					r.NoteIgnored(lock)
-				}
-				r.Note(lock, trace.NoteFlat, "pubspec.lock pins versions but records no edges: offline, "+
-					"--resolve-depth adds nothing past the packages it pins (--online asks pub)")
-			}
-		}
-		byDirectory[p.directory] = p
-		r.packages = append(r.packages, p)
+	return pubspecs, melos
+}
+
+// readPackage reads a pubspec.yaml with the pubspec_overrides.yaml and pubspec.lock
+// beside it. An override replaces a declaration, dependency_overrides beat
+// dependencies, and dependencies beat dev_dependencies.
+//
+// Implements: REQ-DART-006
+func (r *resolver) readPackage(repository *lang.Source, file string) {
+	source, _ := repository.Read(file)
+	spec, err := readPubspec(source)
+	if err != nil {
+		return
 	}
-	// A pub workspace: the root lists its members, which resolve together against
-	// the root's pubspec.lock.
+	p := &pubPackage{directory: path.Dir(file), spec: spec, dependencies: map[string]*dependency{}}
+	for _, section := range []string{"dev_dependencies", "dependencies", "dependency_overrides"} {
+		for _, d := range spec.dependencies {
+			if d.section == section {
+				p.dependencies[d.name] = d
+			}
+		}
+	}
+	if source, ok := repository.Read(path.Join(p.directory, "pubspec_overrides.yaml")); ok {
+		if o, err := readPubspec(source); err == nil {
+			for _, d := range o.dependencies {
+				p.dependencies[d.name] = d
+			}
+		}
+	}
+	r.readLock(repository, p)
+	r.packages = append(r.packages, p)
+}
+
+// Implements: REQ-DART-007, REQ-TRC-017
+func (r *resolver) readLock(repository *lang.Source, p *pubPackage) {
+	source, ok := repository.Read(path.Join(p.directory, "pubspec.lock"))
+	if !ok {
+		return
+	}
+	p.lock, p.lockDirectory = readLock(source), p.directory
+	lock := path.Join(p.directory, "pubspec.lock")
+	if len(p.lock) == 0 {
+		return
+	}
+	if !repository.Listed(lock) {
+		r.NoteIgnored(lock)
+	}
+	r.Note(lock, trace.NoteFlat, "pubspec.lock pins versions but records no edges: offline, "+
+		"--resolve-depth adds nothing past the packages it pins (--online asks pub)")
+}
+
+// linkWorkspaces links a pub workspace: the root lists its members, which resolve
+// together against the root's pubspec.lock.
+//
+// Implements: REQ-DART-004
+func (r *resolver) linkWorkspaces() {
 	for _, p := range r.packages {
 		for _, m := range p.spec.workspace {
-			for _, q := range r.packages {
-				if q != p && q.root == nil && globMatch(strings.TrimSuffix(path.Join(p.directory, m), "/"), q.directory) {
-					q.root = p
-					if q.lock == nil {
-						q.lock, q.lockDirectory = p.lock, p.lockDirectory
-					}
-				}
-			}
+			r.linkMembers(p, strings.TrimSuffix(path.Join(p.directory, m), "/"))
 		}
 	}
-	// melos: melos.yaml's packages globs, or melos 7's `melos:` section in the root
-	// pubspec (whose packages are then its workspace, already read above).
+}
+
+func (r *resolver) linkMembers(root *pubPackage, glob string) {
+	for _, q := range r.packages {
+		if q == root || q.root != nil || !globMatch(glob, q.directory) {
+			continue
+		}
+		q.root = root
+		if q.lock == nil {
+			q.lock, q.lockDirectory = root.lock, root.lockDirectory
+		}
+	}
+}
+
+// linkMelos links every package to the melos repositories selecting it: melos.yaml's
+// packages globs, or melos 7's `melos:` section in the root pubspec (whose packages
+// are then its workspace, already read).
+//
+// Implements: REQ-DART-004
+func (r *resolver) linkMelos(repository *lang.Source, melos []string) {
 	var repositories []*melosRepository
 	for _, f := range melos {
 		source, _ := repository.Read(f)
@@ -144,8 +183,6 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		}
 	}
-	sort.SliceStable(r.packages, func(i, j int) bool { return lang.Depth(r.packages[i].directory) > lang.Depth(r.packages[j].directory) })
-	return r
 }
 
 // has reports whether a package directory is one of the repository's.

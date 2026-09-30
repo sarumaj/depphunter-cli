@@ -30,14 +30,20 @@ type resolver struct {
 
 // newResolver reads every project, manifest and source: sources for the modules
 // they define and the files they include, which place each file in a module.
-//
-// Implements: REQ-JULIA-004, REQ-JULIA-005, REQ-JULIA-008
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{Layout: lang.NewLayout(), byDirectory: map[string]*project{},
 		byName: map[string][]*project{}, byUUID: map[string][]*project{}, byFile: map[string]*project{},
 		manifests: map[string]*manifest{}, modules: map[string][]string{}, ctx: map[string]string{}}
-	var sources []*scan.File
-	directoryManifest := map[string]*manifest{}
+	sources := r.indexFiles(all)
+	directoryManifest := r.readManifests(root, all)
+	r.linkProjects(directoryManifest)
+	r.readSources(sources)
+	return r
+}
+
+// indexFiles records the layout, reads the projects on the way and returns the
+// sources, read once every project is known.
+func (r *resolver) indexFiles(all []*scan.File) (sources []*scan.File) {
 	for _, f := range all {
 		r.Add(f.Path)
 		if !lang.Readable(f) {
@@ -47,27 +53,68 @@ func newResolver(root string, all []*scan.File) *resolver {
 		case classSource:
 			sources = append(sources, f)
 		case classProject:
-			source, err := os.ReadFile(f.AbsolutePath)
-			if err != nil {
-				continue
-			}
-			p := readProject(source)
-			if p == nil {
-				continue
-			}
-			p.file, p.directory = f.Path, path.Dir(f.Path)
-			// JuliaProject.toml takes precedence over Project.toml, as in Pkg.
-			if have := r.byDirectory[p.directory]; have != nil && path.Base(have.file) == "JuliaProject.toml" {
-				continue
-			}
-			r.byDirectory[p.directory] = p
+			r.addProject(f)
 		}
 	}
 	if len(r.Files) > 0 {
 		r.Directories["."] = true // the top level is a directory here, as soon as it holds a file
 	}
-	// Manifests are often not committed; they are looked for on disk beside every
-	// project too.
+	return sources
+}
+
+func (r *resolver) addProject(f *scan.File) {
+	source, err := os.ReadFile(f.AbsolutePath)
+	if err != nil {
+		return
+	}
+	p := readProject(source)
+	if p == nil {
+		return
+	}
+	p.file, p.directory = f.Path, path.Dir(f.Path)
+	// JuliaProject.toml takes precedence over Project.toml, as in Pkg.
+	if have := r.byDirectory[p.directory]; have != nil && path.Base(have.file) == "JuliaProject.toml" {
+		return
+	}
+	r.byDirectory[p.directory] = p
+}
+
+// readManifests reads the manifest of every directory and returns them by
+// directory: the best one on disk beside a project, else the first committed one.
+//
+// Implements: REQ-JULIA-008
+func (r *resolver) readManifests(root string, all []*scan.File) map[string]*manifest {
+	directoryManifest := r.readManifestsOnDisk(root)
+	for _, f := range all {
+		if fileClass(f.Path) != classManifest || !lang.Readable(f) {
+			continue
+		}
+		if m := directoryManifest[path.Dir(f.Path)]; m != nil && m.file == f.Path {
+			r.manifests[f.Path] = m
+			continue
+		}
+		source, err := os.ReadFile(f.AbsolutePath)
+		if err != nil {
+			continue
+		}
+		m := readManifest(source)
+		m.file, m.directory = f.Path, path.Dir(f.Path)
+		r.manifests[f.Path] = m
+		if directoryManifest[m.directory] == nil {
+			directoryManifest[m.directory] = m
+		}
+	}
+	for _, m := range directoryManifest {
+		r.all = append(r.all, m)
+	}
+	sort.Slice(r.all, func(i, j int) bool { return r.all[i].file < r.all[j].file })
+	return directoryManifest
+}
+
+// readManifestsOnDisk looks for a manifest beside every project on disk, since
+// manifests are often not committed.
+func (r *resolver) readManifestsOnDisk(root string) map[string]*manifest {
+	directoryManifest := map[string]*manifest{}
 	repository := lang.OpenRoot(root)
 	for directory := range r.byDirectory {
 		entries, err := repository.ReadDir(filepath.Join(root, filepath.FromSlash(directory)))
@@ -92,33 +139,16 @@ func newResolver(root string, all []*scan.File) *resolver {
 		m.file, m.directory = file, directory
 		directoryManifest[directory] = m
 	}
-	for _, f := range all {
-		if fileClass(f.Path) != classManifest || !lang.Readable(f) {
-			continue
-		}
-		if m := directoryManifest[path.Dir(f.Path)]; m != nil && m.file == f.Path {
-			r.manifests[f.Path] = m
-			continue
-		}
-		source, err := os.ReadFile(f.AbsolutePath)
-		if err != nil {
-			continue
-		}
-		m := readManifest(source)
-		m.file, m.directory = f.Path, path.Dir(f.Path)
-		r.manifests[f.Path] = m
-		if directoryManifest[m.directory] == nil {
-			directoryManifest[m.directory] = m
-		}
-	}
-	for _, m := range directoryManifest {
-		r.all = append(r.all, m)
-	}
-	sort.Slice(r.all, func(i, j int) bool { return r.all[i].file < r.all[j].file })
+	return directoryManifest
+}
+
+// linkProjects gives every project the manifest resolving it: its own, else the
+// nearest above it (a workspace's, or the repository's environment).
+//
+// Implements: REQ-JULIA-005, REQ-JULIA-008
+func (r *resolver) linkProjects(directoryManifest map[string]*manifest) {
 	for _, p := range r.byDirectory {
 		r.projects = append(r.projects, p)
-		// The manifest resolving a project is its own, else the nearest above it (a
-		// workspace's, or the repository's environment).
 		if m, ok := lang.NearestAtOrAbove(directoryManifest, p.directory); ok {
 			p.manifest = m
 		}
@@ -133,8 +163,6 @@ func newResolver(root string, all []*scan.File) *resolver {
 			r.byUUID[p.uuid] = append(r.byUUID[p.uuid], p)
 		}
 	}
-	r.readSources(sources)
-	return r
 }
 
 // manifestRank orders the manifests of one directory as Pkg prefers them: a
@@ -158,6 +186,8 @@ func manifestRank(name string) int {
 
 // readSources places every source file in a module: a file included from inside
 // module Shop has Shop as its top level, so the modules it defines are Shop.X.
+//
+// Implements: REQ-JULIA-004
 func (r *resolver) readSources(files []*scan.File) {
 	type parsed struct {
 		file   string

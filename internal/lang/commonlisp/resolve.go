@@ -114,7 +114,7 @@ func besideOcicl(directory string) bool {
 // ocicl.csv files for pins, and the .asd files of what Qlot and ocicl
 // installed beside them.
 //
-// Implements: REQ-COMMONLISP-005, REQ-COMMONLISP-006, REQ-COMMONLISP-011, REQ-COMMONLISP-012
+// Implements: REQ-COMMONLISP-011
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{
 		Layout: lang.NewLayout(), systems: map[string]*sysReference{},
@@ -122,7 +122,15 @@ func newResolver(root string, all []*scan.File) *resolver {
 		packages: map[string][]string{}, nicknames: map[string]map[string]string{}, stems: map[string][]string{}, registered: map[string]string{}, pins: map[string]*pins{},
 		installed: map[string]*installedSystem{},
 	}
-	var asds, sources []*scan.File
+	asds, locks, sources := r.indexFiles(all)
+	r.readLocks(locks)
+	r.readSystems(asds)
+	r.readPackages(sources)
+	r.readInstalledTrees(root)
+	return r
+}
+
+func (r *resolver) indexFiles(all []*scan.File) (asds, locks, sources []*scan.File) {
 	for _, f := range all {
 		if ignored(f) {
 			continue
@@ -137,7 +145,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		case strings.EqualFold(path.Ext(base), ".asd"):
 			asds = append(asds, f)
 		case base == "qlfile", base == "qlfile.lock", base == "ocicl.csv":
-			r.readPins(f)
+			locks = append(locks, f)
 		case lispSource(f):
 			sources = append(sources, f)
 		}
@@ -145,6 +153,30 @@ func newResolver(root string, all []*scan.File) *resolver {
 	if len(r.Files) > 0 {
 		r.Directories["."] = true // the top level is a directory here, as soon as it holds a file
 	}
+	return asds, locks, sources
+}
+
+// Implements: REQ-COMMONLISP-006
+func (r *resolver) readLocks(locks []*scan.File) {
+	for _, f := range locks {
+		r.readPins(f)
+	}
+	for d := range r.pins {
+		r.pinDirectories = append(r.pinDirectories, d)
+	}
+	sort.Slice(r.pinDirectories, func(i, j int) bool {
+		a, b := strings.Count(r.pinDirectories[i], "/"), strings.Count(r.pinDirectories[j], "/")
+		if a != b {
+			return a < b
+		}
+		return r.pinDirectories[i] < r.pinDirectories[j]
+	})
+}
+
+// readSystems reads the repository's .asd files. The first system of a name wins.
+//
+// Implements: REQ-COMMONLISP-005
+func (r *resolver) readSystems(asds []*scan.File) {
 	for _, f := range asds {
 		source, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
@@ -169,7 +201,11 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 		r.index(f.Path, in)
 	}
-	// Package definitions: only files that mention one are read.
+}
+
+// readPackages indexes the package definitions: only sources that mention one are
+// read.
+func (r *resolver) readPackages(sources []*scan.File) {
 	var mu sync.Mutex
 	lang.ForEachFile(context.Background(), sources, func(f *scan.File, source []byte) *lang.FileResult {
 		if !mentionsPackage(source) {
@@ -184,21 +220,18 @@ func newResolver(root string, all []*scan.File) *resolver {
 	for _, files := range r.packages {
 		sort.Strings(files)
 	}
-	for d := range r.pins {
-		r.pinDirectories = append(r.pinDirectories, d)
+}
+
+// readInstalledTrees reads what Qlot and ocicl installed beside each pinned
+// directory, shallowest first: a system already read is kept.
+//
+// Implements: REQ-COMMONLISP-012
+func (r *resolver) readInstalledTrees(root string) {
+	if root == "" {
+		return
 	}
-	sort.Slice(r.pinDirectories, func(i, j int) bool {
-		a, b := strings.Count(r.pinDirectories[i], "/"), strings.Count(r.pinDirectories[j], "/")
-		if a != b {
-			return a < b
-		}
-		return r.pinDirectories[i] < r.pinDirectories[j]
-	})
 	repository := lang.OpenRoot(root)
 	for _, d := range r.pinDirectories {
-		if root == "" {
-			break
-		}
 		p, base := r.pins[d], filepath.Join(root, filepath.FromSlash(d))
 		if len(p.ql) > 0 || len(p.lock) > 0 {
 			r.readInstalled(repository, filepath.Join(base, ".qlot", "dists"), p)
@@ -211,7 +244,6 @@ func newResolver(root string, all []*scan.File) *resolver {
 		r.installedNames = append(r.installedNames, n)
 	}
 	sort.Strings(r.installedNames)
-	return r
 }
 
 // maxInstalledFiles bounds the files looked at in one installed tree.
