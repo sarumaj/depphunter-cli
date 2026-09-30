@@ -45,17 +45,21 @@ type Client struct {
 	failed map[string]time.Time
 	// feeds is what a NuGet service index resolved to: the same answer for every
 	// package on that feed, and one request rather than one per package.
-	feeds map[string]string
+	feeds lazy[string]
+	// composerPatterns is where each Composer repository serves a package's
+	// metadata, and terraformServices where each Terraform registry serves a
+	// service: one request per repository or registry.
+	composerPatterns, terraformServices lazy[string]
 	// repositories is what the PACKAGES file of each CRAN-like repository lists: one
 	// request per repository rather than one per package.
-	repositories map[string]map[string][]dependency
+	repositories lazy[map[string][]dependency]
 	// rocks is what each rocks server's manifest lists: rock -> versions, one
 	// request per server rather than one per rock.
-	rocks map[string]map[string][]string
+	rocks lazy[map[string][]string]
 	// cpanModules is which distribution provides each module, per MetaCPAN API: a
 	// release lists the modules it requires, and the map's packages are
 	// distributions.
-	cpanModules map[string]string
+	cpanModules lazy[string]
 	// cpanMirrors is what each CPAN mirror's 02packages lists, read once.
 	cpanMirrors memo[*cpanPackages]
 	// opamCopies are the repository copies opam keeps, an archive read once.
@@ -125,20 +129,16 @@ func (c *Client) note(code, message string) {
 // that must not be asked of a public index are the configuration's (Config.Private).
 func NewClient(config *Config, directory string, ttl, timeout time.Duration, credentials *auth.Store) *Client {
 	return &Client{
-		config:       config,
-		http:         &http.Client{Timeout: timeout},
-		cache:        store.New(directory, ttl),
-		auth:         credentials,
-		timeout:      timeout,
-		seen:         map[string][]lang.Target{},
-		failed:       map[string]time.Time{},
-		feeds:        map[string]string{},
-		repositories: map[string]map[string][]dependency{},
-		rocks:        map[string]map[string][]string{},
-		cpanModules:  map[string]string{},
-		qlSystems:    map[string]*qlIndex{},
-		qlFailed:     map[string]qlFailure{},
-		located:      map[string]located{},
+		config:    config,
+		http:      &http.Client{Timeout: timeout},
+		cache:     store.New(directory, ttl),
+		auth:      credentials,
+		timeout:   timeout,
+		seen:      map[string][]lang.Target{},
+		failed:    map[string]time.Time{},
+		qlSystems: map[string]*qlIndex{},
+		qlFailed:  map[string]qlFailure{},
+		located:   map[string]located{},
 	}
 }
 
