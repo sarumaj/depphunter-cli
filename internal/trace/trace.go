@@ -14,7 +14,6 @@ package trace
 import (
 	"slices"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -409,18 +408,16 @@ func (r *Report) Summarize(g *graph.Graph) {
 	defer r.mu.Unlock()
 	r.Root = g.Root
 	ecosystem := map[string]string{} // ecosystem node id -> its id without the prefix
-	for _, n := range g.Nodes {
-		if n.Kind == graph.KindEcosystem {
-			ecosystem[n.ID] = strings.TrimPrefix(n.ID, "e:")
-		}
+	for n := range g.Of(graph.KindEcosystem) {
+		ecosystem[n.ID] = graph.EcosystemOf(n.ID)
 	}
 	use := map[[2]string]*Use{}
-	for _, n := range g.Nodes {
+	for n := range g.Of(graph.KindPackage) {
 		index := n.Index
 		if n.Origin != "" {
 			index = Installed
 		}
-		if n.Kind != graph.KindPackage || index == "" {
+		if index == "" {
 			continue
 		}
 		r.Totals.Packages++

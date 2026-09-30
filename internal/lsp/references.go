@@ -260,17 +260,11 @@ func References(ctx context.Context, g *graph.Graph, options Options) (*Result, 
 	}
 
 	files := map[string]*fileInfo{} // path -> symbols
-	for _, n := range g.Nodes {
-		if n.Kind == graph.KindFile {
-			files[n.Path] = &fileInfo{id: n.ID}
-		}
+	for n := range g.Of(graph.KindFile) {
+		files[n.Path] = &fileInfo{id: n.ID}
 	}
-	for _, n := range g.Nodes {
-		if n.Kind != graph.KindSymbol {
-			continue
-		}
-		p := strings.TrimPrefix(n.Parent, "f:")
-		if f := files[p]; f != nil {
+	for n := range g.Of(graph.KindSymbol) {
+		if f := files[graph.FileOf(n.Parent)]; f != nil {
 			f.symbols = append(f.symbols, symbol{id: n.ID, name: symbolWord(n.Name), line: n.Line})
 		}
 	}

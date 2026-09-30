@@ -250,10 +250,8 @@ func loadHistory(ctx context.Context, settings config.Config, cacheDirectory str
 	}
 	log.Printf("git history: %d commits%s in %s", h.Commits, note, time.Since(start).Round(time.Millisecond))
 	files := map[string]bool{}
-	for _, n := range g.Nodes {
-		if n.Kind == graph.KindFile {
-			files[n.Path] = true
-		}
+	for n := range g.Of(graph.KindFile) {
+		files[n.Path] = true
 	}
 	return h.Only(files)
 }
@@ -358,8 +356,8 @@ func loadFindings(ctx context.Context, settings config.Config, cacheDirectory st
 // Implements: REQ-MD-015
 func documents(g *graph.Graph) []string {
 	var out []string
-	for _, n := range g.Nodes {
-		if n.Kind == graph.KindFile && n.Language == "Markdown" && !fixed(n.Path) {
+	for n := range g.Of(graph.KindFile) {
+		if n.Language == "Markdown" && !fixed(n.Path) {
 			out = append(out, n.Path)
 		}
 	}
@@ -397,14 +395,11 @@ func pinned(g *graph.Graph, private func(ecosystem, name string) bool) []finding
 		private = func(string, string) bool { return false }
 	}
 	var out []findings.Package
-	for _, n := range g.Nodes {
-		if n.Kind != graph.KindPackage || n.Version == "" || n.Floating {
+	for n := range g.Of(graph.KindPackage) {
+		if n.Version == "" || n.Floating {
 			continue
 		}
-		ecosystem := n.Parent
-		if i := strings.LastIndex(ecosystem, ":"); i >= 0 {
-			ecosystem = ecosystem[i+1:]
-		}
+		ecosystem := graph.EcosystemOf(n.Parent)
 		p := findings.Package{Ecosystem: ecosystem, Name: n.Name, Version: n.Version}
 		commit, repository, public := lang.GitPin(ecosystem, n.Name, n.Version, n.Origin, n.Git)
 		// A version that is itself a git reference (npm's github:owner/repo#<sha>, a
@@ -612,10 +607,8 @@ func findingWatch(settings config.Config) (directories, files []string) {
 // Implements: REQ-WATCH-001
 func watchDirectories(root string, g *graph.Graph) []string {
 	var directories []string
-	for _, n := range g.Nodes {
-		if n.Kind == graph.KindDirectory {
-			directories = append(directories, filepath.Join(root, filepath.FromSlash(n.Path)))
-		}
+	for n := range g.Of(graph.KindDirectory) {
+		directories = append(directories, filepath.Join(root, filepath.FromSlash(n.Path)))
 	}
 	return directories
 }
