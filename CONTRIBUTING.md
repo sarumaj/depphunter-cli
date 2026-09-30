@@ -170,12 +170,13 @@ flowchart TB
    navigable tree with aggregates, `layout.js` computes the archipelago from
    the hierarchy and expansion state (never a force simulation, so the same
    repository always gives the same map), `scene.js` draws every box in one
-   instanced three.js mesh and edges as arcs, `routes.js` finds the roads those
-   edges take by one sweep over a grid of the map, `pins.js` and `bugs.js` put
-   what the scanners reported over the buildings and on the streets,
-   `labels.js` places labels, `filter.js` and `history.js` compute filters,
-   search and history colors locally, and `walk.js`, `city.js` and `tools.js`
-   provide the first-person view and the tools it presents.
+   instanced three.js mesh and edges as arcs, `city.js` paints the streets
+   into the free space of every terrace from a grid listing the footprints
+   near each cell, `pins.js` and `bugs.js` put what the scanners reported over
+   the buildings and on the streets, `labels.js` places labels, `filter.js`
+   and `history.js` compute filters, search and history colors locally, and
+   `walk.js`, `city.js` and `tools.js` provide the first-person view and the
+   tools it presents.
 
 The HTML export (`--export html`) inlines the same modules as `data:` URLs with
 the graph, settings, history and source text, so the page needs neither
