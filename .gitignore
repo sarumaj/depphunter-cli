@@ -9,3 +9,7 @@ extension/out/
 *.rej
 *.orig
 internal/lang/java/testdata/repo/target/
+# What SwiftPM and sourcekit-lsp build when an editor opens the Swift fixture; the
+# checkouts' manifests are fixture.
+internal/lang/swift/testdata/**/.build/*
+!internal/lang/swift/testdata/repo/.build/checkouts/
