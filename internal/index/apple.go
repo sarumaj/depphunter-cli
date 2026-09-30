@@ -479,16 +479,12 @@ func (c *Client) swiftPackage(ctx context.Context, index string, t lang.Target) 
 	base := strings.TrimRight(index, "/") + "/" + url.PathEscape(scope) + "/" + url.PathEscape(name)
 	version := strings.TrimSpace(t.Version)
 	if !lang.Pinned(version) {
-		body, err := c.accept(ctx, base, swiftRegistryMedia+"json")
-		if err != nil {
-			return nil, err
-		}
-		var metadata struct {
+		metadata, err := acceptJSON[struct {
 			Releases map[string]struct {
 				Problem *json.RawMessage `json:"problem"`
 			} `json:"releases"`
-		}
-		if err := json.Unmarshal(body, &metadata); err != nil {
+		}](ctx, c, base, swiftRegistryMedia+"json")
+		if err != nil {
 			return nil, err
 		}
 		requirement := version

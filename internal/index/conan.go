@@ -415,11 +415,7 @@ func (c *Client) bearerGet(ctx context.Context, address, media, token string) ([
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return nil, &statusError{url: address, status: response.Status, code: response.StatusCode}
-	}
-	return readLimited(response)
+	return readOK(response, address)
 }
 
 // basicGet asks for address with a user and password as Basic credentials and
@@ -436,11 +432,7 @@ func (c *Client) basicGet(ctx context.Context, address, user, password string) (
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return nil, &statusError{url: address, status: response.Status, code: response.StatusCode}
-	}
-	return readLimited(response)
+	return readOK(response, address)
 }
 
 // ---------------------------------------------------------------- versions

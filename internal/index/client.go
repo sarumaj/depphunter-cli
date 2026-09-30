@@ -609,11 +609,25 @@ func (c *Client) accept(ctx context.Context, url, media string) ([]byte, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return nil, &statusError{url: url, status: response.Status, code: response.StatusCode}
+	return readOK(response, url)
+}
+
+// getJSON is get decoded: it asks for address and decodes the JSON answer into a T.
+// Credentials, the report's record of the request and the "not found" reading of
+// its errors are get's own; an answer that is not JSON is an error.
+func getJSON[T any](ctx context.Context, c *Client, address string) (T, error) {
+	return acceptJSON[T](ctx, c, address, "application/json")
+}
+
+// acceptJSON is getJSON asking for another media type: a registry's own JSON type
+// (application/vnd.pub.v2+json) or any answer at all (*/*).
+func acceptJSON[T any](ctx context.Context, c *Client, address, media string) (T, error) {
+	var doc T
+	body, err := c.accept(ctx, address, media)
+	if err == nil {
+		err = json.Unmarshal(body, &doc)
 	}
-	return readLimited(response)
+	return doc, err
 }
 
 // statusError is an index's answer other than 200 OK.
@@ -660,6 +674,16 @@ func readLimited(response *http.Response) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(response.Body, maxBody))
 }
 
+// readOK reads an answer that must be 200 OK and closes it. Any other status is a
+// statusError for address, so that a 404 or 410 reads as "not found" (notFound).
+func readOK(response *http.Response, address string) ([]byte, error) {
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, &statusError{url: address, status: response.Status, code: response.StatusCode}
+	}
+	return readLimited(response)
+}
+
 // do makes one request and hands back the response unread. bearer, when given, is
 // sent instead of this machine's own credentials - it is the token a registry handed
 // out for this one pull (see ociToken).
@@ -700,11 +724,7 @@ func (c *Client) postForm(ctx context.Context, address string, form url.Values) 
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return nil, &statusError{url: address, status: response.Status, code: response.StatusCode}
-	}
-	return readLimited(response)
+	return readOK(response, address)
 }
 
 // send sends one request as depphunter, recording it for the report under address.
@@ -766,14 +786,10 @@ func (c *Client) npmPackage(ctx context.Context, index string, t lang.Target) ([
 	if !lang.PinnedSemver(version) {
 		version = "latest" // a range names no document to ask for
 	}
-	body, err := c.get(ctx, fmt.Sprintf("%s/%s/%s", index, strings.ReplaceAll(t.Package, "/", "%2f"), version))
-	if err != nil {
-		return nil, err
-	}
-	var doc struct {
+	doc, err := getJSON[struct {
 		Dependencies map[string]string `json:"dependencies"`
-	}
-	if err := json.Unmarshal(body, &doc); err != nil {
+	}](ctx, c, fmt.Sprintf("%s/%s/%s", index, strings.ReplaceAll(t.Package, "/", "%2f"), version))
+	if err != nil {
 		return nil, err
 	}
 	out := make([]dependency, 0, len(doc.Dependencies))
@@ -800,15 +816,11 @@ func (c *Client) pypiDistribution(ctx context.Context, index string, t lang.Targ
 	if lang.Pinned(t.Version) {
 		url = fmt.Sprintf("%s/pypi/%s/%s/json", host, t.Package, t.Version)
 	}
-	var doc struct {
+	doc, err := getJSON[struct {
 		Info struct {
 			RequiresDist []string `json:"requires_dist"`
 		} `json:"info"`
-	}
-	body, err := c.get(ctx, url)
-	if err == nil {
-		err = json.Unmarshal(body, &doc)
-	}
+	}](ctx, c, url)
 	var syntax *json.SyntaxError
 	if (notFound(err) || errors.As(err, &syntax)) && !c.config.Public(PyPI, index) {
 		return c.pypiSimple(ctx, index, t)
