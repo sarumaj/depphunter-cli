@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -878,6 +879,22 @@ type dependency struct {
 	// says it: "" for the registry of the crate itself, crates.io for crates.io,
 	// else the other registry's index URL. A Julia package's dependency's UUID.
 	Registry string `json:"r,omitempty"`
+}
+
+// dependenciesFrom is a name-to-constraint map as dependencies, sorted by name.
+func dependenciesFrom(constraints map[string]string) []dependency {
+	out := make([]dependency, 0, len(constraints))
+	for name, constraint := range constraints {
+		out = append(out, dependency{Name: name, Version: constraint})
+	}
+	sortDependencies(out)
+	return out
+}
+
+// sortDependencies sorts dependencies by name, the order a registry client hands
+// them back in whatever order the answer listed them.
+func sortDependencies(out []dependency) {
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 }
 
 // registry is the lang.Target.Registry of a dependency of from.

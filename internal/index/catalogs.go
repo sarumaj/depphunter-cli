@@ -296,7 +296,7 @@ func (c *Client) forgeModule(ctx context.Context, index string, t lang.Target) (
 			out = append(out, dependency{Name: strings.Replace(name, "/", "-", 1), Version: strings.TrimSpace(d.VersionRequirement)})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 
@@ -618,7 +618,7 @@ func (c *Client) bufModule(ctx context.Context, index string, t lang.Target) ([]
 			out = append(out, dependency{Name: n, Version: commit})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 

@@ -355,7 +355,7 @@ func (c *Client) cpanMirror(ctx context.Context, base string, t lang.Target) ([]
 		seen[dist] = true
 		out = append(out, dependency{Name: dist, Version: cpanMinimum(d.Version)})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 

@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -302,7 +301,7 @@ func podDependencies(spec podSpec, pod string) []dependency {
 			walk(subspec)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out
 }
 
@@ -519,7 +518,7 @@ func (c *Client) swiftPackage(ctx context.Context, index string, t lang.Target) 
 			out = append(out, dependency{Name: n, Version: d.Requirement})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 

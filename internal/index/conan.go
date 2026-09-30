@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -330,7 +329,7 @@ func (c *Client) conanRecipe(ctx context.Context, remote string, t lang.Target) 
 		seen[d.Name] = true
 		out = append(out, dependency{Name: d.Name, Version: d.Version, Registry: d.Qualifier()})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 
