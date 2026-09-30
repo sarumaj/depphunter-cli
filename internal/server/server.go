@@ -831,14 +831,12 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", snapshot.g.Root+".html"))
-		w.Write(buffer.Bytes())
+		attachment(w, "text/html; charset=utf-8", snapshot.g.Root+".html", buffer.Bytes())
 		return
 	}
-	ct, ok := export.ContentTypes[format]
+	f, ok := export.Lookup(format)
 	if !ok {
-		http.Error(w, "format must be one of "+strings.Join(export.Formats, ", "), http.StatusBadRequest)
+		http.Error(w, "format must be one of "+export.Names(), http.StatusBadRequest)
 		return
 	}
 	snapshot := s.current()
@@ -851,9 +849,14 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", snapshot.g.Root+export.Extensions[format]))
-	w.Write(buffer.Bytes())
+	attachment(w, f.ContentType, snapshot.g.Root+f.Extension, buffer.Bytes())
+}
+
+// attachment serves body as a file to save, called filename.
+func attachment(w http.ResponseWriter, contentType, filename string, body []byte) {
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.Write(body)
 }
 
 // openedHeader says how a file asked for in a hex editor was opened after all:

@@ -19,14 +19,38 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 )
 
-// Formats lists what Write produces; "html" (the static page) is written by package web.
-var Formats = []string{"json", "graphml", "dot"}
+// Format is a way to write a graph out, with what a download of it is served as.
+type Format struct {
+	Name, ContentType, Extension string
+	write                        func(io.Writer, *graph.Graph) error
+}
 
-// ContentType and extension per format, for downloads.
-var (
-	ContentTypes = map[string]string{"json": "application/json", "graphml": "application/graphml+xml", "dot": "text/vnd.graphviz"}
-	Extensions   = map[string]string{"json": ".json", "graphml": ".graphml", "dot": ".dot"}
-)
+// formats is what Write produces, in the order they are offered; "html" (the static
+// page) is written by package web.
+var formats = []Format{
+	{"json", "application/json", ".json", func(w io.Writer, g *graph.Graph) error { return json.NewEncoder(w).Encode(g) }},
+	{"graphml", "application/graphml+xml", ".graphml", writeGraphML},
+	{"dot", "text/vnd.graphviz", ".dot", writeDOT},
+}
+
+// Lookup returns the format called name.
+func Lookup(name string) (Format, bool) {
+	for _, f := range formats {
+		if f.Name == name {
+			return f, true
+		}
+	}
+	return Format{}, false
+}
+
+// Names lists the formats' names, comma-separated, for an error message.
+func Names() string {
+	names := make([]string, len(formats))
+	for i, f := range formats {
+		names[i] = f.Name
+	}
+	return strings.Join(names, ", ")
+}
 
 // WithEdges returns a copy of g that also holds extra edges (e.g. symbol references).
 func WithEdges(g *graph.Graph, extra []*graph.Edge) *graph.Graph {
@@ -40,15 +64,11 @@ func WithEdges(g *graph.Graph, extra []*graph.Edge) *graph.Graph {
 
 // Implements: REQ-EXP-001
 func Write(w io.Writer, g *graph.Graph, format string) error {
-	switch format {
-	case "json":
-		return json.NewEncoder(w).Encode(g)
-	case "graphml":
-		return writeGraphML(w, g)
-	case "dot":
-		return writeDOT(w, g)
+	f, ok := Lookup(format)
+	if !ok {
+		return fmt.Errorf("unknown export format %q (want one of %s)", format, Names())
 	}
-	return fmt.Errorf("unknown export format %q (want one of %s)", format, strings.Join(Formats, ", "))
+	return f.write(w, g)
 }
 
 // ---------------------------------------------------------------- GraphML
@@ -89,18 +109,43 @@ type gmlDoc struct {
 	} `xml:"graph"`
 }
 
+// A node attribute in GraphML: its key, its type, and its value ("" for none, which
+// leaves it out).
+type gmlField struct{ id, typeName, value string }
+
+// nodeFields lists a node's attributes in key order; any node, the zero one included,
+// gives every key.
+func nodeFields(n *graph.Node) []gmlField {
+	number := func(v int) string {
+		if v == 0 {
+			return ""
+		}
+		return strconv.Itoa(v)
+	}
+	flag := func(v bool) string {
+		if !v {
+			return ""
+		}
+		return "true"
+	}
+	return []gmlField{
+		{"kind", "string", string(n.Kind)}, {"name", "string", n.Name}, {"path", "string", n.Path},
+		{"parent", "string", n.Parent}, {"lang", "string", n.Language}, {"loc", "int", number(n.LOC)},
+		{"symbolKind", "string", n.SymbolKind}, {"line", "int", number(n.Line)}, {"version", "string", n.Version},
+		// Implements: REQ-SUP-006
+		{"requested", "string", n.Requested}, {"floating", "boolean", flag(n.Floating)},
+		{"transitive", "boolean", flag(n.Transitive)}, {"index", "string", n.Index},
+		{"indexUnknown", "boolean", flag(n.IndexUnknown)}, {"private", "boolean", flag(n.Private)},
+		{"std", "boolean", flag(n.Std)}, {"unresolved", "boolean", flag(n.Unresolved)},
+		{"origin", "string", n.Origin}, {"git", "string", n.Git}, {"platform", "string", n.Platform},
+	}
+}
+
 // Implements: REQ-EXP-002, REQ-EXP-013
 func writeGraphML(w io.Writer, g *graph.Graph) error {
 	doc := gmlDoc{Namespace: "http://graphml.graphdrawing.org/xmlns"}
-	for _, k := range []struct{ id, typeName string }{
-		{"kind", "string"}, {"name", "string"}, {"path", "string"}, {"parent", "string"},
-		{"lang", "string"}, {"loc", "int"}, {"symbolKind", "string"}, {"line", "int"},
-		{"version", "string"}, {"requested", "string"}, {"floating", "boolean"}, {"transitive", "boolean"},
-		{"index", "string"}, {"indexUnknown", "boolean"}, {"private", "boolean"},
-		{"std", "boolean"}, {"unresolved", "boolean"}, {"origin", "string"}, {"git", "string"},
-		{"platform", "string"},
-	} {
-		doc.Keys = append(doc.Keys, gmlKey{ID: k.id, For: "node", Name: k.id, Type: k.typeName})
+	for _, f := range nodeFields(&graph.Node{}) {
+		doc.Keys = append(doc.Keys, gmlKey{ID: f.id, For: "node", Name: f.id, Type: f.typeName})
 	}
 	doc.Keys = append(doc.Keys,
 		gmlKey{ID: "edgeKind", For: "edge", Name: "kind", Type: "string"},
@@ -110,42 +155,11 @@ func writeGraphML(w io.Writer, g *graph.Graph) error {
 
 	for _, n := range g.Nodes {
 		var data []gmlData
-		add := func(key, v string) {
-			if v != "" {
-				data = append(data, gmlData{key, v})
+		for _, f := range nodeFields(n) {
+			if f.value != "" {
+				data = append(data, gmlData{f.id, f.value})
 			}
 		}
-		number := func(key string, v int) {
-			if v != 0 {
-				add(key, strconv.Itoa(v))
-			}
-		}
-		flag := func(key string, v bool) {
-			if v {
-				add(key, "true")
-			}
-		}
-		add("kind", string(n.Kind))
-		add("name", n.Name)
-		add("path", n.Path)
-		add("parent", n.Parent)
-		add("lang", n.Language)
-		number("loc", n.LOC)
-		add("symbolKind", n.SymbolKind)
-		number("line", n.Line)
-		add("version", n.Version)
-		// Implements: REQ-SUP-006
-		add("requested", n.Requested)
-		flag("floating", n.Floating)
-		flag("transitive", n.Transitive)
-		add("index", n.Index)
-		flag("indexUnknown", n.IndexUnknown)
-		flag("private", n.Private)
-		flag("std", n.Std)
-		flag("unresolved", n.Unresolved)
-		add("origin", n.Origin)
-		add("git", n.Git)
-		add("platform", n.Platform)
 		doc.Graph.Nodes = append(doc.Graph.Nodes, gmlNode{ID: n.ID, Data: data})
 	}
 	for i, e := range g.Edges {
