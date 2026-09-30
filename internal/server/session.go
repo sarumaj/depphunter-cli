@@ -1,10 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -135,6 +138,15 @@ func (s *Server) handlePackExport(w http.ResponseWriter, r *http.Request) {
 	if format == "" {
 		format = "json"
 	}
+	i := slices.IndexFunc(packFormats, func(f packFormat) bool { return f.name == format })
+	if i < 0 {
+		names := make([]string, len(packFormats))
+		for i, f := range packFormats {
+			names[i] = f.name
+		}
+		http.Error(w, "format must be one of "+strings.Join(names, ", "), http.StatusBadRequest)
+		return
+	}
 	s.mu.RLock()
 	items := append([]PackItem(nil), s.pack...)
 	name := s.snap.g.Root
@@ -147,21 +159,26 @@ func (s *Server) handlePackExport(w http.ResponseWriter, r *http.Request) {
 		}
 		return items[i].CaughtAt > items[j].CaughtAt
 	})
+	var buffer bytes.Buffer
+	f := packFormats[i]
+	f.write(&buffer, name, items)
+	attachment(w, f.contentType, name+"-backpack"+f.extension, buffer.Bytes())
+}
 
-	filename := func(extension string) {
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name+"-backpack"+extension))
-	}
-	switch format {
-	case "json":
-		w.Header().Set("Content-Type", "application/json")
-		filename(".json")
+// A way to write the catch out (handlePackExport).
+type packFormat struct {
+	name, contentType, extension string
+	write                        func(w io.Writer, name string, items []PackItem)
+}
+
+var packFormats = []packFormat{
+	{"json", "application/json", ".json", func(w io.Writer, _ string, items []PackItem) {
 		if items == nil {
 			items = []PackItem{}
 		}
 		json.NewEncoder(w).Encode(items)
-	case "csv":
-		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		filename(".csv")
+	}},
+	{"csv", "text/csv; charset=utf-8", ".csv", func(w io.Writer, _ string, items []PackItem) {
 		cw := csv.NewWriter(w)
 		cw.Write([]string{"id", "severity", "title", "where", "line", "caught", "fixed"})
 		for _, it := range items {
@@ -171,13 +188,11 @@ func (s *Server) handlePackExport(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		cw.Flush()
-	case "md":
-		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		filename(".md")
-		var b strings.Builder
-		fmt.Fprintf(&b, "# %s - caught findings\n\n", name)
+	}},
+	{"md", "text/markdown; charset=utf-8", ".md", func(w io.Writer, name string, items []PackItem) {
+		fmt.Fprintf(w, "# %s - caught findings\n\n", name)
 		if len(items) == 0 {
-			b.WriteString("Nothing caught yet.\n")
+			io.WriteString(w, "Nothing caught yet.\n")
 		}
 		for _, it := range items {
 			where := it.Where
@@ -188,16 +203,13 @@ func (s *Server) handlePackExport(w http.ResponseWriter, r *http.Request) {
 			if it.Fixed {
 				done = "x"
 			}
-			fmt.Fprintf(&b, "- [%s] **%s** %s", done, severityLabel(it.Severity), it.Title)
+			fmt.Fprintf(w, "- [%s] **%s** %s", done, severityLabel(it.Severity), it.Title)
 			if where != "" {
-				fmt.Fprintf(&b, " - `%s`", where)
+				fmt.Fprintf(w, " - `%s`", where)
 			}
-			fmt.Fprintf(&b, " (%s)\n", it.ID)
+			fmt.Fprintf(w, " (%s)\n", it.ID)
 		}
-		w.Write([]byte(b.String()))
-	default:
-		http.Error(w, "format must be one of json, csv, md", http.StatusBadRequest)
-	}
+	}},
 }
 
 // samePack reports whether two lists hold the same catch in the same state. A client
