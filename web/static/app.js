@@ -21,6 +21,7 @@ import { FindingList, findingRows } from './findinglist.js';
 import { Stash } from './stash.js';
 import { indexFindings } from './findings.js';
 import { $, h, fmt, escapeHTML, badge, drawer, findingItem } from './dom.js';
+import { Stats, wanted as statsWanted } from './stats.js';
 import { Color } from './vendor/three.module.min.js';
 
 const MAX_ARCS = 400;
@@ -93,6 +94,7 @@ async function main() {
   setLevel(settings.expandDepth < 0 ? maxDepth : settings.expandDepth || autoLevel(), false);
 
   scene = new MapScene($('map'));
+  if (statsWanted(location.search)) scene.stats = new Stats(scene, document.body);
   labels = new Labels($('labels'), scene);
   // Walk mode renders continuously; labels are laid out greedily over all boxes, so
   // they are redrawn a few times a second rather than on every frame. The walker

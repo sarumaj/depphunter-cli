@@ -110,6 +110,14 @@ two. The copy of `app.js` it serves reads the module-scope names `walker`,
 `stash`, `state` and `scene`, as `record.mjs` reads `walker`, `bugs`, `fires`,
 `stash` and `scene`: a change that renames one of them updates the scripts too.
 
+SwiftShader says little about speed: it runs both sides of every branch and
+shades before it tests depth, so a change that saves a GPU work can measure
+slower in it. To see what a change of rendering is worth on a real GPU, add
+`&stats` to the page's address: a corner of the map then reads out the frame
+rate, the CPU time of a frame, the resolution it is drawn at (which drops while
+frames fall behind), and the draw calls and triangles, with a switch for the
+depth pre-pass.
+
 CI builds every target on each push, retains the archives as workflow artifacts
 for 14 days, and runs the tests in 32-bit mode (`GOARCH=386`). Renovate
 (`renovate.json`) opens grouped pull requests for non-major dependency updates;
@@ -459,7 +467,7 @@ but never trusted with anything that decides what is sent where:
 | `dom.js` | DOM helpers, and what several modules show alike: the toolbar popover (`drawer`), a finding's row (`findingItem`) and the catch button (`catchToggle`) |
 | `model.js`, `filter.js`, `history.js`, `findings.js` | The navigable tree and aggregates, filters and search, history metrics, findings by node |
 | `layout.js`, `labels.js`, `colors.js` | The archipelago layout, labels, color roles from CSS |
-| `scene.js`, `city.js`, `buildings.js`, `details.js`, `lod.js`, `resolution.js`, `models.js` | three.js rendering, the procedural city, building types and facades, balconies and rooftop details, culling and level of detail for the props, dynamic resolution, loading the `.glb` models |
+| `scene.js`, `city.js`, `buildings.js`, `details.js`, `lod.js`, `resolution.js`, `stats.js`, `models.js` | three.js rendering, the procedural city, building types and facades, balconies and rooftop details, culling and level of detail for the props, dynamic resolution, the `?stats` readout, loading the `.glb` models |
 | `pins.js`, `bugs.js`, `fires.js`, `flames.js` | Findings over the map, bugs on buildings, reachable vulnerabilities as fire |
 | `panel.js`, `findinglist.js`, `backpack.js`, `stash.js`, `tour.js` | The side panel, the list of findings, the catch, photographs, the introduction |
 | `walk.js`, `tools.js`, `switcher.js`, `hands.js`, `avatar.js`, `parachute.js`, `health.js`, `wind.js` | Walk mode: the walker, its tools and hands, its marker on the map, the parachute, health and stamina |

@@ -31,4 +31,4 @@ in front.
    test.
 2. The camera's layers and the scene are as they were after the pre-pass, and
    the frame does not clear the depth it wrote.
-3. The pre-pass can be switched off.
+3. The pre-pass can be switched off (REQ-PERF-014).
