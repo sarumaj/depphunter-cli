@@ -154,119 +154,21 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	if t.Ecosystem == Conan {
 		t = c.config.conanPinned(t) // what Conan installs is what its lock pins
 	}
-	l := trace.Lookup{Ecosystem: t.Ecosystem, Package: t.Package, Version: t.Version, Answer: trace.NoAnswer}
-	// A package installed from a directory, an archive or a repository is on no index:
-	// a question about it could only name it to somebody.
-	// Implements: REQ-PY-015
-	if t.Origin != "" {
-		l.Reason = trace.ReasonInstalled
-		c.report(l)
-		return nil
-	}
-	candidates := c.config.candidatesFor(t)
-	// Implements: REQ-SUP-065, REQ-TRC-017
-	if t.Ecosystem == NuGet && c.config.nugetUnmapped(t.Package) {
-		c.note(trace.NoteUnmapped, "NuGet.Config's packageSourceMapping covers no pattern of "+t.Package+
-			": NuGet itself would not restore it (NU1100), depphunter asks the sources in their usual order")
-	}
-	// An organization's own package is not named to the world: asking the public
-	// index about corp.example/billing would not answer anyway, and the request
-	// itself is the disclosure. A private registry this machine configures is asked
-	// as usual, whether it replaces the public index or is asked beside it.
-	if kept, owned := c.config.nameable(t, candidates); owned {
-		if len(kept) == 0 && len(candidates) > 0 {
-			l.Index, l.Reason = candidates[0].url, trace.ReasonPrivate
-			c.report(l)
-			return nil
-		}
-		candidates = kept
-	}
-	if len(candidates) == 0 {
-		l.Reason = trace.ReasonNoIndex
-		// Implements: REQ-SUP-068
-		if t.Ecosystem == OCI {
-			if _, blocked := c.config.ociEndpoints(t.Package, t.Version); blocked {
-				l.Reason = trace.ReasonBlocked
-			}
-		}
-		c.report(l)
-		return nil
-	}
-	// An index only the repository asks for is not fetched from, but it is not in
-	// the way either: the package is asked of the others, and only when none of
-	// them has it is the repository's index what it would have come from.
-	var untrusted string
-	var asked []candidate
-	for _, k := range candidates {
-		if k.known {
-			asked = append(asked, k)
-		} else if untrusted == "" {
-			untrusted = k.url
-		}
-	}
-	// A private organization's package answers only to its key: asked without one,
-	// hex.pm would say "not found", which reads as a package that does not exist -
-	// and a later repository in rebar3's order would be asked about a name the
-	// organization's may hold. The question stops at the first organization this
-	// machine has no key for: nobody after it is asked, and when nobody before it
-	// has the package, the report says what is missing.
-	// Implements: REQ-SUP-047, REQ-BEAM-013
-	var noKey string
-	for i, k := range asked {
-		if k.keyed && !c.auth.Authorizes(k.url+"/packages/"+url.PathEscape(t.Package)) {
-			noKey, asked = k.url, asked[:i]
-			break
-		}
-	}
-	if noKey != "" {
-		c.note(trace.NoteNoKey, noHexKey(noKey))
-	}
-	if noKey != "" && len(asked) == 0 {
-		l.Index, l.Reason = noKey, trace.ReasonNoKey
-		c.report(l)
-		return nil
-	}
+	// candidatesToAsk runs first: every step after it sees only the indexes the
+	// package may be named to.
+	asked, untrusted, noKey := c.candidatesToAsk(t)
 	if len(asked) == 0 {
-		l.Index, l.Reason = untrusted, trace.ReasonUntrusted
-		c.locate(t, untrusted, false)
-		c.report(l)
-		return nil
+		return nil // candidatesToAsk reported why
 	}
-	// Implements: REQ-SUP-066, REQ-TRC-017
-	if t.Ecosystem == PyPI && len(asked) > 1 {
-		if why := c.config.pythonMerges(); why != "" {
-			c.note(trace.NoteMerged, why)
-		}
-	}
-	if t.Ecosystem == Bazel {
-		for _, k := range asked {
-			if u, err := url.Parse(k.url); err == nil {
-				if scope, ok := c.config.bazelHelperFor(u.Hostname()); ok {
-					// Implements: REQ-BAZEL-011, REQ-TRC-017
-					c.note(trace.NoteHelperNotRun, bazelHelperNote(k.url, scope))
-				}
-			}
-		}
-	}
+	c.notes(t, asked)
 	key := t.Ecosystem + " " + t.Package + "@" + t.Version + " " + t.Registry
-	c.mu.Lock()
-	cached, ok := c.seen[key]
-	if at, failed := c.failed[key]; !ok && failed && time.Since(at) < failRetry {
-		ok = true // not asked again so soon; the lookup that failed was reported
-	}
-	c.mu.Unlock()
-	if ok {
-		l.Index = asked[0].url
-		if at, _, found := c.Located(t.Ecosystem, t.Package); found {
-			l.Index = at
-		}
-		l.Answer, l.Dependencies = trace.FromMemo, len(cached)
-		c.report(l)
+	if cached, ok := c.fromMemo(t, key, asked[0].url); ok {
 		return cached
 	}
 
 	start := time.Now()
 	a, index, err := c.ask(t, asked)
+	l := lookupOf(t)
 	l.Index = index
 	switch {
 	case err == nil:
@@ -290,15 +192,157 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	l.Answer, l.Dependencies, l.Reason = a.source, len(a.dependencies), a.reason
 	l.Requests, l.Millis = a.requests, time.Since(start).Milliseconds()
 	c.report(l)
+	c.record(key, a.dependencies, err)
+	return a.dependencies
+}
+
+// candidatesToAsk is the indexes t may be asked of, in the order to ask them, with
+// the first index only the repository names (untrusted) and the first Hex
+// organization this machine has no key for (noKey). When nothing may be asked it
+// has reported why.
+//
+// The order of the checks is the guarantee: a package installed from elsewhere and
+// an organization's own package are turned away before trust is looked at, so no
+// later step can name them to an index.
+func (c *Client) candidatesToAsk(t lang.Target) (asked []candidate, untrusted, noKey string) {
+	// A package installed from a directory, an archive or a repository is on no index:
+	// a question about it could only name it to somebody.
+	// Implements: REQ-PY-015
+	if t.Origin != "" {
+		c.stop(t, trace.ReasonInstalled, "")
+		return nil, "", ""
+	}
+	candidates := c.config.candidatesFor(t)
+	// Implements: REQ-SUP-065, REQ-TRC-017
+	if t.Ecosystem == NuGet && c.config.nugetUnmapped(t.Package) {
+		c.note(trace.NoteUnmapped, "NuGet.Config's packageSourceMapping covers no pattern of "+t.Package+
+			": NuGet itself would not restore it (NU1100), depphunter asks the sources in their usual order")
+	}
+	// An organization's own package is not named to the world: asking the public
+	// index about corp.example/billing would not answer anyway, and the request
+	// itself is the disclosure. A private registry this machine configures is asked
+	// as usual, whether it replaces the public index or is asked beside it.
+	if kept, owned := c.config.nameable(t, candidates); owned {
+		if len(kept) == 0 && len(candidates) > 0 {
+			c.stop(t, trace.ReasonPrivate, candidates[0].url)
+			return nil, "", ""
+		}
+		candidates = kept
+	}
+	if len(candidates) == 0 {
+		reason := trace.ReasonNoIndex
+		// Implements: REQ-SUP-068
+		if t.Ecosystem == OCI {
+			if _, blocked := c.config.ociEndpoints(t.Package, t.Version); blocked {
+				reason = trace.ReasonBlocked
+			}
+		}
+		c.stop(t, reason, "")
+		return nil, "", ""
+	}
+	// An index only the repository asks for is not fetched from, but it is not in
+	// the way either: the package is asked of the others, and only when none of
+	// them has it is the repository's index what it would have come from.
+	for _, k := range candidates {
+		if k.known {
+			asked = append(asked, k)
+		} else if untrusted == "" {
+			untrusted = k.url
+		}
+	}
+	// A private organization's package answers only to its key: asked without one,
+	// hex.pm would say "not found", which reads as a package that does not exist -
+	// and a later repository in rebar3's order would be asked about a name the
+	// organization's may hold. The question stops at the first organization this
+	// machine has no key for: nobody after it is asked, and when nobody before it
+	// has the package, the report says what is missing.
+	// Implements: REQ-SUP-047, REQ-BEAM-013
+	for i, k := range asked {
+		if k.keyed && !c.auth.Authorizes(k.url+"/packages/"+url.PathEscape(t.Package)) {
+			noKey, asked = k.url, asked[:i]
+			break
+		}
+	}
+	if noKey != "" {
+		c.note(trace.NoteNoKey, noHexKey(noKey))
+	}
+	if noKey != "" && len(asked) == 0 {
+		c.stop(t, trace.ReasonNoKey, noKey)
+		return nil, "", ""
+	}
+	if len(asked) == 0 {
+		c.locate(t, untrusted, false)
+		c.stop(t, trace.ReasonUntrusted, untrusted)
+		return nil, "", ""
+	}
+	return asked, untrusted, noKey
+}
+
+// notes is what the report should say once about asking these indexes.
+func (c *Client) notes(t lang.Target, asked []candidate) {
+	// Implements: REQ-SUP-066, REQ-TRC-017
+	if t.Ecosystem == PyPI && len(asked) > 1 {
+		if why := c.config.pythonMerges(); why != "" {
+			c.note(trace.NoteMerged, why)
+		}
+	}
+	if t.Ecosystem == Bazel {
+		for _, k := range asked {
+			if u, err := url.Parse(k.url); err == nil {
+				if scope, ok := c.config.bazelHelperFor(u.Hostname()); ok {
+					// Implements: REQ-BAZEL-011, REQ-TRC-017
+					c.note(trace.NoteHelperNotRun, bazelHelperNote(k.url, scope))
+				}
+			}
+		}
+	}
+}
+
+// fromMemo is this run's earlier answer about t, reported as one. A question that
+// failed less than failRetry ago counts as answered with nothing: the lookup that
+// failed was reported.
+func (c *Client) fromMemo(t lang.Target, key, firstIndex string) ([]lang.Target, bool) {
 	c.mu.Lock()
-	if err != nil {
-		c.failed[key] = time.Now()
-	} else {
-		delete(c.failed, key)
-		c.seen[key] = a.dependencies
+	cached, ok := c.seen[key]
+	if at, failed := c.failed[key]; !ok && failed && time.Since(at) < failRetry {
+		ok = true
 	}
 	c.mu.Unlock()
-	return a.dependencies
+	if !ok {
+		return nil, false
+	}
+	l := lookupOf(t)
+	l.Index = firstIndex
+	if at, _, found := c.Located(t.Ecosystem, t.Package); found {
+		l.Index = at
+	}
+	l.Answer, l.Dependencies = trace.FromMemo, len(cached)
+	c.report(l)
+	return cached, true
+}
+
+// record keeps an answer for the rest of the run, and a failure only until
+// failRetry has passed.
+func (c *Client) record(key string, dependencies []lang.Target, err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err != nil {
+		c.failed[key] = time.Now()
+		return
+	}
+	delete(c.failed, key)
+	c.seen[key] = dependencies
+}
+
+// stop reports that t is not asked about, and why.
+func (c *Client) stop(t lang.Target, reason, index string) {
+	l := lookupOf(t)
+	l.Index, l.Reason = index, reason
+	c.report(l)
+}
+
+func lookupOf(t lang.Target) trace.Lookup {
+	return trace.Lookup{Ecosystem: t.Ecosystem, Package: t.Package, Version: t.Version, Answer: trace.NoAnswer}
 }
 
 // ask puts the question to each index in turn and returns the first answer, with the
@@ -420,20 +464,12 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 	if a, ok := c.cached(t, index); ok {
 		return a, nil
 	}
-	if t.Ecosystem == Buf && t.Registry == BufPlugin {
-		// Implements: REQ-SUP-072
-		return answer{source: trace.NoAnswer, reason: trace.ReasonPlugin}, nil
+	if reason := c.precheck(t, index); reason != "" {
+		return answer{source: trace.NoAnswer, reason: reason}, nil
 	}
-	if (t.Ecosystem == Go || t.Ecosystem == CUE || t.Ecosystem == Conan || t.Ecosystem == Actions) && t.Version == "" ||
-		t.Ecosystem == Opam && !opam.ExactVersion(t.Version) && c.unlisted(Opam, index) ||
-		t.Ecosystem == Alire && !alireExact(t.Version) && (!ada.ValidConstraint(t.Version) || c.unlisted(Alire, index)) {
-		// A module proxy serves a go.mod for one version, a CUE registry a
-		// module.cue, GitHub an action.yml at one reference; without one there
-		// is no document to ask for. An opam repository or Alire index served over HTTP
-		// that cannot list its versions has none for a range either. Said here
-		// rather than deeper down so the report can say it, instead of recording
-		// an empty answer that looks like "no dependencies".
-		return answer{source: trace.NoAnswer, reason: trace.ReasonNoVersion}, nil
+	fetch, ok := fetchers[t.Ecosystem]
+	if !ok {
+		return answer{source: trace.NoAnswer, reason: trace.ReasonUnsupported}, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
@@ -441,97 +477,82 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 	// an image's three round trips was the one that failed.
 	made := &requestLog{}
 	ctx = context.WithValue(ctx, requestLogKey{}, made)
-
-	var dependencies []dependency
-	var err error
-	switch t.Ecosystem {
-	case Go:
-		dependencies, err = c.goModule(context.WithValue(ctx, goRequestKey{}, true), index, t)
-	case NPM:
-		dependencies, err = c.npmPackage(ctx, index, t)
-	case PyPI:
-		dependencies, err = c.pypiDistribution(ctx, index, t)
-	case Cargo:
-		dependencies, err = c.cargoCrate(ctx, index, t)
-	case NuGet:
-		dependencies, err = c.nugetPackage(ctx, index, t)
-	case OCI:
-		dependencies, err = c.ociBase(ctx, index, t)
-	case Composer:
-		dependencies, err = c.composerPackage(ctx, index, t)
-	case RubyGems:
-		dependencies, err = c.rubygemsPackage(ctx, index, t)
-	case Pub:
-		dependencies, err = c.pubPackage(ctx, index, t)
-	case Hex:
-		dependencies, err = c.hexPackage(ctx, index, t)
-	case CRAN:
-		dependencies, err = c.cranPackage(ctx, index, t)
-	case Bioconductor:
-		dependencies, err = c.bioconductorPackage(ctx, index, t)
-	case Hackage:
-		dependencies, err = c.hackagePackage(ctx, index, t)
-	case TerraformModule:
-		dependencies, err = c.terraformModule(ctx, index, t)
-	case CocoaPods:
-		dependencies, err = c.cocoapodsPod(ctx, index, t)
-	case LuaRocks:
-		dependencies, err = c.luarocksRock(ctx, index, t)
-	case CPAN:
-		dependencies, err = c.cpanDistribution(ctx, index, t)
-	case Opam:
-		dependencies, err = c.opamPackage(ctx, index, t)
-	case Julia:
-		dependencies, err = c.juliaPackage(ctx, index, t)
-	case Bazel:
-		dependencies, err = c.bazelModule(ctx, index, t)
-	case Elm:
-		dependencies, err = c.elmPackage(ctx, index, t)
-	case PureScript:
-		dependencies, err = c.purescriptPackage(ctx, index, t)
-	case Dub:
-		dependencies, err = c.dubPackage(ctx, index, t)
-	case Alire:
-		dependencies, err = c.alireCrate(ctx, index, t)
-	case Quicklisp:
-		dependencies, err = c.quicklispProject(ctx, index, t)
-	case PuppetForge:
-		dependencies, err = c.forgeModule(ctx, index, t)
-	case Racket:
-		dependencies, err = c.racketPackage(ctx, index, t)
-	case Wally:
-		dependencies, err = c.wallyPackage(ctx, index, t)
-	case Buf:
-		dependencies, err = c.bufModule(ctx, index, t)
-	case CUE:
-		dependencies, err = c.cueModule(ctx, index, t)
-	case SwiftPM:
-		dependencies, err = c.swiftPackage(ctx, index, t)
-	case Conan:
-		dependencies, err = c.conanRecipe(ctx, index, t)
-	case Actions:
-		dependencies, err = c.actionDependencies(ctx, index, t)
-	case PowerShell:
-		dependencies, err = c.powershellModule(ctx, index, t)
-	case Maven:
-		if !strings.Contains(t.Package, ":") {
-			// A name without an artifact cannot be asked: a POM is addressed by
-			// group *and* artifact. Every plugin names Maven packages
-			// group:artifact; what is left is a Bazel hub target that no
-			// artifact list or lock file names (maven:<escaped_name>). Saying
-			// nothing beats guessing an artifact.
-			// Implements: REQ-SUP-028
-			return answer{source: trace.NoAnswer, reason: trace.ReasonUnsupported}, nil
-		}
-		dependencies, err = c.mavenArtifact(ctx, index, t)
-	default:
-		return answer{source: trace.NoAnswer, reason: trace.ReasonUnsupported}, nil
-	}
+	dependencies, err := fetch(c, ctx, index, t)
 	if err != nil {
 		return answer{requests: made.taken()}, err
 	}
 	c.cache.Put(key, dependencies)
 	return answer{dependencies: c.targets(t, dependencies), source: trace.FromIndex, requests: made.taken()}, nil
+}
+
+// precheck is why t cannot be asked of index at all, or "". It is said here rather
+// than deeper down so the report can say it, instead of recording an empty answer
+// that looks like "no dependencies".
+func (c *Client) precheck(t lang.Target, index string) string {
+	switch {
+	case t.Ecosystem == Buf && t.Registry == BufPlugin:
+		// Implements: REQ-SUP-072
+		return trace.ReasonPlugin
+	case (t.Ecosystem == Go || t.Ecosystem == CUE || t.Ecosystem == Conan || t.Ecosystem == Actions) && t.Version == "" ||
+		t.Ecosystem == Opam && !opam.ExactVersion(t.Version) && c.unlisted(Opam, index) ||
+		t.Ecosystem == Alire && !alireExact(t.Version) && (!ada.ValidConstraint(t.Version) || c.unlisted(Alire, index)):
+		// A module proxy serves a go.mod for one version, a CUE registry a
+		// module.cue, GitHub an action.yml at one reference; without one there
+		// is no document to ask for. An opam repository or Alire index served over HTTP
+		// that cannot list its versions has none for a range either.
+		return trace.ReasonNoVersion
+	case t.Ecosystem == Maven && !strings.Contains(t.Package, ":"):
+		// A name without an artifact cannot be asked: a POM is addressed by
+		// group *and* artifact. Every plugin names Maven packages
+		// group:artifact; what is left is a Bazel hub target that no
+		// artifact list or lock file names (maven:<escaped_name>). Saying
+		// nothing beats guessing an artifact.
+		// Implements: REQ-SUP-028
+		return trace.ReasonUnsupported
+	}
+	return ""
+}
+
+// fetchers asks an index what one package depends on, per ecosystem. An ecosystem
+// without one is unsupported.
+var fetchers = map[string]func(*Client, context.Context, string, lang.Target) ([]dependency, error){
+	Go: func(c *Client, ctx context.Context, index string, t lang.Target) ([]dependency, error) {
+		return c.goModule(context.WithValue(ctx, goRequestKey{}, true), index, t)
+	},
+	NPM:             (*Client).npmPackage,
+	PyPI:            (*Client).pypiDistribution,
+	Cargo:           (*Client).cargoCrate,
+	NuGet:           (*Client).nugetPackage,
+	OCI:             (*Client).ociBase,
+	Composer:        (*Client).composerPackage,
+	RubyGems:        (*Client).rubygemsPackage,
+	Pub:             (*Client).pubPackage,
+	Hex:             (*Client).hexPackage,
+	CRAN:            (*Client).cranPackage,
+	Bioconductor:    (*Client).bioconductorPackage,
+	Hackage:         (*Client).hackagePackage,
+	TerraformModule: (*Client).terraformModule,
+	CocoaPods:       (*Client).cocoapodsPod,
+	LuaRocks:        (*Client).luarocksRock,
+	CPAN:            (*Client).cpanDistribution,
+	Opam:            (*Client).opamPackage,
+	Julia:           (*Client).juliaPackage,
+	Bazel:           (*Client).bazelModule,
+	Elm:             (*Client).elmPackage,
+	PureScript:      (*Client).purescriptPackage,
+	Dub:             (*Client).dubPackage,
+	Alire:           (*Client).alireCrate,
+	Quicklisp:       (*Client).quicklispProject,
+	PuppetForge:     (*Client).forgeModule,
+	Racket:          (*Client).racketPackage,
+	Wally:           (*Client).wallyPackage,
+	Buf:             (*Client).bufModule,
+	CUE:             (*Client).cueModule,
+	SwiftPM:         (*Client).swiftPackage,
+	Conan:           (*Client).conanRecipe,
+	Actions:         (*Client).actionDependencies,
+	PowerShell:      (*Client).powershellModule,
+	Maven:           (*Client).mavenArtifact,
 }
 
 // requestLog collects what one question sent, in the order it sent it. The ecosystem
