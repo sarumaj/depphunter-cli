@@ -2971,8 +2971,8 @@ export class Walker {
   /** Takes everything thrown off the map, lines and puffs included. */
   dropDarts() {
     for (const dart of this.darts) {
-      this.scene.scene.remove(dart.mesh);
-      if (dart.line) this.scene.scene.remove(dart.line);
+      discard(dart.mesh);
+      discard(dart.line);
     }
     this.darts = [];
     for (const puff of [...this.puffs]) this.dropPuff(puff);
@@ -2981,8 +2981,8 @@ export class Walker {
   /** Lets go of whatever the line is holding, and takes the line off the map. */
   cutLine(say) {
     if (!this.pull) return;
-    if (this.pull.mesh) this.scene.scene.remove(this.pull.mesh);
-    if (this.pull.rope) this.scene.scene.remove(this.pull.rope);
+    discard(this.pull.mesh);
+    discard(this.pull.rope);
     this.pull = null;
     if (say) this.flash(say);
   }
@@ -3425,8 +3425,8 @@ export class Walker {
       // A line that bit keeps its hook and its rope: they are what the walker is
       // being pulled along, and cutLine is what takes them off the map.
       if (!dart.kept) {
-        this.scene.scene.remove(dart.mesh);
-        if (dart.line) this.scene.scene.remove(dart.line);
+        discard(dart.mesh);
+        discard(dart.line);
       }
       this.darts.splice(this.darts.indexOf(dart), 1);
     }
@@ -3575,6 +3575,22 @@ export class Walker {
 }
 
 const clamp = (v, low, high) => Math.min(high, Math.max(low, v));
+
+/**
+ * Takes what a shot threw - its mesh, or the line it trailed - off the map, and frees
+ * the geometries and materials it was drawn with: taken off and nothing more, they
+ * stay on the GPU for as long as the page is open, and a nail gun held down makes
+ * dozens a second. Every shot is built afresh (tools.js projectile, shotFrom), so
+ * nothing in one is shared with anything still being drawn. Nothing is nothing to do.
+ */
+function discard(object) {
+  if (!object) return;
+  object.removeFromParent();
+  object.traverse(part => {
+    part.geometry?.dispose();
+    for (const material of [part.material].flat()) material?.dispose();
+  });
+}
 
 // Implements: REQ-TOOL-027, REQ-TOOL-042
 /** Knocks a point or a direction off course by up to `by`, evenly in all directions. */
