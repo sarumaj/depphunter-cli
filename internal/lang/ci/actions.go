@@ -6,6 +6,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/yamlnode"
 )
 
 // extractWorkflow reads a GitHub Actions workflow: its jobs are the symbols, and every
@@ -14,19 +15,19 @@ import (
 // Implements: REQ-CI-002, REQ-CI-003, REQ-CI-010
 func extractWorkflow(root *yaml.Node) *lang.Extraction {
 	extraction := &lang.Extraction{}
-	for _, job := range yamlReader.Pairs(yamlReader.Get(root, "jobs")) {
-		name := yamlReader.Text(job.Key)
+	for _, job := range yamlnode.Pairs(yamlnode.Get(root, "jobs")) {
+		name := yamlnode.Text(job.Key)
 		if name == "" {
 			continue
 		}
 		extraction.Symbols = append(extraction.Symbols, lang.Symbol{Name: name, Kind: "job", Line: job.Key.Line})
 		// A job that calls a reusable workflow has no steps of its own.
-		if u := yamlReader.Get(job.Value, "uses"); u != nil {
+		if u := yamlnode.Get(job.Value, "uses"); u != nil {
 			addUses(extraction, u, kindWorkflow)
 		}
 		addContainers(extraction, job.Value)
-		for _, step := range yamlReader.List(yamlReader.Get(job.Value, "steps")) {
-			if u := yamlReader.Get(step, "uses"); u != nil {
+		for _, step := range yamlnode.List(yamlnode.Get(job.Value, "steps")) {
+			if u := yamlnode.Get(step, "uses"); u != nil {
 				addUses(extraction, u, kindAction)
 			}
 		}
@@ -40,17 +41,17 @@ func extractWorkflow(root *yaml.Node) *lang.Extraction {
 // Implements: REQ-CI-002, REQ-CI-004
 func extractAction(root *yaml.Node) *lang.Extraction {
 	extraction := &lang.Extraction{}
-	runs := yamlReader.Get(root, "runs")
-	for _, step := range yamlReader.List(yamlReader.Get(runs, "steps")) {
-		if u := yamlReader.Get(step, "uses"); u != nil {
+	runs := yamlnode.Get(root, "runs")
+	for _, step := range yamlnode.List(yamlnode.Get(runs, "steps")) {
+		if u := yamlnode.Get(step, "uses"); u != nil {
 			addUses(extraction, u, kindAction)
 		}
 	}
 	// A Docker action names its image here, with the same docker:// prefix as a step.
-	if image := yamlReader.Get(runs, "image"); image != nil {
-		if reference := strings.TrimPrefix(yamlReader.Text(image), "docker://"); reference != "" && !strings.HasSuffix(reference, "Dockerfile") {
+	if image := yamlnode.Get(runs, "image"); image != nil {
+		if reference := strings.TrimPrefix(yamlnode.Text(image), "docker://"); reference != "" && !strings.HasSuffix(reference, "Dockerfile") {
 			extraction.Imports = append(extraction.Imports, lang.RawImport{
-				Spec: "image: " + yamlReader.Text(image), Module: reference, Name: kindImage, Line: image.Line,
+				Spec: "image: " + yamlnode.Text(image), Module: reference, Name: kindImage, Line: image.Line,
 			})
 		}
 	}
@@ -62,7 +63,7 @@ func extractAction(root *yaml.Node) *lang.Extraction {
 //
 // Implements: REQ-CI-002, REQ-CI-003, REQ-CI-004, REQ-CI-014
 func addUses(extraction *lang.Extraction, n *yaml.Node, kind string) {
-	reference := yamlReader.Text(n)
+	reference := yamlnode.Text(n)
 	if reference == "" {
 		return
 	}
@@ -90,10 +91,10 @@ func addContainers(extraction *lang.Extraction, job *yaml.Node) {
 		if n == nil {
 			return
 		}
-		reference := yamlReader.Text(n)
+		reference := yamlnode.Text(n)
 		if reference == "" { // container: { image: … }
-			if image := yamlReader.Get(n, "image"); image != nil {
-				reference, n = yamlReader.Text(image), image
+			if image := yamlnode.Get(n, "image"); image != nil {
+				reference, n = yamlnode.Text(image), image
 			}
 		}
 		if reference != "" {
@@ -102,8 +103,8 @@ func addContainers(extraction *lang.Extraction, job *yaml.Node) {
 			})
 		}
 	}
-	add(yamlReader.Get(job, "container"), "container")
-	for _, service := range yamlReader.Pairs(yamlReader.Get(job, "services")) {
-		add(service.Value, "service "+yamlReader.Text(service.Key))
+	add(yamlnode.Get(job, "container"), "container")
+	for _, service := range yamlnode.Pairs(yamlnode.Get(job, "services")) {
+		add(service.Value, "service "+yamlnode.Text(service.Key))
 	}
 }

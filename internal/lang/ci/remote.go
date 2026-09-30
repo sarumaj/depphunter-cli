@@ -20,7 +20,7 @@ import (
 //
 // Implements: REQ-CI-016
 func ActionDependencies(source []byte) (dependencies []lang.Target, dockerfile string) {
-	root := yamlReader.Mapping(yamlnode.Parse(source))
+	root := yamlnode.Mapping(yamlnode.Parse(source))
 	if root == nil {
 		return nil, ""
 	}
@@ -29,7 +29,7 @@ func ActionDependencies(source []byte) (dependencies []lang.Target, dockerfile s
 			dependencies = append(dependencies, t)
 		}
 	}
-	if image := yamlReader.Text(root, "runs", "image"); strings.EqualFold(yamlReader.Text(root, "runs", "using"), "docker") &&
+	if image := yamlnode.Text(root, "runs", "image"); strings.EqualFold(yamlnode.Text(root, "runs", "using"), "docker") &&
 		!strings.HasPrefix(image, "docker://") && strings.HasSuffix(image, "Dockerfile") {
 		dockerfile = image
 	}
@@ -44,7 +44,7 @@ func ActionDependencies(source []byte) (dependencies []lang.Target, dockerfile s
 //
 // Implements: REQ-CI-016
 func WorkflowDependencies(source []byte, repository, reference string) []lang.Target {
-	root := yamlReader.Mapping(yamlnode.Parse(source))
+	root := yamlnode.Mapping(yamlnode.Parse(source))
 	if root == nil {
 		return nil
 	}
