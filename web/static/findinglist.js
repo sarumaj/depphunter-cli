@@ -13,7 +13,7 @@
 // is left out, which is the whole of what the list is for.
 
 import { rankOf, whereOf } from './findings.js';
-import { h } from './dom.js';
+import { h, catchToggle, findingItem } from './dom.js';
 
 /** What a row is sorted and labeled by: the package a finding is against, or its file. */
 export const nameOf = f => f.package || f.path || '';
@@ -86,17 +86,16 @@ export class FindingList {
     const location = f.package
       ? [f.ecosystem, f.path].filter(Boolean).join(' · ')
       : f.line ? `line ${f.line}` : '';
-    const button = h('button', {
-      class: 'keep', type: 'button',
+    // The list is drawn again whenever the backpack changes, so the button only has
+    // to say what it was drawn with.
+    const button = catchToggle({
+      class: 'keep',
       'aria-pressed': String(kept),
       'aria-label': kept ? `In the backpack: take ${f.title} out` : `Put ${f.title} in the backpack`,
-      title: kept ? 'In the backpack - press to take it out' : 'Put it in the backpack',
-      onclick: e => {
-        e.stopPropagation(); // the row itself opens the details
-        this.hooks.onToggle(row, kept);
-      },
-    }, kept ? '✓' : '+');
-    const li = h('li', {
+      kept: () => kept,
+      onToggle: () => this.hooks.onToggle(row, kept),
+    });
+    const li = findingItem({
       class: `sev-${severity}${kept ? ' kept' : ''}`,
       tabindex: '0',
       'aria-label': `${severity}: ${f.title}, ${whereOf(f)}${kept ? ', in the backpack' : ''}`,
@@ -106,14 +105,11 @@ export class FindingList {
       onfocus: () => this.hooks.onPoint(row),
       onblur: () => this.hooks.onPoint(null),
       onkeydown: e => this.key(e, li, row),
-    },
-      h('span', { class: 'sev-dot' }),
-      h('span', { class: 'body' },
-        h('span', { class: 'n' }, name),
-        h('span', { class: 't' }, f.ref && f.ref !== f.title ? `${f.ref} · ${f.title}` : f.title || f.id),
-        location ? h('span', { class: 'w' }, location) : null),
-      h('span', { class: 'state' }, kept ? 'in the backpack' : severity),
-      button);
+    }, [
+      h('span', { class: 'n' }, name),
+      h('span', { class: 't' }, f.ref && f.ref !== f.title ? `${f.ref} · ${f.title}` : f.title || f.id),
+      location ? h('span', { class: 'w' }, location) : null,
+    ], kept ? 'in the backpack' : severity, button);
     li.dataset.finding = f.id;
     return li;
   }
