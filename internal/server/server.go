@@ -72,7 +72,7 @@ type Server struct {
 
 	mu   sync.RWMutex
 	snap *snapshot
-	lazy map[string]*lazyData // "history", "references", "findings": computed after startup
+	lazy map[dataset]*lazyData // computed after startup
 	subs map[chan event]struct{}
 	// hexers are the streams that said they can open a file in a hex editor
 	// (/api/events?opens=hex) - the VS Code extension, which can ask the editor it
@@ -104,11 +104,23 @@ type event struct {
 	sequence uint64
 }
 
+// dataset names one of the datasets computed in the background after the map is
+// served. The name is also the event that announces it and the last element of the
+// path it is served at.
+type dataset string
+
+const (
+	datasetHistory    dataset = "history"
+	datasetReferences dataset = "references"
+	datasetFindings   dataset = "findings"
+)
+
 // lazyData is a dataset computed in the background after the map is served.
 type lazyData struct {
 	pending bool
 	value   any // nil when unavailable
-	gzipped []byte
+	// body is the value encoded, as it is served; set only with a value.
+	body encoded
 	// sum fingerprints the encoded value, so a re-read that produced the same answer
 	// can be recognized and not announced again.
 	sum [32]byte
@@ -135,10 +147,10 @@ func New(settings config.Config, g *graph.Graph, assets fs.FS) (*Server, error) 
 		token: hex.EncodeToString(token), cookie: cookieFor(token), root: settings.Root, assets: assets, editor: settings.Editor, config: settings,
 		embed: settings.Embed,
 		subs:  map[chan event]struct{}{}, hexers: map[chan event]struct{}{}, done: make(chan struct{}),
-		lazy: map[string]*lazyData{
-			"history":    {pending: settings.History},
-			"references": {pending: settings.LSP},
-			"findings":   {pending: settings.FindingsEnabled()},
+		lazy: map[dataset]*lazyData{
+			datasetHistory:    {pending: settings.History},
+			datasetReferences: {pending: settings.LSP},
+			datasetFindings:   {pending: settings.FindingsEnabled()},
 		},
 	}
 	var err error
@@ -197,13 +209,9 @@ func newSnapshot(g *graph.Graph, version int) (*snapshot, error) {
 	doc.Write(edges)
 	doc.WriteByte('}')
 	created.json = doc.Bytes()
-	var buffer bytes.Buffer
-	gzipWriter := gzip.NewWriter(&buffer)
-	gzipWriter.Write(created.json)
-	if err := gzipWriter.Close(); err != nil {
+	if created.gzipped, err = compress(created.json, gzip.DefaultCompression); err != nil {
 		return nil, err
 	}
-	created.gzipped = buffer.Bytes()
 	return created, nil
 }
 
@@ -273,18 +281,21 @@ func (s *Server) broadcast(sent event) {
 
 // SetHistory publishes the git history (nil: none available) and notifies browsers.
 func (s *Server) SetHistory(h *history.History) error {
-	if h == nil {
-		return s.setLazy("history", nil)
-	}
-	return s.setLazy("history", h)
+	return setPointer(s, datasetHistory, h)
 }
 
 // SetReferences publishes symbol references (nil: none available).
 func (s *Server) SetReferences(r *References) error {
-	if r == nil {
-		return s.setLazy("references", nil)
+	return setPointer(s, datasetReferences, r)
+}
+
+// setPointer publishes a dataset held by a pointer. A nil pointer is no dataset: it
+// is handed on as a nil interface, not as a typed nil, which would read as a value.
+func setPointer[T any](s *Server, name dataset, v *T) error {
+	if v == nil {
+		return s.setLazy(name, nil)
 	}
-	return s.setLazy("references", r)
+	return s.setLazy(name, v)
 }
 
 // SetResolution publishes the report of the analysis now being served. --watch
@@ -300,9 +311,9 @@ func (s *Server) SetResolution(r *trace.Report) {
 // SetFindings publishes what the scanners said (nil: nothing was found or asked).
 func (s *Server) SetFindings(f *findings.Set) error {
 	if f.Empty() {
-		return s.setLazy("findings", nil)
+		return s.setLazy(datasetFindings, nil)
 	}
-	return s.setLazy("findings", f)
+	return s.setLazy(datasetFindings, f)
 }
 
 // References is the /api/references document.
@@ -313,7 +324,7 @@ type References struct {
 }
 
 // Implements: REQ-HIST-008, REQ-LSP-005, REQ-FND-022
-func (s *Server) setLazy(name string, v any) error {
+func (s *Server) setLazy(name dataset, v any) error {
 	d := &lazyData{value: v}
 	if v != nil {
 		var raw bytes.Buffer
@@ -321,15 +332,13 @@ func (s *Server) setLazy(name string, v any) error {
 			return err
 		}
 		d.sum = sha256.Sum256(raw.Bytes())
-		var buffer bytes.Buffer
-		gzipWriter := gzip.NewWriter(&buffer)
-		if _, err := gzipWriter.Write(raw.Bytes()); err != nil {
+		gzipped, err := compress(raw.Bytes(), gzip.DefaultCompression)
+		if err != nil {
 			return err
 		}
-		if err := gzipWriter.Close(); err != nil {
-			return err
-		}
-		d.gzipped = buffer.Bytes()
+		// The history and the findings can be megabytes and rarely change between
+		// page loads: revalidated like the graph, an unchanged one is a 304.
+		d.body = encoded{plain: raw.Bytes(), gzipped: gzipped, etag: `"` + hex.EncodeToString(d.sum[:16]) + `"`, contentType: "application/json"}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -342,12 +351,12 @@ func (s *Server) setLazy(name string, v any) error {
 		return nil
 	}
 	s.lazy[name] = d
-	s.broadcast(event{name: name, data: []byte(fmt.Sprintf(`{"available":%t}`, v != nil))})
+	s.broadcast(event{name: string(name), data: []byte(fmt.Sprintf(`{"available":%t}`, v != nil))})
 	return nil
 }
 
 // Lazy returns a background dataset for exports; nil while pending or unavailable.
-func (s *Server) Lazy(name string) any {
+func (s *Server) Lazy(name dataset) any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if d := s.lazy[name]; d != nil {
@@ -359,37 +368,20 @@ func (s *Server) Lazy(name string) any {
 // handleLazy serves a background dataset: 202 while it is computed, 204 without one.
 //
 // Implements: REQ-HIST-007, REQ-LSP-005, REQ-FND-022
-func (s *Server) handleLazy(name string) http.HandlerFunc {
+func (s *Server) handleLazy(name dataset) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s.mu.RLock()
 		d := *s.lazy[name]
 		s.mu.RUnlock()
-		if d.pending || d.value == nil {
-			w.Header().Set("Cache-Control", "no-store")
-		} else {
-			// The history and the findings can be megabytes and rarely change between
-			// page loads: revalidated like the graph, an unchanged one is a 304.
-			etag := `"` + hex.EncodeToString(d.sum[:16]) + `"`
-			w.Header().Set("Cache-Control", "no-cache")
-			w.Header().Set("Vary", "Accept-Encoding")
-			w.Header().Set("ETag", etag)
-			if matches(r.Header.Get("If-None-Match"), etag) {
-				w.WriteHeader(http.StatusNotModified)
-				return
-			}
-		}
 		switch {
 		case d.pending:
+			w.Header().Set("Cache-Control", "no-store")
 			w.WriteHeader(http.StatusAccepted)
 		case d.value == nil:
+			w.Header().Set("Cache-Control", "no-store")
 			w.WriteHeader(http.StatusNoContent)
-		case !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip"):
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(d.value)
 		default:
-			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("Content-Encoding", "gzip")
-			w.Write(d.gzipped)
+			d.body.serve(w, r)
 		}
 	}
 }
@@ -433,9 +425,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("GET /api/file", s.handleFile)
 	mux.HandleFunc("GET /api/events", s.handleEvents)
-	mux.HandleFunc("GET /api/history", s.handleLazy("history"))
-	mux.HandleFunc("GET /api/references", s.handleLazy("references"))
-	mux.HandleFunc("GET /api/findings", s.handleLazy("findings"))
+	mux.HandleFunc("GET /api/history", s.handleLazy(datasetHistory))
+	mux.HandleFunc("GET /api/references", s.handleLazy(datasetReferences))
+	mux.HandleFunc("GET /api/findings", s.handleLazy(datasetFindings))
 	mux.HandleFunc("GET /api/resolution", s.handleResolution)
 	mux.HandleFunc("GET /api/export", s.handleExport)
 	mux.HandleFunc("GET /api/session", s.handleSession)
@@ -549,40 +541,14 @@ func (s *Server) equalToken(t string) bool {
 // Implements: REQ-SRV-002, REQ-SRV-013, REQ-SRV-014
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	snapshot := s.current()
-	w.Header().Set("Content-Type", "application/json")
-	// Revalidate rather than refuse to store: the document is large and usually
-	// unchanged, and an ETag is no use to a client that was told not to keep it.
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Vary", "Accept-Encoding")
-	w.Header().Set("ETag", snapshot.etag)
 	w.Header().Set("X-Graph-Version", strconv.Itoa(snapshot.version))
-	// The fingerprint is of the nodes and the edges, not of when they were read, so
-	// a re-analysis that found the same project answers 304 - which is what a client
+	// Revalidate rather than refuse to store: the document is large and usually
+	// unchanged, and an ETag is no use to a client that was told not to keep it. The
+	// fingerprint is of the nodes and the edges, not of when they were read, so a
+	// re-analysis that found the same project answers 304 - which is what a client
 	// reconnecting to a server that restarted under it is asking about.
-	if matches(r.Header.Get("If-None-Match"), snapshot.etag) {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
-		w.Header().Set("Content-Encoding", "gzip")
-		w.Write(snapshot.gzipped)
-		return
-	}
-	w.Write(snapshot.json)
-}
-
-// matches reports whether an If-None-Match header names this entity. The header is a
-// comma-separated list and may be "*"; a weak validator (W/"…") compares by its tag,
-// which is all the comparison this needs - there is one representation per graph, and
-// gzip is negotiated with Vary.
-func matches(header, etag string) bool {
-	for part := range strings.SplitSeq(header, ",") {
-		part = strings.TrimSpace(part)
-		if part == "*" || strings.TrimPrefix(part, "W/") == etag {
-			return true
-		}
-	}
-	return false
+	body := encoded{plain: snapshot.json, gzipped: snapshot.gzipped, etag: snapshot.etag, contentType: "application/json"}
+	body.serve(w, r)
 }
 
 // Implements: REQ-CFG-015, REQ-SRV-004
@@ -606,9 +572,8 @@ func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
 //
 // Implements: REQ-CFG-012, REQ-CFG-014, REQ-CFG-015
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
-	var ui config.UI
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&ui); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	ui, ok := decodeBody[config.UI](w, r, 64<<10)
+	if !ok {
 		return
 	}
 	if err := ui.Validate(); err != nil {
@@ -861,7 +826,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		}
 		var buffer bytes.Buffer
 		if err := web.WriteStatic(&buffer, snapshot.g, ui, s.root, map[string]any{
-			"history": s.Lazy("history"), "references": s.Lazy("references"), "findings": s.Lazy("findings"),
+			"history": s.Lazy(datasetHistory), "references": s.Lazy(datasetReferences), "findings": s.Lazy(datasetFindings),
 		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -878,7 +843,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 	snapshot := s.current()
 	g := snapshot.g
-	if references, ok := s.Lazy("references").(*References); ok && references != nil {
+	if references, ok := s.Lazy(datasetReferences).(*References); ok && references != nil {
 		g = export.WithEdges(g, references.Edges)
 	}
 	var buffer bytes.Buffer
@@ -906,13 +871,13 @@ const openedHeader = "X-Depphunter-Opened"
 //
 // Implements: REQ-SEC-008, REQ-SRV-005, REQ-EXT-034
 func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
-	var request struct {
+	type openRequest struct {
 		Path string `json:"path"`
 		Line int    `json:"line"`
 		Hex  bool   `json:"hex"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&request); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	request, ok := decodeBody[openRequest](w, r, 4096)
+	if !ok {
 		return
 	}
 	if _, ok := s.current().files[request.Path]; !ok {
