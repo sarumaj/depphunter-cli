@@ -1,6 +1,7 @@
 package userconf
 
 import (
+	"cmp"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -15,36 +16,20 @@ import (
 //
 // Implements: REQ-SUP-064
 func (m Machine) DubUserDirectory() string {
-	if directory := m.Environment("DUB_HOME"); directory != "" {
-		return directory
-	}
-	if directory := m.Environment("DPATH"); directory != "" {
-		return filepath.Join(directory, "dub")
-	}
-	if m.GOOS == "windows" {
-		if directory := m.Environment("APPDATA"); directory != "" {
-			return filepath.Join(directory, "dub")
-		}
-	}
-	return join(m.Home, ".dub")
+	return cmp.Or(m.Environment("DUB_HOME"), m.under("DPATH", "dub"),
+		m.on(m.under("APPDATA", "dub"), "windows"), m.home(".dub"))
 }
 
 // DubSettings lists dub's settings.json files, the one dub gives priority first: the
-// user's (DubUserDir), then the system's - %ProgramData%\dub on Windows, else
+// user's (DubUserDirectory), then the system's - %ProgramData%\dub on Windows, else
 // /etc/dub (where a dub installed under /usr looks) and /var/lib/dub. The file
 // beside the dub executable (../etc/dub) is not looked for.
 //
 // Implements: REQ-SUP-064
 func (m Machine) DubSettings() []string {
-	var out []string
-	if directory := m.DubUserDirectory(); directory != "" {
-		out = append(out, filepath.Join(directory, "settings.json"))
-	}
+	out := present(join(m.DubUserDirectory(), "settings.json"))
 	if m.GOOS == "windows" {
-		if directory := m.Environment("ProgramData"); directory != "" {
-			out = append(out, filepath.Join(directory, "dub", "settings.json"))
-		}
-		return out
+		return append(out, present(m.under("ProgramData", "dub", "settings.json"))...)
 	}
 	return append(out, system("etc", "dub", "settings.json"), system("var", "lib", "dub", "settings.json"))
 }
@@ -56,7 +41,7 @@ func (m Machine) DubSettings() []string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) QuicklispDists() []string {
-	directory := join(m.Home, "quicklisp", "dists")
+	directory := m.home("quicklisp", "dists")
 	if directory == "" {
 		return nil
 	}
@@ -73,15 +58,7 @@ func (m Machine) QuicklispDists() []string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) OpamRoot() string {
-	if directory := m.Environment("OPAMROOT"); directory != "" {
-		return directory
-	}
-	if m.GOOS == "windows" {
-		if directory := m.Environment("LOCALAPPDATA"); directory != "" {
-			return filepath.Join(directory, "opam")
-		}
-	}
-	return join(m.Home, ".opam")
+	return cmp.Or(m.Environment("OPAMROOT"), m.on(m.under("LOCALAPPDATA", "opam"), "windows"), m.home(".opam"))
 }
 
 // ---------------------------------------------------------------- Alire
@@ -93,15 +70,11 @@ func (m Machine) OpamRoot() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) AlireSettingsDirectory() string {
-	for _, v := range []string{"ALIRE_SETTINGS_DIR", "ALR_CONFIG"} {
-		if directory := m.Environment(v); directory != "" {
-			return directory
-		}
-	}
+	directory := m.xdgConfigHome("alire")
 	if m.GOOS == "windows" {
-		return join(m.Home, ".config", "alire")
+		directory = m.home(".config", "alire")
 	}
-	return join(m.xdgConfigHome(), "alire")
+	return cmp.Or(m.Environment("ALIRE_SETTINGS_DIR"), m.Environment("ALR_CONFIG"), directory)
 }
 
 // ---------------------------------------------------------------- Julia
@@ -115,7 +88,7 @@ func (m Machine) AlireSettingsDirectory() string {
 //
 // Implements: REQ-SUP-055, REQ-SUP-064
 func (m Machine) JuliaDepots() []string {
-	user := join(m.Home, ".julia")
+	user := m.home(".julia")
 	separator := ":"
 	if m.GOOS == "windows" {
 		separator = ";"
@@ -138,7 +111,7 @@ func (m Machine) JuliaDepots() []string {
 		case d == "~":
 			d = m.Home
 		case strings.HasPrefix(d, "~/") || strings.HasPrefix(d, `~\`):
-			d = join(m.Home, d[2:])
+			d = m.home(d[2:])
 		}
 		add(d)
 	}
@@ -162,10 +135,7 @@ func (m Machine) R10KConfigs() []string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) CUEConfigDirectory() string {
-	if directory := m.Environment("CUE_CONFIG_DIR"); directory != "" {
-		return directory
-	}
-	return join(m.ConfigDirectory(), "cue")
+	return cmp.Or(m.Environment("CUE_CONFIG_DIR"), join(m.ConfigDirectory(), "cue"))
 }
 
 // ---------------------------------------------------------------- CocoaPods and SwiftPM
@@ -176,13 +146,7 @@ func (m Machine) CUEConfigDirectory() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) CocoaPodsRepositories() string {
-	if directory := m.Environment("CP_REPOS_DIR"); directory != "" {
-		return directory
-	}
-	if directory := m.Environment("CP_HOME_DIR"); directory != "" {
-		return filepath.Join(directory, "repos")
-	}
-	return join(m.Home, ".cocoapods", "repos")
+	return cmp.Or(m.Environment("CP_REPOS_DIR"), m.under("CP_HOME_DIR", "repos"), m.home(".cocoapods", "repos"))
 }
 
 // SwiftPMRegistries is the user's registries.json, which `swift package-registry
@@ -193,16 +157,9 @@ func (m Machine) CocoaPodsRepositories() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) SwiftPMRegistries() string {
-	if m.GOOS == "darwin" {
-		if idiomatic := join(m.Home, "Library", "org.swift.swiftpm", "configuration", "registries.json"); idiomatic != "" && isFile(idiomatic) {
-			return idiomatic
-		}
-	}
-	directory := join(m.Home, ".swiftpm")
-	if xdg := m.Environment("XDG_CONFIG_HOME"); xdg != "" {
-		directory = filepath.Join(xdg, "swiftpm")
-	}
-	return join(directory, "configuration", "registries.json")
+	idiomatic := m.on(firstFile(m.home("Library", "org.swift.swiftpm", "configuration", "registries.json")), "darwin")
+	directory := cmp.Or(m.under("XDG_CONFIG_HOME", "swiftpm"), m.home(".swiftpm"))
+	return cmp.Or(idiomatic, join(directory, "configuration", "registries.json"))
 }
 
 // ---------------------------------------------------------------- Conan
@@ -218,11 +175,11 @@ func (m Machine) ConanHome() string {
 	directory := strings.TrimSpace(m.Environment("CONAN_HOME"))
 	switch {
 	case directory == "":
-		return join(m.Home, ".conan2")
+		return m.home(".conan2")
 	case directory == "~":
 		return m.Home
 	case strings.HasPrefix(directory, "~/") || strings.HasPrefix(directory, `~\`):
-		return join(m.Home, directory[2:])
+		return m.home(directory[2:])
 	case filepath.IsAbs(directory), strings.HasPrefix(directory, "/"), m.GOOS == "windows" && windowsAbsolute(directory):
 		return directory
 	}
@@ -239,19 +196,12 @@ func (m Machine) ConanHome() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) CabalConfig() string {
-	if name := m.Environment("CABAL_CONFIG"); name != "" {
+	if name := cmp.Or(m.Environment("CABAL_CONFIG"), m.under("CABAL_DIR", "config"),
+		m.on(m.under("APPDATA", "cabal", "config"), "windows")); name != "" {
 		return name
 	}
-	if directory := m.Environment("CABAL_DIR"); directory != "" {
-		return filepath.Join(directory, "config")
-	}
-	if m.GOOS == "windows" {
-		if appData := m.Environment("APPDATA"); appData != "" {
-			return filepath.Join(appData, "cabal", "config")
-		}
-	}
-	xdg := join(m.xdgConfigHome(), "cabal", "config")
-	if legacy := join(m.Home, ".cabal"); legacy != "" && isDirectory(legacy) && !isFile(xdg) {
+	xdg := m.xdgConfigHome("cabal", "config")
+	if legacy := m.home(".cabal"); legacy != "" && isDirectory(legacy) && !isFile(xdg) {
 		return filepath.Join(legacy, "config")
 	}
 	return xdg
@@ -272,22 +222,14 @@ func (m Machine) LuaRocksConfigs() []string {
 	var out []string
 	for _, version := range luaVersions {
 		name := "config-" + version + ".lua"
-		candidates := []string{
-			m.Environment("LUAROCKS_CONFIG_" + strings.ReplaceAll(version, ".", "_")),
-			m.Environment("LUAROCKS_CONFIG"),
-		}
+		user := []string{m.xdgConfigHome("luarocks", name), m.home(".luarocks", name)}
 		if appData := m.Environment("APPDATA"); m.GOOS == "windows" && appData != "" {
-			candidates = append(candidates, filepath.Join(appData, "luarocks", name))
-		} else {
-			candidates = append(candidates, join(m.xdgConfigHome(), "luarocks", name), join(m.Home, ".luarocks", name))
+			user = []string{filepath.Join(appData, "luarocks", name)}
 		}
-		for _, candidate := range candidates {
-			if candidate != "" && isFile(candidate) {
-				if !slices.Contains(out, candidate) {
-					out = append(out, candidate)
-				}
-				break
-			}
+		versioned := m.Environment("LUAROCKS_CONFIG_" + strings.ReplaceAll(version, ".", "_"))
+		candidates := append([]string{versioned, m.Environment("LUAROCKS_CONFIG")}, user...)
+		if file := firstFile(candidates...); file != "" && !slices.Contains(out, file) {
+			out = append(out, file)
 		}
 	}
 	return out

@@ -1,8 +1,8 @@
 package userconf
 
 import (
+	"cmp"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -17,16 +17,8 @@ import (
 //
 // Implements: REQ-SUP-064
 func (m Machine) GitHubCLIConfigDirectory() string {
-	if directory := m.Environment("GH_CONFIG_DIR"); directory != "" {
-		return directory
-	}
-	if xdg := m.Environment("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "gh")
-	}
-	if appData := m.Environment("APPDATA"); m.GOOS == "windows" && appData != "" {
-		return filepath.Join(appData, "GitHub CLI")
-	}
-	return join(m.Home, ".config", "gh")
+	return cmp.Or(m.Environment("GH_CONFIG_DIR"), m.under("XDG_CONFIG_HOME", "gh"),
+		m.on(m.under("APPDATA", "GitHub CLI"), "windows"), m.home(".config", "gh"))
 }
 
 // GitHubHost is a host `gh auth login` logged in to, from hosts.yml: its name,
@@ -94,18 +86,12 @@ func GitHubAPI(host string) string {
 // Implements: REQ-SUP-064
 func (m Machine) PSResourceGetRepositories() string {
 	const file = "PSResourceRepository.xml"
-	switch m.GOOS {
-	case "windows":
-		return join(m.Environment("LOCALAPPDATA"), "PSResourceGet", file)
-	case "darwin":
-		if name := join(m.Home, "Library", "Application Support", "PSResourceGet", file); name != "" && isFile(name) {
-			return name
-		}
+	if m.GOOS == "windows" {
+		return m.under("LOCALAPPDATA", "PSResourceGet", file)
 	}
-	if xdg := m.Environment("XDG_DATA_HOME"); filepath.IsAbs(xdg) {
-		return filepath.Join(xdg, "PSResourceGet", file)
-	}
-	return join(m.Home, ".local", "share", "PSResourceGet", file)
+	dataHome := cmp.Or(absolute(m.Environment("XDG_DATA_HOME")), m.home(".local", "share"))
+	macOS := m.on(firstFile(m.applicationSupport("PSResourceGet", file)), "darwin")
+	return cmp.Or(macOS, join(dataHome, "PSResourceGet", file))
 }
 
 // PowerShellGetRepositories is PowerShellGet 2's PSRepositories.xml, which
@@ -117,10 +103,7 @@ func (m Machine) PSResourceGetRepositories() string {
 func (m Machine) PowerShellGetRepositories() string {
 	const file = "PSRepositories.xml"
 	if m.GOOS == "windows" {
-		return join(m.Environment("LOCALAPPDATA"), "Microsoft", "Windows", "PowerShell", "PowerShellGet", file)
+		return m.under("LOCALAPPDATA", "Microsoft", "Windows", "PowerShell", "PowerShellGet", file)
 	}
-	if xdg := m.Environment("XDG_CACHE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "powershell", "PowerShellGet", file)
-	}
-	return join(m.Home, ".cache", "powershell", "PowerShellGet", file)
+	return join(cmp.Or(m.Environment("XDG_CACHE_HOME"), m.home(".cache")), "powershell", "PowerShellGet", file)
 }

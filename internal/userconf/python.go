@@ -1,6 +1,7 @@
 package userconf
 
 import (
+	"cmp"
 	"path/filepath"
 	"strings"
 )
@@ -34,26 +35,15 @@ func (m Machine) UVConfigFiles() []string {
 	if f := m.Environment("UV_CONFIG_FILE"); f != "" {
 		return []string{f}
 	}
-	var files []string
-	if m.GOOS == "windows" && m.Environment("APPDATA") != "" {
-		files = append(files, join(m.Environment("APPDATA"), "uv", "uv.toml"))
-	} else {
-		files = append(files, join(m.xdgConfigHome(), "uv", "uv.toml"))
+	files := []string{cmp.Or(m.on(m.under("APPDATA", "uv", "uv.toml"), "windows"), m.xdgConfigHome("uv", "uv.toml"))}
+	if m.GOOS == "windows" {
+		return append(files, present(m.under("ProgramData", "uv", "uv.toml"))...)
 	}
-	switch {
-	case m.GOOS == "windows" && m.Environment("ProgramData") != "":
-		files = append(files, join(m.Environment("ProgramData"), "uv", "uv.toml"))
-	case m.GOOS != "windows":
-		system := system("etc", "uv", "uv.toml")
-		for _, d := range filepath.SplitList(m.Environment("XDG_CONFIG_DIRS")) {
-			if f := join(d, "uv", "uv.toml"); f != "" && isFile(f) {
-				system = f
-				break
-			}
-		}
-		files = append(files, system)
+	var systemFiles []string
+	for _, d := range filepath.SplitList(m.Environment("XDG_CONFIG_DIRS")) {
+		systemFiles = append(systemFiles, join(d, "uv", "uv.toml"))
 	}
-	return files
+	return append(files, cmp.Or(firstFile(systemFiles...), system("etc", "uv", "uv.toml")))
 }
 
 // UVProjectConfig reports whether a project's uv.toml is read: not under
@@ -72,16 +62,8 @@ func (m Machine) UVProjectConfig() bool {
 //
 // Implements: REQ-SUP-064
 func (m Machine) PoetryConfigDirectory() string {
-	if directory := m.Environment("POETRY_CONFIG_DIR"); directory != "" {
-		return directory
-	}
-	switch {
-	case m.GOOS == "windows" && m.Environment("APPDATA") != "":
-		return join(m.Environment("APPDATA"), "pypoetry")
-	case m.GOOS == "darwin" || m.GOOS == "ios":
-		return join(m.Home, "Library", "Application Support", "pypoetry")
-	}
-	return join(m.xdgConfigHome(), "pypoetry")
+	return cmp.Or(m.Environment("POETRY_CONFIG_DIR"),
+		m.byPlatform(m.under("APPDATA", "pypoetry"), m.applicationSupport("pypoetry"), m.xdgConfigHome("pypoetry")))
 }
 
 // PoetryRepositoryVariables are the repositories the POETRY_REPOSITORIES_<NAME>_URL
@@ -109,14 +91,6 @@ func (m Machine) PoetryRepositoryVariables() map[string]string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) PDMConfigFile() string {
-	if f := m.Environment("PDM_CONFIG_FILE"); f != "" {
-		return f
-	}
-	switch {
-	case m.GOOS == "windows" && m.Environment("LOCALAPPDATA") != "":
-		return join(m.Environment("LOCALAPPDATA"), "pdm", "pdm", "config.toml")
-	case m.GOOS == "darwin" || m.GOOS == "ios":
-		return join(m.Home, "Library", "Application Support", "pdm", "config.toml")
-	}
-	return join(m.xdgConfigHome(), "pdm", "config.toml")
+	return cmp.Or(m.Environment("PDM_CONFIG_FILE"), m.byPlatform(m.under("LOCALAPPDATA", "pdm", "pdm", "config.toml"),
+		m.applicationSupport("pdm", "config.toml"), m.xdgConfigHome("pdm", "config.toml")))
 }

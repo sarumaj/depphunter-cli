@@ -17,8 +17,8 @@ import (
 //
 // Implements: REQ-SUP-068
 func (m Machine) RegistriesConf() (main string, dropIns []string) {
-	user := join(m.xdgConfigHome(), "containers", "registries.conf")
-	userDirectory := join(m.xdgConfigHome(), "containers", "registries.conf.d")
+	user := m.xdgConfigHome("containers", "registries.conf")
+	userDirectory := m.xdgConfigHome("containers", "registries.conf.d")
 	directories := []string{system("etc", "containers", "registries.conf.d"), userDirectory}
 	switch environment := m.Environment("CONTAINERS_REGISTRIES_CONF"); {
 	case environment != "":
@@ -52,21 +52,13 @@ func (m Machine) RegistriesConf() (main string, dropIns []string) {
 //
 // Implements: REQ-SUP-068
 func (m Machine) DockerDaemonConfig() string {
-	var candidates []string
 	switch m.GOOS {
 	case "windows":
-		candidates = []string{join(m.Home, ".docker", "daemon.json"), join(m.Environment("ProgramData"), "docker", "config", "daemon.json")}
+		return firstFile(m.home(".docker", "daemon.json"), m.under("ProgramData", "docker", "config", "daemon.json"))
 	case "darwin", "ios":
-		candidates = []string{join(m.Home, ".docker", "daemon.json")}
-	default:
-		candidates = []string{join(m.xdgConfigHome(), "docker", "daemon.json"), system("etc", "docker", "daemon.json")}
+		return firstFile(m.home(".docker", "daemon.json"))
 	}
-	for _, f := range candidates {
-		if f != "" && isFile(f) {
-			return f
-		}
-	}
-	return ""
+	return firstFile(m.xdgConfigHome("docker", "daemon.json"), system("etc", "docker", "daemon.json"))
 }
 
 // GoAuthNetrc reports whether the go command sends the netrc's credentials to a

@@ -1,8 +1,10 @@
 package userconf
 
 import (
+	"cmp"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -16,16 +18,8 @@ import (
 //
 // Implements: REQ-SUP-064
 func (m Machine) MavenSettings() []string {
-	var out []string
-	if user := join(m.Home, ".m2", "settings.xml"); user != "" {
-		out = append(out, user)
-	}
-	for _, v := range []string{"MAVEN_HOME", "M2_HOME"} {
-		if directory := m.Environment(v); directory != "" {
-			return append(out, filepath.Join(directory, "conf", "settings.xml"))
-		}
-	}
-	return out
+	installation := cmp.Or(m.Environment("MAVEN_HOME"), m.Environment("M2_HOME"))
+	return present(m.home(".m2", "settings.xml"), join(installation, "conf", "settings.xml"))
 }
 
 // ---------------------------------------------------------------- sbt
@@ -51,10 +45,8 @@ func (m Machine) SbtProperty(name string) (string, bool) {
 
 // sbtGlobalBase is sbt's global directory: `-Dsbt.global.base`, else ~/.sbt.
 func (m Machine) sbtGlobalBase() string {
-	if directory, ok := m.SbtProperty("sbt.global.base"); ok && directory != "" {
-		return directory
-	}
-	return join(m.Home, ".sbt")
+	directory, _ := m.SbtProperty("sbt.global.base")
+	return cmp.Or(directory, m.home(".sbt"))
 }
 
 // SbtRepositories is the repositories file sbt's launcher reads:
@@ -62,10 +54,8 @@ func (m Machine) sbtGlobalBase() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) SbtRepositories() string {
-	if file, ok := m.SbtProperty("sbt.repository.config"); ok && file != "" {
-		return file
-	}
-	return join(m.sbtGlobalBase(), "repositories")
+	file, _ := m.SbtProperty("sbt.repository.config")
+	return cmp.Or(file, join(m.sbtGlobalBase(), "repositories"))
 }
 
 // SbtOverrideBuildRepositories reports `-Dsbt.override.build.repos=true`, with which the
@@ -82,8 +72,8 @@ func (m Machine) SbtOverrideBuildRepositories() bool {
 // Implements: REQ-AUTH-020
 func (m Machine) SbtCredentials() []string {
 	var out []string
-	for _, f := range []string{m.Environment("SBT_CREDENTIALS"), join(m.sbtGlobalBase(), ".credentials"), join(m.Home, ".ivy2", ".credentials")} {
-		if f != "" && !contains(out, f) {
+	for _, f := range []string{m.Environment("SBT_CREDENTIALS"), join(m.sbtGlobalBase(), ".credentials"), m.home(".ivy2", ".credentials")} {
+		if f != "" && !slices.Contains(out, f) {
 			out = append(out, f)
 		}
 	}
@@ -98,21 +88,8 @@ func (m Machine) SbtCredentials() []string {
 //
 // Implements: REQ-AUTH-020
 func (m Machine) CoursierConfigDirectory() string {
-	if directory := m.Environment("COURSIER_CONFIG_DIR"); directory != "" {
-		return directory
-	}
-	switch m.GOOS {
-	case "windows":
-		if appData := m.Environment("APPDATA"); appData != "" {
-			return filepath.Join(appData, "Coursier", "config")
-		}
-	case "darwin", "ios":
-		return join(m.Home, "Library", "Application Support", "Coursier")
-	}
-	if xdg := m.Environment("XDG_CONFIG_HOME"); filepath.IsAbs(xdg) {
-		return filepath.Join(xdg, "coursier")
-	}
-	return join(m.Home, ".config", "coursier")
+	return cmp.Or(m.Environment("COURSIER_CONFIG_DIR"), m.byPlatform(m.under("APPDATA", "Coursier", "config"),
+		m.applicationSupport("Coursier"), m.absoluteXDGConfigHome("coursier")))
 }
 
 // CoursierCredentials is where Coursier's credentials are: `COURSIER_CREDENTIALS`
@@ -193,10 +170,7 @@ func driveLetter(c byte) bool { return 'a' <= c && c <= 'z' || 'A' <= c && c <= 
 //
 // Implements: REQ-SUP-064
 func (m Machine) GradleUserHome() string {
-	if directory := m.Environment("GRADLE_USER_HOME"); directory != "" {
-		return directory
-	}
-	return join(m.Home, ".gradle")
+	return cmp.Or(m.Environment("GRADLE_USER_HOME"), m.home(".gradle"))
 }
 
 // GradleInitScripts lists the init scripts Gradle runs from its user home, in its
@@ -231,13 +205,7 @@ func (m Machine) GradleInitScripts() []string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) ClojureConfigDirectory() string {
-	if directory := m.Environment("CLJ_CONFIG"); directory != "" {
-		return directory
-	}
-	if xdg := m.Environment("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "clojure")
-	}
-	return join(m.Home, ".clojure")
+	return cmp.Or(m.Environment("CLJ_CONFIG"), m.under("XDG_CONFIG_HOME", "clojure"), m.home(".clojure"))
 }
 
 // LeinProfiles is Leiningen's user profiles file: profiles.clj in `LEIN_HOME`, else
@@ -245,8 +213,5 @@ func (m Machine) ClojureConfigDirectory() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) LeinProfiles() string {
-	if directory := m.Environment("LEIN_HOME"); directory != "" {
-		return filepath.Join(directory, "profiles.clj")
-	}
-	return join(m.Home, ".lein", "profiles.clj")
+	return cmp.Or(m.under("LEIN_HOME", "profiles.clj"), m.home(".lein", "profiles.clj"))
 }
