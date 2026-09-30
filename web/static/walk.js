@@ -31,6 +31,7 @@ import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, 
 import { packedChute, deployChute, stepChute, aloft, cutAway, lookOf, poseRig, canopyRig, LooseCanopy, MIN_DEPLOY, DRAPE_AHEAD, dropFor } from './parachute.js';
 import { ToolWheel, EMPTY, carriedRing, cycle, keyFor, keysFor, rowOrder, toolForKey } from './switcher.js';
 import { inBlaze } from './flames.js';
+import { massTop } from './details.js';
 
 // A building is one unit wide and its stories 0.3 high (city.js): the walker is
 // about a story and a half tall.
@@ -2223,22 +2224,25 @@ export class Walker {
 
   /**
    * Top of the solid column under a body at (x, z): the highest box, ramp or bridge
-   * deck it overlaps.
+   * deck it overlaps. In the city a setback tower stands as its tiers do (details.js
+   * massTop), so its ledges are roofs to stand on; balconies, awnings and rooftop
+   * gear are not solid at all.
    *
    * `from` is where the body already is, and a bridge deck more than a step above that
    * is a bridge the body is under rather than one it is on. Without it, walking the
    * water on skimmers put the walker on top of every deck they passed beneath, which
    * is the one place on the map where there is somewhere to be underneath.
    *
-   * Implements: REQ-WALK-002, REQ-WALK-032, REQ-WALK-035, REQ-CITY-018, REQ-CITY-028, REQ-PERF-008
+   * Implements: REQ-WALK-002, REQ-WALK-032, REQ-WALK-035, REQ-CITY-018, REQ-CITY-028, REQ-CITY-034, REQ-PERF-008
    */
   height(x, z, from = Infinity) {
     let top = WATER;
+    const city = this.scene?.style === 'city';
     for (let i = 0; i < PROBES.length; i += 2) {
       const px = x + PROBES[i], pz = z + PROBES[i + 1];
       for (const b of this.cellAt(px, pz)) {
         if (Math.abs(px - b.x) <= b.w / 2 && Math.abs(pz - b.z) <= b.d / 2) {
-          top = Math.max(top, b.y + b.h);
+          top = Math.max(top, b.y + (city ? massTop(b, px, pz) : b.h));
         }
       }
       for (const at of this.decks.get(cellKey(px, pz)) || NO_CELL) top = Math.max(top, at(px, pz));
@@ -2269,11 +2273,15 @@ export class Walker {
     return this.grid.get(cellKey(x, z)) || NO_CELL;
   }
 
-  /** The box containing a flat-map point, or null. */
+  /**
+   * The box containing a flat-map point, or null. Above a setback tower's ledges is
+   * air, not the tower (height).
+   */
   boxAt(v) {
+    const city = this.scene?.style === 'city';
     for (const b of this.cellAt(v.x, v.z)) {
       if (Math.abs(v.x - b.x) <= b.w / 2 && Math.abs(v.z - b.z) <= b.d / 2
-        && v.y >= b.y - 0.02 && v.y <= b.y + b.h + 0.02) return b;
+        && v.y >= b.y - 0.02 && v.y <= b.y + (city ? massTop(b, v.x, v.z) : b.h) + 0.02) return b;
     }
     return null;
   }

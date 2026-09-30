@@ -812,6 +812,15 @@ palette, the history overlays, hover and selection — are identical in all thre
 so a style alters the presentation and never the reading of the code. Nothing
 else differs either: the same layout, the same streets, the same walk.
 
+A city building's type comes from its file's name and its proportions, so it
+is the same building on every run. Near the walker, or once the map is zoomed
+in close, the buildings grow balconies, awnings, cornices, water tanks,
+air-conditioning units, antennas and roof railings. They are decoration and
+nothing more: the walker, the grapple and the jetpack meet the building's own
+walls, and a balcony stands out of a facade by less than the walker's width.
+The tallest art-deco towers step back in tiers whose top is the building's
+height, and their ledges are roofs like any other.
+
 ### Findings
 
 depphunter runs no scanner; it reads the reports an existing pipeline has

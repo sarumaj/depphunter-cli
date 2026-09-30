@@ -12,6 +12,7 @@
 import * as THREE from './vendor/three.module.min.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { buildParameters } from './buildings.js';
+import { Details, tiersOf } from './details.js';
 import { kindCode, CITY_VERT_HEAD, CITY_VERT_BODY, CITY_FRAG_HEAD, CITY_FRAG_BODY, makeSky, waterMaterial, makeProps, setNight, roadUniforms, setRoads } from './city.js';
 
 const ISO_POLAR = Math.acos(1 / Math.sqrt(3)); // true isometric elevation (35.26°)
@@ -80,6 +81,11 @@ export class MapScene {
     this.mesh = null;
     this.ground = null; // tessellated large boxes, shown in walk mode
     this.props = null;  // trees, bushes, lamps and ramps
+    this.tiers = null;  // the setbacks of art-deco towers, drawn like the boxes (details.js)
+    this.tierOf = [];   // tier instance -> box index
+    // Balconies, awnings, cornices and rooftop gear, built near the camera (details.js).
+    this.details = new Details(m => this.bendable(m));
+    this.detailVersion = -1;
     // What handMask draws the walker's hands into and reads back, made on first use.
     this.maskTarget = null;
     this.maskMaterial = null;
@@ -92,7 +98,7 @@ export class MapScene {
     this.sea = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), waterMaterial(this.curve));
     this.sea.position.y = SEA_LEVEL;
     this.sea.renderOrder = -1;
-    this.scene.add(this.planet, this.sky, this.sea);
+    this.scene.add(this.planet, this.sky, this.sea, this.details.group);
     this.edgeGroup = new THREE.Group();
     this.scene.add(this.edgeGroup);
     this.outline = null;
@@ -289,14 +295,23 @@ export class MapScene {
     const build = new Float32Array(boxes.length * 4);
     boxes.forEach((b, i) => build.set(buildParameters(b), i * 4));
     geo.setAttribute('aBuild', new THREE.InstancedBufferAttribute(build, 4));
+    const city = this.style === 'city';
+    this.details.setBoxes(boxes, city);
+    this.detailVersion = -1;
+    geo.setAttribute('aDetail', new THREE.InstancedBufferAttribute(this.details.flags, 1));
     const mesh = new THREE.InstancedMesh(geo, this.material, boxes.length);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
+    // Implements: REQ-CITY-034
+    // A setback tower's box is its shaft, and its tiers stand on it: the top of the
+    // highest is the building's height. Only the city has them.
     boxes.forEach((b, i) => {
-      m.compose(p.set(b.x, b.y, b.z), q, s.set(b.w, Math.max(b.h, 0.01), b.d));
+      const tiers = city ? tiersOf(b) : null;
+      m.compose(p.set(b.x, b.y, b.z), q, s.set(b.w, Math.max(tiers ? tiers[0].y1 : b.h, 0.01), b.d));
       mesh.setMatrixAt(i, m);
     });
     mesh.computeBoundingSphere();
     this.mesh = mesh;
+    this.setTiers(city ? boxes : []);
     if (this.ground) {
       this.scene.remove(this.ground);
       this.ground.geometry.dispose();
@@ -324,6 +339,49 @@ export class MapScene {
     this.scene.add(mesh);
     this.showGround();
     this.setLimits(boxes);
+  }
+
+  /**
+   * The tiers of the setback towers among `boxes`, as one InstancedMesh drawn with
+   * the boxes' material: their facades carry on the building's stories (aBuild's
+   * lift), and they take the building's color and dimming (setColors).
+   *
+   * Implements: REQ-CITY-034
+   */
+  setTiers(boxes) {
+    if (this.tiers) {
+      this.scene.remove(this.tiers);
+      this.tiers.geometry.dispose();
+      this.tiers.dispose();
+      this.tiers = null;
+    }
+    const pieces = [];
+    for (const b of boxes) for (const t of (tiersOf(b) || []).slice(1)) pieces.push({ b, t });
+    this.tierOf = pieces.map(({ b }) => b.i ?? boxes.indexOf(b));
+    this.tierRanges = new Map();
+    this.tierOf.forEach((i, k) => {
+      const r = this.tierRanges.get(i);
+      if (r) r[1]++; else this.tierRanges.set(i, [k, 1]);
+    });
+    if (!pieces.length) return;
+    const geo = this.unitBox.clone();
+    const kind = new Float32Array(pieces.length), build = new Float32Array(pieces.length * 4);
+    pieces.forEach(({ b, t }, k) => {
+      kind[k] = kindCode(b);
+      const [type, variant] = buildParameters(b);
+      build.set([type, variant, t.y0, Math.max(b.h, 0.01)], k * 4);
+    });
+    geo.setAttribute('aKind', new THREE.InstancedBufferAttribute(kind, 1));
+    geo.setAttribute('aFade', new THREE.InstancedBufferAttribute(new Float32Array(pieces.length), 1));
+    geo.setAttribute('aBuild', new THREE.InstancedBufferAttribute(build, 4));
+    geo.setAttribute('aDetail', new THREE.InstancedBufferAttribute(new Float32Array(pieces.length), 1));
+    const mesh = new THREE.InstancedMesh(geo, this.material, pieces.length);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
+    pieces.forEach(({ b, t }, k) => mesh.setMatrixAt(k, m.compose(p.set(b.x, b.y + t.y0, b.z), q, s.set(t.w, t.y1 - t.y0, t.d))));
+    mesh.computeBoundingSphere();
+    mesh.frustumCulled = false; // bent in walk mode; there are only a few
+    this.tiers = mesh;
+    this.scene.add(mesh);
   }
 
   /**
@@ -419,7 +477,21 @@ export class MapScene {
       }
       if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
       fade.needsUpdate = true;
+      if (this.tiers) {
+        const tierFade = this.tiers.geometry.getAttribute('aFade');
+        for (const i of changed) {
+          const r = this.tierRanges.get(i);
+          if (!r) continue;
+          for (let k = r[0]; k < r[0] + r[1]; k++) {
+            this.tiers.setColorAt(k, parseColor(colors[i]));
+            tierFade.setX(k, faded[i] ? 1 : 0);
+          }
+        }
+        if (this.tiers.instanceColor) this.tiers.instanceColor.needsUpdate = true;
+        tierFade.needsUpdate = true;
+      }
     }
+    this.details.setColors(colors, faded, was ? changed : null);
     // The ground's vertex colors are its face shade times its box's color. It is only
     // drawn while walking, so outside walk mode the (much larger) buffer is left for
     // setWalking to refresh.
@@ -476,8 +548,9 @@ export class MapScene {
     const r = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);
-    const hit = this.raycaster.intersectObject(this.mesh, false)[0];
-    return hit ? hit.instanceId : -1;
+    const hit = this.raycaster.intersectObjects(this.tiers ? [this.mesh, this.tiers] : [this.mesh], false)[0];
+    if (!hit) return -1;
+    return hit.object === this.tiers ? this.tierOf[hit.instanceId] : hit.instanceId;
   }
 
   // Implements: REQ-WALK-020
@@ -617,6 +690,7 @@ export class MapScene {
     // Whatever moves by itself - clouds, water, the drift of the void - reads this,
     // so it has to be set per frame and not only where the walker is placed.
     this.curve.uTime.value = performance.now() / 1000;
+    this.updateDetails();
     r.render(this.scene, this.view);
     // The held tool, second and on top of everything: the depth buffer is cleared
     // between the two, so nothing in the world can occlude a hand that is, in truth,
@@ -628,6 +702,36 @@ export class MapScene {
       r.autoClear = true;
     }
     return r.domElement;
+  }
+
+  /**
+   * Builds the details the view wants (details.js): near the walker, or on screen
+   * when the map is zoomed in far enough. A budget of buildings a frame; the map view,
+   * which draws on demand, asks for another frame while there are more to build.
+   *
+   * Implements: REQ-CITY-033, REQ-PERF-009
+   */
+  updateDetails() {
+    const details = this.details;
+    if (!details.enabled || !this.mesh) return;
+    let view;
+    if (this.walking) {
+      const c = this.curve.uCenter.value;
+      view = { walking: true, x: c.x, z: c.z };
+    } else {
+      const cam = this.camera, e = cam.matrixWorld.elements;
+      view = {
+        walking: false, zoom: cam.zoom,
+        key: `${cam.zoom.toFixed(1)}|${e[12].toFixed(1)},${e[13].toFixed(1)},${e[14].toFixed(1)}|${e[8].toFixed(3)},${e[10].toFixed(3)}`,
+        project: (x, y, z) => _detail.set(x, y, z).project(cam),
+      };
+    }
+    const more = details.update(view);
+    if (details.version !== this.detailVersion) {
+      this.detailVersion = details.version;
+      this.mesh.geometry.getAttribute('aDetail').needsUpdate = true;
+    }
+    if (more && !this.walking) this.requestRender();
   }
 
   /**
@@ -795,6 +899,7 @@ gl_Position = projectionMatrix * mvPosition;
 
 // Scratch vectors for project and occludedBySphere, which run per label per frame.
 const _p = new THREE.Vector3(), _q = new THREE.Vector3(), _d = new THREE.Vector3(), _oc = new THREE.Vector3();
+const _detail = new THREE.Vector3(); // updateDetails' projections
 // The mask of what the walker holds (handMask): fine enough to tell a label's worth of
 // screen, small enough to read back several times a second.
 const MASK_W = 128, MASK_H = 72;
@@ -873,6 +978,7 @@ function tessellate(boxes) {
   geo.setAttribute('aBoxCenter', new THREE.Float32BufferAttribute(center, 3));
   geo.setAttribute('aBoxSize', new THREE.Float32BufferAttribute(size, 3));
   geo.setAttribute('aBuild', new THREE.Float32BufferAttribute(build, 4));
+  geo.setAttribute('aDetail', new THREE.Float32BufferAttribute(new Float32Array(positions.length / 3), 1));
   geo.setAttribute('aFade', new THREE.Float32BufferAttribute(new Float32Array(positions.length / 3), 1));
   geo.setIndex(index);
   geo.userData.ranges = ranges;
