@@ -241,17 +241,27 @@ func Claimed(p Plugin, all []*scan.File) []*scan.File {
 	return out
 }
 
+// Extractor is how a file's extraction is got: parsed (Plugin.Extract), or from a
+// cache.
+type Extractor func(f *scan.File, source []byte) (*Extraction, error)
+
+// Results extracts every file in files and resolves what each imports with r; results
+// are keyed by path, and a file whose extraction failed has none.
+func Results(ctx context.Context, r Resolver, files []*scan.File, extract Extractor) map[string]*FileResult {
+	return ForEachFile(ctx, files, func(f *scan.File, source []byte) *FileResult {
+		extraction, err := extract(f, source)
+		if err != nil {
+			return nil
+		}
+		return Apply(r, f.Path, extraction)
+	})
+}
+
 // Analyze runs p over the project without caching; results are keyed by path.
 func Analyze(ctx context.Context, p Plugin, root string, all []*scan.File) (map[string]*FileResult, error) {
 	r, err := p.Resolver(root, all)
 	if err != nil {
 		return nil, err
 	}
-	return ForEachFile(ctx, Claimed(p, all), func(f *scan.File, source []byte) *FileResult {
-		extraction, err := p.Extract(f, source)
-		if err != nil {
-			return nil
-		}
-		return Apply(r, f.Path, extraction)
-	}), ctx.Err()
+	return Results(ctx, r, Claimed(p, all), p.Extract), ctx.Err()
 }
