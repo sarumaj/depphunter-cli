@@ -161,12 +161,9 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 			return lang.Target{Local: p}
 		}
 	case kindUp:
-		for directory := path.Dir(file); ; directory = path.Dir(directory) {
+		for directory := range lang.Ancestors(file) {
 			if p := r.probe(path.Join(directory, rawImport.Module)); p != "" && p != file {
 				return lang.Target{Local: p}
-			}
-			if directory == "." || directory == "/" {
-				break
 			}
 		}
 	case kindPlanet:

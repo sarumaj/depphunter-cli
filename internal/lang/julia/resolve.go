@@ -124,14 +124,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 		r.projects = append(r.projects, p)
 		// The manifest resolving a project is its own, else the nearest above it (a
 		// workspace's, or the repository's environment).
-		for d := p.directory; ; d = path.Dir(d) {
-			if m := directoryManifest[d]; m != nil {
-				p.manifest = m
-				break
-			}
-			if d == "." {
-				break
-			}
+		if m, ok := lang.NearestAtOrAbove(directoryManifest, p.directory); ok {
+			p.manifest = m
 		}
 	}
 	sort.Slice(r.projects, func(i, j int) bool {
@@ -311,16 +305,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 // ancestors are the projects of the file's directory and those above it, nearest
 // first.
 func (r *resolver) ancestors(file string) []*project {
-	var out []*project
-	for d := path.Dir(file); ; d = path.Dir(d) {
-		if p := r.byDirectory[d]; p != nil {
-			out = append(out, p)
-		}
-		if d == "." || d == "/" {
-			break
-		}
-	}
-	return out
+	return lang.Chain(r.byDirectory, file)
 }
 
 // governing are the projects whose dependencies a file may use: its own and those

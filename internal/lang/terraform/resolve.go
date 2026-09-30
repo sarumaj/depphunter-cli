@@ -184,17 +184,12 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 // parentFile is what find_in_parent_folders(name) finds for a configuration in directory:
 // the nearest file of that name in a directory above it.
 func (r *resolver) parentFile(directory, name string) string {
-	if directory == "." {
-		return ""
-	}
-	for d := path.Dir(directory); ; d = path.Dir(d) {
+	for d := range lang.Ancestors(directory) {
 		if f := path.Join(d, name); r.files[f] {
 			return f
 		}
-		if d == "." {
-			return ""
-		}
 	}
+	return ""
 }
 
 var includeLocal = regexp.MustCompile(`\$\{\s*include\.([A-Za-z_][A-Za-z0-9_-]*)\.locals\.([A-Za-z_][A-Za-z0-9_-]*)\s*\}`)

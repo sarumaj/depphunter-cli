@@ -165,14 +165,8 @@ func key(t lang.Target) string { return t.Ecosystem + "\x00" + t.Package + "\x00
 // packageOf is the package a file belongs to: the nearest directory above it with
 // build.zig or build.zig.zon.
 func (r *resolver) packageOf(file string) *zigPackage {
-	for d := path.Dir(file); ; d = path.Dir(d) {
-		if p := r.packages[d]; p != nil {
-			return p
-		}
-		if d == "." || d == "/" {
-			return nil
-		}
-	}
+	p, _ := lang.Nearest(r.packages, file)
+	return p
 }
 
 // roots finds, for each file, the root source file of the compilation that reaches
@@ -542,11 +536,8 @@ func (r *resolver) fetchedZon(f fetched) []byte {
 		return nil
 	}
 	var candidates []string
-	for d := f.directory; ; d = path.Dir(d) {
+	for d := range lang.DirectoryAndAncestors(f.directory) {
 		candidates = append(candidates, filepath.Join(r.root, filepath.FromSlash(d), "zig-pkg", f.hash))
-		if d == "." || d == "/" {
-			break
-		}
 	}
 	if c := os.Getenv("ZIG_GLOBAL_CACHE_DIR"); c != "" {
 		candidates = append(candidates, filepath.Join(c, "p", f.hash))

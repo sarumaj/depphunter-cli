@@ -304,7 +304,7 @@ func (p lockPath) requirements() map[string]bool {
 // installed finds the copy of dependency that the package installed at from loads:
 // Node looks in from's own node_modules, then in each directory's above it.
 func installed(paths map[string]lockPath, from, dependency string) (lockPath, bool) {
-	for directory := from; ; directory = path.Dir(directory) {
+	for directory := range lang.DirectoryAndAncestors(from) {
 		if path.Base(directory) == "node_modules" {
 			continue
 		}
@@ -315,10 +315,8 @@ func installed(paths map[string]lockPath, from, dependency string) (lockPath, bo
 		if p, ok := paths[key]; ok {
 			return p, true
 		}
-		if directory == "." {
-			return lockPath{}, false
-		}
 	}
+	return lockPath{}, false
 }
 
 // flattenV1 turns v1's nested "dependencies" into the install paths v2 keys

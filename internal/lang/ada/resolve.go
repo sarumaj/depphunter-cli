@@ -346,14 +346,10 @@ func (r *resolver) choose(from string, files []string) string {
 // scope is the crates whose manifests speak for file: the nearest alire.toml
 // above it, or, for a file none governs, every one, shallowest first.
 func (r *resolver) scope(file string) []*crateDirectory {
-	for d := path.Dir(file); ; d = path.Dir(d) {
-		if c, ok := r.crates[d]; ok {
-			return []*crateDirectory{c}
-		}
-		if d == "." || d == "/" || d == "" {
-			return r.order
-		}
+	if c, ok := lang.Nearest(r.crates, file); ok {
+		return []*crateDirectory{c}
 	}
+	return r.order
 }
 
 // Implements: REQ-ADA-004, REQ-ADA-005, REQ-ADA-006

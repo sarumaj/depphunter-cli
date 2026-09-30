@@ -149,14 +149,11 @@ func expandVariables(line string, variables map[string]string) string {
 // in its directory or above it, the nearest script first, then every other one.
 func (r *resolver) protocRootsFor(file string) []string {
 	var near, far []string
-	for d := path.Dir(file); ; d = path.Dir(d) {
+	for d := range lang.Ancestors(file) {
 		for _, root := range r.protoc {
 			if root.script == d && !slices.Contains(near, root.directory) {
 				near = append(near, root.directory)
 			}
-		}
-		if d == "." || d == "/" {
-			break
 		}
 	}
 	for _, root := range r.protoc {

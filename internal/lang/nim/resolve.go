@@ -208,15 +208,8 @@ func repositoryBase(url string) string {
 }
 
 func (r *resolver) projectOf(directory string) *project {
-	for {
-		if p := r.projects[directory]; p != nil {
-			return p
-		}
-		if directory == "." || directory == "/" || directory == "" {
-			return nil
-		}
-		directory = path.Dir(directory)
-	}
+	p, _ := lang.NearestAtOrAbove(r.projects, directory)
+	return p
 }
 
 // scope is the projects whose requirements a file can use: its own, or, for a
@@ -309,11 +302,8 @@ func (r *resolver) searchRoots(file string) []string {
 	if p := r.projectOf(path.Dir(file)); p != nil {
 		out = append(out, p.sourceRoot)
 	}
-	for d := path.Dir(file); ; d = path.Dir(d) {
+	for d := range lang.Ancestors(file) {
 		out = append(out, r.configs[d]...)
-		if d == "." || d == "/" {
-			break
-		}
 	}
 	return out
 }

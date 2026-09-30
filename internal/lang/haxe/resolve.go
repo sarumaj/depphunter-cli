@@ -385,11 +385,8 @@ func spell(declarations []declaration, segments []string) (string, int) {
 // ancestors, nearest first; every manifest when there are none.
 func (r *resolver) scope(file string) []*manifest {
 	var out []*manifest
-	for d := path.Dir(file); ; d = path.Dir(d) {
+	for d := range lang.Ancestors(file) {
 		out = append(out, r.byDirectory[d]...)
-		if d == "." || d == "/" {
-			break
-		}
 	}
 	if len(out) == 0 {
 		return r.all
@@ -591,14 +588,15 @@ func (r *resolver) importHx(file string, rawImport lang.RawImport) []lang.Import
 		}
 	}
 	var out []lang.Import
-	for d := directory; ; d = path.Dir(d) {
+	for d := range lang.DirectoryAndAncestors(directory) {
 		if f := path.Join(d, "import.hx"); r.files[f] {
 			out = append(out, lang.Import{Spec: rawImport.Spec + " (" + f + ")", Line: rawImport.Line, Target: lang.Target{Local: f}})
 		}
-		if d == root || d == "." {
-			return out
+		if d == root {
+			break
 		}
 	}
+	return out
 }
 
 // Dependencies lists what a library depends on: the -lib lines of its lix pin,

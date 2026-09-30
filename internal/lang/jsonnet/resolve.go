@@ -122,15 +122,7 @@ func within(p, directory string) (string, bool) {
 
 // scope lists the projects whose directory holds file, nearest first.
 func (r *resolver) scope(file string) []*project {
-	var out []*project
-	for d := path.Dir(file); ; d = path.Dir(d) {
-		if p := r.projects[d]; p != nil {
-			out = append(out, p)
-		}
-		if d == "." {
-			return out
-		}
-	}
+	return lang.Chain(r.projects, file)
 }
 
 // present reports whether a repository path exists: listed, or on disk (what
@@ -202,8 +194,7 @@ func (r *resolver) source(file, module string) lang.Target {
 	// A path under an ancestor of the file: jsonnet run with -J at a parent
 	// directory (mimir's tests import mimir/ from operations/).
 	if !strings.HasPrefix(module, "./") && !strings.HasPrefix(module, "../") {
-		for d := path.Dir(file); d != "."; {
-			d = path.Dir(d)
+		for d := range lang.Ancestors(path.Dir(file)) {
 			if c := path.Join(d, module); r.files[c] {
 				return lang.Target{Local: c}
 			}

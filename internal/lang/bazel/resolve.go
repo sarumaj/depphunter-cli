@@ -129,14 +129,10 @@ func (r *resolver) read(p string) ([]byte, bool) {
 // workspaceOf is the workspace a file belongs to: the nearest directory above it
 // with a MODULE.bazel, WORKSPACE or REPO.bazel, else the project's root.
 func (r *resolver) workspaceOf(file string) *workspace {
-	for d := path.Dir(file); ; d = path.Dir(d) {
-		if w := r.workspaces[d]; w != nil {
-			return w
-		}
-		if d == "." || d == "/" {
-			return r.workspaces["."]
-		}
+	if w, ok := lang.Nearest(r.workspaces, file); ok {
+		return w
 	}
+	return r.workspaces["."]
 }
 
 // packageOf is the package a file is in, relative to its workspace: the nearest

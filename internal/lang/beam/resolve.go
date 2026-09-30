@@ -160,12 +160,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 	// Enclosing projects first, so a child finds its parent's lock.
 	sort.Slice(r.projects, func(i, j int) bool { return lang.Depth(r.projects[i].directory) < lang.Depth(r.projects[j].directory) })
 	for _, p := range r.projects {
-		for d := p.directory; d != "."; {
-			d = path.Dir(d)
-			if q := byDirectory[d]; q != nil {
-				p.parent = q
-				break
-			}
+		if q, ok := lang.Nearest(byDirectory, p.directory); ok {
+			p.parent = q
 		}
 		// mix.lock and rebar.lock are committed by applications and git-ignored by
 		// libraries; what is on disk is what was resolved.
@@ -571,14 +567,13 @@ func (r *resolver) appDirectoryOf(file string) string {
 	if best != "" {
 		return best
 	}
-	directory := path.Dir(file)
-	for d := directory; d != "."; d = path.Dir(d) {
+	for d := range lang.Ancestors(file) {
 		switch path.Base(d) {
 		case "src", "include", "test":
 			return path.Dir(d)
 		}
 	}
-	return directory
+	return path.Dir(file)
 }
 
 // include finds an -include file: beside the including file, in its application's

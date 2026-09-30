@@ -79,14 +79,8 @@ func newResolver(root string, all []*scan.File, cache string) *resolver {
 		if source := readFile(filepath.Join(root, filepath.FromSlash(directory), "cue.mod", "module.cue"), lang.MaxParseSize); source != nil {
 			m.file = readModule(source)
 		}
-		for d := directory; ; d = path.Dir(d) {
-			if goModFile := gomods[d]; goModFile != nil {
-				m.gomod = goModFile
-				break
-			}
-			if d == "." {
-				break
-			}
+		if goModFile, ok := lang.NearestAtOrAbove(gomods, directory); ok {
+			m.gomod = goModFile
 		}
 	}
 	sort.SliceStable(r.order, func(i, j int) bool {
@@ -125,15 +119,7 @@ func packageName(source []byte) string {
 // it, nearest first; a file outside every module sees all of them,
 // shallowest first.
 func (r *resolver) modulesOf(file string) []*module {
-	var out []*module
-	for d := path.Dir(file); ; d = path.Dir(d) {
-		if m := r.modules[d]; m != nil {
-			out = append(out, m)
-		}
-		if d == "." {
-			break
-		}
-	}
+	out := lang.Chain(r.modules, file)
 	if len(out) == 0 {
 		return r.order
 	}

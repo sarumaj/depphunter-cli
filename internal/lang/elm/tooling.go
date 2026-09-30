@@ -3,8 +3,9 @@ package elm
 import (
 	"encoding/json"
 	"os"
-	"path"
 	"path/filepath"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
 // toolingElm is the compiler version elm-tooling.json pins (`tools.elm`) for a
@@ -20,7 +21,7 @@ func toolingElm(root, directory string) string {
 	if root == "" {
 		return ""
 	}
-	for d := directory; ; d = path.Dir(d) {
+	for d := range lang.DirectoryAndAncestors(directory) {
 		if source, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(d), "elm-tooling.json")); err == nil {
 			var raw struct {
 				Tools map[string]any `json:"tools"`
@@ -32,8 +33,6 @@ func toolingElm(root, directory string) string {
 			}
 			return "" // the nearest file decides
 		}
-		if d == "." || d == "/" {
-			return ""
-		}
 	}
+	return ""
 }

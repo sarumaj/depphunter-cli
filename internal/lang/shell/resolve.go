@@ -67,8 +67,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	case kindDotenv:
 		return r.local(file, r.candidates(directory, rawImport.Module))
 	case kindUp:
-		for d := directory; d != "."; {
-			d = path.Dir(d)
+		for d := range lang.Ancestors(directory) {
 			if p := path.Join(d, rawImport.Module); r.files[p] {
 				return lang.Target{Local: p}
 			}

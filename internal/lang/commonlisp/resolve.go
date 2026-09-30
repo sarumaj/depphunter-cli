@@ -370,13 +370,8 @@ func (r *resolver) readPins(f *scan.File) {
 // directory at or above it that has any, else all of the repository's,
 // shallowest first.
 func (r *resolver) governing(file string) []*pins {
-	for d := path.Dir(file); ; d = path.Dir(d) {
-		if p := r.pins[d]; p != nil {
-			return []*pins{p}
-		}
-		if d == "." || d == "/" {
-			break
-		}
+	if p, ok := lang.Nearest(r.pins, file); ok {
+		return []*pins{p}
 	}
 	out := make([]*pins, 0, len(r.pinDirectories))
 	for _, d := range r.pinDirectories {
@@ -687,8 +682,8 @@ func (r *resolver) declarationOf(file string) *declaration {
 		d.pis = d.pis || reference.system.pis
 	}
 	if len(references) == 0 {
-		for directory := path.Dir(file); ; directory = path.Dir(directory) {
-			if references = r.asdDirectories[directory]; len(references) > 0 || directory == "." || directory == "/" {
+		for directory := range lang.Ancestors(file) {
+			if references = r.asdDirectories[directory]; len(references) > 0 {
 				break
 			}
 		}

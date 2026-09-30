@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"iter"
 	"os"
 	"path"
 	"strings"
@@ -25,6 +26,66 @@ func DeepestFirst(a, b string) bool {
 		return depthA > depthB
 	}
 	return a < b
+}
+
+// Ancestors yields the directories above p, nearest first, ending with "."
+// (or "/" for an absolute path). For a file that is its own directory first,
+// the one whose manifest usually governs it. The top level has no ancestors.
+// Resolvers walk up this way to find the project, workspace or configuration
+// a file belongs to; a walk that must also see p itself uses
+// DirectoryAndAncestors.
+func Ancestors(p string) iter.Seq[string] {
+	if p == "." || p == "/" {
+		return func(func(string) bool) {}
+	}
+	return DirectoryAndAncestors(path.Dir(p))
+}
+
+// DirectoryAndAncestors yields directory itself, then the directories above
+// it, nearest first, ending with "." (or "/" for an absolute path).
+func DirectoryAndAncestors(directory string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for d := directory; ; d = path.Dir(d) {
+			if !yield(d) || d == "." || d == "/" {
+				return
+			}
+		}
+	}
+}
+
+// Nearest finds the entry of m keyed by the nearest directory above p, as
+// Ancestors walks them: the project, workspace or configuration governing a
+// file. An entry counts when its key is present, whatever its value.
+func Nearest[V any](m map[string]V, p string) (V, bool) {
+	return firstEntry(m, Ancestors(p))
+}
+
+// NearestAtOrAbove is Nearest for a directory that may hold the entry itself.
+func NearestAtOrAbove[V any](m map[string]V, directory string) (V, bool) {
+	return firstEntry(m, DirectoryAndAncestors(directory))
+}
+
+func firstEntry[V any](m map[string]V, directories iter.Seq[string]) (V, bool) {
+	for d := range directories {
+		if v, ok := m[d]; ok {
+			return v, true
+		}
+	}
+	var zero V
+	return zero, false
+}
+
+// Chain lists every entry of m keyed by a directory above p, nearest first:
+// the manifests that all apply to a file in nested projects, where Nearest
+// keeps only the innermost.
+func Chain[V any](m map[string]V, p string) []V {
+	var out []V
+	for d := range Ancestors(p) {
+		if v, ok := m[d]; ok {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // Within reports whether file is below directory; "." holds everything.

@@ -282,14 +282,12 @@ func (r *resolver) svelteKit(spec, directory string) (lang.Target, bool) {
 	if !ok || rest != "" && rest[0] != '/' {
 		return lang.Target{}, false
 	}
-	for d := directory; ; d = path.Dir(d) {
+	for d := range lang.DirectoryAndAncestors(directory) {
 		if r.kits[d] {
 			return r.probe(path.Join(d, "src/lib", rest))
 		}
-		if d == "." {
-			return lang.Target{}, false
-		}
 	}
+	return lang.Target{}, false
 }
 
 // splitPackage splits "@scope/name/sub/path" into "@scope/name" and "sub/path".
@@ -342,14 +340,8 @@ func (r *resolver) probe(p string) (lang.Target, bool) {
 }
 
 func (r *resolver) nearestConfig(directory string) *tsconfig {
-	for d := directory; ; d = path.Dir(d) {
-		if c := r.configs[d]; c != nil {
-			return c
-		}
-		if d == "." {
-			return nil
-		}
-	}
+	c, _ := lang.NearestAtOrAbove(r.configs, directory)
+	return c
 }
 
 // Implements: REQ-JS-003
@@ -388,23 +380,18 @@ func (r *resolver) viaConfig(c *tsconfig, spec string) (lang.Target, bool) {
 //
 // Implements: REQ-JS-006, REQ-JS-007, REQ-JS-010
 func (r *resolver) declared(packageName, directory string) (lang.Target, bool) {
-	for d := directory; ; d = path.Dir(d) {
+	for d := range lang.DirectoryAndAncestors(directory) {
 		if v, ok := r.dependencies[d][packageName]; ok {
-			for l := d; ; l = path.Dir(l) {
+			for l := range lang.DirectoryAndAncestors(d) {
 				if exact := r.locks[l][packageName]; exact != "" {
 					return lang.Target{Version: exact, Requested: v, Pinned: true}, true
-				}
-				if l == "." {
-					break
 				}
 			}
 			// Without a lock only a complete version pins: npm reads "1.2" as 1.2.x.
 			return lang.Target{Version: v, Pinned: lang.PinnedSemver(v)}, true
 		}
-		if d == "." {
-			return lang.Target{}, false
-		}
 	}
+	return lang.Target{}, false
 }
 
 // Implements: REQ-JS-003
