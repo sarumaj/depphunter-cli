@@ -73,12 +73,12 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request) {
 //
 // Implements: REQ-SRV-010, REQ-SRV-012
 func (s *Server) handleSelection(w http.ResponseWriter, r *http.Request) {
-	var request struct {
+	type selectionRequest struct {
 		ID     string `json:"id"`
 		Origin string `json:"origin"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&request); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	request, ok := decodeBody[selectionRequest](w, r, 8<<10)
+	if !ok {
 		return
 	}
 	s.mu.Lock()
@@ -97,12 +97,12 @@ func (s *Server) handleSelection(w http.ResponseWriter, r *http.Request) {
 //
 // Implements: REQ-SRV-011, REQ-SRV-012
 func (s *Server) handlePack(w http.ResponseWriter, r *http.Request) {
-	var request struct {
+	type packRequest struct {
 		Items  []PackItem `json:"items"`
 		Origin string     `json:"origin"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&request); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	request, ok := decodeBody[packRequest](w, r, 1<<20)
+	if !ok {
 		return
 	}
 	items := request.Items

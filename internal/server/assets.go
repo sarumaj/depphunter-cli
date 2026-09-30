@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/base64"
@@ -9,7 +8,6 @@ import (
 	"mime"
 	"net/http"
 	"path"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -34,18 +32,13 @@ import (
 type assets struct {
 	fileSystem fs.FS
 	mu         sync.RWMutex
-	cache      map[string]*asset
-}
-
-type asset struct {
-	body    []byte // as served: minified, where that means anything
-	gzipped []byte // ... and compressed, or nil when compression did not pay
-	etag    string
-	ctype   string
+	// cache holds each file as served: minified, where that means anything, and
+	// compressed, where that takes at least a tenth off.
+	cache map[string]*encoded
 }
 
 func newAssets(fileSystem fs.FS) *assets {
-	return &assets{fileSystem: fileSystem, cache: map[string]*asset{}}
+	return &assets{fileSystem: fileSystem, cache: map[string]*encoded{}}
 }
 
 func (a *assets) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -58,28 +51,13 @@ func (a *assets) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	h := w.Header()
-	h.Set("Content-Type", f.ctype)
-	h.Set("ETag", f.etag)
 	// The files change whenever the binary does, so the browser keeps them and asks
 	// each time whether they are still current; the answer is one header long.
-	h.Set("Cache-Control", "no-cache")
-	h.Set("Vary", "Accept-Encoding")
-	if match := r.Header.Get("If-None-Match"); match != "" && etagMatch(match, f.etag) {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	body := f.body
-	if f.gzipped != nil && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
-		h.Set("Content-Encoding", "gzip")
-		body = f.gzipped
-	}
-	h.Set("Content-Length", strconv.Itoa(len(body)))
-	w.Write(body) // a HEAD request drops it again, which is the whole of HEAD here
+	f.serve(w, r)
 }
 
 // load reads, minifies and compresses a file the first time it is asked for.
-func (a *assets) load(name string) (*asset, error) {
+func (a *assets) load(name string) (*encoded, error) {
 	a.mu.RLock()
 	f := a.cache[name]
 	a.mu.RUnlock()
@@ -93,39 +71,24 @@ func (a *assets) load(name string) (*asset, error) {
 	if err != nil {
 		return nil, err
 	}
-	f = &asset{body: raw, ctype: contentType(name)}
+	f = &encoded{plain: raw, contentType: contentType(name), contentLength: true}
 	switch path.Ext(name) {
 	case ".js":
-		f.body = []byte(minify.JS(string(raw)))
+		f.plain = []byte(minify.JS(string(raw)))
 	case ".css":
-		f.body = []byte(minify.CSS(string(raw)))
+		f.plain = []byte(minify.CSS(string(raw)))
 	case ".html":
-		f.body = []byte(minify.HTML(string(raw)))
+		f.plain = []byte(minify.HTML(string(raw)))
 	}
-	sum := sha256.Sum256(f.body)
+	sum := sha256.Sum256(f.plain)
 	f.etag = `"` + base64.RawURLEncoding.EncodeToString(sum[:12]) + `"`
-	if gzipped := compress(f.body); len(gzipped) < len(f.body)*9/10 {
+	if gzipped, err := compress(f.plain, gzip.BestCompression); err == nil && len(gzipped) < len(f.plain)*9/10 {
 		f.gzipped = gzipped
 	}
 	a.mu.Lock()
 	a.cache[name] = f
 	a.mu.Unlock()
 	return f, nil
-}
-
-func compress(b []byte) []byte {
-	var buffer bytes.Buffer
-	gzipWriter, err := gzip.NewWriterLevel(&buffer, gzip.BestCompression)
-	if err != nil {
-		return nil
-	}
-	if _, err := gzipWriter.Write(b); err != nil {
-		return nil
-	}
-	if err := gzipWriter.Close(); err != nil {
-		return nil
-	}
-	return buffer.Bytes()
 }
 
 // contentType names a file's type. Go's table knows the web ones; the model format
@@ -141,16 +104,4 @@ func contentType(name string) string {
 		return t
 	}
 	return "application/octet-stream"
-}
-
-// etagMatch reports whether an If-None-Match header lists this tag. A proxy may have
-// weakened it on the way, and the list may hold several.
-func etagMatch(header, etag string) bool {
-	for _, want := range strings.Split(header, ",") {
-		want = strings.TrimSpace(want)
-		if want == "*" || strings.TrimPrefix(want, "W/") == etag {
-			return true
-		}
-	}
-	return false
 }
