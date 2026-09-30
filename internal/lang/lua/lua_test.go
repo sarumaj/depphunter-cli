@@ -267,3 +267,22 @@ func TestInstalledRocks(t *testing.T) {
 		t.Errorf("garbage rockspec: %+v", got)
 	}
 }
+
+// A Luau require by a path above the repository finds nothing: require("./..")
+// from the root is not the file "...luau" there, as require("./../x") is not
+// ../x.luau.
+//
+// Verifies: REQ-LANG-031
+func TestRequireAboveTheRepository(t *testing.T) {
+	root := langtest.Write(t, map[string]string{
+		"main.luau": "local up = require(\"./..\")\nlocal side = require(\"./../x\")\n",
+		"...luau":   "return {}\n",
+		"x.luau":    "return {}\n",
+	})
+	r := newResolver(root, langtest.Files(t, root))
+	for _, spec := range []string{"./..", "./../x"} {
+		if got := r.Resolve("main.luau", lang.RawImport{Module: spec, Name: kindPath}); got != (lang.Target{}) {
+			t.Errorf("%s: got %+v, want nothing", spec, got)
+		}
+	}
+}

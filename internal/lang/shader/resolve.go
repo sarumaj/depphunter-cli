@@ -96,7 +96,7 @@ func (r *resolver) upward(file, name string) string {
 	for _, fold := range []bool{false, true} {
 		for directory := range lang.Ancestors(file) {
 			p := path.Join(directory, name)
-			if !strings.HasPrefix(p, "../") {
+			if !lang.ClimbsOut(p) {
 				if r.files[p] {
 					return p
 				}
@@ -150,7 +150,7 @@ func (r *resolver) virtual(file, name string) lang.Target {
 // one, or the one sharing the most directories with file.
 func (r *resolver) suffix(file, name string) string {
 	name = strings.ToLower(path.Clean(name))
-	if name == "." || strings.HasPrefix(name, "../") {
+	if name == "." || lang.ClimbsOut(name) {
 		return ""
 	}
 	var best string
@@ -290,7 +290,7 @@ func (r *resolver) quoted(file, module string) lang.Target {
 	}
 	for directory := range lang.Ancestors(file) {
 		for _, p := range []string{path.Join(directory, name), path.Join(directory, "assets", name)} {
-			if r.files[p] && !strings.HasPrefix(p, "../") {
+			if r.files[p] && !lang.ClimbsOut(p) {
 				return lang.Target{Local: p}
 			}
 		}

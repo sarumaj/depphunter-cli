@@ -204,3 +204,37 @@ func TestClaimsAndClasses(t *testing.T) {
 		t.Error("files read differently share a cache key")
 	}
 }
+
+// A Buf root above the repository is no root, a bare ".." no more than "../x":
+// the module falls back to its own directory, so its import finds the module's
+// file rather than a same-named one at the repository root.
+//
+// Verifies: REQ-LANG-031
+func TestBufRootAboveTheRepository(t *testing.T) {
+	for _, root := range []string{"../..", "../../x"} {
+		t.Run(root, func(t *testing.T) {
+			results := langtest.Analyze(t, Plugin{}, langtest.Write(t, map[string]string{
+				"sub/buf.yaml": "version: v1beta1\nbuild:\n  roots:\n    - " + root + "\n",
+				"sub/b.proto":  "syntax = \"proto3\";\nimport \"a.proto\";\n",
+				"sub/a.proto":  "syntax = \"proto3\";\n",
+				"a.proto":      "syntax = \"proto3\";\n",
+			}))
+			langtest.CheckImports(t, results["sub/b.proto"], map[string]lang.Target{`import "a.proto"`: {Local: "sub/a.proto"}})
+		})
+	}
+}
+
+// A directory a Buf file names above the repository is none of its directories,
+// a bare ".." no more than "../x", even with the layout listing both: the check
+// does not rely on the layout never holding a path above the root.
+//
+// Verifies: REQ-LANG-031
+func TestBufDirectoryAboveTheRepository(t *testing.T) {
+	r := newResolver(langtest.Files(t, langtest.Write(t, map[string]string{"buf.work.yaml": "version: v1\n"})))
+	r.Directories[".."], r.Directories["../x"] = true, true
+	for _, module := range []string{"..", "../x"} {
+		if got := r.Resolve("buf.work.yaml", lang.RawImport{Module: module, Name: kindDirectory}); got != (lang.Target{}) {
+			t.Errorf("%s: got %+v, want nothing", module, got)
+		}
+	}
+}

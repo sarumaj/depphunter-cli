@@ -335,3 +335,19 @@ func TestIslands(t *testing.T) {
 		}
 	}
 }
+
+// A system include of a path above the repository is not the project's, a bare
+// ".." no more than "../x.h", even with the layout listing both: the check does
+// not rely on the layout never holding a path above the root.
+//
+// Verifies: REQ-LANG-031
+func TestIncludeAboveTheRepository(t *testing.T) {
+	root := langtest.Write(t, map[string]string{"main.f90": "program main\nend program main\n"})
+	r := newResolver(root, langtest.Files(t, root))
+	r.Files[".."], r.Files["../x.h"] = true, true
+	for _, spec := range []string{"..", "../x.h"} {
+		if got := r.Resolve("main.f90", lang.RawImport{Module: spec, Name: kindCppSys}); got.Local != "" {
+			t.Errorf("%s: got %+v, want no project file", spec, got)
+		}
+	}
+}

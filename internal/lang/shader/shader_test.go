@@ -2,6 +2,7 @@ package shader
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -191,6 +192,32 @@ func TestTruncated(t *testing.T) {
 			if d := time.Since(start); d > langtest.TimeLimit(2*time.Second) {
 				t.Errorf("%s %.20q (%d bytes): %v", extension, source, len(source), d)
 			}
+		}
+	}
+}
+
+// An include or import of a path above the repository is not the project's, a
+// bare ".." no more than "../x.glsl", looked up from the includer's directory up,
+// by path suffix or as a naga_oil quoted import, even with the file lists holding
+// both: the checks do not rely on them never holding a path above the root.
+//
+// Verifies: REQ-LANG-031
+func TestIncludeAboveTheRepository(t *testing.T) {
+	root := langtest.Write(t, map[string]string{"main.glsl": "void main() {}\n"})
+	r := newResolver(root, langtest.Files(t, root))
+	for _, outside := range []string{"..", "../x.glsl"} {
+		r.files[outside], r.folded[outside] = true, outside
+		r.byBase[path.Base(outside)] = append(r.byBase[path.Base(outside)], outside)
+	}
+	for _, name := range []string{"..", "../x.glsl"} {
+		if got := r.upward("main.glsl", name); got != "" {
+			t.Errorf("upward %s: got %q", name, got)
+		}
+		if got := r.suffix("main.glsl", name); got != "" {
+			t.Errorf("suffix %s: got %q", name, got)
+		}
+		if got := r.quoted("main.glsl", `"`+name+`"`); got.Local != "" {
+			t.Errorf("quoted %s: got %+v", name, got)
 		}
 	}
 }

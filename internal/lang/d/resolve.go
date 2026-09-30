@@ -252,7 +252,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		}
 		return lang.Target{Ecosystem: ecosystemDub, Package: base(rawImport.Module)}
 	case kindSubPath:
-		if d := path.Join(path.Dir(file), rawImport.Module); r.Directories[d] && !strings.HasPrefix(d, "../") {
+		if d := path.Join(path.Dir(file), rawImport.Module); r.Directories[d] && !lang.ClimbsOut(d) {
 			return lang.Target{Local: d}
 		}
 	}
@@ -291,7 +291,7 @@ func base(name string) string {
 func (r *resolver) probe(directory, module string) string {
 	relative := strings.ReplaceAll(module, ".", "/")
 	p := path.Join(directory, relative)
-	if strings.HasPrefix(p, "../") {
+	if lang.ClimbsOut(p) {
 		return ""
 	}
 	for _, f := range []string{p + ".d", p + ".di", p + "/package.d", p + "/package.di"} {
@@ -550,7 +550,7 @@ func (r *resolver) dubTarget(p *project, name string) lang.Target {
 	}
 	d, dp := r.dependency(p, name)
 	if d != nil && d.path != "" {
-		if directory := path.Join(dp.directory, d.path); r.Directories[directory] && !strings.HasPrefix(directory, "../") {
+		if directory := path.Join(dp.directory, d.path); r.Directories[directory] && !lang.ClimbsOut(directory) {
 			return lang.Target{Local: directory}
 		}
 		return lang.Target{}
@@ -559,7 +559,7 @@ func (r *resolver) dubTarget(p *project, name string) lang.Target {
 	if s := p.selections[b]; s != nil {
 		switch {
 		case s.path != "":
-			if directory := path.Join(p.root.directory, s.path); r.Directories[directory] && !strings.HasPrefix(directory, "../") {
+			if directory := path.Join(p.root.directory, s.path); r.Directories[directory] && !lang.ClimbsOut(directory) {
 				return lang.Target{Local: directory}
 			}
 			return lang.Target{}
@@ -613,7 +613,7 @@ func (r *resolver) stringImport(file, name string) lang.Target {
 	}
 	directories = append(directories, path.Dir(file))
 	for _, d := range directories {
-		if f := path.Join(d, name); r.Files[f] && !strings.HasPrefix(f, "../") {
+		if f := path.Join(d, name); r.Files[f] && !lang.ClimbsOut(f) {
 			return lang.Target{Local: f}
 		}
 	}

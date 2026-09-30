@@ -388,7 +388,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		}
 	case kindLoad:
 		for _, p := range []string{path.Join(path.Dir(file), rawImport.Module), path.Clean(rawImport.Module)} {
-			if strings.HasPrefix(p, "../") || strings.HasPrefix(p, "/") {
+			if !lang.Inside(p) {
 				continue
 			}
 			for _, c := range []string{p, p + ".lisp"} {
@@ -641,7 +641,7 @@ func qlTarget(e qlEntry, project string) lang.Target {
 // it is in the repository, else a package from that path.
 func (r *resolver) localSource(e qlEntry, directory string) lang.Target {
 	if !path.IsAbs(e.url) && !strings.HasPrefix(e.url, "~") {
-		if p := path.Join(directory, e.url); r.Directories[p] && !strings.HasPrefix(p, "../") && p != "." {
+		if p := path.Join(directory, e.url); r.Directories[p] && !lang.ClimbsOut(p) && p != "." {
 			return lang.Target{Local: p}
 		}
 	}

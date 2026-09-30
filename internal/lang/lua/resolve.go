@@ -468,7 +468,7 @@ func (r *resolver) probeRoots(file, p string) string {
 
 // probe finds the source a module path names: p.lua, p.luau, p.tl, p/init.*.
 func (r *resolver) probe(p string) string {
-	if strings.HasPrefix(p, "../") || ignored(p) {
+	if lang.ClimbsOut(p) || ignored(p) {
 		return ""
 	}
 	for _, extension := range sourceExtensions {
