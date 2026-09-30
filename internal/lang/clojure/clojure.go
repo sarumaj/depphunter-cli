@@ -26,11 +26,11 @@ import (
 )
 
 const (
-	ecosystemMaven = "maven"
+	ecosystemMaven = lang.EcosystemMaven
 	ecosystemStd   = "clojure-std"
-	ecosystemJDK   = "jdk"
-	ecosystemNPM   = "npm"
-	ecosystemNode  = "node"
+	ecosystemJDK   = lang.EcosystemJDK
+	ecosystemNPM   = lang.EcosystemNPM
+	ecosystemNode  = lang.EcosystemNode
 )
 
 var sourceExtensions = map[string]bool{".clj": true, ".cljs": true, ".cljc": true, ".bb": true}

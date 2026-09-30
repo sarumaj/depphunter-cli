@@ -41,15 +41,7 @@ func (pk Packages) Fetch(list []Fetched) {
 		f.Names = names
 		p.fetched = append(p.fetched, f)
 	}
-	slices.SortStableFunc(p.fetched, func(a, b Fetched) int { return cmp.Compare(depth(a.Directory), depth(b.Directory)) })
-}
-
-// depth counts a directory's levels below the project root.
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
+	slices.SortStableFunc(p.fetched, func(a, b Fetched) int { return cmp.Compare(lang.Depth(a.Directory), lang.Depth(b.Directory)) })
 }
 
 // fetchedFor finds the fetched content an include belongs to by its candidate
@@ -69,7 +61,7 @@ func (p *packages) fetchedFor(file string, names []string) *Fetched {
 			first = f
 		}
 		above := f.Directory == "." || strings.HasPrefix(path.Dir(file)+"/", f.Directory+"/")
-		if above && (near == nil || depth(f.Directory) > depth(near.Directory)) {
+		if above && (near == nil || lang.Depth(f.Directory) > lang.Depth(near.Directory)) {
 			near = f
 		}
 	}

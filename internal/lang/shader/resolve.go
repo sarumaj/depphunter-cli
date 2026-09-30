@@ -164,7 +164,7 @@ func (r *resolver) suffix(file, name string) string {
 		if l := strings.ToLower(p); l != name && !strings.HasSuffix(l, "/"+name) {
 			continue
 		}
-		switch n := commonDirectories(file, p); {
+		switch n := lang.CommonSubdirectories(file, p); {
 		case n > bestLength:
 			best, bestLength, tie = p, n, false
 		case n == bestLength:
@@ -175,15 +175,6 @@ func (r *resolver) suffix(file, name string) string {
 		return ""
 	}
 	return best
-}
-
-func commonDirectories(a, b string) int {
-	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
-	n := 0
-	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] && aParts[n] != "." {
-		n++
-	}
-	return n
 }
 
 // moduleExtensions are the extensions of a WGSL module's file.
@@ -328,7 +319,7 @@ func (r *resolver) quoted(file, module string) lang.Target {
 func closest(from string, files []string) string {
 	best, bestLength := files[0], -1
 	for _, f := range files {
-		if n := commonDirectories(from, f); n > bestLength {
+		if n := lang.CommonSubdirectories(from, f); n > bestLength {
 			best, bestLength = f, n
 		}
 	}

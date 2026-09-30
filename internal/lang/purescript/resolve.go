@@ -184,7 +184,7 @@ func (r *resolver) readYAML(all []*scan.File) {
 		}
 		for name, p := range workspace.lock.locals {
 			if _, ok := workspace.locals[name]; !ok {
-				if d := path.Join(workspace.directory, p); inside(d) && (r.files[path.Join(d, "spago.yaml")]) {
+				if d := path.Join(workspace.directory, p); lang.Inside(d) && (r.files[path.Join(d, "spago.yaml")]) {
 					workspace.locals[name] = path.Join(d, "spago.yaml")
 				}
 			}
@@ -213,7 +213,7 @@ func (r *resolver) readDhall(all []*scan.File) {
 			byPath[f.Path] = f
 		}
 	}
-	for _, p := range sortedKeys(byPath) {
+	for _, p := range lang.SortedKeys(byPath) {
 		if path.Base(p) == "packages.dhall" {
 			if v := r.loadDhall(p); v != nil {
 				r.setFile[p] = r.dhallWorkspace(v, path.Dir(p))
@@ -300,7 +300,7 @@ func (r *resolver) globBase(directory, glob string) string {
 		literal = path.Dir(glob[:i+1])
 	}
 	for d := directory; ; d = path.Dir(d) {
-		if p := path.Join(d, literal); inside(p) && (r.directories[p] || r.files[p] || p == ".") {
+		if p := path.Join(d, literal); lang.Inside(p) && (r.directories[p] || r.files[p] || p == ".") {
 			return path.Join(d, glob)
 		}
 		if d == "." || d == "/" {
@@ -351,7 +351,7 @@ func (r *resolver) own(file string) {
 		if !m {
 			continue
 		}
-		ancestor := under(file, p.directory)
+		ancestor := lang.Within(file, p.directory)
 		if best == nil || ancestor && !bestAncestor || ancestor && bestAncestor && len(p.directory) > len(best.directory) {
 			best, bestTest, bestAncestor = p, t, ancestor
 		}
@@ -413,12 +413,6 @@ func matchSegments(g, p []string, depth int) bool {
 		g, p = g[1:], p[1:]
 	}
 	return len(p) == 0
-}
-
-func inside(p string) bool { return p != ".." && !strings.HasPrefix(p, "../") && !path.IsAbs(p) }
-
-func under(file, directory string) bool {
-	return directory == "." || strings.HasPrefix(file, directory+"/")
 }
 
 // moduleName reads the name a module file declares in its header, or "".
@@ -510,7 +504,7 @@ func (r *resolver) module(file, module string) lang.Target {
 					directory = path.Dir(directory)
 				}
 				for _, c := range candidates {
-					if under(c, directory) {
+					if lang.Within(c, directory) {
 						return lang.Target{Local: c}
 					}
 				}
@@ -705,7 +699,7 @@ func (r *resolver) fromWorkspace(activeWorkspace *workspace, name, requested str
 // it has one), or nothing when it is outside the repository or not there.
 func (r *resolver) localDirectory(base, relative string) lang.Target {
 	d := path.Join(base, relative)
-	if !inside(d) {
+	if !lang.Inside(d) {
 		return lang.Target{}
 	}
 	for _, m := range []string{"spago.yaml", "spago.dhall"} {
@@ -741,7 +735,7 @@ func (r *resolver) installedIndex(directory string) *installedIndex {
 	for d := directory; ; d = path.Dir(d) {
 		absolute := filepath.Join(r.root, filepath.FromSlash(d))
 		spago, bower := filepath.Join(absolute, ".spago"), filepath.Join(absolute, "bower_components")
-		if isDirectory(spago) || isDirectory(bower) {
+		if lang.IsDirectory(spago) || lang.IsDirectory(bower) {
 			v, _ := r.installed.LoadOrStore(d, &installedIndex{})
 			index := v.(*installedIndex)
 			index.once.Do(func() { index.modules = readInstalled(spago, bower) })
@@ -751,11 +745,6 @@ func (r *resolver) installedIndex(directory string) *installedIndex {
 			return &installedIndex{}
 		}
 	}
-}
-
-func isDirectory(p string) bool {
-	fileInfo, err := os.Stat(p)
-	return err == nil && fileInfo.IsDir()
 }
 
 func readInstalled(spago, bower string) map[string]string {
@@ -784,7 +773,7 @@ func readInstalled(spago, bower string) map[string]string {
 			continue
 		}
 		directory := filepath.Join(spago, "p", e.Name())
-		if isDirectory(filepath.Join(directory, "src")) {
+		if lang.IsDirectory(filepath.Join(directory, "src")) {
 			if name, _, ok := splitNameVersion(e.Name()); ok {
 				addSource(name, filepath.Join(directory, "src"))
 			}
@@ -792,7 +781,7 @@ func readInstalled(spago, bower string) map[string]string {
 		}
 		references, _ := os.ReadDir(directory)
 		for _, reference := range references {
-			if source := filepath.Join(directory, reference.Name(), "src"); reference.IsDir() && isDirectory(source) {
+			if source := filepath.Join(directory, reference.Name(), "src"); reference.IsDir() && lang.IsDirectory(source) {
 				addSource(e.Name(), source)
 				break
 			}
@@ -805,7 +794,7 @@ func readInstalled(spago, bower string) map[string]string {
 		}
 		versions, _ := os.ReadDir(filepath.Join(spago, e.Name()))
 		for _, v := range versions {
-			if source := filepath.Join(spago, e.Name(), v.Name(), "src"); v.IsDir() && isDirectory(source) {
+			if source := filepath.Join(spago, e.Name(), v.Name(), "src"); v.IsDir() && lang.IsDirectory(source) {
 				addSource(e.Name(), source)
 				break
 			}
@@ -941,14 +930,14 @@ func (r *resolver) dependencies(t lang.Target) (dependencies []lang.Target, inst
 	}
 	for _, workspace := range r.workspaces() {
 		if workspace.lock != nil {
-			for _, name := range sortedKeys(workspace.lock.packages) {
+			for _, name := range lang.SortedKeys(workspace.lock.packages) {
 				l := workspace.lock.packages[name]
 				if name == t.Package && l.url == "" || l.url != "" && gitName(l.url, l.subdirectory) == t.Package {
 					return r.dependencyTargets(workspace, l.dependencies), false
 				}
 			}
 		}
-		for _, name := range sortedKeys(workspace.extra) {
+		for _, name := range lang.SortedKeys(workspace.extra) {
 			e := workspace.extra[name]
 			if e.hasDependencies && (name == t.Package && e.git == "" || e.git != "" && gitName(e.git, e.subdirectory) == t.Package) {
 				return r.dependencyTargets(workspace, e.dependencies), false
@@ -980,7 +969,7 @@ func (r *resolver) dependencyTargets(activeWorkspace *workspace, names []string)
 // workspaces are every workspace, spago.yaml ones first, in a stable order.
 func (r *resolver) workspaces() []*workspace {
 	var out []*workspace
-	for _, d := range sortedKeys(r.wsByDirectory) {
+	for _, d := range lang.SortedKeys(r.wsByDirectory) {
 		out = append(out, r.wsByDirectory[d])
 	}
 	seen := map[*workspace]bool{}

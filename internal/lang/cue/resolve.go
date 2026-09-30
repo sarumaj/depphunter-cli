@@ -73,7 +73,7 @@ func newResolver(root string, all []*scan.File, cache string) *resolver {
 			r.packages[directory] = append(r.packages[directory], cueFile{f.Path, packageName(readFile(f.AbsolutePath, 64<<10))})
 		}
 	}
-	for _, directory := range sortedKeys(r.modules) {
+	for _, directory := range lang.SortedKeys(r.modules) {
 		m := r.modules[directory]
 		r.order = append(r.order, m)
 		if source := readFile(filepath.Join(root, filepath.FromSlash(directory), "cue.mod", "module.cue"), lang.MaxParseSize); source != nil {
@@ -90,16 +90,9 @@ func newResolver(root string, all []*scan.File, cache string) *resolver {
 		}
 	}
 	sort.SliceStable(r.order, func(i, j int) bool {
-		return depth(r.order[i].root) < depth(r.order[j].root)
+		return lang.Depth(r.order[i].root) < lang.Depth(r.order[j].root)
 	})
 	return r
-}
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
 }
 
 func readGoMod(f *scan.File) *goMod {

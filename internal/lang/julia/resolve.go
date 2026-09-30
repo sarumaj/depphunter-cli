@@ -28,11 +28,6 @@ type resolver struct {
 	ctx     map[string]string
 }
 
-// readable reports whether a file is small enough to read here.
-func readable(f *scan.File) bool {
-	return !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize
-}
-
 // newResolver reads every project, manifest and source: sources for the modules
 // they define and the files they include, which place each file in a module.
 //
@@ -54,7 +49,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 				break
 			}
 		}
-		if !readable(f) {
+		if !lang.Readable(f) {
 			continue
 		}
 		switch fileClass(f.Path) {
@@ -103,7 +98,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		directoryManifest[directory] = m
 	}
 	for _, f := range all {
-		if fileClass(f.Path) != classManifest || !readable(f) {
+		if fileClass(f.Path) != classManifest || !lang.Readable(f) {
 			continue
 		}
 		if m := directoryManifest[path.Dir(f.Path)]; m != nil && m.file == f.Path {
@@ -140,7 +135,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	sort.Slice(r.projects, func(i, j int) bool {
-		depthI, depthJ := depth(r.projects[i].directory), depth(r.projects[j].directory)
+		depthI, depthJ := lang.Depth(r.projects[i].directory), lang.Depth(r.projects[j].directory)
 		if depthI != depthJ {
 			return depthI < depthJ
 		}
@@ -157,13 +152,6 @@ func newResolver(root string, all []*scan.File) *resolver {
 	}
 	r.readSources(sources)
 	return r
-}
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
 }
 
 // manifestRank orders the manifests of one directory as Pkg prefers them: a
@@ -254,21 +242,11 @@ func splitModule(s string) []string {
 func (r *resolver) moduleFile(key, from string) string {
 	best, bestLength := "", -1
 	for _, f := range r.modules[key] {
-		if n := commonDirectory(f, from); n > bestLength {
+		if n := lang.CommonDirectories(f, from); n > bestLength {
 			best, bestLength = f, n
 		}
 	}
 	return best
-}
-
-// commonDirectory counts the leading directories two paths share.
-func commonDirectory(a, b string) int {
-	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
-	n := 0
-	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
-		n++
-	}
-	return n
 }
 
 // local targets a file: none for the importer itself.
@@ -401,7 +379,7 @@ func (r *resolver) module(file, within, spec string) lang.Target {
 	if projects := r.byName[first]; len(projects) > 0 {
 		best := projects[0]
 		for _, p := range projects[1:] {
-			if commonDirectory(p.file, file) > commonDirectory(best.file, file) {
+			if lang.CommonDirectories(p.file, file) > lang.CommonDirectories(best.file, file) {
 				best = p
 			}
 		}

@@ -52,7 +52,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 	if r.workspaces["."] == nil {
 		r.workspaces["."] = newWorkspace(".")
 	}
-	for _, directory := range sortedKeys(r.workspaces) {
+	for _, directory := range lang.SortedKeys(r.workspaces) {
 		w := r.workspaces[directory]
 		if source, ok := r.read(path.Join(directory, "MODULE.bazel")); ok {
 			r.readModule(w, path.Join(directory, "MODULE.bazel"), source, 0)
@@ -67,7 +67,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 	// Repository rules in .bzl macros, each read into its own workspace.
 	var bzl []string
 	for _, f := range all {
-		if fileKind(f.Path) == kindBzl && readable(f) && !skipped(f.Path) {
+		if fileKind(f.Path) == kindBzl && lang.Readable(f) && !skipped(f.Path) {
 			bzl = append(bzl, f.Path)
 		}
 	}
@@ -110,8 +110,6 @@ func newResolver(root string, all []*scan.File) *resolver {
 	}
 	return r
 }
-
-func readable(f *scan.File) bool { return !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize }
 
 // read reads a project file from disk (lock files are not always scanned: they
 // may be ignored or generated).
@@ -211,16 +209,16 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		if t, ok := w.goMods[rawImport.Module]; ok {
 			return t
 		}
-		return lang.Target{Ecosystem: ecosystemGo, Package: rawImport.Module}
+		return lang.Target{Ecosystem: lang.EcosystemGo, Package: rawImport.Module}
 	case importCrate:
-		for _, name := range sortedKeys(w.hubs) {
-			if h := w.hubs[name]; h.ecosystem == ecosystemCrates {
+		for _, name := range lang.SortedKeys(w.hubs) {
+			if h := w.hubs[name]; h.ecosystem == lang.EcosystemCrates {
 				if t, ok := h.packages[normalizeCrate(rawImport.Module)]; ok {
 					return t
 				}
 			}
 		}
-		return lang.Target{Ecosystem: ecosystemCrates, Package: rawImport.Module}
+		return lang.Target{Ecosystem: lang.EcosystemCrates, Package: rawImport.Module}
 	}
 	return lang.Target{}
 }
@@ -250,8 +248,8 @@ func (r *resolver) local(file, directory, packageName, target string) lang.Targe
 	if name, ok := strings.CutPrefix(target, "node_modules/"); ok {
 		// rules_js links a package as //<importer>:node_modules/<name>.
 		w := r.workspaceOf(path.Join(directory, "x"))
-		for _, hubName := range sortedKeys(w.hubs) {
-			if h := w.hubs[hubName]; h.ecosystem == ecosystemNPM {
+		for _, hubName := range lang.SortedKeys(w.hubs) {
+			if h := w.hubs[hubName]; h.ecosystem == lang.EcosystemNPM {
 				return npmTarget(h, name)
 			}
 		}
@@ -322,8 +320,8 @@ func (r *resolver) external(file string, w *workspace, l label) lang.Target {
 		}
 		return r.repositoryTarget(w, d)
 	}
-	for _, name := range sortedKeys(w.hubs) { // pip's older per-package repositories: @pypi_requests//:pkg
-		if w.hubs[name].ecosystem == ecosystemPyPI && strings.HasPrefix(repository, name+"_") {
+	for _, name := range lang.SortedKeys(w.hubs) { // pip's older per-package repositories: @pypi_requests//:pkg
+		if w.hubs[name].ecosystem == lang.EcosystemPyPI && strings.HasPrefix(repository, name+"_") {
 			return r.pypi(w, name, strings.TrimPrefix(repository, name+"_"))
 		}
 	}
@@ -345,13 +343,13 @@ func (r *resolver) external(file string, w *workspace, l label) lang.Target {
 	}
 	switch repository { // hub repositories by their conventional names
 	case "maven":
-		return r.hubLabel(w, repository, &hub{ecosystem: ecosystemMaven}, l)
+		return r.hubLabel(w, repository, &hub{ecosystem: lang.EcosystemMaven}, l)
 	case "pypi", "pip":
-		return r.hubLabel(w, repository, &hub{ecosystem: ecosystemPyPI}, l)
+		return r.hubLabel(w, repository, &hub{ecosystem: lang.EcosystemPyPI}, l)
 	case "npm":
-		return r.hubLabel(w, repository, &hub{ecosystem: ecosystemNPM}, l)
+		return r.hubLabel(w, repository, &hub{ecosystem: lang.EcosystemNPM}, l)
 	case "crates", "crate_index":
-		return r.hubLabel(w, repository, &hub{ecosystem: ecosystemCrates}, l)
+		return r.hubLabel(w, repository, &hub{ecosystem: lang.EcosystemCrates}, l)
 	}
 	return lang.Target{Ecosystem: ecosystemBazel, Package: repository, Unresolved: true}
 }
@@ -485,7 +483,7 @@ func (r *resolver) repositoryTarget(w *workspace, d *repositoryDeclaration) lang
 		if packageName == "" {
 			packageName = d.name
 		}
-		t := lang.Target{Ecosystem: ecosystemGo, Package: packageName}
+		t := lang.Target{Ecosystem: lang.EcosystemGo, Package: packageName}
 		if d.version != "" {
 			t.Version, t.Pinned = d.version, lang.Pinned(d.version)
 			return t
@@ -596,28 +594,28 @@ func archiveName(u string) (name, reference string, head bool) {
 // Implements: REQ-BAZEL-009
 func (r *resolver) hubLabel(w *workspace, repository string, h *hub, l label) lang.Target {
 	switch h.ecosystem {
-	case ecosystemMaven:
+	case lang.EcosystemMaven:
 		if t, ok := h.packages[normalizeMaven(l.target)]; ok {
 			return t
 		}
-		return lang.Target{Ecosystem: ecosystemMaven, Package: l.target, Unresolved: true}
-	case ecosystemPyPI:
+		return lang.Target{Ecosystem: lang.EcosystemMaven, Package: l.target, Unresolved: true}
+	case lang.EcosystemPyPI:
 		name := l.target
 		if l.packageName != "" {
 			name, _, _ = strings.Cut(l.packageName, "/")
 		}
 		return r.pypi(w, repository, name)
-	case ecosystemNPM:
+	case lang.EcosystemNPM:
 		name := l.packageName
 		if name == "" {
 			name = strings.TrimPrefix(l.target, "node_modules/")
 		}
 		return npmTarget(h, name)
-	case ecosystemCrates:
+	case lang.EcosystemCrates:
 		if t, ok := h.packages[normalizeCrate(l.target)]; ok {
 			return t
 		}
-		return lang.Target{Ecosystem: ecosystemCrates, Package: l.target, Unresolved: h.lock}
+		return lang.Target{Ecosystem: lang.EcosystemCrates, Package: l.target, Unresolved: h.lock}
 	}
 	return lang.Target{}
 }
@@ -629,7 +627,7 @@ func (r *resolver) pypi(w *workspace, hubName, name string) lang.Target {
 			return t
 		}
 	}
-	return lang.Target{Ecosystem: ecosystemPyPI, Package: strings.ReplaceAll(name, "_", "-"), Unresolved: true}
+	return lang.Target{Ecosystem: lang.EcosystemPyPI, Package: strings.ReplaceAll(name, "_", "-"), Unresolved: true}
 }
 
 // npmTarget is an npm package a label names (@types/node keeps its scope).
@@ -647,7 +645,7 @@ func npmTarget(h *hub, name string) lang.Target {
 			return t
 		}
 	}
-	return lang.Target{Ecosystem: ecosystemNPM, Package: name}
+	return lang.Target{Ecosystem: lang.EcosystemNPM, Package: name}
 }
 
 // Expand turns a glob() into the files of the BUILD file's package it matches,
@@ -771,7 +769,7 @@ func (r *resolver) readLock(w *workspace) {
 			continue
 		}
 		w.selected[m.Name] = m.Version
-		for _, dependency := range sortedKeys(m.Dependencies) {
+		for _, dependency := range lang.SortedKeys(m.Dependencies) {
 			if v := m.Dependencies[dependency]; !strings.HasSuffix(v, "@_") {
 				w.graph[m.Name+"@"+m.Version] = append(w.graph[m.Name+"@"+m.Version], v)
 			}
@@ -844,7 +842,7 @@ func isNumber(s string) bool {
 // Implements: REQ-BAZEL-008, REQ-BAZEL-009
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	var out []lang.Target
-	for _, directory := range sortedKeys(r.workspaces) {
+	for _, directory := range lang.SortedKeys(r.workspaces) {
 		w := r.workspaces[directory]
 		switch t.Ecosystem {
 		case ecosystemBazel:
@@ -852,14 +850,14 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 				name, version, _ := strings.Cut(dependency, "@")
 				out = append(out, lang.Target{Ecosystem: ecosystemBazel, Package: name, Version: version, Pinned: version != ""})
 			}
-		case ecosystemMaven:
-			for _, name := range sortedKeys(w.hubs) {
+		case lang.EcosystemMaven:
+			for _, name := range lang.SortedKeys(w.hubs) {
 				h := w.hubs[name]
 				for _, d := range h.dependencies[t.Package] {
 					if dependencyTarget, ok := h.packages[normalizeMaven(d)]; ok {
 						out = append(out, dependencyTarget)
 					} else {
-						out = append(out, lang.Target{Ecosystem: ecosystemMaven, Package: d})
+						out = append(out, lang.Target{Ecosystem: lang.EcosystemMaven, Package: d})
 					}
 				}
 			}

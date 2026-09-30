@@ -23,9 +23,9 @@ import (
 )
 
 const (
-	ecosystemHex    = "hex"
+	ecosystemHex    = lang.EcosystemHex
 	ecosystemElixir = "elixir-std"
-	ecosystemOTP    = "erlang-std"
+	ecosystemOTP    = lang.EcosystemErlangStd
 )
 
 // Implements: REQ-BEAM-001

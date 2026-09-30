@@ -175,7 +175,7 @@ func (t *tree) addExact(names []string, version string, dependencies map[string]
 //
 // Implements: REQ-SUP-009
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecosystemNPM {
+	if t.Ecosystem != lang.EcosystemNPM {
 		return nil
 	}
 	var exact map[string]string
@@ -199,7 +199,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			continue
 		}
 		out = append(out, lang.Target{
-			Ecosystem: ecosystemNPM, Package: dependency, Version: version,
+			Ecosystem: lang.EcosystemNPM, Package: dependency, Version: version,
 			// It is in a lock file, which is what pins an npm package.
 			Pinned:   version != "",
 			Platform: r.tree.platform[dependency],

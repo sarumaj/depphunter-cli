@@ -82,11 +82,11 @@ func newResolver(root string, all []*scan.File, home string) *resolver {
 			directories = []string{"src"}
 		}
 		for _, d := range directories {
-			if d = path.Join(directory, strings.TrimSpace(d)); inside(d) {
+			if d = path.Join(directory, strings.TrimSpace(d)); lang.Inside(d) {
 				p.roots = append(p.roots, d)
 			}
 		}
-		for _, name := range sortedKeys(m.dependencies) {
+		for _, name := range lang.SortedKeys(m.dependencies) {
 			if in := r.installedManifest(name, r.installedVersion(m, m.dependencies[name])); in != nil {
 				for _, module := range in.exposed {
 					if _, ok := p.modules[module]; !ok {
@@ -100,14 +100,6 @@ func newResolver(root string, all []*scan.File, home string) *resolver {
 	}
 	sort.Slice(r.projects, func(i, j int) bool { return r.projects[i].directory < r.projects[j].directory })
 	return r
-}
-
-// inside reports whether a cleaned relative path stays in the repository.
-func inside(p string) bool { return p != ".." && !strings.HasPrefix(p, "../") && !path.IsAbs(p) }
-
-// under reports whether file is inside dir ("." holds everything).
-func under(file, directory string) bool {
-	return directory == "." || strings.HasPrefix(file, directory+"/")
 }
 
 // candidate is a project that lists a module file in its source directories, with
@@ -132,16 +124,16 @@ func (r *resolver) candidates(file string) []candidate {
 	var found []scored
 	for _, p := range r.projects {
 		n := -1
-		if under(file, p.tests) {
+		if lang.Within(file, p.tests) {
 			n = len(p.tests)
 		}
 		for _, root := range p.roots {
-			if under(file, root) && len(root) > n {
+			if lang.Within(file, root) && len(root) > n {
 				n = len(root)
 			}
 		}
 		if n >= 0 {
-			found = append(found, scored{p, under(file, p.directory), n})
+			found = append(found, scored{p, lang.Within(file, p.directory), n})
 		}
 	}
 	sort.SliceStable(found, func(i, j int) bool {
@@ -168,7 +160,7 @@ func (r *resolver) candidates(file string) []candidate {
 	out := make([]candidate, len(found))
 	for i, f := range found {
 		out[i] = candidate{p: f.p, roots: f.p.roots}
-		if under(file, f.p.tests) {
+		if lang.Within(file, f.p.tests) {
 			out[i].roots = append([]string{f.p.tests}, f.p.roots...)
 		}
 	}
@@ -186,7 +178,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		}
 	case kindSourceDirectory:
 		if p := r.byDirectory[path.Dir(file)]; p != nil {
-			if d := path.Join(p.directory, rawImport.Module); inside(d) && (r.directories[d] || d == ".") {
+			if d := path.Join(p.directory, rawImport.Module); lang.Inside(d) && (r.directories[d] || d == ".") {
 				return lang.Target{Local: d}
 			}
 		}
@@ -295,7 +287,7 @@ func segments(packageName, module string) int {
 func spelled(p *project, module string) (string, int) {
 	segments := strings.Split(module, ".")
 	best, n := "", 0
-	for _, name := range sortedKeys(p.m.dependencies) {
+	for _, name := range lang.SortedKeys(p.m.dependencies) {
 		f := foldPackage(name)
 		if f == "" {
 			continue
@@ -322,7 +314,7 @@ func startsLike(p *project, module string) string {
 	if len(first) < 4 {
 		return ""
 	}
-	for _, name := range sortedKeys(p.m.dependencies) {
+	for _, name := range lang.SortedKeys(p.m.dependencies) {
 		if strings.HasPrefix(foldPackage(name), first) {
 			return name
 		}
@@ -446,7 +438,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 		return nil
 	}
 	var out []lang.Target
-	for _, name := range sortedKeys(m.dependencies) {
+	for _, name := range lang.SortedKeys(m.dependencies) {
 		d := m.dependencies[name]
 		if d.test {
 			continue

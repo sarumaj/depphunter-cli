@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 
@@ -62,7 +63,7 @@ func ForEachFile(ctx context.Context, files []*scan.File, function func(f *scan.
 		}
 		// What Parseable would reject on its size alone is not read at all: a
 		// generated bundle can run to megabytes, and this runs on every analysis.
-		if f.Binary || f.TooLarge || f.Size > MaxParseSize {
+		if !Readable(f) {
 			continue
 		}
 		g.Go(func() error {
@@ -80,6 +81,12 @@ func ForEachFile(ctx context.Context, files []*scan.File, function func(f *scan.
 	}
 	g.Wait()
 	return results
+}
+
+// Readable reports whether a scanned file is worth reading: a binary or
+// oversized file is skipped before its content is loaded.
+func Readable(f *scan.File) bool {
+	return !f.Binary && !f.TooLarge && f.Size <= MaxParseSize
 }
 
 // Parseable rejects oversized and minified sources: parsing them is slow and their
@@ -120,4 +127,15 @@ func RepositoryName(url string) string {
 		return strings.ToLower(host)
 	}
 	return strings.ToLower(host) + "/" + rest
+}
+
+// SortedKeys lists m's keys in order, so that what is built from a map does not
+// change from run to run. An empty map gives an empty slice, not nil.
+func SortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

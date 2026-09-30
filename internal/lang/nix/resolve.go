@@ -3,7 +3,6 @@ package nix
 import (
 	"os"
 	"path"
-	"sort"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -28,8 +27,6 @@ type resolver struct {
 	inNixpkgs bool
 }
 
-func readable(f *scan.File) bool { return !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize }
-
 func newResolver(all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, flakes: map[string]*flakeDirectory{},
 		pins: map[string]pinsFile{}, nixpkgs: map[string]lang.Target{}, dependencies: map[string][]lang.Target{}}
@@ -45,7 +42,7 @@ func newResolver(all []*scan.File) *resolver {
 			r.directories[d] = true
 		}
 		c := class(f.Path)
-		if c == "" || !readable(f) {
+		if c == "" || !lang.Readable(f) {
 			continue
 		}
 		source, err := os.ReadFile(f.AbsolutePath)
@@ -69,7 +66,7 @@ func newResolver(all []*scan.File) *resolver {
 		}
 	}
 	r.inNixpkgs = r.files["pkgs/top-level/all-packages.nix"]
-	for _, d := range sortedKeys(r.flakes) {
+	for _, d := range lang.SortedKeys(r.flakes) {
 		flake := r.flakes[d]
 		if flake.lock != nil {
 			r.lockDependencies(d, flake.lock)
@@ -78,7 +75,7 @@ func newResolver(all []*scan.File) *resolver {
 			r.nixpkgs[d] = t
 		}
 	}
-	for _, d := range sortedKeys(r.pins) {
+	for _, d := range lang.SortedKeys(r.pins) {
 		if p, ok := r.pins[d]["nixpkgs"]; ok {
 			if _, has := r.nixpkgs[path.Dir(d)]; !has {
 				r.nixpkgs[path.Dir(d)] = pinTarget(p)
@@ -86,15 +83,6 @@ func newResolver(all []*scan.File) *resolver {
 		}
 	}
 	return r
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 func key(t lang.Target) string { return t.Ecosystem + "\x00" + t.Package + "\x00" + t.Version }
@@ -112,7 +100,7 @@ func (r *resolver) lockDependencies(directory string, l *lockFile) {
 			continue
 		}
 		var out []lang.Target
-		for _, name := range sortedKeys(l.Nodes[k].Inputs) {
+		for _, name := range lang.SortedKeys(l.Nodes[k].Inputs) {
 			if nk, ok := l.input(k, name); ok {
 				if d, local := l.target(directory, nk); local == "" && d.Package != "" {
 					out = append(out, d)
@@ -137,13 +125,13 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 // the one input that is NixOS/nixpkgs.
 func (r *resolver) flakeNixpkgs(directory string, flake *flakeDirectory) (lang.Target, bool) {
 	names := []string{"nixpkgs"}
-	for _, n := range sortedKeys(flake.inputs) {
+	for _, n := range lang.SortedKeys(flake.inputs) {
 		if n != "nixpkgs" {
 			names = append(names, n)
 		}
 	}
 	if flake.lock != nil {
-		for _, n := range sortedKeys(flake.lock.Nodes[flake.lock.Root].Inputs) {
+		for _, n := range lang.SortedKeys(flake.lock.Nodes[flake.lock.Root].Inputs) {
 			if n != "nixpkgs" {
 				names = append(names, n)
 			}

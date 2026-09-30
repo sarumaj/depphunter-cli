@@ -18,8 +18,7 @@ import (
 )
 
 const (
-	ecosystemPyPI = "pypi"
-	ecosystemStd  = "python-std"
+	ecosystemStd = "python-std"
 )
 
 // @import is a dotted module; @from.module / @from.name come from "from m import n"
@@ -70,7 +69,7 @@ func (Plugin) Claims(f *scan.File) bool {
 // Implements: REQ-PY-005
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecosystemPyPI, Name: "PyPI"},
+		{ID: lang.EcosystemPyPI, Name: "PyPI"},
 		{ID: ecosystemStd, Name: "Python standard library", Std: true},
 	}
 }

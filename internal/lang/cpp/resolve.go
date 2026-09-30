@@ -152,7 +152,7 @@ func (r *resolver) bySuffix(file, name string) string {
 		if p != name && !strings.HasSuffix(p, "/"+name) {
 			continue
 		}
-		n := commonDirectories(file, p)
+		n := lang.CommonSubdirectories(file, p)
 		switch {
 		case n > bestLength:
 			best, bestLength, tie = p, n, false
@@ -164,16 +164,6 @@ func (r *resolver) bySuffix(file, name string) string {
 		return ""
 	}
 	return best
-}
-
-// commonDirectories counts the leading directories two paths share.
-func commonDirectories(a, b string) int {
-	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
-	n := 0
-	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] && aParts[n] != "." {
-		n++
-	}
-	return n
 }
 
 // library names the third-party library an include belongs to: its first directory

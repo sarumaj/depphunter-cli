@@ -16,9 +16,7 @@ import (
 )
 
 const (
-	ecosystemMaven = "maven"
-	ecosystemJDK   = "jdk"
-	ecosystemStd   = "kotlin-std"
+	ecosystemStd = "kotlin-std"
 )
 
 // The grammar names no fields, so a method's pattern captures its owner (@owner)
@@ -59,8 +57,8 @@ func (Plugin) Claims(f *scan.File) bool {
 }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecosystemMaven, Name: "Maven"},
-		{ID: ecosystemJDK, Name: "Java standard library", Std: true},
+		{ID: lang.EcosystemMaven, Name: "Maven"},
+		{ID: lang.EcosystemJDK, Name: "Java standard library", Std: true},
 		{ID: ecosystemStd, Name: "Kotlin standard library", Std: true},
 	}
 }

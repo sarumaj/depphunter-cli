@@ -29,7 +29,7 @@ import (
 const (
 	ecosystemSoldeer = "soldeer"
 	ecosystemGit     = "git-submodule"
-	ecosystemNPM     = "npm"
+	ecosystemNPM     = lang.EcosystemNPM
 )
 
 // The manifests, told apart from other files of their extensions by name.

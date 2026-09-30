@@ -260,7 +260,7 @@ func readNimbleLock(source []byte) []*locked {
 				if json.Unmarshal(raw, &task) != nil {
 					return
 				}
-				for _, name := range sortedKeys(task) {
+				for _, name := range lang.SortedKeys(task) {
 					add(name, task[name], lineOf(source, `"`+name+`"`))
 				}
 			})

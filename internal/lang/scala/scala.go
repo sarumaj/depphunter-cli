@@ -16,9 +16,7 @@ import (
 )
 
 const (
-	ecosystemMaven = "maven"
-	ecosystemJDK   = "jdk"
-	ecosystemStd   = "scala-std"
+	ecosystemStd = "scala-std"
 )
 
 // Imports are taken wherever they are: Scala scopes them to a block as often as to
@@ -77,8 +75,8 @@ func (Plugin) Claims(f *scan.File) bool {
 }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecosystemMaven, Name: "Maven"},
-		{ID: ecosystemJDK, Name: "Java standard library", Std: true},
+		{ID: lang.EcosystemMaven, Name: "Maven"},
+		{ID: lang.EcosystemJDK, Name: "Java standard library", Std: true},
 		{ID: ecosystemStd, Name: "Scala standard library", Std: true},
 	}
 }

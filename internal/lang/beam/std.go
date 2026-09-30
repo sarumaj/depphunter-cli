@@ -2,7 +2,11 @@ package beam
 
 // cSpell: words: behaviour
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
+)
 
 // elixirStd are the top-level modules Elixir ships (the elixir, logger, ex_unit,
 // mix, iex and eex applications), the pseudo-modules protocols are implemented
@@ -11,7 +15,7 @@ import "strings"
 // by that segment.
 //
 // Implements: REQ-BEAM-007
-var elixirStd = setOf(`Access Agent Application ArgumentError ArithmeticError Atom
+var elixirStd = lang.WordSet(`Access Agent Application ArgumentError ArithmeticError Atom
 BadArityError BadBooleanError BadFunctionError BadMapError BadStructError Base
 Behaviour Bitwise Calendar CaseClauseError Code CompileError CondClauseError Config
 Collectable Date DateTime Dict Duration DynamicSupervisor EEx Enum Enumerable
@@ -33,7 +37,7 @@ var elixirApps = map[string]string{
 // application lists.
 //
 // Implements: REQ-BEAM-007
-var otpApps = setOf(`asn1 common_test compiler crypto debugger dialyzer diameter edoc
+var otpApps = lang.WordSet(`asn1 common_test compiler crypto debugger dialyzer diameter edoc
 eldap erl_docgen erl_interface erts et eunit ftp hipe inets jinterface kernel megaco
 mnesia observer odbc os_mon otp_mibs parsetools public_key reltool runtime_tools sasl
 snmp ssh ssl stdlib syntax_tools tftp tools wx xmerl`)
@@ -42,7 +46,7 @@ snmp ssh ssl stdlib syntax_tools tftp tools wx xmerl`)
 // families named by a prefix (ssl_*, mnesia_*, ...).
 //
 // Implements: REQ-BEAM-007
-var otpModules = setOf(`application array atomics base64 beam_lib binary c calendar
+var otpModules = lang.WordSet(`application array atomics base64 beam_lib binary c calendar
 code compile counters cover cprof crypto dbg dets dict digraph digraph_utils disk_log
 epp erl_anno erl_ddll erl_epmd erl_error erl_eval erl_features erl_lint erl_parse
 erl_pp erl_prettypr erl_scan erl_syntax erl_tar erlang erpc error_handler error_logger
@@ -109,14 +113,6 @@ var erlangAliases = map[string]string{
 	"cow_": "cowlib", "ranch_": "ranch", "hackney_": "hackney", "jiffy": "jiffy",
 	"certifi": "certifi", "ssl_verify_": "ssl_verify_fun", "idna": "idna",
 	"mimerl": "mimerl", "gun_": "gun", "hex_": "hex_core", "jsx": "jsx", "lager": "lager",
-}
-
-func setOf(words string) map[string]bool {
-	out := map[string]bool{}
-	for _, w := range strings.Fields(words) {
-		out[w] = true
-	}
-	return out
 }
 
 // fold is the key module prefixes and package names are compared by: lower case,

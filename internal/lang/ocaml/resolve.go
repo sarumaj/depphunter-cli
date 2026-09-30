@@ -90,10 +90,6 @@ func rank(p string) int {
 	return r
 }
 
-func readable(f *scan.File) bool {
-	return !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize
-}
-
 // Implements: REQ-OCAML-004, REQ-OCAML-006, REQ-OCAML-007, REQ-OCAML-009
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{
@@ -105,7 +101,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 	dunes := map[string]*duneFile{}
 	duneAt := map[string]string{}
 	for _, f := range all {
-		if ignored(f.Path) || !readable(f) {
+		if ignored(f.Path) || !lang.Readable(f) {
 			continue
 		}
 		switch fileClass(f.Path) {
@@ -160,20 +156,13 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	sort.Slice(r.sets, func(i, j int) bool {
-		depthI, depthJ := depth(r.sets[i].directory), depth(r.sets[j].directory)
+		depthI, depthJ := lang.Depth(r.sets[i].directory), lang.Depth(r.sets[j].directory)
 		if depthI != depthJ {
 			return depthI < depthJ
 		}
 		return r.sets[i].directory < r.sets[j].directory
 	})
 	return r
-}
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
 }
 
 func (r *resolver) set(directory string) *manifests {
@@ -340,7 +329,7 @@ func (r *resolver) readExports(all []*scan.File) {
 	var sources []source
 	opened := map[string]bool{}
 	for _, f := range all {
-		if fileClass(f.Path) != classSource || ignored(f.Path) || !readable(f) {
+		if fileClass(f.Path) != classSource || ignored(f.Path) || !lang.Readable(f) {
 			continue
 		}
 		b, err := os.ReadFile(f.AbsolutePath)

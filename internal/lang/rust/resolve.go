@@ -55,7 +55,7 @@ type locked struct{ name, version string }
 //
 // Implements: REQ-SUP-009
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecosystemCrates {
+	if t.Ecosystem != lang.EcosystemCrates {
 		return nil
 	}
 	var out []lang.Target
@@ -65,7 +65,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			version = r.pick(dependency.name, "")
 		}
 		out = append(out, lang.Target{
-			Ecosystem: ecosystemCrates, Package: dependency.name, Version: version, Pinned: version != "",
+			Ecosystem: lang.EcosystemCrates, Package: dependency.name, Version: version, Pinned: version != "",
 			Registry: r.sources[dependency.name+" "+version], Git: r.gits[dependency.name+" "+version],
 		})
 	}
@@ -290,7 +290,7 @@ func lockGit(source string) string {
 //
 // Implements: REQ-RS-007, REQ-RS-010
 func (r *resolver) target(d dependency) lang.Target {
-	t := lang.Target{Ecosystem: ecosystemCrates, Package: d.packageName, Version: d.version, Registry: d.registry}
+	t := lang.Target{Ecosystem: lang.EcosystemCrates, Package: d.packageName, Version: d.version, Registry: d.registry}
 	if exact := r.pick(d.packageName, d.version); exact != "" {
 		t.Version, t.Requested, t.Pinned = exact, d.version, true
 		if t.Registry == "" {
@@ -375,7 +375,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	if directory, ok := r.members[name]; ok {
 		return r.local(directory, segments[1:])
 	}
-	return lang.Target{Ecosystem: ecosystemCrates, Package: segments[0], Unresolved: true}
+	return lang.Target{Ecosystem: lang.EcosystemCrates, Package: segments[0], Unresolved: true}
 }
 
 // local resolves a path inside another project crate, falling back to the crate itself.

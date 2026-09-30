@@ -3,6 +3,8 @@ package ruby
 import (
 	"regexp"
 	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
 // splitArguments splits a call's argument list at the commas outside strings and
@@ -117,7 +119,7 @@ var directoryOfFile = map[string]bool{
 // Implements: REQ-RUBY-002
 func evalPath(expression string) (string, bool) {
 	expression = strings.TrimSpace(expression)
-	for strings.HasPrefix(expression, "(") && strings.HasSuffix(expression, ")") && balanced(expression[1:len(expression)-1]) {
+	for strings.HasPrefix(expression, "(") && strings.HasSuffix(expression, ")") && lang.BalancedParentheses(expression[1:len(expression)-1]) {
 		expression = strings.TrimSpace(expression[1 : len(expression)-1])
 	}
 	if s, ok := literal(expression); ok {
@@ -204,19 +206,4 @@ func splitTop(s string, separator byte) []string {
 		}
 	}
 	return append(parts, s[start:])
-}
-
-func balanced(s string) bool {
-	depth := 0
-	for _, c := range s {
-		switch c {
-		case '(':
-			depth++
-		case ')':
-			if depth--; depth < 0 {
-				return false
-			}
-		}
-	}
-	return depth == 0
 }

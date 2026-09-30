@@ -1,6 +1,10 @@
 package haskell
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
+)
 
 // stdPackages are the packages that come with GHC and cannot be chosen apart from it:
 // the compiler's own library and its runtime. They make the hidden haskell-std
@@ -415,14 +419,6 @@ var categories = map[string]bool{
 	"Algebra": true, "Sound": true, "Generics": true, "Unsafe": true, "Debug": true, "Monad": true,
 }
 
-// fold is a package or module-run name compared loosely: lower case, without dashes,
-// underscores and dots (Hasql.Pool is hasql-pool, Database.PostgreSQL.Simple
-// postgresql-simple).
-func fold(s string) string {
-	s = strings.ToLower(s)
-	return strings.NewReplacer("-", "", "_", "", ".", "").Replace(s)
-}
-
 // runMatch looks for a package among names whose name is a run of the module's
 // segments: Test.Tasty.HUnit is tasty-hunit (or tasty), Network.HTTP.Client
 // http-client. The longest run wins; a run of only a first segment that is a subject
@@ -434,7 +430,7 @@ func runMatch(module string, names map[string]string) string {
 			if n == 1 && categories[segments[i]] {
 				continue
 			}
-			if p := names[fold(strings.Join(segments[i:i+n], ""))]; p != "" {
+			if p := names[lang.FoldSeparators(strings.Join(segments[i:i+n], ""))]; p != "" {
 				return p
 			}
 		}

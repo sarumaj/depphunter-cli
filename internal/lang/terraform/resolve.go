@@ -4,6 +4,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -87,7 +88,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 				m.declaration[s.Name] = f.Path
 			}
 		}
-		for _, local := range sortedKeys(fileInfo.providers) {
+		for _, local := range lang.SortedKeys(fileInfo.providers) {
 			requirement := fileInfo.providers[local]
 			have := m.providers[local]
 			if have == nil {
@@ -97,7 +98,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			if have.source == "" && requirement.source != "" {
 				have.source = requirement.source
 			}
-			if requirement.constraint != "" && !contains(have.constraints, requirement.constraint) {
+			if requirement.constraint != "" && !slices.Contains(have.constraints, requirement.constraint) {
 				have.constraints = append(have.constraints, requirement.constraint)
 			}
 		}
@@ -115,15 +116,6 @@ func newResolver(root string, all []*scan.File) *resolver {
 		m.installed = readInstalled(root, d)
 	}
 	return r
-}
-
-func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 func (r *resolver) module(directory string) *moduleDirectory {

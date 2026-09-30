@@ -57,7 +57,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if a, ok := absolute[relative]; ok {
 			return readFile(a)
 		}
-		if root == "" || !inside(relative) {
+		if root == "" || !lang.Inside(relative) {
 			return "", false
 		}
 		return readFile(filepath.Join(root, filepath.FromSlash(relative))) // a lock the scan left out
@@ -80,7 +80,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		}
 	}
-	for _, d := range sortedKeys(directories) {
+	for _, d := range lang.SortedKeys(directories) {
 		if gemfiles[d] == "" && claimed[d] {
 			continue
 		}
@@ -93,7 +93,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		}
 	}
-	sort.SliceStable(r.projects, func(i, j int) bool { return depth(r.projects[i].directory) < depth(r.projects[j].directory) })
+	sort.SliceStable(r.projects, func(i, j int) bool { return lang.Depth(r.projects[i].directory) < lang.Depth(r.projects[j].directory) })
 	for _, f := range sorted {
 		if strings.HasSuffix(f.Path, "config/application.rb") {
 			app := path.Dir(path.Dir(f.Path))
@@ -101,24 +101,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 			r.rails = append(r.rails, r.zeitwerk(app, source))
 		}
 	}
-	sort.SliceStable(r.rails, func(i, j int) bool { return depth(r.rails[i].directory) > depth(r.rails[j].directory) })
+	sort.SliceStable(r.rails, func(i, j int) bool { return lang.Depth(r.rails[i].directory) > lang.Depth(r.rails[j].directory) })
 	return r
-}
-
-func sortedKeys(m map[string]bool) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
 }
 
 var autoloadLibrary = regexp.MustCompile(`autoload_lib\b|autoload_paths\b.*\blib\b`)
@@ -229,7 +213,7 @@ func (r *resolver) relative(file, p string) string {
 
 // rubyFile finds the project file a path without its extension names.
 func (r *resolver) rubyFile(p string) lang.Target {
-	if !inside(p) {
+	if !lang.Inside(p) {
 		return lang.Target{}
 	}
 	for _, candidate := range []string{p + ".rb", p} {
@@ -241,7 +225,7 @@ func (r *resolver) rubyFile(p string) lang.Target {
 }
 
 func (r *resolver) localPath(p string) lang.Target {
-	if inside(p) && (r.files[p] || r.directories[p]) {
+	if lang.Inside(p) && (r.files[p] || r.directories[p]) {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}
@@ -382,10 +366,10 @@ func (r *resolver) gemFor(p string, projects []*project, declared bool) (string,
 		return segments[0], true
 	}
 	for k := len(segments); k >= 1; k-- {
-		want := fold(strings.Join(segments[:k], ""))
+		want := lang.FoldAlphanumeric(strings.Join(segments[:k], ""))
 		for _, project := range projects {
 			for _, name := range project.gemNames() {
-				if f := fold(name); f == want || k == 1 && (f == want+"ruby" || f == "ruby"+want) {
+				if f := lang.FoldAlphanumeric(name); f == want || k == 1 && (f == want+"ruby" || f == "ruby"+want) {
 					return name, true
 				}
 			}
@@ -397,18 +381,6 @@ func (r *resolver) gemFor(p string, projects []*project, declared bool) (string,
 // namespaces are first segments many gems share: net/ssh is net-ssh, dry/types is
 // dry-types.
 var namespaces = map[string]bool{"net": true, "dry": true}
-
-// fold is a name reduced to what require paths and gem names share: lower case,
-// letters and digits only.
-func fold(s string) string {
-	var b strings.Builder
-	for _, c := range strings.ToLower(s) {
-		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' {
-			b.WriteRune(c)
-		}
-	}
-	return b.String()
-}
 
 // load resolves a file Kernel#load reads: relative to the file, a project's
 // directory, the load path or the repository root. load never reaches a gem.

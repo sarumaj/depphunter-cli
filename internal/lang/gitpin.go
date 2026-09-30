@@ -20,6 +20,13 @@ func PublicForge(repository string) bool {
 	return publicForges[host]
 }
 
+// PublicOrUnnamed is PublicForge for a dependency that may name no repository.
+// One that names none is not taken for the organization's own, because nothing
+// says where it came from, so it gets no Target.Origin either.
+func PublicOrUnnamed(repository string) bool {
+	return repository == "" || PublicForge(repository)
+}
+
 // forgeNamed are the ecosystems whose plugins record a git dependency on any host
 // but a public forge in Target.Origin: a package of theirs pinned to a commit that
 // has neither an Origin nor a host in its name was cloned from a public forge

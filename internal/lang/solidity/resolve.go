@@ -128,10 +128,6 @@ func join(directory, p string) string {
 	return path.Clean(directory + "/" + p)
 }
 
-func under(p, directory string) bool {
-	return directory == "." || p == directory || strings.HasPrefix(p, directory+"/")
-}
-
 func readFile(f *scan.File) []byte {
 	if f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
 		return nil
@@ -336,7 +332,7 @@ func (r *resolver) remappings(p *project, txt []string) []remapping {
 		for _, dependency := range r.libraries(join(p.directory, library)) {
 			relative := library + "/" + dependency
 			absolute := r.absolute(join(p.directory, relative))
-			if isDirectory(filepath.Join(absolute, "src")) {
+			if lang.IsDirectory(filepath.Join(absolute, "src")) {
 				infer(dependency+"/", relative+"/src/")
 			} else {
 				infer(dependency+"/", relative+"/")
@@ -347,7 +343,7 @@ func (r *resolver) remappings(p *project, txt []string) []remapping {
 		}
 	}
 	for _, n := range nested {
-		if isDirectory(filepath.Join(r.absolute(join(p.directory, n[1])), "src")) {
+		if lang.IsDirectory(filepath.Join(r.absolute(join(p.directory, n[1])), "src")) {
 			infer(n[0]+"/", n[1]+"/src/")
 		} else {
 			infer(n[0]+"/", n[1]+"/")
@@ -358,11 +354,6 @@ func (r *resolver) remappings(p *project, txt []string) []remapping {
 
 func (r *resolver) absolute(relative string) string {
 	return filepath.Join(r.root, filepath.FromSlash(relative))
-}
-
-func isDirectory(p string) bool {
-	fileInfo, err := os.Stat(p)
-	return err == nil && fileInfo.IsDir()
 }
 
 // libraries lists the libraries in a libs directory: the submodules git
@@ -517,7 +508,7 @@ func (r *resolver) located(q string, p *project, file string) (lang.Target, bool
 		return lang.Target{}, true
 	}
 	for _, s := range r.subs {
-		if under(q, s.path) {
+		if lang.WithinOrEqual(q, s.path) {
 			return subTarget(s), true
 		}
 	}
@@ -618,7 +609,7 @@ func (p *project) soldeerTarget(name string) lang.Target {
 		if declared && d.version != "" && d.version != t.Version {
 			t.Requested = d.version
 		}
-		if e.git != "" && !public(e.git) {
+		if e.git != "" && !lang.PublicForge(e.git) {
 			t.Origin = e.git
 		}
 	case declared:
@@ -639,7 +630,7 @@ func (p *project) soldeerTarget(name string) lang.Target {
 			t.Floating = !t.Pinned
 		}
 		switch {
-		case d.git != "" && !public(d.git):
+		case d.git != "" && !lang.PublicForge(d.git):
 			t.Origin = d.git
 		case d.url != "":
 			t.Origin = d.url
@@ -665,7 +656,7 @@ func subTarget(s *subReference) lang.Target {
 	default:
 		t.Floating = true
 	}
-	if s.url != "" && !public(s.url) && !relativeURL(s.url) {
+	if s.url != "" && !lang.PublicForge(s.url) && !relativeURL(s.url) {
 		t.Origin = s.url
 	}
 	return t
@@ -682,21 +673,10 @@ func repositoryName(url, p string) string {
 		return path.Base(p)
 	}
 	n := lang.RepositoryName(url)
-	if public(url) {
+	if lang.PublicForge(url) {
 		n = strings.ToLower(n)
 	}
 	return n
-}
-
-// public reports whether a git URL is on a public forge, whose repositories
-// are named, not origins.
-func public(url string) bool {
-	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
-	switch host {
-	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "git.sr.ht", "sr.ht":
-		return true
-	}
-	return false
 }
 
 // Dependencies answers for npm packages from the lock files, as the
@@ -777,10 +757,10 @@ func readInstalled(directory string) map[string]*project {
 //
 // Implements: REQ-SOLIDITY-007
 func (r *resolver) soldeerDependencies(t lang.Target) []lang.Target {
-	for _, d := range sortedKeys(r.projects) {
+	for _, d := range lang.SortedKeys(r.projects) {
 		p := r.projects[d]
 		subproject := p.installed[t.Package+"-"+t.Version]
-		for _, directory := range sortedKeys(p.installed) {
+		for _, directory := range lang.SortedKeys(p.installed) {
 			if subproject != nil {
 				break
 			}
@@ -796,7 +776,7 @@ func (r *resolver) soldeerDependencies(t lang.Target) []lang.Target {
 			names[n] = true
 		}
 		var out []lang.Target
-		for _, n := range sortedKeys(names) {
+		for _, n := range lang.SortedKeys(names) {
 			_, declared := p.dependencies[n]
 			if _, locked := p.locked[n]; declared || locked {
 				out = append(out, p.soldeerTarget(n))
@@ -807,13 +787,4 @@ func (r *resolver) soldeerDependencies(t lang.Target) []lang.Target {
 		return out
 	}
 	return nil
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }

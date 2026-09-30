@@ -17,11 +17,6 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
-const (
-	ecosystemModules = "go"
-	ecosystemStd     = "go-std"
-)
-
 type Plugin struct{}
 
 func (Plugin) Name() string { return "go" }
@@ -31,8 +26,8 @@ func (Plugin) Claims(f *scan.File) bool { return strings.HasSuffix(f.Path, ".go"
 // Implements: REQ-LANG-005, REQ-GO-004
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecosystemModules, Name: "Go modules"},
-		{ID: ecosystemStd, Name: "Go standard library", Std: true},
+		{ID: lang.EcosystemGo, Name: "Go modules"},
+		{ID: lang.EcosystemGoStd, Name: "Go standard library", Std: true},
 	}
 }
 
@@ -165,7 +160,7 @@ func resolve(importPath string, own *module, modules []*module, packageDirectori
 			case r.module != "":
 				// The build fetches the replacement, so that is the package - and the
 				// version a vulnerability database has to be asked about.
-				return lang.Target{Ecosystem: ecosystemModules, Package: r.module, Version: r.version,
+				return lang.Target{Ecosystem: lang.EcosystemGo, Package: r.module, Version: r.version,
 					Requested: own.requires[old], Pinned: lang.Pinned(r.version)}
 			case packageDirectories[path.Join(r.directory, rest)]:
 				return lang.Target{Local: path.Join(r.directory, rest)}
@@ -173,7 +168,7 @@ func resolve(importPath string, own *module, modules []*module, packageDirectori
 				// A directory outside the project has no published version. The
 				// require line's version, often the v0.0.0-00010101000000-000000000000
 				// placeholder, is not what is built and must not be looked up.
-				return lang.Target{Ecosystem: ecosystemModules, Package: old}
+				return lang.Target{Ecosystem: lang.EcosystemGo, Package: old}
 			}
 		}
 	}
@@ -185,7 +180,7 @@ func resolve(importPath string, own *module, modules []*module, packageDirectori
 		}
 	}
 	if first, _, _ := strings.Cut(importPath, "/"); !strings.Contains(first, ".") {
-		return lang.Target{Ecosystem: ecosystemStd, Package: importPath}
+		return lang.Target{Ecosystem: lang.EcosystemGoStd, Package: importPath}
 	}
 	if own != nil {
 		best := ""
@@ -198,10 +193,10 @@ func resolve(importPath string, own *module, modules []*module, packageDirectori
 			// A require line carries the version the build selects, so a module is
 			// pinned unless go.mod was written without one.
 			v := own.requires[best]
-			return lang.Target{Ecosystem: ecosystemModules, Package: best, Version: v, Pinned: lang.Pinned(v)}
+			return lang.Target{Ecosystem: lang.EcosystemGo, Package: best, Version: v, Pinned: lang.Pinned(v)}
 		}
 	}
-	return lang.Target{Ecosystem: ecosystemModules, Package: importPath, Unresolved: true}
+	return lang.Target{Ecosystem: lang.EcosystemGo, Package: importPath, Unresolved: true}
 }
 
 // within reports whether import path importPath is prefix or a sub-package of module, returning the remainder.

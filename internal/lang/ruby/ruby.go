@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	ecosystemGems = "rubygems"
+	ecosystemGems = lang.EcosystemRubyGems
 	ecosystemStd  = "ruby-std"
 )
 

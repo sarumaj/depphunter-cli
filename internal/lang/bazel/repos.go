@@ -2,7 +2,6 @@ package bazel
 
 import (
 	"path"
-	"sort"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -203,7 +202,7 @@ func (r *resolver) extensionTag(w *workspace, extension, tag string, n *starlark
 		if name == "" {
 			name = "maven"
 		}
-		h := w.hub(name, ecosystemMaven)
+		h := w.hub(name, lang.EcosystemMaven)
 		if tag == "artifact" {
 			if c := coordinate(n); c != "" {
 				h.addMaven(c)
@@ -216,7 +215,7 @@ func (r *resolver) extensionTag(w *workspace, extension, tag string, n *starlark
 		if name == "" {
 			return
 		}
-		r.pipParse(w, w.hub(name, ecosystemPyPI), n)
+		r.pipParse(w, w.hub(name, lang.EcosystemPyPI), n)
 	case "go_deps.from_file":
 		if p := w.labelPath(n.KeywordString("go_mod")); p != "" {
 			if source, ok := r.read(p); ok {
@@ -228,20 +227,20 @@ func (r *resolver) extensionTag(w *workspace, extension, tag string, n *starlark
 	case "go_deps.module":
 		if p := n.KeywordString("path"); p != "" {
 			v := n.KeywordString("version")
-			w.addGo(lang.Target{Ecosystem: ecosystemGo, Package: p, Version: v, Pinned: lang.Pinned(v)})
+			w.addGo(lang.Target{Ecosystem: lang.EcosystemGo, Package: p, Version: v, Pinned: lang.Pinned(v)})
 		}
 	case "npm.npm_translate_lock":
 		name := n.KeywordString("name")
 		if name == "" {
 			name = "npm"
 		}
-		r.pnpm(w, w.hub(name, ecosystemNPM), n.KeywordString("pnpm_lock"))
+		r.pnpm(w, w.hub(name, lang.EcosystemNPM), n.KeywordString("pnpm_lock"))
 	case "crate.from_cargo", "crate.from_specs":
 		name := n.KeywordString("name")
 		if name == "" {
 			name = "crates"
 		}
-		r.cargo(w, w.hub(name, ecosystemCrates), n)
+		r.cargo(w, w.hub(name, lang.EcosystemCrates), n)
 	case "crate.spec":
 		name := n.KeywordString("repositories")
 		if name == "" {
@@ -249,7 +248,7 @@ func (r *resolver) extensionTag(w *workspace, extension, tag string, n *starlark
 		}
 		if p := n.KeywordString("package"); p != "" {
 			v := n.KeywordString("version")
-			w.hub(name, ecosystemCrates).add(normalizeCrate(p), lang.Target{Ecosystem: ecosystemCrates, Package: p, Version: v, Pinned: exactCargo(v)}, false)
+			w.hub(name, lang.EcosystemCrates).add(normalizeCrate(p), lang.Target{Ecosystem: lang.EcosystemCrates, Package: p, Version: v, Pinned: exactCargo(v)}, false)
 		}
 	}
 }
@@ -312,25 +311,25 @@ func (r *resolver) repositoryRule(w *workspace, rule string, n *starlark.Node) {
 		if name == "" {
 			name = "maven"
 		}
-		r.mavenInstall(w, w.hub(name, ecosystemMaven), n, "maven_install_json")
+		r.mavenInstall(w, w.hub(name, lang.EcosystemMaven), n, "maven_install_json")
 		return
 	case "pip_parse", "pip_install":
 		if name == "" {
 			name = "pip"
 		}
-		r.pipParse(w, w.hub(name, ecosystemPyPI), n)
+		r.pipParse(w, w.hub(name, lang.EcosystemPyPI), n)
 		return
 	case "npm_translate_lock":
 		if name == "" {
 			name = "npm"
 		}
-		r.pnpm(w, w.hub(name, ecosystemNPM), n.KeywordString("pnpm_lock"))
+		r.pnpm(w, w.hub(name, lang.EcosystemNPM), n.KeywordString("pnpm_lock"))
 		return
 	case "crates_repository":
 		if name == "" {
 			name = "crates"
 		}
-		r.cargo(w, w.hub(name, ecosystemCrates), n)
+		r.cargo(w, w.hub(name, lang.EcosystemCrates), n)
 		return
 	}
 	if name == "" || w.repositories[name] != nil {
@@ -402,14 +401,4 @@ func (h *hub) add(key string, t lang.Target, fromLock bool) {
 		h.locked[key] = true
 	}
 	h.packages[key] = t
-}
-
-// sortedKeys lists a map's keys in order.
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

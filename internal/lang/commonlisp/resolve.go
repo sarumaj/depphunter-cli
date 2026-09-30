@@ -112,11 +112,6 @@ func besideOcicl(directory string) bool {
 	return err == nil
 }
 
-// readable reports whether the resolver may read a file's content.
-func readable(f *scan.File) bool {
-	return !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize
-}
-
 // newResolver reads the repository's .asd files for its systems, the
 // sources defining packages for the package index, the qlfile, lock and
 // ocicl.csv files for pins, and the .asd files of what Qlot and ocicl
@@ -147,7 +142,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 				break
 			}
 		}
-		if !readable(f) {
+		if !lang.Readable(f) {
 			continue
 		}
 		switch base := path.Base(f.Path); {
@@ -314,20 +309,11 @@ func (r *resolver) index(file string, in *info) {
 			r.nicknames[p.names[0]] = p.nicks
 		}
 		for _, n := range p.names {
-			if !contains(r.packages[n], file) {
+			if !slices.Contains(r.packages[n], file) {
 				r.packages[n] = append(r.packages[n], file)
 			}
 		}
 	}
-}
-
-func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 // mentionsPackage reports whether a source may define a package.
@@ -618,13 +604,13 @@ func lockTarget(e lockEntry, asked *qlEntry, project string) lang.Target {
 		if requested != e.commit {
 			t.Requested = requested
 		}
-		if e.url != "" && !public(e.url) {
+		if e.url != "" && !lang.PublicForge(e.url) {
 			t.Origin = e.url
 		}
 		return t
 	}
 	t := lang.Target{Ecosystem: ecosystemQuicklisp, Package: project, Version: e.version, Pinned: e.version != ""}
-	if e.url != "" && !public(e.url) {
+	if e.url != "" && !lang.PublicForge(e.url) {
 		t.Origin = e.url
 	}
 	return t
@@ -649,7 +635,7 @@ func qlTarget(e qlEntry, project string) lang.Target {
 		default:
 			t.Floating = true
 		}
-		if !public(e.url) {
+		if !lang.PublicForge(e.url) {
 			t.Origin = e.url
 		}
 		return t
@@ -679,17 +665,6 @@ func (r *resolver) localSource(e qlEntry, directory string) lang.Target {
 	return lang.Target{Ecosystem: ecosystemQuicklisp, Package: e.name, Floating: true, Origin: e.url}
 }
 
-// public reports whether a git URL is on a public forge, whose projects are
-// named, not origins.
-func public(url string) bool {
-	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
-	switch host {
-	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "git.sr.ht", "sr.ht":
-		return true
-	}
-	return false
-}
-
 // declaration is memoized per file: the systems that include it (or the
 // nearest .asd files' systems, else all) and what they depend on.
 func (r *resolver) declarationOf(file string) *declaration {
@@ -703,7 +678,7 @@ func (r *resolver) declarationOf(file string) *declaration {
 	}
 	if len(references) == 0 {
 		for _, reference := range r.all {
-			if reference.system.pis && under(file, reference.root()) {
+			if reference.system.pis && lang.Within(file, reference.root()) {
 				references = append(references, reference)
 			}
 		}
@@ -762,10 +737,6 @@ func (r *resolver) declarationOf(file string) *declaration {
 	sort.Strings(d.names)
 	v, _ := r.declared.LoadOrStore(file, d)
 	return v.(*declaration)
-}
-
-func under(file, directory string) bool {
-	return directory == "." || strings.HasPrefix(file, directory+"/")
 }
 
 // fold is a name without case, a cl- prefix or -cl suffix and punctuation:
@@ -832,7 +803,7 @@ func (r *resolver) match(packageName string, d *declaration) (string, bool) {
 // Implements: REQ-COMMONLISP-004, REQ-COMMONLISP-007, REQ-COMMONLISP-008
 func (r *resolver) packageTarget(file, packageName, kind string) lang.Target {
 	if files := r.packages[packageName]; len(files) > 0 {
-		if contains(files, file) {
+		if slices.Contains(files, file) {
 			return lang.Target{}
 		}
 		best := files[0]

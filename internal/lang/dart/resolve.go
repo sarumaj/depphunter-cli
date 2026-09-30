@@ -79,7 +79,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			data, err := os.ReadFile(a)
 			return data, err == nil
 		}
-		if root == "" || !inside(relative) {
+		if root == "" || !lang.Inside(relative) {
 			return nil, false
 		}
 		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
@@ -160,7 +160,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		}
 	}
-	sort.SliceStable(r.packages, func(i, j int) bool { return depth(r.packages[i].directory) > depth(r.packages[j].directory) })
+	sort.SliceStable(r.packages, func(i, j int) bool { return lang.Depth(r.packages[i].directory) > lang.Depth(r.packages[j].directory) })
 	return r
 }
 
@@ -201,16 +201,6 @@ func matchSegments(p, n []string) bool {
 	ok, _ := path.Match(p[0], n[0])
 	return ok && matchSegments(p[1:], n[1:])
 }
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
-}
-
-// inside reports whether a cleaned relative path stays in the repository.
-func inside(p string) bool { return p != ".." && !strings.HasPrefix(p, "../") && !path.IsAbs(p) }
 
 // packageOf is the package a file belongs to: the nearest pubspec.yaml above it.
 func (r *resolver) packageOf(file string) *pubPackage {
@@ -259,7 +249,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	if strings.Contains(u, ":") || strings.HasPrefix(u, "/") {
 		return lang.Target{} // file:, http: - nothing the repository holds
 	}
-	if f := path.Join(path.Dir(file), u); inside(f) && r.files[f] {
+	if f := path.Join(path.Dir(file), u); lang.Inside(f) && r.files[f] {
 		return lang.Target{Local: f}
 	}
 	return lang.Target{} // a generated part (x.g.dart) that is not committed
@@ -306,13 +296,13 @@ func (r *resolver) localPackage(p *pubPackage, name string) (string, bool) {
 			continue
 		}
 		if d := q.dependencies[name]; d != nil && d.source == "path" {
-			if directory := path.Join(q.directory, d.path); inside(directory) {
+			if directory := path.Join(q.directory, d.path); lang.Inside(directory) {
 				return directory, true
 			}
 		}
 	}
 	if l := p.lock[name]; l != nil && l.source == "path" && l.relative {
-		if directory := path.Join(p.lockDirectory, filepath.ToSlash(l.path)); inside(directory) {
+		if directory := path.Join(p.lockDirectory, filepath.ToSlash(l.path)); lang.Inside(directory) {
 			return directory, true
 		}
 	}

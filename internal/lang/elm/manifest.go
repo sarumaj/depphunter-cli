@@ -2,8 +2,6 @@ package elm
 
 import (
 	"encoding/json"
-	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -87,7 +85,7 @@ func exposedModules(raw json.RawMessage) []string {
 	}
 	var groups map[string][]string
 	json.Unmarshal(raw, &groups)
-	for _, g := range sortedKeys(groups) {
+	for _, g := range lang.SortedKeys(groups) {
 		list = append(list, groups[g]...)
 	}
 	return list
@@ -105,8 +103,8 @@ func extractManifest(source []byte) *lang.Extraction {
 	if m == nil {
 		return extraction
 	}
-	lines := stringLines(source)
-	for _, name := range sortedKeys(m.dependencies) {
+	lines := lang.JSONStringLines(source)
+	for _, name := range lang.SortedKeys(m.dependencies) {
 		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindDependency, Line: lines[name]})
 	}
 	for _, d := range m.sourceDirectories {
@@ -116,28 +114,4 @@ func extractManifest(source []byte) *lang.Extraction {
 		extraction.Symbols = []lang.Symbol{{Name: m.name, Kind: "package", Line: lines[m.name]}}
 	}
 	return extraction
-}
-
-var jsonString = regexp.MustCompile(`"((?:[^"\\]|\\.)*)"`)
-
-// stringLines is the first line each JSON string is written on.
-func stringLines(source []byte) map[string]int {
-	out := map[string]int{}
-	for i, l := range strings.Split(string(source), "\n") {
-		for _, m := range jsonString.FindAllStringSubmatch(l, -1) {
-			if _, ok := out[m[1]]; !ok {
-				out[m[1]] = i + 1
-			}
-		}
-	}
-	return out
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }

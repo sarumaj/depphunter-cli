@@ -33,11 +33,6 @@ const (
 	ecosystemBazel      = "bazel"      // Bazel modules (Bazel Central Registry)
 	ecosystemRepository = "bazel-repo" // WORKSPACE downloads named by their URL
 	ecosystemStd        = "bazel-std"  // repositories Bazel itself provides
-	ecosystemMaven      = "maven"
-	ecosystemPyPI       = "pypi"
-	ecosystemGo         = "go"
-	ecosystemNPM        = "npm"
-	ecosystemCrates     = "crates"
 )
 
 // File kinds, which Class names.
@@ -98,11 +93,11 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 		{ID: ecosystemBazel, Name: "Bazel modules"},
 		{ID: ecosystemRepository, Name: "Bazel repositories"},
 		{ID: ecosystemStd, Name: "Bazel built-in repositories", Std: true},
-		{ID: ecosystemMaven, Name: "Maven"},
-		{ID: ecosystemPyPI, Name: "PyPI"},
-		{ID: ecosystemGo, Name: "Go modules"},
-		{ID: ecosystemNPM, Name: "npm"},
-		{ID: ecosystemCrates, Name: "crates.io"},
+		{ID: lang.EcosystemMaven, Name: "Maven"},
+		{ID: lang.EcosystemPyPI, Name: "PyPI"},
+		{ID: lang.EcosystemGo, Name: "Go modules"},
+		{ID: lang.EcosystemNPM, Name: "npm"},
+		{ID: lang.EcosystemCrates, Name: "crates.io"},
 	}
 }
 

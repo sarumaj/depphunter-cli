@@ -255,12 +255,12 @@ func dotted(tokens []token, i int) (string, int) {
 
 // attributeWords are storage classes, protection and other attributes that may start
 // a declaration or an attribute block.
-var attributeWords = setOf(`static public private protected package export extern final abstract override
+var attributeWords = lang.WordSet(`static public private protected package export extern final abstract override
 synchronized deprecated align const immutable shared inout __gshared nothrow pure ref auto scope lazy
 pragma`)
 
 // keywords are D's keywords, never a function's name.
-var keywords = setOf(`abstract alias align asm assert auto body bool break byte case cast catch cdouble cent
+var keywords = lang.WordSet(`abstract alias align asm assert auto body bool break byte case cast catch cdouble cent
 cfloat char class const continue creal dchar debug default delegate delete deprecated do double else enum
 export extern false final finally float for foreach foreach_reverse function goto idouble if ifloat
 immutable import in inout int interface invariant ireal is lazy long macro mixin module new nothrow null
@@ -268,14 +268,6 @@ out override package pragma private protected public pure real ref return scope 
 struct super switch synchronized template this throw true try typeid typeof ubyte ucent uint ulong union
 unittest ushort version void wchar while with __FILE__ __FILE_FULL_PATH__ __MODULE__ __LINE__
 __FUNCTION__ __PRETTY_FUNCTION__ __gshared __traits __vector __parameters`)
-
-func setOf(s string) map[string]bool {
-	out := map[string]bool{}
-	for _, f := range strings.Fields(s) {
-		out[f] = true
-	}
-	return out
-}
 
 // skipGroup returns the index after the bracket group opening at i (or i when
 // no group opens there), bounded by end.

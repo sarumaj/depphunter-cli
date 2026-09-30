@@ -2,7 +2,6 @@ package fortran
 
 import (
 	"path"
-	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -66,7 +65,7 @@ func readManifest(source []byte) *manifest {
 	m.nameLine = lines.key("", "name")
 	readDependencies(raw["dependencies"], false, "dependencies", lines, m.dependencies)
 	if feats, ok := raw["features"].(map[string]any); ok {
-		for _, f := range sortedKeys(feats) {
+		for _, f := range lang.SortedKeys(feats) {
 			if ft, ok := feats[f].(map[string]any); ok {
 				readDependencies(ft["dependencies"], false, "features."+f+".dependencies", lines, m.dependencies)
 			}
@@ -124,7 +123,7 @@ func readDependencies(v any, dev bool, section string, lines *tomlLines, into ma
 	if !ok {
 		return
 	}
-	for _, name := range sortedKeys(table) {
+	for _, name := range lang.SortedKeys(table) {
 		if name == "" || into[name] != nil {
 			continue
 		}
@@ -243,7 +242,7 @@ func (tl *tomlLines) array(name string, n int) int {
 func extractManifest(source []byte) *lang.Extraction {
 	m := readManifest(source)
 	extraction := &lang.Extraction{}
-	for _, name := range sortedKeys(m.dependencies) {
+	for _, name := range lang.SortedKeys(m.dependencies) {
 		d := m.dependencies[name]
 		kind := kindDependency
 		if d.dev {
@@ -274,13 +273,4 @@ func extractManifest(source []byte) *lang.Extraction {
 		extraction.Symbols = []lang.Symbol{{Name: m.name, Kind: "package", Line: max(m.nameLine, 1)}}
 	}
 	return extraction
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }

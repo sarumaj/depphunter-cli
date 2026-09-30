@@ -270,14 +270,8 @@ func readSelections(source []byte) map[string]*selection {
 	return out
 }
 
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
+// sortedKeys is lang.SortedKeys under the name this package and its tests use.
+func sortedKeys[V any](m map[string]V) []string { return lang.SortedKeys(m) }
 
 // extractRecipe lists a recipe's dependencies, its configurations' and its
 // inline sub-packages', and its sub-package directories, as imports.

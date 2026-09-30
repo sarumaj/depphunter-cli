@@ -378,7 +378,7 @@ func (r *resolver) module(file, name string) lang.Target {
 		if p == file {
 			continue
 		}
-		n := commonDirectories(file, p)
+		n := lang.CommonSubdirectories(file, p)
 		switch {
 		case n > bestLength:
 			best, bestLength, tie = p, n, false
@@ -390,16 +390,6 @@ func (r *resolver) module(file, name string) lang.Target {
 		return lang.Target{}
 	}
 	return lang.Target{Local: best}
-}
-
-// commonDirectories counts the leading directories two paths share.
-func commonDirectories(a, b string) int {
-	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
-	n := 0
-	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] && aParts[n] != "." {
-		n++
-	}
-	return n
 }
 
 // find resolves find_package(Name) (spec "Name" or "Name/component"): a project the

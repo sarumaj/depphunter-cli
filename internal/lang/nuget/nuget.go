@@ -117,7 +117,7 @@ func Read(all []*scan.File) *Store {
 			s.roots = append(s.roots, byDirectory[d])
 		}
 	}
-	sort.SliceStable(s.roots, func(i, j int) bool { return depth(s.roots[i].directory) < depth(s.roots[j].directory) })
+	sort.SliceStable(s.roots, func(i, j int) bool { return lang.Depth(s.roots[i].directory) < lang.Depth(s.roots[j].directory) })
 	for _, f := range all {
 		if f.Binary || f.TooLarge {
 			continue
@@ -206,7 +206,7 @@ func Read(all []*scan.File) *Store {
 			}
 		}
 	}
-	sort.SliceStable(s.roots, func(i, j int) bool { return depth(s.roots[i].directory) < depth(s.roots[j].directory) })
+	sort.SliceStable(s.roots, func(i, j int) bool { return lang.Depth(s.roots[i].directory) < lang.Depth(s.roots[j].directory) })
 	// paket.references names what a project uses: a package it names is declared
 	// for the namespace rule even when only a lock lists it.
 	for _, f := range references {
@@ -234,20 +234,13 @@ func Read(all []*scan.File) *Store {
 	return s
 }
 
-func depth(directory string) int {
-	if directory == "." || directory == "" {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
-}
-
 // root is the Paket root governing a file: the nearest directory above it with a
 // paket.dependencies (or paket.lock).
 func (s *Store) root(file string) *set {
 	var best *set
 	for _, r := range s.roots {
 		if r.directory == "." || strings.HasPrefix(file, r.directory+"/") {
-			if best == nil || depth(r.directory) > depth(best.directory) {
+			if best == nil || lang.Depth(r.directory) > lang.Depth(best.directory) {
 				best = r
 			}
 		}

@@ -3,6 +3,7 @@ package cocoapods
 import (
 	"encoding/json"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -379,7 +380,7 @@ func readLock(source []byte) (map[string]*locked, map[string][]string) {
 		for _, d := range dependencies {
 			s, _ := d.(string)
 			n, _ := podLine(s)
-			if r := Root(n); r != "" && r != self && !contains(l.dependencies, r) {
+			if r := Root(n); r != "" && r != self && !slices.Contains(l.dependencies, r) {
 				l.dependencies = append(l.dependencies, r)
 			}
 		}
@@ -433,15 +434,6 @@ func readLock(source []byte) (map[string]*locked, map[string][]string) {
 		}
 	}
 	return out, doc.Repositories
-}
-
-func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 // cart is one dependency of a Cartfile or Cartfile.resolved.

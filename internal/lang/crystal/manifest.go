@@ -2,7 +2,6 @@ package crystal
 
 import (
 	"path"
-	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -195,7 +194,7 @@ func lookup(m *yaml.Node, key string) *yaml.Node {
 func extractShard(source []byte) *lang.Extraction {
 	sh := readShard(source)
 	extraction := &lang.Extraction{}
-	for _, name := range sortedKeys(sh.dependencies) {
+	for _, name := range lang.SortedKeys(sh.dependencies) {
 		d := sh.dependencies[name]
 		kind := kindDependency
 		if d.dev {
@@ -203,7 +202,7 @@ func extractShard(source []byte) *lang.Extraction {
 		}
 		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kind, Line: d.line})
 	}
-	for _, t := range sortedKeys(sh.targets) {
+	for _, t := range lang.SortedKeys(sh.targets) {
 		main := path.Clean(sh.targets[t])
 		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "main: " + sh.targets[t], Module: main, Name: kindMain, Line: sh.lines[t]})
 	}
@@ -220,7 +219,7 @@ func extractShard(source []byte) *lang.Extraction {
 func extractLock(source []byte) *lang.Extraction {
 	extraction := &lang.Extraction{}
 	lock := readLock(source)
-	for _, name := range sortedKeys(lock) {
+	for _, name := range lang.SortedKeys(lock) {
 		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindLocked, Line: lock[name].line})
 	}
 	return extraction
@@ -230,7 +229,7 @@ func extractLock(source []byte) *lang.Extraction {
 func extractOverride(source []byte) *lang.Extraction {
 	extraction := &lang.Extraction{}
 	over := readOverride(source)
-	for _, name := range sortedKeys(over) {
+	for _, name := range lang.SortedKeys(over) {
 		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindOverride, Line: over[name].line})
 	}
 	return extraction
@@ -243,13 +242,4 @@ func nameLine(source []byte) int {
 		}
 	}
 	return 1
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
