@@ -38,6 +38,7 @@ export class MapScene {
     this.renderer.setPixelRatio(this.pixelRatio);
     this.resolution = new Resolution();
     this.drawn = -Infinity; // when the last frame asked for was drawn
+    this.depthFirstOn = true;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
@@ -371,6 +372,7 @@ export class MapScene {
     });
     mesh.computeBoundingSphere();
     this.mesh = mesh;
+    mesh.layers.enable(DEPTH_LAYER);
     this.setTiers(city ? boxes : []);
     if (this.ground) {
       this.scene.remove(this.ground);
@@ -442,6 +444,7 @@ export class MapScene {
     mesh.computeBoundingSphere();
     mesh.frustumCulled = false; // bent in walk mode; there are only a few
     this.tiers = mesh;
+    mesh.layers.enable(DEPTH_LAYER);
     this.scene.add(mesh);
   }
 
@@ -759,7 +762,9 @@ export class MapScene {
     this.curve.uTime.value = performance.now() / 1000;
     this.updateDetails();
     this.cullProps(this.view);
+    this.depthFirst(this.view);
     r.render(this.scene, this.view);
+    r.autoClear = true;
     // The held tool, second and on top of everything: the depth buffer is cleared
     // between the two, so nothing in the world can occlude a hand that is, in truth,
     // a few centimeters from the lens.
@@ -770,6 +775,31 @@ export class MapScene {
       r.autoClear = true;
     }
     return r.domElement;
+  }
+
+  /**
+   * Draws the boxes' depth alone (a depth pre-pass), and leaves the renderer set not to
+   * clear it for the frame's own pass. The city's shader is costly per pixel, and the
+   * boxes are drawn in the layout's order rather than nearest first, so a pixel of a
+   * street behind three buildings would be painted four times; with their depth
+   * already in place, the GPU paints only the one in front. The pass is pushed a
+   * little back (polygon offset) so that the frame's own drawing of the same surface
+   * is never taken for something behind it.
+   *
+   * Implements: REQ-PERF-013
+   */
+  depthFirst(camera) {
+    if (!this.depthFirstOn) return;
+    const r = this.renderer, mask = camera.layers.mask;
+    this.depthMaterial ||= this.bendable(new THREE.MeshBasicMaterial({
+      colorWrite: false, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
+    }));
+    camera.layers.set(DEPTH_LAYER);
+    this.scene.overrideMaterial = this.depthMaterial;
+    r.render(this.scene, camera);
+    this.scene.overrideMaterial = null;
+    camera.layers.mask = mask;
+    r.autoClear = false;
   }
 
   /**
@@ -932,6 +962,9 @@ const idle = callback => (window.requestIdleCallback ? requestIdleCallback(callb
 // How long the map rests before a frame drawn smaller is drawn again in full, and
 // how soon after a frame the next has to be asked for to be timed against it.
 const SHARPEN = 300, CONTINUOUS = 50;
+
+// The layer of the meshes drawn with the boxes' material, for the depth pre-pass.
+const DEPTH_LAYER = 1;
 
 const WATER_DEPTH = 0.45;
 // The isometric sea: just above the land boxes' base (layout LAND_H below the
