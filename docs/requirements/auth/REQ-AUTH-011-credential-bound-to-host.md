@@ -29,3 +29,14 @@ a leak.
    another host on port 5000.
 2. A credential for `nexus.corp` is sent to `nexus.corp` on any port.
 3. A request to `registry.npmjs.org` carries none of a company's credentials.
+
+## Notes
+
+Loopback is `localhost` or a loopback IP address (127.0.0.0/8, `::1`, and
+127.x.y.z as an IPv4-mapped IPv6 address), which Go's HTTP client also sends
+past an `HTTP_PROXY`. Other spellings of this machine (`LOCALHOST`, `localhost.`,
+`127.1`) are not loopback here, since a request to them goes through the proxy,
+and neither is an IPv6 address with a zone. A Buf token
+([REQ-AUTH-031](REQ-AUTH-031-buf-tokens.md)) and a Conan login
+([REQ-AUTH-035](REQ-AUTH-035-conan-remote-logins.md)), which are sent outside
+the credential store, go over plain http only to the same loopback hosts.

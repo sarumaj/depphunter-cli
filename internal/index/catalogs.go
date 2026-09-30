@@ -22,6 +22,7 @@ import (
 	"golang.org/x/mod/module"
 	"gopkg.in/yaml.v3"
 
+	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/cue"
 	"github.com/sarumaj/depphunter-cli/internal/lang/racket"
@@ -655,7 +656,7 @@ func (c *Client) bufCall(ctx context.Context, index, host, procedure string, req
 	call.Header.Set("Content-Type", "application/json")
 	call.Header.Set("Accept", "application/json")
 	call.Header.Set("Connect-Protocol-Version", "1")
-	if token := c.auth.BufToken(host); token != "" && (call.URL.Scheme == "https" || loopbackHost(call.URL.Hostname())) {
+	if token := c.auth.BufToken(host); token != "" && auth.MaySend(call.URL) {
 		call.Header.Set("Authorization", "Bearer "+token)
 	}
 	response, err := c.send(ctx, call, address)
@@ -671,12 +672,6 @@ func (c *Client) bufCall(ctx context.Context, index, host, procedure string, req
 		return err
 	}
 	return json.Unmarshal(data, reply)
-}
-
-// loopbackHost reports whether a host is this machine, which a token may reach
-// over plain http (a registry run locally, a test's).
-func loopbackHost(host string) bool {
-	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 // ---------------------------------------------------------------- CUE registries

@@ -431,6 +431,82 @@ func TestBufModuleDependencies(t *testing.T) {
 	}
 }
 
+// plainHosts are hosts a credential is asked to reach over plain http: this
+// machine under names net/http sends past a proxy, other spellings of it that
+// it does not, and hosts elsewhere.
+var plainHosts = []string{
+	"localhost", "localhost:4873", "127.0.0.1", "127.0.0.2:8080", "[::1]:5000", "[::ffff:127.0.0.1]",
+	"LOCALHOST", "localhost.", "127.1", "[fe80::1%25lo0]", "10.0.0.1", "registry.corp.example",
+}
+
+// sendsCredential reports, for each of plainHosts, whether Apply sends this
+// machine's credential for the host over plain http (the machine names none of
+// them with http://), so that the paths that send a credential of their own can
+// be held to the same set.
+func sendsCredential(t *testing.T) map[string]bool {
+	t.Helper()
+	home := t.TempDir()
+	var netrc strings.Builder
+	for _, host := range plainHosts {
+		netrc.WriteString("machine " + Host("http://"+host) + " login user password secret\n")
+	}
+	put(t, filepath.Join(home, ".netrc"), netrc.String())
+	credentials := auth.Read(home, environment(nil))
+	out := map[string]bool{}
+	for _, host := range plainHosts {
+		out[host] = credentials.Authorizes("http://" + host + "/x")
+	}
+	for _, host := range []string{"127.0.0.2:8080", "[::ffff:127.0.0.1]"} {
+		if !out[host] {
+			t.Fatalf("Apply does not send a credential to %s", host)
+		}
+	}
+	for _, host := range []string{"LOCALHOST", "10.0.0.1"} {
+		if out[host] {
+			t.Fatalf("Apply sends a credential to %s", host)
+		}
+	}
+	return out
+}
+
+// authorizations is a transport that records the Authorization header of every
+// request by path and answers with answer.
+type authorizations struct {
+	mu     sync.Mutex
+	sent   map[string]string
+	answer func(*http.Request) (int, string)
+}
+
+func (a *authorizations) RoundTrip(r *http.Request) (*http.Response, error) {
+	a.mu.Lock()
+	a.sent[r.URL.Path] = r.Header.Get("Authorization")
+	a.mu.Unlock()
+	code, body := a.answer(r)
+	return &http.Response{StatusCode: code, Status: http.StatusText(code), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
+}
+
+// A Buf token goes over plain http to exactly the hosts Apply sends a
+// credential to: this machine as auth defines it, and nowhere else.
+//
+// Verifies: REQ-AUTH-031, REQ-AUTH-011
+func TestBufTokenGoesWhereApplySendsACredential(t *testing.T) {
+	want := sendsCredential(t)
+	credentials := auth.Read(t.TempDir(), environment(map[string]string{"BUF_TOKEN": "token@buf.test"}))
+	for _, host := range plainHosts {
+		transport := &authorizations{sent: map[string]string{}, answer: func(*http.Request) (int, string) { return http.StatusOK, "{}" }}
+		c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, credentials, nil)
+		c.http = &http.Client{Transport: transport}
+		var reply struct{}
+		if err := c.bufCall(t.Context(), "http://"+host, "buf.test", "buf.registry.module.v1.GraphService/GetGraph", map[string]any{}, &reply); err != nil {
+			t.Fatalf("%s: %v", host, err)
+		}
+		sent := transport.sent["/buf.registry.module.v1.GraphService/GetGraph"] == "Bearer token"
+		if sent != want[host] {
+			t.Errorf("token sent to http://%s: %v, Apply sends a credential: %v", host, sent, want[host])
+		}
+	}
+}
+
 // cueStub is an OCI registry holding one CUE module version under a repository
 // prefix, answering only with the token cue login stored.
 func cueStub(t *testing.T) (*httptest.Server, *stubRequests) {
