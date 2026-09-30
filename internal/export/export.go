@@ -272,10 +272,7 @@ func writeDOT(w io.Writer, g *graph.Graph) error {
 func Sources(root string, g *graph.Graph, perFile, total int64) map[string]string {
 	out := map[string]string{}
 	var used int64
-	for _, n := range g.Nodes {
-		if n.Kind != graph.KindFile {
-			continue
-		}
+	for n := range g.Of(graph.KindFile) {
 		absolute := filepath.Join(root, filepath.FromSlash(n.Path))
 		fileInfo, err := os.Stat(absolute)
 		if err != nil || fileInfo.Size() > perFile || used+fileInfo.Size() > total {

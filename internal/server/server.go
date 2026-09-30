@@ -161,10 +161,8 @@ type docHead struct {
 // Implements: REQ-SRV-013
 func newSnapshot(g *graph.Graph, version int) (*snapshot, error) {
 	created := &snapshot{g: g, version: version, files: make(map[string]int, len(g.Nodes))}
-	for _, n := range g.Nodes {
-		if n.Kind == graph.KindFile {
-			created.files[n.Path] = n.LOC
-		}
+	for n := range g.Of(graph.KindFile) {
+		created.files[n.Path] = n.LOC
 	}
 	nodes, err := json.Marshal(g.Nodes)
 	if err != nil {

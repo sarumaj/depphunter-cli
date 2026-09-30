@@ -9,7 +9,11 @@ package graph
 
 //go:generate go test . -update
 
-import "time"
+import (
+	"iter"
+	"strings"
+	"time"
+)
 
 // Implements: REQ-MOD-002
 type NodeKind string
@@ -125,9 +129,40 @@ type Graph struct {
 	Edges       []*Edge   `json:"edges"`
 }
 
+// Of yields the graph's nodes of one kind, in the graph's order.
+func (g *Graph) Of(kind NodeKind) iter.Seq[*Node] {
+	return func(yield func(*Node) bool) {
+		for _, n := range g.Nodes {
+			if n.Kind == kind && !yield(n) {
+				return
+			}
+		}
+	}
+}
+
 // Implements: REQ-MOD-003
 func DirectoryID(path string) string          { return "d:" + path }
 func FileID(path string) string               { return "f:" + path }
 func SymbolID(file, name string) string       { return "s:" + file + "#" + name }
 func EcosystemID(ecosystem string) string     { return "e:" + ecosystem }
 func PackageID(ecosystem, name string) string { return "p:" + ecosystem + ":" + name }
+
+// EcosystemOf is the ecosystem an ecosystem ID names, the inverse of EcosystemID:
+// "go" for "e:go". It is "" for any other ID.
+//
+// Implements: REQ-MOD-003
+func EcosystemOf(id string) string { return after(id, "e:") }
+
+// FileOf is the path a file ID names, the inverse of FileID: "src/main.go" for
+// "f:src/main.go". It is "" for any other ID.
+//
+// Implements: REQ-MOD-003
+func FileOf(id string) string { return after(id, "f:") }
+
+// after is what follows prefix in id, or "" when id does not start with it.
+func after(id, prefix string) string {
+	if rest, ok := strings.CutPrefix(id, prefix); ok {
+		return rest
+	}
+	return ""
+}
