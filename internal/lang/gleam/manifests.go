@@ -15,6 +15,7 @@ import (
 type dependency struct {
 	name, requirement, path, git, reference string
 	dev                                     bool
+	section                                 string // the gleam.toml table naming it
 }
 
 // config is what gleam.toml says about a package.
@@ -53,7 +54,7 @@ func readConfig(source []byte) *config {
 		table, _ := raw[section].(map[string]any)
 		for name, v := range table {
 			if d := readDependency(name, v); d != nil && c.dependencies[name] == nil {
-				d.dev = section != "dependencies"
+				d.dev, d.section = section != "dependencies", section
 				c.dependencies[name] = d
 			}
 		}
@@ -125,13 +126,13 @@ func readManifest(source []byte) *manifest {
 // Implements: REQ-GLEAM-005
 func extractConfig(source []byte) *lang.Extraction {
 	c := readConfig(source)
-	lines := keyLines(source)
+	lines := lang.TOMLKeyLines(source)
 	extraction := &lang.Extraction{}
 	for _, name := range lang.SortedKeys(c.dependencies) {
-		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindDependency, Line: lines[name]})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindDependency, Line: lines.Line(c.dependencies[name].section, name)})
 	}
 	if c.name != "" {
-		extraction.Symbols = []lang.Symbol{{Name: c.name, Kind: "package", Line: lines["name"]}}
+		extraction.Symbols = []lang.Symbol{{Name: c.name, Kind: "package", Line: lines.Line("", "name")}}
 	}
 	return extraction
 }
@@ -153,28 +154,7 @@ func extractManifest(source []byte) *lang.Extraction {
 	return extraction
 }
 
-var (
-	keyLine     = regexp.MustCompile(`^\s*"?([A-Za-z0-9_\-]+)"?\s*=`)
-	inlineKey   = regexp.MustCompile(`[{,]\s*"?([A-Za-z0-9_\-]+)"?\s*=`)
-	packageLine = regexp.MustCompile(`name\s*=\s*"([^"]+)"`)
-)
-
-// keyLines is the first line each key is written on, inline tables included.
-func keyLines(source []byte) map[string]int {
-	out := map[string]int{}
-	for i, l := range strings.Split(string(source), "\n") {
-		keys := inlineKey.FindAllStringSubmatch(l, -1)
-		if m := keyLine.FindStringSubmatch(l); m != nil {
-			keys = append([][]string{m}, keys...)
-		}
-		for _, k := range keys {
-			if _, ok := out[k[1]]; !ok {
-				out[k[1]] = i + 1
-			}
-		}
-	}
-	return out
-}
+var packageLine = regexp.MustCompile(`name\s*=\s*"([^"]+)"`)
 
 // packageLines is the line of each `{ name = "x", ... }` entry of manifest.toml.
 func packageLines(source []byte) map[string]int {

@@ -57,7 +57,7 @@ func readWally(source []byte) (string, []wallyDependency) {
 		return "", nil
 	}
 	name, _ := doc["package"]["name"].(string)
-	lines := strings.Split(string(source), "\n")
+	lines := lang.TOMLKeyLines(source)
 	var out []wallyDependency
 	for _, section := range wallySections {
 		keys := make([]string, 0, len(doc[section]))
@@ -71,26 +71,10 @@ func readWally(source []byte) (string, []wallyDependency) {
 			if packageName == "" {
 				continue
 			}
-			out = append(out, wallyDependency{alias: alias, packageName: strings.ToLower(packageName), requirement: requirement, section: section, line: lineOf(lines, alias, section)})
+			out = append(out, wallyDependency{alias: alias, packageName: strings.ToLower(packageName), requirement: requirement, section: section, line: lines.Line(section, alias)})
 		}
 	}
 	return strings.ToLower(name), out
-}
-
-// lineOf finds the line of a key in a TOML section, 1-based (0 when not found).
-func lineOf(lines []string, key, section string) int {
-	in := false
-	for i, l := range lines {
-		t := strings.TrimSpace(l)
-		if strings.HasPrefix(t, "[") {
-			in = strings.Trim(t, "[] ") == section
-			continue
-		}
-		if in && (strings.HasPrefix(t, key+" ") || strings.HasPrefix(t, key+"=") || strings.HasPrefix(t, `"`+key+`"`)) {
-			return i + 1
-		}
-	}
-	return 0
 }
 
 // extractWally makes a wally.toml's dependencies imports of the packages they name.

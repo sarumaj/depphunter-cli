@@ -260,48 +260,11 @@ func readGitmodules(source []byte) []submodule {
 	return kept
 }
 
-// tomlLines finds where a TOML file writes each of its keys, which the
-// decoder does not say: the line of `key =` (or `"key" =`) inside a section,
-// or of a `[section.key]` header, and the line of a quoted string anywhere.
-type tomlLines struct {
-	lines []string
-}
-
-func newTOMLLines(source []byte) tomlLines {
-	return tomlLines{lines: strings.Split(string(source), "\n")}
-}
-
-// key returns the line of key in section (1-based), 0 when not found.
-func (t tomlLines) key(section, key string) int {
-	current := ""
-	for i, l := range t.lines {
-		l = strings.TrimSpace(l)
-		if strings.HasPrefix(l, "[") {
-			h := strings.TrimSpace(strings.Trim(l, "[]"))
-			if h == section+"."+key || h == section+`."`+key+`"` {
-				return i + 1
-			}
-			current = h
-			continue
-		}
-		if current != section {
-			continue
-		}
-		k, _, ok := strings.Cut(l, "=")
-		if !ok {
-			continue
-		}
-		if k = strings.TrimSpace(k); k == key || k == `"`+key+`"` || k == "'"+key+"'" {
-			return i + 1
-		}
-	}
-	return 0
-}
-
-// quoted returns the line of the first "s" or 's' at or after from.
-func (t tomlLines) quoted(s string, from int) int {
-	for i := max(from, 0); i < len(t.lines); i++ {
-		if strings.Contains(t.lines[i], `"`+s+`"`) || strings.Contains(t.lines[i], "'"+s+"'") {
+// quotedLine is the line of the first "text" or 'text' after the first from
+// lines, 0 when there is none.
+func quotedLine(lines []string, text string, from int) int {
+	for i := max(from, 0); i < len(lines); i++ {
+		if strings.Contains(lines[i], `"`+text+`"`) || strings.Contains(lines[i], "'"+text+"'") {
 			return i + 1
 		}
 	}
@@ -318,12 +281,13 @@ func extractFoundry(source []byte) *lang.Extraction {
 	if !ok {
 		return extraction
 	}
-	lines := newTOMLLines(source)
+	lines := strings.Split(string(source), "\n")
 	for _, r := range c.remappings {
-		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: r, Module: r, Name: kindRemap, Line: max(lines.quoted(r, 0), 1)})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: r, Module: r, Name: kindRemap, Line: max(quotedLine(lines, r, 0), 1)})
 	}
+	keyLines := lang.TOMLKeyLines(source)
 	for _, d := range c.dependencies {
-		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: d.name, Module: d.name, Name: kindDependency, Line: max(lines.key("dependencies", d.name), 1)})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: d.name, Module: d.name, Name: kindDependency, Line: max(keyLines.Line("dependencies", d.name), 1)})
 	}
 	return extraction
 }
@@ -345,7 +309,7 @@ func extractRemappings(source []byte) *lang.Extraction {
 // extractLock makes every entry of soldeer.lock an import.
 func extractLock(source []byte) *lang.Extraction {
 	extraction := &lang.Extraction{}
-	lines := newTOMLLines(source)
+	lines := strings.Split(string(source), "\n")
 	seen := map[string]bool{}
 	from := 0
 	for _, e := range readSoldeerLock(source) {
@@ -353,7 +317,7 @@ func extractLock(source []byte) *lang.Extraction {
 			continue
 		}
 		seen[e.name] = true
-		line := lines.quoted(e.name, from)
+		line := quotedLine(lines, e.name, from)
 		if line > 0 {
 			from = line
 		}
