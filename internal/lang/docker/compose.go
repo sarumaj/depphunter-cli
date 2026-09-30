@@ -188,12 +188,8 @@ func remote(context string) bool {
 		strings.HasPrefix(context, "github.com/")
 }
 
-// field and pairs read a mapping with its aliases followed and its merge keys applied:
-// "<<: *base" is the usual way a Compose file shares settings between services.
-func field(n *yaml.Node, key string) *yaml.Node {
-	return yamlReader.Get(yamlReader.Merged(n), key)
-}
+// field and pairs read a mapping with its merge keys applied: "<<: *base" is the usual
+// way a Compose file shares settings between services.
+func field(n *yaml.Node, key string) *yaml.Node { return yamlnode.Get(yamlnode.Merged(n), key) }
 
-func pairs(n *yaml.Node) []yamlnode.Pair { return yamlReader.Pairs(yamlReader.Merged(n)) }
-
-var yamlReader = yamlnode.Reader{Aliases: true}
+func pairs(n *yaml.Node) []yamlnode.Pair { return yamlnode.Pairs(yamlnode.Merged(n)) }

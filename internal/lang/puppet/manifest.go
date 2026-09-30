@@ -329,13 +329,7 @@ func readFixtures(source []byte) []*dependency {
 			k, v := entry.Key, entry.Value
 			repository, reference, branch := v.Value, "", ""
 			if v.Kind == yaml.MappingNode {
-				value := func(key string) string {
-					if n := yamlnode.Get(v, key); n != nil {
-						return n.Value
-					}
-					return ""
-				}
-				repository, reference, branch = value("repo"), value("ref"), value("branch")
+				repository, reference, branch = yamlnode.Scalar(v, "repo"), yamlnode.Scalar(v, "ref"), yamlnode.Scalar(v, "branch")
 			}
 			if repository == "" {
 				continue

@@ -82,7 +82,7 @@ var hpackSections = []struct {
 // own, conditional (when:) ones included. Without source-dirs a component's sources
 // are in the package directory.
 //
-// Implements: REQ-HASKELL-004, REQ-HASKELL-006
+// Implements: REQ-HASKELL-004, REQ-HASKELL-006, REQ-LANG-032
 func readHpack(source []byte, file string) *cabalPackage {
 	doc := yamlnode.Mapping(yamlnode.Parse(source))
 	if doc == nil {
@@ -95,8 +95,18 @@ func readHpack(source []byte, file string) *cabalPackage {
 	if v := yamlnode.Get(doc, "version"); v != nil {
 		p.version = v.Value
 	}
+	// An anchor can make a when: contain itself, so each node is read once per component.
+	type visit struct {
+		component *component
+		node      *yaml.Node
+	}
+	visited := map[visit]bool{}
 	var fill func(c *component, m *yaml.Node)
 	fill = func(c *component, m *yaml.Node) {
+		if m == nil || visited[visit{c, m}] {
+			return
+		}
+		visited[visit{c, m}] = true
 		for _, s := range yamlnode.Scalars(yamlnode.Get(m, "source-dirs")) {
 			c.directories = append(c.directories, path.Clean(s.Value))
 		}

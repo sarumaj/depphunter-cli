@@ -27,9 +27,6 @@ const (
 	ecosystemGitLab  = "gitlab-ci"
 )
 
-// yamlReader follows aliases: a pipeline shares job settings through anchors.
-var yamlReader = yamlnode.Reader{Aliases: true}
-
 // Import kinds, carried in RawImport.Name so the resolver knows how to read Module.
 const (
 	kindAction    = "action"    // a step's uses:
@@ -106,7 +103,7 @@ func (Plugin) Class(f *scan.File) string {
 //
 // Implements: REQ-CI-001
 func (p Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
-	root := yamlReader.Mapping(yamlnode.Parse(source))
+	root := yamlnode.Mapping(yamlnode.Parse(source))
 	if root == nil {
 		return &lang.Extraction{}, nil // a pipeline that does not parse has no dependencies
 	}
