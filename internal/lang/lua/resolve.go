@@ -462,11 +462,8 @@ func (r *resolver) require(file, module string) lang.Target {
 // Implements: REQ-LUA-004, REQ-LUA-011
 func (r *resolver) probeRoots(file, p string) string {
 	var roots []string
-	for d := path.Dir(file); ; d = path.Dir(d) {
+	for d := range lang.Ancestors(file) {
 		roots = append(roots, d, path.Join(d, "lua"), path.Join(d, "src"), path.Join(d, "lib"))
-		if d == "." {
-			break
-		}
 	}
 	roots = append(roots, r.luarc...)
 	for _, root := range roots {
@@ -585,14 +582,12 @@ func (r *resolver) luauPath(file, spec string) lang.Target {
 
 // alias finds a .luaurc alias in directory or above: its value and the .luaurc's directory.
 func (r *resolver) alias(directory, name string) (string, string, bool) {
-	for d := directory; ; d = path.Dir(d) {
+	for d := range lang.DirectoryAndAncestors(directory) {
 		if v, ok := r.luaurc[d][name]; ok {
 			return v, d, true
 		}
-		if d == "." {
-			return "", "", false
-		}
 	}
+	return "", "", false
 }
 
 // wallyIn resolves an instance or file path through a Wally Packages folder

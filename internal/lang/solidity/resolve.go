@@ -382,14 +382,8 @@ func (r *resolver) libraries(directory string) []string {
 
 // projectOf is the nearest project above file.
 func (r *resolver) projectOf(file string) *project {
-	for d := path.Dir(file); ; d = path.Dir(d) {
-		if p := r.projects[d]; p != nil {
-			return p
-		}
-		if d == "." || d == "/" {
-			return nil
-		}
-	}
+	p, _ := lang.Nearest(r.projects, file)
+	return p
 }
 
 // remap applies p's remappings to an import path of file the way solc does:

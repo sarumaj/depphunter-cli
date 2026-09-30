@@ -110,18 +110,6 @@ func newResolver(all []*scan.File) *resolver {
 	return r
 }
 
-// nearest finds the configuration in m of directory or its closest ancestor.
-func nearest(m map[string]*config, directory string) *config {
-	for d := directory; ; d = path.Dir(d) {
-		if c := m[d]; c != nil {
-			return c
-		}
-		if d == "." || d == "/" {
-			return nil
-		}
-	}
-}
-
 // scope is what Buf's configuration says about one file: its workspace's import roots
 // and the modules its module depends on.
 type scope struct {
@@ -136,8 +124,8 @@ type scope struct {
 //
 // Implements: REQ-PROTO-004, REQ-PROTO-005
 func (r *resolver) scopeOf(file string) scope {
-	directory := path.Dir(file)
-	workspaceConfig, module := nearest(r.work, directory), nearest(r.modules, directory)
+	workspaceConfig, _ := lang.Nearest(r.work, file)
+	module, _ := lang.Nearest(r.modules, file)
 	if workspaceConfig != nil && module != nil && !lang.WithinOrEqual(module.directory, workspaceConfig.directory) {
 		module = nil // a module above the workspace is not part of it
 	}

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -208,7 +209,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		if strings.HasPrefix(module, "./") || strings.HasPrefix(module, "../") {
 			bases = []string{directory}
 		} else {
-			bases = ancestors(directory) // box.path: usually the project root
+			bases = slices.Collect(lang.DirectoryAndAncestors(directory)) // box.path: usually the project root
 		}
 		for _, b := range bases {
 			p := path.Join(b, module)
@@ -227,29 +228,19 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		if path.IsAbs(rawImport.Module) || strings.HasPrefix(rawImport.Module, "~") || strings.Contains(rawImport.Module, "://") {
 			return lang.Target{}
 		}
-		for _, b := range ancestors(directory) {
+		for b := range lang.DirectoryAndAncestors(directory) {
 			if p := path.Join(b, rawImport.Module); lang.Inside(p) && r.files[p] {
 				return lang.Target{Local: p}
 			}
 		}
 	case kindSourceDirectory:
-		for _, b := range ancestors(directory) {
+		for b := range lang.DirectoryAndAncestors(directory) {
 			if p := path.Join(b, rawImport.Module); lang.Inside(p) && (r.directories[p] || r.files[p]) {
 				return lang.Target{Local: p}
 			}
 		}
 	}
 	return lang.Target{}
-}
-
-// ancestors are a directory and those above it, nearest first.
-func ancestors(directory string) []string {
-	out := []string{directory}
-	for directory != "." {
-		directory = path.Dir(directory)
-		out = append(out, directory)
-	}
-	return out
 }
 
 // call resolves a function a file calls to the file of its scope (its package, or

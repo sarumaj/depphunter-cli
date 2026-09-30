@@ -194,14 +194,8 @@ func (r *resolver) readYAML(all []*scan.File) {
 
 // nearestWorkspace is the spago.yaml workspace in directory or the nearest above it.
 func (r *resolver) nearestWorkspace(directory string) *workspace {
-	for d := directory; ; d = path.Dir(d) {
-		if workspace := r.wsByDirectory[d]; workspace != nil {
-			return workspace
-		}
-		if d == "." || d == "/" {
-			return nil
-		}
-	}
+	workspace, _ := lang.NearestAtOrAbove(r.wsByDirectory, directory)
+	return workspace
 }
 
 // readDhall evaluates every spago.dhall configuration: a Dhall file with
@@ -299,12 +293,9 @@ func (r *resolver) globBase(directory, glob string) string {
 	if i := strings.IndexAny(glob, "*?["); i >= 0 {
 		literal = path.Dir(glob[:i+1])
 	}
-	for d := directory; ; d = path.Dir(d) {
+	for d := range lang.DirectoryAndAncestors(directory) {
 		if p := path.Join(d, literal); lang.Inside(p) && (r.directories[p] || r.files[p] || p == ".") {
 			return path.Join(d, glob)
-		}
-		if d == "." || d == "/" {
-			break
 		}
 	}
 	return path.Join(directory, glob)
@@ -357,7 +348,7 @@ func (r *resolver) own(file string) {
 		}
 	}
 	if best == nil {
-		for d := path.Dir(file); best == nil; d = path.Dir(d) {
+		for d := range lang.Ancestors(file) {
 			for _, p := range r.projects {
 				if p.directory == d {
 					best = p
@@ -365,7 +356,7 @@ func (r *resolver) own(file string) {
 					break
 				}
 			}
-			if d == "." || d == "/" {
+			if best != nil {
 				break
 			}
 		}
@@ -732,7 +723,7 @@ const maxInstalledFiles = 100_000
 //
 // Implements: REQ-PURESCRIPT-007
 func (r *resolver) installedIndex(directory string) *installedIndex {
-	for d := directory; ; d = path.Dir(d) {
+	for d := range lang.DirectoryAndAncestors(directory) {
 		absolute := filepath.Join(r.root, filepath.FromSlash(d))
 		spago, bower := filepath.Join(absolute, ".spago"), filepath.Join(absolute, "bower_components")
 		if lang.IsDirectory(spago) || lang.IsDirectory(bower) {
@@ -741,10 +732,8 @@ func (r *resolver) installedIndex(directory string) *installedIndex {
 			index.once.Do(func() { index.modules = readInstalled(spago, bower) })
 			return index
 		}
-		if d == "." || d == "/" {
-			return &installedIndex{}
-		}
 	}
+	return &installedIndex{}
 }
 
 func readInstalled(spago, bower string) map[string]string {

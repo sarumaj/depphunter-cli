@@ -127,7 +127,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 // test or dev) and its module path: the nearest gleam.toml above it, else the
 // directory above its nearest src/, test/ or dev/.
 func (r *resolver) locate(file string) (directory, rootDirectory, module string) {
-	for d := path.Dir(file); ; d = path.Dir(d) {
+	for d := range lang.Ancestors(file) {
 		if _, ok := r.packages[d]; ok {
 			relative := strings.TrimPrefix(file, d+"/")
 			if d == "." {
@@ -138,9 +138,6 @@ func (r *resolver) locate(file string) (directory, rootDirectory, module string)
 				return d, first, strings.TrimSuffix(rest, ".gleam")
 			}
 			return d, "", ""
-		}
-		if d == "." {
-			break
 		}
 	}
 	segments := strings.Split(file, "/")
@@ -158,14 +155,10 @@ func (r *resolver) locate(file string) (directory, rootDirectory, module string)
 
 // packageOf is the package a file belongs to: the nearest one above it.
 func (r *resolver) packageOf(file string) *gleamPackage {
-	for d := path.Dir(file); ; d = path.Dir(d) {
-		if p := r.packages[d]; p != nil {
-			return p
-		}
-		if d == "." || d == "/" {
-			return &gleamPackage{directory: ".", dependencies: map[string]*dependency{}, modules: map[string]string{}, npm: map[string]string{}, otpApps: map[string]string{}}
-		}
+	if p, ok := lang.Nearest(r.packages, file); ok {
+		return p
 	}
+	return &gleamPackage{directory: ".", dependencies: map[string]*dependency{}, modules: map[string]string{}, npm: map[string]string{}, otpApps: map[string]string{}}
 }
 
 // readInstalled learns which Hex package provides which module from what gleam

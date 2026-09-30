@@ -302,12 +302,9 @@ func (r *resolver) loadPathOf(file string) []string {
 			out = append(out, d)
 		}
 	}
-	for d := path.Dir(file); ; d = path.Dir(d) {
+	for d := range lang.Ancestors(file) {
 		for _, subdirectory := range []string{"lib", "test", "spec"} {
 			add(path.Join(d, subdirectory))
-		}
-		if d == "." {
-			break
 		}
 	}
 	for _, d := range r.loadPath {

@@ -231,11 +231,8 @@ func (r *resolver) governingDirectory(start string) []*project {
 			visit(l, hops+1)
 		}
 	}
-	for directory := start; ; directory = path.Dir(directory) {
+	for directory := range lang.DirectoryAndAncestors(start) {
 		visit(directory, 0)
-		if directory == "." || directory == "/" {
-			break
-		}
 	}
 	if len(out) == 0 {
 		for _, d := range r.directories {

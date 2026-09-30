@@ -409,14 +409,12 @@ func (r *resolver) components(directoryModules map[string]map[string]string, dun
 	// The stanzas of directory build the modules of directory, and of the directories below it
 	// when it has (include_subdirs).
 	owner := func(directory string) (string, bool) {
-		for d := directory; ; d = path.Dir(d) {
+		for d := range lang.DirectoryAndAncestors(directory) {
 			if df := dunes[d]; df != nil && (len(df.stanzas) > 0 || df.includeSubdirectories != "") {
 				return d, d == directory || df.includeSubdirectories != ""
 			}
-			if d == "." || d == "/" {
-				return "", false
-			}
 		}
+		return "", false
 	}
 	pools := map[string]map[string]string{}
 	var directories []string
@@ -565,15 +563,7 @@ func (r *resolver) library(file, library string) lang.Target {
 // governing are the manifests of the file's directory and its ancestors, nearest
 // first; a file with none above it is governed by all of them.
 func (r *resolver) governing(file string) []*manifests {
-	var out []*manifests
-	for d := path.Dir(file); ; d = path.Dir(d) {
-		if s := r.setAt[d]; s != nil {
-			out = append(out, s)
-		}
-		if d == "." || d == "/" {
-			break
-		}
-	}
+	out := lang.Chain(r.setAt, file)
 	if len(out) == 0 {
 		return r.sets
 	}

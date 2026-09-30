@@ -199,14 +199,12 @@ func (r *resolver) localFlake(d string) lang.Target {
 // nearest is the closest directory at or above directory for which has is true, else
 // "" (and false).
 func nearest(directory string, has func(string) bool) (string, bool) {
-	for d := directory; ; d = path.Dir(d) {
+	for d := range lang.DirectoryAndAncestors(directory) {
 		if has(d) {
 			return d, true
 		}
-		if d == "." || d == "/" {
-			return "", false
-		}
 	}
+	return "", false
 }
 
 // Implements: REQ-NIX-002, REQ-NIX-004, REQ-NIX-005, REQ-NIX-007, REQ-NIX-008, REQ-NIX-009

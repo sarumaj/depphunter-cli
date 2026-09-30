@@ -230,21 +230,16 @@ func (r *resolver) projectOf(file string) *project {
 	if p := r.single[file]; p != nil {
 		return p
 	}
-	directory := path.Dir(file)
-	for {
-		if p := r.projects[directory]; p != nil {
-			for _, in := range r.inlines {
-				if in.root == p && under(file, in.imports) {
-					return in
-				}
-			}
-			return p
-		}
-		if directory == "." || directory == "/" || directory == "" {
-			return nil
-		}
-		directory = path.Dir(directory)
+	p, ok := lang.Nearest(r.projects, file)
+	if !ok {
+		return nil
 	}
+	for _, in := range r.inlines {
+		if in.root == p && under(file, in.imports) {
+			return in
+		}
+	}
+	return p
 }
 
 func under(file string, directories []string) bool {
@@ -367,11 +362,8 @@ func (r *resolver) roots(file string, p *project) []string {
 			}
 		}
 	}
-	for d := path.Dir(file); ; d = path.Dir(d) {
+	for d := range lang.Ancestors(file) {
 		add(d)
-		if d == "." || d == "/" {
-			break
-		}
 	}
 	if p == nil {
 		for _, d := range []string{"source", "src", "import"} {
@@ -629,12 +621,9 @@ func (r *resolver) stringImport(file, name string) lang.Target {
 	if p := r.projectOf(file); p != nil {
 		directories = append(directories, p.strings...)
 	} else {
-		for d := path.Dir(file); ; d = path.Dir(d) {
+		for d := range lang.Ancestors(file) {
 			if v := path.Join(d, "views"); r.directories[v] {
 				directories = append(directories, v)
-			}
-			if d == "." || d == "/" {
-				break
 			}
 		}
 	}

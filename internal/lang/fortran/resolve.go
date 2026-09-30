@@ -273,14 +273,8 @@ func readCache(source []byte) map[string]*cached {
 
 // projectOf is the nearest project at or above directory.
 func (r *resolver) projectOf(directory string) *project {
-	for d := directory; ; d = path.Dir(d) {
-		if p, ok := r.projects[d]; ok {
-			return p
-		}
-		if d == "." || d == "/" || d == "" {
-			return nil
-		}
-	}
+	p, _ := lang.NearestAtOrAbove(r.projects, directory)
+	return p
 }
 
 // scope is the projects whose manifests speak for file: the nearest fpm.toml
@@ -442,14 +436,11 @@ func (r *resolver) include(file, spec, kind string) lang.Target {
 				}
 			}
 		}
-		for d := directory; ; d = path.Dir(d) {
+		for d := range lang.DirectoryAndAncestors(directory) {
 			for _, t := range []string{path.Join(d, "include", spec), path.Join(d, spec)} {
 				if t != file && r.files[t] && !strings.HasPrefix(t, "../") {
 					return lang.Target{Local: t}
 				}
-			}
-			if d == "." {
-				break
 			}
 		}
 	}

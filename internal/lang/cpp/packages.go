@@ -631,14 +631,11 @@ func (p *packages) matchNames(file string, names []string) *declaredPackage {
 		return nil
 	}
 	governed := false
-	for directory := path.Dir(file); ; directory = path.Dir(directory) {
+	for directory := range lang.Ancestors(file) {
 		if d := in(directory); d != nil {
 			return d
 		}
 		governed = governed || p.directories[directory] != nil
-		if directory == "." || directory == "/" {
-			break
-		}
 	}
 	if governed {
 		return nil

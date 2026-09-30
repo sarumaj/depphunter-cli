@@ -43,14 +43,8 @@ func (r *resolver) lixScope(file string) *lixScope {
 	if len(r.lix) == 0 {
 		return nil
 	}
-	for d := path.Dir(file); ; d = path.Dir(d) {
-		if s := r.lix[d]; s != nil {
-			return s
-		}
-		if d == "." || d == "/" {
-			return nil
-		}
-	}
+	s, _ := lang.Nearest(r.lix, file)
+	return s
 }
 
 // libraryCache is lix's download cache: HAXE_LIBCACHE, else haxe_libraries/ under

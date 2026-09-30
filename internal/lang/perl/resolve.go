@@ -235,11 +235,8 @@ func (r *resolver) roots(file string, libraries []string) []string {
 	out := r.libraryDirectories(file, libraries)
 	d := r.distRoot(file)
 	out = append(out, path.Join(d, "lib"), d, path.Join(d, "t/lib"))
-	for directory := path.Dir(file); ; directory = path.Dir(directory) {
+	for directory := range lang.Ancestors(file) {
 		out = append(out, path.Join(directory, "lib"))
-		if directory == "." {
-			break
-		}
 	}
 	return append(out, "lib", ".")
 }

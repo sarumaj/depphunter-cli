@@ -94,8 +94,7 @@ func (r *resolver) include(file string, rawImport lang.RawImport) lang.Target {
 // exactly, else ignoring case.
 func (r *resolver) upward(file, name string) string {
 	for _, fold := range []bool{false, true} {
-		directory := path.Dir(file)
-		for {
+		for directory := range lang.Ancestors(file) {
 			p := path.Join(directory, name)
 			if !strings.HasPrefix(p, "../") {
 				if r.files[p] {
@@ -105,10 +104,6 @@ func (r *resolver) upward(file, name string) string {
 					return q
 				}
 			}
-			if directory == "." || directory == "/" {
-				break
-			}
-			directory = path.Dir(directory)
 		}
 	}
 	return ""
@@ -192,14 +187,12 @@ func (r *resolver) module(file, module string) lang.Target {
 	segments := strings.Split(module, "::")
 	switch segments[0] {
 	case "package":
-		for directory := path.Dir(file); ; directory = path.Dir(directory) {
+		for directory := range lang.Ancestors(file) {
 			if p := r.probe(directory, segments[1:]); p != "" {
 				return lang.Target{Local: p}
 			}
-			if directory == "." || directory == "/" {
-				return lang.Target{}
-			}
 		}
+		return lang.Target{}
 	case "super":
 		directory := path.Dir(file)
 		for segments = segments[1:]; len(segments) > 0 && segments[0] == "super"; segments = segments[1:] {
@@ -298,14 +291,11 @@ func (r *resolver) quoted(file, module string) lang.Target {
 	if name == "" {
 		return lang.Target{}
 	}
-	for directory := path.Dir(file); ; directory = path.Dir(directory) {
+	for directory := range lang.Ancestors(file) {
 		for _, p := range []string{path.Join(directory, name), path.Join(directory, "assets", name)} {
 			if r.files[p] && !strings.HasPrefix(p, "../") {
 				return lang.Target{Local: p}
 			}
-		}
-		if directory == "." || directory == "/" {
-			break
 		}
 	}
 	if p := r.suffix(file, name); p != "" {

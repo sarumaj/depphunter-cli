@@ -185,15 +185,8 @@ func (p *project) readInstalled(library string) {
 
 // projectOf is the nearest project at or above directory.
 func (r *resolver) projectOf(directory string) *project {
-	for {
-		if p := r.projects[directory]; p != nil {
-			return p
-		}
-		if directory == "." || directory == "/" || directory == "" {
-			return nil
-		}
-		directory = path.Dir(directory)
-	}
+	p, _ := lang.NearestAtOrAbove(r.projects, directory)
+	return p
 }
 
 // scope is the projects whose shards a file can require: its own, or, for a file

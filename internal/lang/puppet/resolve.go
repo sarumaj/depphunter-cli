@@ -260,16 +260,13 @@ func (r *resolver) localFile(root, module, rest, kind string) string {
 // Puppetfiles above it (nearest first), then any other manifest's.
 func (r *resolver) declared(file, module string) *dependency {
 	var lists [][]*dependency
-	for d := path.Dir(file); ; d = path.Dir(d) {
+	for d := range lang.Ancestors(file) {
 		if m := r.metadata[d]; m != nil {
 			lists = append(lists, m.dependencies)
 		}
 		lists = append(lists, r.fixtures[d])
 		if puppetfile := r.puppetfiles[d]; puppetfile != nil {
 			lists = append(lists, puppetfile.dependencies)
-		}
-		if d == "." || d == "/" {
-			break
 		}
 	}
 	for _, d := range r.pfDirectories {

@@ -169,27 +169,23 @@ func (r *resolver) builtin(file, name string) (string, bool) {
 // directory of the build the file most likely belongs to.
 func (r *resolver) top(directory string) string {
 	top := "."
-	for d := directory; ; d = path.Dir(d) {
+	for d := range lang.DirectoryAndAncestors(directory) {
 		if r.files[path.Join(d, lists)] {
 			top = d
 		}
-		if d == "." || d == "/" {
-			return top
-		}
 	}
+	return top
 }
 
 // project is the nearest directory above directory (or directory itself) whose CMakeLists.txt declares
 // a project, else the top.
 func (r *resolver) project(directory string) string {
-	for d := directory; ; d = path.Dir(d) {
+	for d := range lang.DirectoryAndAncestors(directory) {
 		if _, ok := r.projectDirectory[d]; ok {
 			return d
 		}
-		if d == "." || d == "/" {
-			return r.top(directory)
-		}
 	}
+	return r.top(directory)
 }
 
 // chain is the files whose variables a file sees, nearest first: itself, then the
@@ -197,14 +193,12 @@ func (r *resolver) project(directory string) string {
 // add_subdirectory() nests, taken from the layout.
 func (r *resolver) chain(file string) []string {
 	out := []string{file}
-	for d := path.Dir(file); ; d = path.Dir(d) {
+	for d := range lang.Ancestors(file) {
 		if p := path.Join(d, lists); p != file && r.files[p] {
 			out = append(out, p)
 		}
-		if d == "." || d == "/" {
-			return out
-		}
 	}
+	return out
 }
 
 // evalFrom expands s as seen from chain[from:]: a variable found in one file is
@@ -262,12 +256,13 @@ func (r *resolver) paths(file, s string) []string {
 		return nil // this machine's path
 	}
 	var out []string
-	for d := path.Dir(file); ; d = path.Dir(d) {
+	for d := range lang.Ancestors(file) {
 		out = append(out, inside(path.Join(d, s))...)
-		if path.Base(file) == lists || d == "." || d == "/" {
-			return out
+		if path.Base(file) == lists {
+			break
 		}
 	}
+	return out
 }
 
 func inside(p string) []string {

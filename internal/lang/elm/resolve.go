@@ -147,15 +147,11 @@ func (r *resolver) candidates(file string) []candidate {
 		return a.n > b.n
 	})
 	if len(found) == 0 {
-		for d := path.Dir(file); ; d = path.Dir(d) {
-			if p := r.byDirectory[d]; p != nil {
-				found = append(found, scored{p: p})
-				break
-			}
-			if d == "." || d == "/" {
-				return nil
-			}
+		p, ok := lang.Nearest(r.byDirectory, file)
+		if !ok {
+			return nil
 		}
+		found = append(found, scored{p: p})
 	}
 	out := make([]candidate, len(found))
 	for i, f := range found {
