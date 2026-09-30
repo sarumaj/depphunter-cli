@@ -1,6 +1,7 @@
 package trace
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"strings"
@@ -18,7 +19,7 @@ func (r *Report) Text(w io.Writer) error {
 		return nil
 	}
 	out := &writer{w: w}
-	out.printf("resolution report for %s (%s)\n", or(r.Root, "the analysis"), r.settings())
+	out.printf("resolution report for %s (%s)\n", cmp.Or(r.Root, "the analysis"), r.settings())
 	for _, line := range r.preamble() {
 		out.printf("  %s\n", line)
 	}
@@ -87,7 +88,7 @@ func (r *Report) Markdown(w io.Writer) error {
 	}
 	out := &writer{w: w}
 	out.printf("# Resolution report\n\n")
-	out.printf("`%s` - %s", or(r.Root, "the analysis"), r.settings())
+	out.printf("`%s` - %s", cmp.Or(r.Root, "the analysis"), r.settings())
 	if !r.GeneratedAt.IsZero() {
 		out.printf(", %s", r.GeneratedAt.Format(time.RFC3339))
 	}
@@ -214,7 +215,7 @@ func (r *Report) answers() string {
 func (r *Report) sourceTable() *table {
 	t := &table{head: []string{"ecosystem", "index", "scope", "learned from", "fetched from"}}
 	for _, s := range r.Sources {
-		t.add(s.Ecosystem, s.URL, or(s.Scope, "-"), s.Origin, yes(s.Trusted))
+		t.add(s.Ecosystem, s.URL, cmp.Or(s.Scope, "-"), s.Origin, yes(s.Trusted))
 	}
 	return t
 }
@@ -241,7 +242,7 @@ func (r *Report) skipTable() *table {
 func (r *Report) noteTable() *table {
 	t := &table{head: []string{"plugin", "file", "what", "note"}}
 	for _, n := range r.Notes {
-		t.add(n.Plugin, or(n.File, "-"), n.Code, n.Message)
+		t.add(n.Plugin, cmp.Or(n.File, "-"), n.Code, n.Message)
 	}
 	return t
 }
@@ -277,12 +278,12 @@ func lookupTable(ls []Lookup, limit int, full bool) *table {
 	}
 	for _, l := range shown {
 		if full {
-			t.add(fmt.Sprint(l.Level), l.Ecosystem, l.Package, or(l.Version, "-"),
-				string(l.Answer), fmt.Sprint(l.Dependencies), or(l.Reason, requestSummary(l)))
+			t.add(fmt.Sprint(l.Level), l.Ecosystem, l.Package, cmp.Or(l.Version, "-"),
+				string(l.Answer), fmt.Sprint(l.Dependencies), cmp.Or(l.Reason, requestSummary(l)))
 			continue
 		}
-		t.add(fmt.Sprint(l.Level), l.Ecosystem, l.Package, or(l.Version, "-"),
-			or(l.Reason, requestSummary(l)), or(l.Index, "-"))
+		t.add(fmt.Sprint(l.Level), l.Ecosystem, l.Package, cmp.Or(l.Version, "-"),
+			cmp.Or(l.Reason, requestSummary(l)), cmp.Or(l.Index, "-"))
 	}
 	t.more = len(ls) - len(shown)
 	return t
@@ -432,13 +433,6 @@ func escape(row []string) []string {
 		out[i] = strings.ReplaceAll(cell, "|", `\|`)
 	}
 	return out
-}
-
-func or(s, fallback string) string {
-	if s == "" {
-		return fallback
-	}
-	return s
 }
 
 // plural writes a count with the word in the number the count calls for. A report
