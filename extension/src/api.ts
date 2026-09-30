@@ -71,6 +71,16 @@ export type ServerEvent =
   // panel carries on listening without learning what it slept through.
   | { name: 'hello'; data: { version: number; etag: string; seq: number; resumed: boolean } };
 
+/** The message of whatever was thrown, which need not have been an Error. */
+export function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** An address without its query, which is where the session token is: fit to show. */
+export function withoutQuery(url: string): string {
+  return url.replace(/\?.*/, '');
+}
+
 /** How long a call waits for the server's answer to start. */
 const REQUEST_TIMEOUT = 30_000;
 

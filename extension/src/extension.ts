@@ -10,7 +10,7 @@ import { ChildProcess } from 'node:child_process';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
-import { Api, Finding, PackItem } from './api';
+import { Api, Finding, PackItem, errorText, withoutQuery } from './api';
 import { BackpackView } from './backpack';
 import { FindingsView, nameOf, packItemFor } from './findings';
 import * as panel from './panel';
@@ -39,11 +39,19 @@ let tree: DependencyTree;
 let treeView: vscode.TreeView<Row>;
 let backpack: BackpackView;
 let findings: FindingsView;
+/** A running server the side panel is showing, and the stream it follows. */
+interface Attached {
+  readonly root: string;
+  readonly api: Api;
+  readonly stream: vscode.Disposable;
+  greeted?: boolean;
+}
+
 /**
  * The session the two lower views are showing. One window may map several folders;
  * the panel shows the one whose map was opened last, which is the one being looked at.
  */
-let attached: { root: string; api: Api; stream: vscode.Disposable; greeted?: boolean } | undefined;
+let attached: Attached | undefined;
 /** What the map has selected, so a panel that was hidden can catch up when it opens. */
 let selected = '';
 /** Where this build was installed, which is where a released one keeps its binary. */
@@ -78,22 +86,7 @@ export function activate(context: vscode.ExtensionContext): void {
     { dispose: stopAll }, { dispose: detach });
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('depphunter.open', (resource?: vscode.Uri) => open(resource)),
-    vscode.commands.registerCommand('depphunter.restart', (resource?: vscode.Uri) => restart(resource)),
-    vscode.commands.registerCommand('depphunter.stop', (resource?: vscode.Uri) => stop(resource)),
-    vscode.commands.registerCommand('depphunter.showLog', () => log.show()),
-    vscode.commands.registerCommand('depphunter.openSettings', () =>
-      vscode.commands.executeCommand('workbench.action.openSettings', '@ext:sarumaj.depphunter')),
-    vscode.commands.registerCommand('depphunter.openExternal', (resource?: vscode.Uri) => openExternal(resource)),
-    vscode.commands.registerCommand('depphunter.refresh', () => refreshPanel()),
-    vscode.commands.registerCommand('depphunter.select', (row: Row) => attached?.api.select(row.node.id).catch(noted)),
-    vscode.commands.registerCommand('depphunter.openFile', (row: Row) => openFile(row)),
-    vscode.commands.registerCommand('depphunter.showFinding', (it: PackItem) => showFinding(it)),
-    vscode.commands.registerCommand('depphunter.dropFinding', (it: { id: string }) => dropFinding(it)),
-    vscode.commands.registerCommand('depphunter.catchFinding', (f?: Finding) => catchFinding(f)),
-    vscode.commands.registerCommand('depphunter.export', () => exportGraph()),
-    vscode.commands.registerCommand('depphunter.resolution', () => showResolution()),
-    vscode.commands.registerCommand('depphunter.exportBackpack', () => exportBackpack()),
+    ...Object.entries(COMMANDS).map(([id, run]) => vscode.commands.registerCommand(id, run)),
     vscode.window.registerTreeDataProvider('depphunter.maps', view),
     vscode.window.registerTreeDataProvider('depphunter.backpack', backpack),
     vscode.window.registerTreeDataProvider('depphunter.findings', findings),
@@ -107,6 +100,29 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 }
+
+/**
+ * Every command package.json contributes, by its id, and what it does. The Maps view
+ * and the explorer hand open, restart, stop and openExternal the folder; the lower
+ * views hand theirs the row.
+ */
+const COMMANDS: Record<string, (...args: never[]) => unknown> = {
+  'depphunter.open': (resource?: vscode.Uri) => open(resource),
+  'depphunter.restart': (resource?: vscode.Uri) => restart(resource),
+  'depphunter.stop': (resource?: vscode.Uri) => stop(resource),
+  'depphunter.showLog': () => log.show(),
+  'depphunter.openSettings': () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:sarumaj.depphunter'),
+  'depphunter.openExternal': (resource?: vscode.Uri) => openExternal(resource),
+  'depphunter.refresh': () => refreshPanel(),
+  'depphunter.select': (row: Row) => attached?.api.select(row.node.id).catch(noted),
+  'depphunter.openFile': (row: Row) => openFile(row),
+  'depphunter.showFinding': (it: PackItem) => showFinding(it),
+  'depphunter.dropFinding': (it: { id: string }) => dropFinding(it),
+  'depphunter.catchFinding': (f?: Finding) => catchFinding(f),
+  'depphunter.export': () => exportGraph(),
+  'depphunter.resolution': () => showResolution(),
+  'depphunter.exportBackpack': () => exportBackpack(),
+};
 
 export function deactivate(): void {
   stopAll();
@@ -145,14 +161,14 @@ export async function openHex(root: string, relativePath: string): Promise<void>
     try {
       await vscode.commands.executeCommand('workbench.extensions.installExtension', HEX_EDITOR);
     } catch (e) {
-      log?.appendLine(`Installing the Hex Editor failed: ${e instanceof Error ? e.message : e}`);
+      log?.appendLine(`Installing the Hex Editor failed: ${errorText(e)}`);
       return;
     }
   }
   try {
     await vscode.commands.executeCommand('vscode.openWith', uri, HEX_VIEW);
   } catch (e) {
-    log?.appendLine(`The Hex Editor could not open ${relativePath}: ${e instanceof Error ? e.message : e}`);
+    log?.appendLine(`The Hex Editor could not open ${relativePath}: ${errorText(e)}`);
     await vscode.commands.executeCommand('vscode.open', uri);
   }
 }
@@ -196,14 +212,14 @@ async function attach(session: Session): Promise<void> {
         // reconnection; attach has just read both.
         const first = !attached.greeted;
         attached.greeted = true;
-        if (!first && !event.data.resumed) void Promise.all([refreshGraph(api), refreshSession(api), refreshFindings(api)]);
+        if (!first && !event.data.resumed) void refreshAll(api);
         break;
       }
     }
   });
   attached = { root: session.root, api, stream };
   treeView.title = `Dependencies: ${session.name}`;
-  await Promise.all([refreshGraph(api), refreshSession(api), refreshFindings(api)]);
+  await refreshAll(api);
 }
 
 // Implements: REQ-EXT-002
@@ -244,10 +260,15 @@ async function refreshSession(api: Api): Promise<void> {
   }
 }
 
+/** Reads everything the panel shows again; `force` reads the graph even if the server says it is unchanged. */
+function refreshAll(api: Api, force = false): Promise<unknown> {
+  return Promise.all([refreshGraph(api, force), refreshSession(api), refreshFindings(api)]);
+}
+
 // The Refresh command: somebody pressed it, so the graph is read again whether or
 // not the server thinks the panel already has it.
 function refreshPanel(): void {
-  if (attached) void Promise.all([refreshGraph(attached.api, true), refreshSession(attached.api), refreshFindings(attached.api)]);
+  if (attached) void refreshAll(attached.api, true);
 }
 
 /**
@@ -302,16 +323,23 @@ async function showFinding(it: PackItem): Promise<void> {
   revealSelected(it.nodeId);
 }
 
-// Implements: REQ-EXT-011
-async function dropFinding(it: { id: string }): Promise<void> {
-  if (!attached) return;
-  const left = backpack.contents.filter(other => other.id !== it.id);
+/**
+ * Hands the server a new backpack and, once it has taken it, shows it here too; a
+ * refusal is reported rather than shown.
+ */
+async function putPack(api: Api, items: PackItem[]): Promise<void> {
   try {
-    await attached.api.setBackpack(left);
-    setPack(left);
+    await api.setBackpack(items);
+    setPack(items);
   } catch (err) {
     await report(err);
   }
+}
+
+// Implements: REQ-EXT-011
+async function dropFinding(it: { id: string }): Promise<void> {
+  if (!attached) return;
+  await putPack(attached.api, backpack.contents.filter(other => other.id !== it.id));
 }
 
 /** What the map's backpack holds at most (web/static/backpack.js), newest first. */
@@ -327,10 +355,7 @@ const MAX_PACK = 500;
  * Implements: REQ-EXT-036
  */
 async function catchFinding(f?: Finding): Promise<void> {
-  if (!attached) {
-    void vscode.window.showInformationMessage('Open a map first: there are no findings to catch yet.');
-    return;
-  }
+  if (!mapOpen(attached, 'there are no findings to catch yet.')) return;
   if (!f) {
     const open = findings.getChildren().filter(x => !findings.isCaught(x.id));
     if (!open.length) {
@@ -348,13 +373,7 @@ async function catchFinding(f?: Finding): Promise<void> {
   const finding = f;
   // Caught already: catching it again changes nothing, as on the map.
   if (backpack.contents.some(it => it.id === finding.id)) return;
-  const items = [packItemFor(finding, findings.nodeOf(finding)), ...backpack.contents].slice(0, MAX_PACK);
-  try {
-    await attached.api.setBackpack(items);
-    setPack(items);
-  } catch (err) {
-    await report(err);
-  }
+  await putPack(attached.api, [packItemFor(finding, findings.nodeOf(finding)), ...backpack.contents].slice(0, MAX_PACK));
 }
 
 // ---------------------------------------------------------------- exports
@@ -386,10 +405,7 @@ async function save(
   formats: { label: string; detail: string; format: string; ext: string }[],
   name: (root: string) => string,
 ): Promise<void> {
-  if (!attached) {
-    void vscode.window.showInformationMessage('Open a map first: there is nothing to export yet.');
-    return;
-  }
+  if (!mapOpen(attached, 'there is nothing to export yet.')) return;
   const chosen = await vscode.window.showQuickPick(formats, { title: 'Export as', matchOnDetail: true });
   if (!chosen) return;
   const base = name(path.basename(attached.root) || 'depphunter');
@@ -415,10 +431,7 @@ async function save(
  * Implements: REQ-EXT-016
  */
 async function showResolution(): Promise<void> {
-  if (!attached) {
-    void vscode.window.showInformationMessage('Open a map first: there is nothing to report on yet.');
-    return;
-  }
+  if (!mapOpen(attached, 'there is nothing to report on yet.')) return;
   try {
     const body = await attached.api.download('/api/resolution?format=md');
     const doc = await vscode.workspace.openTextDocument({
@@ -451,9 +464,18 @@ async function openExternal(resource?: vscode.Uri): Promise<void> {
   await vscode.env.openExternal(vscode.Uri.parse(await reachable(session.url)));
 }
 
+/**
+ * Whether a map is open for a command that needs one. When none is, the user is told
+ * to open one first, and `nothing` says what there is not to do yet.
+ */
+function mapOpen(map: Attached | undefined, nothing: string): map is Attached {
+  if (!map) void vscode.window.showInformationMessage(`Open a map first: ${nothing}`);
+  return !!map;
+}
+
 /** An error worth a line in the log and nothing more: the panel is not the task. */
 function noted(err: unknown): void {
-  log.appendLine(`side panel: ${err instanceof Error ? err.message : String(err)}`);
+  log.appendLine(`side panel: ${errorText(err)}`);
 }
 
 async function open(resource?: vscode.Uri): Promise<void> {
@@ -634,7 +656,7 @@ function refreshStatus(): void {
     return;
   }
   status.text = '$(globe) depphunter';
-  status.tooltip = running.map(s => `${s.name}: ${s.url.replace(/\?.*/, '')}`).join('\n');
+  status.tooltip = running.map(s => `${s.name}: ${withoutQuery(s.url)}`).join('\n');
   status.show();
 }
 
@@ -725,12 +747,12 @@ async function check(local: string, address: string): Promise<void> {
         + 'or the address lost its query on the way. The command line above is what was run.'
       : 'see the command line above for what was started.');
   } catch (err) {
-    log.appendLine(`the map could not be reached: ${err instanceof Error ? err.message : String(err)}`);
+    log.appendLine(`the map could not be reached: ${errorText(err)}`);
   }
 }
 
 async function report(err: unknown): Promise<void> {
-  const message = err instanceof Error ? err.message : String(err);
+  const message = errorText(err);
   if (err instanceof StartError && err.notFound) {
     const answer = await vscode.window.showErrorMessage(
       `${message} Install it, or set "depphunter.path" to where it is.`,

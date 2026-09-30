@@ -8,6 +8,9 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
+import { withoutQuery } from './api';
+import { ListView } from './list';
+
 /** What the view needs to know about a running server. */
 export interface Running {
   readonly name: string;
@@ -15,18 +18,9 @@ export interface Running {
 }
 
 // Implements: REQ-EXT-028
-export class MapsView implements vscode.TreeDataProvider<vscode.Uri> {
-  private readonly changed = new vscode.EventEmitter<void>();
-  readonly onDidChangeTreeData = this.changed.event;
-
-  constructor(private readonly running: () => ReadonlyMap<string, Running>) {}
-
-  refresh(): void {
-    this.changed.fire();
-  }
-
-  dispose(): void {
-    this.changed.dispose();
+export class MapsView extends ListView<vscode.Uri> {
+  constructor(private readonly running: () => ReadonlyMap<string, Running>) {
+    super();
   }
 
   /**
@@ -53,7 +47,7 @@ export class MapsView implements vscode.TreeDataProvider<vscode.Uri> {
     item.contextValue = session ? 'running' : 'stopped';
     item.iconPath = new vscode.ThemeIcon(session ? 'globe' : 'folder');
     // The address is shown without its query: the session token is in there.
-    const address = session?.url.replace(/\?.*/, '');
+    const address = session && withoutQuery(session.url);
     item.description = address ? `running · ${address.replace(/^https?:\/\//, '').replace(/\/$/, '')}` : '';
     item.tooltip = address ? `${root}\n${address}` : root;
     item.command = { command: 'depphunter.open', title: 'Open the Map', arguments: [uri] };

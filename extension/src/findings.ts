@@ -18,7 +18,8 @@
 import * as vscode from 'vscode';
 
 import { Finding, PackItem } from './api';
-import { color, icon, rank } from './backpack';
+import { rank, severityIcon } from './backpack';
+import { ListView } from './list';
 
 /** The node a finding's bug stands at: its package, else its file, else the nearest directory on the map, else the repository. */
 export function placeFinding(f: Finding, has: (id: string) => boolean): string {
@@ -64,9 +65,7 @@ export function nameOf(f: Finding): string {
 }
 
 // Implements: REQ-EXT-035, REQ-EXT-036
-export class FindingsView implements vscode.TreeDataProvider<Finding> {
-  private readonly changed = new vscode.EventEmitter<void>();
-  readonly onDidChangeTreeData = this.changed.event;
+export class FindingsView extends ListView<Finding> {
   private items: Finding[] = [];
   private caught = new Set<string>();
 
@@ -74,11 +73,13 @@ export class FindingsView implements vscode.TreeDataProvider<Finding> {
    * `has` answers whether the graph on show has a node, which is what a finding is
    * placed by; nothing is placed until one is.
    */
-  constructor(private readonly has: (id: string) => boolean = () => false) {}
+  constructor(private readonly has: (id: string) => boolean = () => false) {
+    super();
+  }
 
   setFindings(items: Finding[]): void {
     this.items = items;
-    this.changed.fire();
+    this.refresh();
   }
 
   /** The ids in the backpack, which are the rows shown as caught. */
@@ -86,7 +87,7 @@ export class FindingsView implements vscode.TreeDataProvider<Finding> {
     const next = new Set(ids);
     if (next.size === this.caught.size && [...next].every(id => this.caught.has(id))) return;
     this.caught = next;
-    this.changed.fire();
+    this.refresh();
   }
 
   get contents(): Finding[] {
@@ -100,10 +101,6 @@ export class FindingsView implements vscode.TreeDataProvider<Finding> {
   /** The node the finding's bug stands at on the map, for selecting it and for the entry a catch makes. */
   nodeOf(f: Finding): string {
     return placeFinding(f, this.has);
-  }
-
-  dispose(): void {
-    this.changed.dispose();
   }
 
   // Worst first, then by name, as the map's list has them.
@@ -125,9 +122,7 @@ export class FindingsView implements vscode.TreeDataProvider<Finding> {
     const where = f.package ? f.path : f.line ? `line ${f.line}` : '';
     item.description = [f.ref && f.ref !== f.title ? `${f.ref} ${f.title}` : f.title, where, caught ? 'in the backpack' : f.severity || 'unknown']
       .filter(Boolean).join(' · ');
-    item.iconPath = caught
-      ? new vscode.ThemeIcon('pass', new vscode.ThemeColor('testing.iconPassed'))
-      : new vscode.ThemeIcon(icon(f.severity), new vscode.ThemeColor(color(f.severity)));
+    item.iconPath = severityIcon(f.severity, caught);
     // `caught` offers taking it out again, `uncaught` putting it in (package.json menus).
     item.contextValue = caught ? 'caught' : 'uncaught';
     item.tooltip = new vscode.MarkdownString(

@@ -18,6 +18,7 @@
 import * as vscode from 'vscode';
 
 import { Graph, GraphNode } from './api';
+import { ListView } from './list';
 
 /** One row: a graph node in one place in the tree, which is not the only place. */
 export interface Row {
@@ -100,23 +101,17 @@ export class Model {
   }
 }
 
-export class DependencyTree implements vscode.TreeDataProvider<Row> {
-  private readonly changed = new vscode.EventEmitter<Row | undefined>();
-  readonly onDidChangeTreeData = this.changed.event;
+export class DependencyTree extends ListView<Row> {
   private model: Model | undefined;
 
   /** Replaces what the tree draws; undefined empties it (no server running). */
   setGraph(graph: Graph | undefined): void {
     this.model = graph ? new Model(graph) : undefined;
-    this.changed.fire(undefined);
+    this.refresh();
   }
 
   get graphModel(): Model | undefined {
     return this.model;
-  }
-
-  dispose(): void {
-    this.changed.dispose();
   }
 
   // Implements: REQ-EXT-005
