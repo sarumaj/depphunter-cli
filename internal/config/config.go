@@ -295,8 +295,8 @@ func Load(flags *pflag.FlagSet, arguments []string, userDirectory string) (Confi
 		}
 	}
 	// The project config comes with the (possibly untrusted) repository, so it may not
-	// choose a program this machine runs or send it onto the network: its editor and
-	// online keys are dropped. A file named with --config is the user's own choice.
+	// choose a program this machine runs or send it onto the network: only the keys in
+	// projectKeys are taken from it. A file named with --config is the user's own choice.
 	configFile, _ := flags.GetString("config")
 	if configFile != "" {
 		if configFile, err = filepath.Abs(configFile); err != nil {
@@ -434,22 +434,16 @@ func mergeFile(v *viper.Viper, name string, required, trusted bool) error {
 	if err := yaml.Unmarshal(data, &m); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
+	// Viper matches keys without regard to case, so the rules below see the keys as it
+	// will: `Online:` is `online:`.
+	m = lowercaseKeys(m)
 	if !trusted {
-		// The keys that decide what this machine runs or reaches: a repository must
-		// not choose either. Vouching for an index is the same kind of decision -
-		// the whole point of the marking is that a repository's word for its own
-		// registry is not enough - so a project file does not get to do it.
-		//
-		// `private` is the other way round and stays: all it can do is stop
-		// depphunter from naming a package to somebody else, and a repository saying
-		// "these are ours" is exactly who would know.
-		//
-		// Implements: REQ-SUP-020, REQ-SUP-041, REQ-SUP-043
-		delete(m, "editor")
-		delete(m, "online")
-		// Which interpreter's files are read is this machine's business too.
-		delete(m, "python")
-		delete(m, "trust_indexes")
+		// Implements: REQ-CFG-018, REQ-SUP-020, REQ-SUP-041, REQ-SUP-043
+		for key := range m {
+			if !projectKeys[key] {
+				delete(m, key)
+			}
+		}
 		// A repository may point at its own scanner reports, which is how a project
 		// ships the output its CI already produces - but only at paths inside itself.
 		if list, ok := m["findings"]; ok {
@@ -466,6 +460,46 @@ func mergeFile(v *viper.Viper, name string, required, trusted bool) error {
 		}
 	}
 	return v.MergeConfigMap(m)
+}
+
+// projectKeys are the top-level settings a project configuration file may set. That
+// file comes with the repository, which may be anybody's, so a setting is left out
+// unless a repository choosing it is harmless: a new setting is user-only until it is
+// added here. userOnlyKeys says why each of the others is left out, and
+// TestEveryKeyIsProjectSettableOrUserOnly makes every setting be in one of the two.
+//
+// `private` is here although it concerns what is sent where: all it can do is stop
+// depphunter from naming a package to somebody else, and a repository saying "these
+// are ours" is exactly who would know. `findings` is here, but confined to paths inside
+// the repository.
+//
+// Implements: REQ-CFG-018
+var projectKeys = map[string]bool{
+	"addr": true, "open": true, "exclude": true, "max_file_size": true, "watch": true,
+	"cache": true, "history": true, "history_commits": true, "resolve_depth": true,
+	"explain": true, "private": true, "findings": true, "vulns": true, "links": true,
+	"lsp": true, "lsp_timeout": true, "ui": true,
+}
+
+// userOnlyKeys are the top-level settings only the user's own configuration, the
+// environment and the command line may set, with the reason a repository may not.
+var userOnlyKeys = map[string]string{
+	"editor": "the command this machine runs to open a file (REQ-CFG-010)",
+	"online": "whether this machine asks package indexes over the network (REQ-SUP-020)",
+	"python": "which interpreter's installed files this machine reads (REQ-PY-015)",
+	// The whole point of marking an index is that a repository's word for its own
+	// registry is not enough.
+	"trust_indexes": "vouching for an index the repository names (REQ-SUP-043)",
+}
+
+// lowercaseKeys returns m with its keys lowercased. When two keys differ only in case,
+// either value may win, as it would in viper.
+func lowercaseKeys(m map[string]any) map[string]any {
+	out := make(map[string]any, len(m))
+	for key, value := range m {
+		out[strings.ToLower(key)] = value
+	}
+	return out
 }
 
 // stringList is a list as YAML decodes it ([]any), or as confine returns it, as strings.

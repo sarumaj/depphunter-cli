@@ -326,11 +326,12 @@ combined rather than replacing one another. `--private` also takes in the Go too
 `GOPRIVATE`, `GONOPROXY` and `GONOSUMDB` patterns, from the environment or
 the file `go env -w` writes.
 
-The project configuration arrives with the repository, so it may not set
-`editor` (a command depphunter executes), `online`, `python` or
-`trust_indexes`, and its `findings` paths must stay inside the repository. A
-file passed with `--config` is trusted like the user configuration, and must
-exist.
+The project configuration arrives with the repository, so only the settings
+on an allow-list are read from it: every setting except `editor` (a command
+depphunter executes), `online`, `python` and `trust_indexes`, and its
+`findings` paths must stay inside the repository. A setting added later is
+user-only until it is put on the list. A file passed with `--config` is trusted
+like the user configuration, and must exist.
 
 `--ui-default` accepts the keys `theme`, `color_by`, `height_scale`, `style`,
 `show_std`, `expand_depth`, `tool` and `path_filter`.

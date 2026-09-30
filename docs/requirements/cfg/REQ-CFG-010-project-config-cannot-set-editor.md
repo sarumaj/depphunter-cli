@@ -30,5 +30,6 @@ file.
 
 ## Notes
 
-The same mechanism drops `online`, `python` and `trust_indexes` and confines
-`findings` paths (scopes `sup`, `py` and `fnd`).
+`editor` is user-only because it is not on the allow-list of keys a project
+config file may set (REQ-CFG-018), which also leaves out `online`, `python` and
+`trust_indexes` and confines `findings` paths (scopes `sup`, `py` and `fnd`).

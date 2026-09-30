@@ -4,11 +4,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 )
 
 // resolve is what Load makes of a path: it follows symlinks and expands short names,
@@ -645,5 +648,79 @@ func TestExcludeCombinesUserAndProjectFiles(t *testing.T) {
 	}
 	if want := []string{"fromuser", "fromproject", "fromenv", "fromflag"}; !slices.Equal(config.Exclude, want) {
 		t.Errorf("exclude = %v, want %v", config.Exclude, want)
+	}
+}
+
+// TestEveryKeyIsProjectSettableOrUserOnly makes adding a setting a decision: each
+// top-level key of Config, and each key given a default, is either one a project
+// configuration file may set or one deliberately kept for the user.
+//
+// Verifies: REQ-CFG-018
+func TestEveryKeyIsProjectSettableOrUserOnly(t *testing.T) {
+	keys := map[string]bool{}
+	configType := reflect.TypeFor[Config]()
+	for i := range configType.NumField() {
+		tag, _, _ := strings.Cut(configType.Field(i).Tag.Get("mapstructure"), ",")
+		if tag != "-" {
+			keys[tag] = true
+		}
+	}
+	v := viper.New()
+	setDefaults(v, Default())
+	for _, key := range v.AllKeys() {
+		top, _, _ := strings.Cut(key, ".")
+		keys[top] = true
+	}
+	for key := range keys {
+		_, userOnly := userOnlyKeys[key]
+		switch {
+		case projectKeys[key] && userOnly:
+			t.Errorf("%s is both project-settable and user-only", key)
+		case !projectKeys[key] && !userOnly:
+			t.Errorf("%s is neither project-settable nor user-only: add it to projectKeys or userOnlyKeys", key)
+		}
+	}
+	for key := range projectKeys {
+		if !keys[key] {
+			t.Errorf("projectKeys names %s, which is not a setting", key)
+		}
+	}
+	for key := range userOnlyKeys {
+		if !keys[key] {
+			t.Errorf("userOnlyKeys names %s, which is not a setting", key)
+		}
+	}
+}
+
+// A project configuration file keeps the settings on the allow-list and loses the
+// others, whatever the case of the key; a --config file keeps them all.
+//
+// Verifies: REQ-CFG-018, REQ-CFG-010, REQ-SUP-020, REQ-SUP-043
+func TestProjectConfigSetsOnlyAllowedKeys(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, ProjectFile), "Online: true\nEDITOR: evil {file}\nPython: /tmp/evil/bin/python\n"+
+		"Trust_Indexes: [https://evil.example/npm]\nFindings: [/etc/passwd, reports/lint.json]\n"+
+		"History_Commits: 7\nui:\n  theme: dark\n")
+	config, err := load(t, []string{root}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Online || config.Editor != "" || config.Python != "" || len(config.TrustIndexes) != 0 {
+		t.Errorf("a project file set a user-only key: online %v, editor %q, python %q, trust_indexes %v",
+			config.Online, config.Editor, config.Python, config.TrustIndexes)
+	}
+	if !slices.Equal(config.Findings, []string{"reports/lint.json"}) {
+		t.Errorf("findings not confined to the repository: %v", config.Findings)
+	}
+	if config.HistoryCommits != 7 || config.UI.Theme != "dark" {
+		t.Errorf("allowed keys dropped: history_commits %d, theme %q", config.HistoryCommits, config.UI.Theme)
+	}
+	trusted, err := load(t, []string{"--config", filepath.Join(root, ProjectFile), root}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !trusted.Online || trusted.Editor == "" || len(trusted.TrustIndexes) != 1 {
+		t.Errorf("a --config file lost user-only keys: online %v, editor %q, trust_indexes %v",
+			trusted.Online, trusted.Editor, trusted.TrustIndexes)
 	}
 }
