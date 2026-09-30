@@ -74,11 +74,11 @@ func (r *resolver) readLix(root string, all []*scan.File, getenv func(string) st
 		shim = filepath.Join(getenv("HOME"), "haxe")
 	}
 	for _, f := range all {
-		if class(f.Path) != classLix || f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
+		if class(f.Path) != classLix {
 			continue
 		}
-		data, err := os.ReadFile(f.AbsolutePath)
-		if err != nil {
+		data, ok := lang.ReadScanned(f)
+		if !ok {
 			continue
 		}
 		scope := path.Dir(path.Dir(f.Path))

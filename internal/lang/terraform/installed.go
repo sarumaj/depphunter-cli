@@ -2,7 +2,6 @@ package terraform
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -34,8 +33,8 @@ func readInstalled(root, directory string) []installedModule {
 	if root == "" {
 		return nil
 	}
-	source, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(directory), ".terraform", "modules", "modules.json"))
-	if err != nil || len(source) > lang.MaxParseSize {
+	source, ok := lang.ReadCapped(filepath.Join(root, filepath.FromSlash(directory), ".terraform", "modules", "modules.json"))
+	if !ok {
 		return nil
 	}
 	var raw struct {

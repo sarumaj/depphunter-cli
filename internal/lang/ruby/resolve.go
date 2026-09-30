@@ -2,7 +2,6 @@ package ruby
 
 import (
 	"path"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -33,13 +32,13 @@ type railsApp struct {
 // Implements: REQ-RUBY-005, REQ-RUBY-007, REQ-RUBY-010
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, gemspecs: map[string][]string{}, own: map[string]string{}}
-	absolute := map[string]string{}
+	repository := lang.NewSource(root, lang.SourceOptions{Confined: true})
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
 	gemfiles := map[string]string{} // directory -> Gemfile name
 	for _, f := range sorted {
 		r.files[f.Path] = true
-		absolute[f.Path] = f.AbsolutePath
+		repository.Add(f)
 		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
 			r.directories[d] = true
 		}
@@ -53,14 +52,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	read := func(relative string) (string, bool) {
-		relative = path.Clean(relative)
-		if a, ok := absolute[relative]; ok {
-			return readFile(a)
-		}
-		if root == "" || !lang.Inside(relative) {
-			return "", false
-		}
-		return readFile(filepath.Join(root, filepath.FromSlash(relative))) // a lock the scan left out
+		data, ok := repository.Read(path.Clean(relative)) // on disk too for a lock the scan left out
+		return string(data), ok
 	}
 	directories := map[string]bool{}
 	for d := range gemfiles {

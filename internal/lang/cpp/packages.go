@@ -3,7 +3,6 @@ package cpp
 import (
 	"encoding/json"
 	"maps"
-	"os"
 	"path"
 	"regexp"
 	"slices"
@@ -73,11 +72,11 @@ func readPackages(all []*scan.File) *packages {
 	byDirectory := map[string]map[string][]byte{}
 	for _, f := range all {
 		base := path.Base(f.Path)
-		if !isManifest(base) || f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
+		if !isManifest(base) {
 			continue
 		}
-		source, err := os.ReadFile(f.AbsolutePath)
-		if err != nil {
+		source, ok := lang.ReadScanned(f)
+		if !ok {
 			continue
 		}
 		directory := path.Dir(f.Path)

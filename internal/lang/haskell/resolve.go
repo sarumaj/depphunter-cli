@@ -3,7 +3,6 @@ package haskell
 import (
 	"os"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -56,18 +55,7 @@ func ignored(p string) bool {
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, byName: map[string]*packageInfo{},
 		byDirectory: map[string]*packageInfo{}, modules: map[string][]string{}, boots: map[string][]string{}}
-	absolute := map[string]string{}
-	read := func(relative string) ([]byte, bool) {
-		if a, ok := absolute[relative]; ok {
-			data, err := os.ReadFile(a)
-			return data, err == nil
-		}
-		if root == "" {
-			return nil, false
-		}
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
-		return data, err == nil
-	}
+	repository := lang.NewSource(root, lang.SourceOptions{})
 	projectDirectories := map[string]bool{}
 	var sources []*scan.File
 	hpack := map[string]*scan.File{}
@@ -76,7 +64,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			continue
 		}
 		r.files[f.Path] = true
-		absolute[f.Path] = f.AbsolutePath
+		repository.Add(f)
 		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
 			r.directories[d] = true
 		}
@@ -124,7 +112,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	for d := range projectDirectories {
-		r.projects = append(r.projects, r.readProject(d, read))
+		r.projects = append(r.projects, r.readProject(d, repository.Read))
 	}
 	sort.Slice(r.projects, func(i, j int) bool { return lang.DeepestFirst(r.projects[i].directory, r.projects[j].directory) })
 	for _, p := range r.packages {

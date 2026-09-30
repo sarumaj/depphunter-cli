@@ -50,7 +50,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		named: map[string][]string{}, types: map[string][]string{}}
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
-	absolute := map[string]string{}
+	repository := lang.NewSource(root, lang.SourceOptions{Confined: true, Bounded: true})
 	byDirectory := map[string]*project{}
 	get := func(directory string) *project {
 		p := byDirectory[directory]
@@ -61,18 +61,13 @@ func newResolver(root string, all []*scan.File) *resolver {
 		return p
 	}
 	read := func(relative string) (string, bool) {
-		if a, ok := absolute[relative]; ok {
-			return readFile(a)
-		}
-		if root == "" || !lang.Inside(relative) {
-			return "", false
-		}
-		return readFile(filepath.Join(root, filepath.FromSlash(relative))) // a file the scan left out
+		data, ok := repository.Read(relative) // on disk too when the scan left it out
+		return string(data), ok
 	}
 	var swiftDirectories []string
 	for _, f := range sorted {
 		r.files[f.Path] = true
-		absolute[f.Path] = f.AbsolutePath
+		repository.Add(f)
 		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
 			r.directories[d] = true
 		}
@@ -138,7 +133,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if lock, ok := read(path.Join(directory, "Package.resolved")); ok {
 			pins := readResolved([]byte(lock))
 			p.pin(pins)
-			if _, listed := absolute[path.Join(directory, "Package.resolved")]; !listed && len(pins) > 0 {
+			if !repository.Listed(path.Join(directory, "Package.resolved")) && len(pins) > 0 {
 				r.NoteIgnored(path.Join(directory, "Package.resolved"))
 			}
 			r.noteResolved(path.Join(directory, "Package.resolved"), directory, len(pins))
@@ -266,13 +261,10 @@ func vendored(d string) bool {
 	return false
 }
 
+// readFile reads a file on disk as text, through lang.ReadBounded.
 func readFile(absolute string) (string, bool) {
-	fileInfo, err := os.Stat(absolute)
-	if err != nil || fileInfo.IsDir() || fileInfo.Size() > lang.MaxParseSize {
-		return "", false
-	}
-	b, err := os.ReadFile(absolute)
-	return string(b), err == nil
+	data, ok := lang.ReadBounded(absolute)
+	return string(data), ok
 }
 
 // topLevelType matches a type declared at the start of a line, so at the top level of

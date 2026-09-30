@@ -57,11 +57,11 @@ func newResolver(root string, all []*scan.File) *resolver {
 		exRoots: map[string]bool{}, erlModules: map[string]string{}, appFiles: map[string]string{},
 		appDirectories: map[string]string{}, dependencyModules: map[string]string{}, injected: map[string]*injection{},
 		gleamModules: map[string]string{}}
-	absolute := map[string]string{}
+	repository := lang.NewSource(root, lang.SourceOptions{Confined: true})
 	var files []*scan.File
 	for _, f := range all {
 		r.files[f.Path] = true
-		absolute[f.Path] = f.AbsolutePath
+		repository.Add(f)
 		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
 			r.directories[d] = true
 		}
@@ -75,17 +75,6 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
-	read := func(relative string) ([]byte, bool) {
-		if a, ok := absolute[relative]; ok {
-			data, err := os.ReadFile(a)
-			return data, err == nil
-		}
-		if root == "" || !lang.Inside(relative) {
-			return nil, false
-		}
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
-		return data, err == nil
-	}
 	byDirectory := map[string]*project{}
 	projectAt := func(directory string) *project {
 		if p := byDirectory[directory]; p != nil {
@@ -97,7 +86,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		return p
 	}
 	for _, f := range files {
-		source, ok := read(f.Path)
+		source, ok := repository.Read(f.Path)
 		if !ok {
 			continue
 		}
@@ -168,13 +157,13 @@ func newResolver(root string, all []*scan.File) *resolver {
 		lock := map[string]*locked{}
 		rebarLock, mixLock := path.Join(p.directory, "rebar.lock"), path.Join(p.directory, "mix.lock")
 		rebarLocked, mixLocked := 0, 0
-		if source, ok := read(rebarLock); ok {
+		if source, ok := repository.Read(rebarLock); ok {
 			for k, v := range readRebarLock(source) {
 				lock[k] = v
 				rebarLocked++
 			}
 		}
-		if source, ok := read(mixLock); ok {
+		if source, ok := repository.Read(mixLock); ok {
 			for k, v := range readMixLock(source) {
 				lock[k] = v
 				mixLocked++
@@ -185,7 +174,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			file string
 			n    int
 		}{{rebarLock, rebarLocked}, {mixLock, mixLocked}} {
-			if _, listed := absolute[l.file]; l.n > 0 && !listed {
+			if l.n > 0 && !repository.Listed(l.file) {
 				r.NoteIgnored(l.file)
 			}
 		}

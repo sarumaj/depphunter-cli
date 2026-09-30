@@ -3,7 +3,6 @@ package r
 import (
 	"os"
 	"path"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -36,7 +35,7 @@ type resolver struct {
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, named: map[string]*rpkg{},
 		definitions: map[string]map[string][]string{}}
-	absolute := map[string]string{}
+	repository := lang.NewSource(root, lang.SourceOptions{})
 	var sources []*scan.File
 	scopes := map[string]bool{".": true}
 	// Where a lock may be: beside a DESCRIPTION or an .Rproj, where renv keeps its
@@ -44,7 +43,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 	lockDirectories := map[string]bool{".": true}
 	for _, f := range all {
 		r.files[f.Path] = true
-		absolute[f.Path] = f.AbsolutePath
+		repository.Add(f)
 		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
 			r.directories[d] = true
 		}
@@ -90,24 +89,13 @@ func newResolver(root string, all []*scan.File) *resolver {
 	})
 	// renv.lock is committed by projects and packages alike; packrat keeps its lock in
 	// packrat/. Either may be git-ignored, so what is on disk counts too.
-	read := func(relative string) ([]byte, bool) {
-		if a, ok := absolute[relative]; ok {
-			data, err := os.ReadFile(a)
-			return data, err == nil
-		}
-		if root == "" {
-			return nil, false
-		}
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
-		return data, err == nil
-	}
 	for d := range lockDirectories {
-		if source, ok := read(path.Join(d, "renv.lock")); ok {
+		if source, ok := repository.Read(path.Join(d, "renv.lock")); ok {
 			if l := readRenvLock(source, d); l != nil {
 				r.locks = append(r.locks, l)
 				scopes[d] = true
 			}
-		} else if source, ok := read(path.Join(d, "packrat", "packrat.lock")); ok {
+		} else if source, ok := repository.Read(path.Join(d, "packrat", "packrat.lock")); ok {
 			r.locks = append(r.locks, readPackratLock(source, d))
 		}
 	}

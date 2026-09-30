@@ -128,11 +128,9 @@ func join(directory, p string) string {
 	return path.Clean(directory + "/" + p)
 }
 
+// readFile reads a scanned file through lang.ReadScanned, nil when it cannot.
 func readFile(f *scan.File) []byte {
-	if f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
-		return nil
-	}
-	data, _ := os.ReadFile(f.AbsolutePath)
+	data, _ := lang.ReadScanned(f)
 	return data
 }
 
@@ -193,7 +191,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if !p.foundry {
 			continue
 		}
-		if data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(join(directory, "soldeer.lock")))); err == nil && len(data) <= lang.MaxParseSize {
+		if data, ok := lang.ReadCapped(filepath.Join(root, filepath.FromSlash(join(directory, "soldeer.lock")))); ok {
 			for _, e := range readSoldeerLock(data) {
 				p.locked[e.name] = e
 			}
@@ -225,7 +223,7 @@ func (r *resolver) readSubmodules(gitmodules []*scan.File) {
 		sources = append(sources, source{path.Dir(f.Path), readFile(f)})
 	}
 	if len(sources) == 0 {
-		if data, err := os.ReadFile(filepath.Join(r.root, ".gitmodules")); err == nil && len(data) <= lang.MaxParseSize {
+		if data, ok := lang.ReadCapped(filepath.Join(r.root, ".gitmodules")); ok {
 			sources = append(sources, source{".", data})
 		}
 	}
@@ -250,7 +248,7 @@ func (r *resolver) readSubmodules(gitmodules []*scan.File) {
 			}
 			if depth < maxNesting {
 				nested := filepath.Join(r.root, filepath.FromSlash(reference.path), ".gitmodules")
-				if data, err := os.ReadFile(nested); err == nil && len(data) <= lang.MaxParseSize {
+				if data, ok := lang.ReadCapped(nested); ok {
 					add(reference.path, data, reference, depth+1)
 				}
 			}
@@ -725,10 +723,7 @@ func readInstalled(directory string) map[string]*project {
 		}
 		subproject := &project{directory: e.Name(), dependencies: map[string]soldeerDependency{}, locked: map[string]lockEntry{}}
 		read := func(name string) []byte {
-			data, err := os.ReadFile(filepath.Join(directory, e.Name(), name))
-			if err != nil || len(data) > lang.MaxParseSize {
-				return nil
-			}
+			data, _ := lang.ReadCapped(filepath.Join(directory, e.Name(), name))
 			return data
 		}
 		if c, ok := readFoundry(read("foundry.toml")); ok {

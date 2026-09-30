@@ -1,7 +1,6 @@
 package perl
 
 import (
-	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -53,8 +52,7 @@ func ignored(p string) bool {
 func newResolver(root string, all []*scan.File, p Plugin) *resolver {
 	r := &resolver{files: map[string]bool{}, byDirectory: map[string]*project{}, packages: map[string][]string{}, suffixes: map[string][]string{}}
 	read := func(relative string) ([]byte, bool) {
-		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
-		return b, err == nil && len(b) <= lang.MaxParseSize
+		return lang.ReadCapped(filepath.Join(root, filepath.FromSlash(relative)))
 	}
 	projectOf := func(directory string) *project {
 		governing := r.byDirectory[directory]

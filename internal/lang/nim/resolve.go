@@ -1,7 +1,6 @@
 package nim
 
 import (
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -36,12 +35,9 @@ type resolver struct {
 	byAbsolute  map[string]*installed
 }
 
+// readFile reads a file on disk through lang.ReadBounded, nil when it cannot.
 func readFile(absolute string) []byte {
-	fileInfo, err := os.Stat(absolute)
-	if err != nil || fileInfo.Size() > lang.MaxParseSize || fileInfo.IsDir() {
-		return nil
-	}
-	data, _ := os.ReadFile(absolute)
+	data, _ := lang.ReadBounded(absolute)
 	return data
 }
 

@@ -1,7 +1,6 @@
 package rego
 
 import (
-	"os"
 	"path"
 	"sort"
 	"strings"
@@ -22,11 +21,11 @@ type resolver struct {
 func newResolver(all []*scan.File) *resolver {
 	r := &resolver{packages: map[string][]string{}}
 	for _, f := range all {
-		if path.Ext(f.Path) != ".rego" || f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
+		if path.Ext(f.Path) != ".rego" {
 			continue
 		}
-		source, err := os.ReadFile(f.AbsolutePath)
-		if err != nil {
+		source, ok := lang.ReadScanned(f)
+		if !ok {
 			continue
 		}
 		if p := packageOf(source); p != "" {

@@ -1,7 +1,6 @@
 package dart
 
 import (
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -55,11 +54,13 @@ var _ lang.Noter = (*resolver)(nil)
 // Implements: REQ-DART-004, REQ-DART-006, REQ-DART-007, REQ-DART-009
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}}
-	absolute := map[string]string{}
+	// pubspec.lock and pubspec_overrides.yaml are git-ignored as often as not; what is
+	// on disk beside a pubspec is what pub resolved with.
+	repository := lang.NewSource(root, lang.SourceOptions{Confined: true})
 	var pubspecs, melos []string
 	for _, f := range all {
 		r.files[f.Path] = true
-		absolute[f.Path] = f.AbsolutePath
+		repository.Add(f)
 		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
 			r.directories[d] = true
 		}
@@ -72,22 +73,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 	}
 	sort.Strings(pubspecs)
 	sort.Strings(melos)
-	// pubspec.lock and pubspec_overrides.yaml are git-ignored as often as not; what is
-	// on disk beside a pubspec is what pub resolved with.
-	read := func(relative string) ([]byte, bool) {
-		if a, ok := absolute[relative]; ok {
-			data, err := os.ReadFile(a)
-			return data, err == nil
-		}
-		if root == "" || !lang.Inside(relative) {
-			return nil, false
-		}
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
-		return data, err == nil
-	}
 	byDirectory := map[string]*pubPackage{}
 	for _, f := range pubspecs {
-		source, _ := read(f)
+		source, _ := repository.Read(f)
 		spec, err := readPubspec(source)
 		if err != nil {
 			continue
@@ -100,18 +88,18 @@ func newResolver(root string, all []*scan.File) *resolver {
 				}
 			}
 		}
-		if source, ok := read(path.Join(p.directory, "pubspec_overrides.yaml")); ok {
+		if source, ok := repository.Read(path.Join(p.directory, "pubspec_overrides.yaml")); ok {
 			if o, err := readPubspec(source); err == nil {
 				for _, d := range o.dependencies {
 					p.dependencies[d.name] = d
 				}
 			}
 		}
-		if source, ok := read(path.Join(p.directory, "pubspec.lock")); ok {
+		if source, ok := repository.Read(path.Join(p.directory, "pubspec.lock")); ok {
 			p.lock, p.lockDirectory = readLock(source), p.directory
 			// Implements: REQ-DART-007, REQ-TRC-017
 			if lock := path.Join(p.directory, "pubspec.lock"); len(p.lock) > 0 {
-				if _, listed := absolute[lock]; !listed {
+				if !repository.Listed(lock) {
 					r.NoteIgnored(lock)
 				}
 				r.Note(lock, trace.NoteFlat, "pubspec.lock pins versions but records no edges: offline, "+
@@ -139,7 +127,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 	// pubspec (whose packages are then its workspace, already read above).
 	var repositories []*melosRepository
 	for _, f := range melos {
-		source, _ := read(f)
+		source, _ := repository.Read(f)
 		var doc struct {
 			Packages []string `yaml:"packages"`
 			Ignore   []string `yaml:"ignore"`

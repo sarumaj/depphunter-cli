@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
 // installed is a package nimble or Atlas installed: where its modules are and
@@ -52,7 +54,7 @@ func readInstalled(directory, name, version string, local bool) *installed {
 	if entries, err := os.ReadDir(directory); err == nil {
 		for _, e := range entries {
 			if n := e.Name(); strings.HasSuffix(n, ".nimble") && !e.IsDir() {
-				if data, err := os.ReadFile(filepath.Join(directory, n)); err == nil && len(data) <= 1<<20 {
+				if data, ok := lang.ReadCapped(filepath.Join(directory, n)); ok {
 					nf := readNimble(data, strings.TrimSuffix(n, ".nimble"))
 					if p.name == "" {
 						p.name = nf.name

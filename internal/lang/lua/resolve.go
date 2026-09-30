@@ -81,8 +81,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		forward: map[string]string{}, rev: map[string]string{}, luaurc: map[string]map[string]string{},
 		models: map[string]*rojoNode{}}
 	read := func(relative string) ([]byte, bool) {
-		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
-		return b, err == nil && len(b) <= lang.MaxParseSize
+		return lang.ReadCapped(filepath.Join(root, filepath.FromSlash(relative)))
 	}
 	var rockspecs, wallies, rojos []string
 	for _, f := range all {
@@ -272,7 +271,7 @@ func readTree(tree string) map[string]*installedRock {
 					continue
 				}
 				spec := filepath.Join(base, l.Name(), name, version, name+"-"+version+".rockspec")
-				if b, err := os.ReadFile(spec); err == nil && len(b) <= lang.MaxParseSize {
+				if b, ok := lang.ReadCapped(spec); ok {
 					out[name] = &installedRock{version: version, spec: luarocks.ReadRockspec(b)}
 				}
 			}

@@ -247,8 +247,8 @@ func (r *resolver) readDuneLock(root string, s *manifests) {
 		}
 	}
 	for n := range names {
-		source, err := os.ReadFile(filepath.Join(directory, n+".pkg"))
-		if err != nil || len(source) > lang.MaxParseSize {
+		source, ok := lang.ReadCapped(filepath.Join(directory, n+".pkg"))
+		if !ok {
 			continue
 		}
 		var p lockPackage
@@ -323,11 +323,11 @@ func (r *resolver) readExports(all []*scan.File) {
 	var sources []source
 	opened := map[string]bool{}
 	for _, f := range all {
-		if fileClass(f.Path) != classSource || ignored(f.Path) || !lang.Readable(f) {
+		if fileClass(f.Path) != classSource || ignored(f.Path) {
 			continue
 		}
-		b, err := os.ReadFile(f.AbsolutePath)
-		if err != nil {
+		b, ok := lang.ReadScanned(f)
+		if !ok {
 			continue
 		}
 		sources = append(sources, source{f, b})
