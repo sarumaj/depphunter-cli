@@ -89,8 +89,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 			if r.packages[d] == nil {
 				r.packages[d] = &zigPackage{directory: d, facts: newFacts()}
 			}
-			if base == "build.zig.zon" && lang.Readable(f) {
-				if source, err := os.ReadFile(f.AbsolutePath); err == nil {
+			if base == "build.zig.zon" {
+				if source, ok := lang.ReadScanned(f); ok {
 					r.packages[d].zon = readZon(source)
 				}
 			}
@@ -551,7 +551,7 @@ func (r *resolver) fetchedZon(f fetched) []byte {
 		candidates = append(candidates, filepath.Join(h, ".cache", "zig", "p", f.hash))
 	}
 	for _, c := range candidates {
-		if source, err := os.ReadFile(filepath.Join(c, "build.zig.zon")); err == nil && len(source) <= lang.MaxParseSize {
+		if source, ok := lang.ReadCapped(filepath.Join(c, "build.zig.zon")); ok {
 			return source
 		}
 	}

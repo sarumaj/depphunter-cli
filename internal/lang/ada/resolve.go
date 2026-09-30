@@ -75,7 +75,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
 			r.directories[d] = true
 		}
-		readable := !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize
+		readable := lang.Readable(f)
 		switch {
 		case path.Base(f.Path) == "alire.toml" && readable:
 			if source, err := os.ReadFile(f.AbsolutePath); err == nil {

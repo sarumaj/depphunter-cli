@@ -41,25 +41,14 @@ var _ lang.Noter = (*resolver)(nil)
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, packages: map[string]*gleamPackage{},
 		erlFiles: map[string]string{}, installed: map[string]string{}}
-	absolute := map[string]string{}
+	// manifest.toml is often ignored by git in libraries; read what is on disk.
+	repository := lang.NewSource(root, lang.SourceOptions{})
 	for _, f := range all {
 		r.files[f.Path] = true
-		absolute[f.Path] = f.AbsolutePath
+		repository.Add(f)
 		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
 			r.directories[d] = true
 		}
-	}
-	read := func(relative string) ([]byte, bool) {
-		if a, ok := absolute[relative]; ok {
-			data, err := os.ReadFile(a)
-			return data, err == nil
-		}
-		if root == "" {
-			return nil, false
-		}
-		// manifest.toml is often ignored by git in libraries; read what is on disk.
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
-		return data, err == nil
 	}
 	newPackage := func(directory string) *gleamPackage {
 		p := &gleamPackage{directory: directory, dependencies: map[string]*dependency{}, modules: map[string]string{}, npm: map[string]string{},
@@ -74,14 +63,14 @@ func newResolver(root string, all []*scan.File) *resolver {
 		case path.Base(f.Path) == "gleam.toml":
 			directory := path.Dir(f.Path)
 			p := newPackage(directory)
-			if source, ok := read(f.Path); ok {
+			if source, ok := repository.Read(f.Path); ok {
 				c := readConfig(source)
 				p.name, p.dependencies = c.name, c.dependencies
 			}
-			if source, ok := read(path.Join(directory, "manifest.toml")); ok {
+			if source, ok := repository.Read(path.Join(directory, "manifest.toml")); ok {
 				if p.manifest = readManifest(source); p.manifest != nil {
 					// Implements: REQ-TRC-017
-					if _, listed := absolute[path.Join(directory, "manifest.toml")]; !listed {
+					if !repository.Listed(path.Join(directory, "manifest.toml")) {
 						r.NoteIgnored(path.Join(directory, "manifest.toml"))
 					}
 					for _, l := range p.manifest.packages {
@@ -91,7 +80,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 					}
 				}
 			}
-			if source, ok := read(path.Join(directory, "package.json")); ok {
+			if source, ok := repository.Read(path.Join(directory, "package.json")); ok {
 				readNPM(source, p.npm)
 			}
 			if root != "" {

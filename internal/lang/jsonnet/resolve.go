@@ -34,13 +34,10 @@ type resolver struct {
 	exists   sync.Map   // repository-relative path -> bool, for what scan does not list
 }
 
+// readFile reads a file on disk through lang.ReadBounded, nil when it cannot.
 func readFile(absolute string) []byte {
-	fileInfo, err := os.Stat(absolute)
-	if err != nil || fileInfo.IsDir() || fileInfo.Size() > lang.MaxParseSize {
-		return nil
-	}
-	b, _ := os.ReadFile(absolute)
-	return b
+	data, _ := lang.ReadBounded(absolute)
+	return data
 }
 
 // Implements: REQ-JSONNET-004, REQ-JSONNET-005, REQ-JSONNET-010

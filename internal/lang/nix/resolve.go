@@ -1,7 +1,6 @@
 package nix
 
 import (
-	"os"
 	"path"
 	"strings"
 
@@ -42,11 +41,11 @@ func newResolver(all []*scan.File) *resolver {
 			r.directories[d] = true
 		}
 		c := class(f.Path)
-		if c == "" || !lang.Readable(f) {
+		if c == "" {
 			continue
 		}
-		source, err := os.ReadFile(f.AbsolutePath)
-		if err != nil {
+		source, ok := lang.ReadScanned(f)
+		if !ok {
 			continue
 		}
 		d := path.Dir(f.Path)

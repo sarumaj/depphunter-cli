@@ -1,7 +1,6 @@
 package java
 
 import (
-	"os"
 	"path"
 	"regexp"
 	"strings"
@@ -39,11 +38,8 @@ var topLevel = regexp.MustCompile(`^(?:(?:@[\w.]+(?:\([^)]*\))?|(?:private|prote
 //
 // Implements: REQ-KT-003, REQ-KT-007, REQ-SCALA-003
 func (r *resolver) readSource(f *scan.File) {
-	if f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
-		return
-	}
-	data, err := os.ReadFile(f.AbsolutePath)
-	if err != nil {
+	data, ok := lang.ReadScanned(f)
+	if !ok {
 		return
 	}
 	found := declarations(data, path.Ext(f.Path) == ".scala")

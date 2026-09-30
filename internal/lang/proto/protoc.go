@@ -1,7 +1,6 @@
 package proto
 
 import (
-	"os"
 	"path"
 	"regexp"
 	"slices"
@@ -54,11 +53,11 @@ var workingDirectory = []string{"$(CURDIR)", "$(PWD)", "${PWD}", "$PWD", "$(pwd)
 func readProtocRoots(all []*scan.File, directories map[string]bool) []protocRoot {
 	var out []protocRoot
 	for _, f := range all {
-		if !buildScript(f.Path) || f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
+		if !buildScript(f.Path) {
 			continue
 		}
-		source, err := os.ReadFile(f.AbsolutePath)
-		if err != nil || !strings.Contains(string(source), "protoc") && !strings.Contains(string(source), "proto_path") {
+		source, ok := lang.ReadScanned(f)
+		if !ok || !strings.Contains(string(source), "protoc") && !strings.Contains(string(source), "proto_path") {
 			continue
 		}
 		script := path.Dir(f.Path)

@@ -9,7 +9,6 @@
 package cocoapods
 
 import (
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -125,28 +124,17 @@ func Read(root string, all []*scan.File) *Index {
 	}
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
-	absolute := map[string]string{}
+	repository := lang.NewSource(root, lang.SourceOptions{Bounded: true})
 	for _, f := range sorted {
-		absolute[f.Path] = f.AbsolutePath
+		repository.Add(f)
 		x.files[f.Path] = true
 		for d := path.Dir(f.Path); d != "." && !x.directories[d]; d = path.Dir(d) {
 			x.directories[d] = true
 		}
 	}
 	read := func(relative string) (string, bool) {
-		a, ok := absolute[relative]
-		if !ok {
-			if root == "" {
-				return "", false
-			}
-			a = filepath.Join(root, filepath.FromSlash(relative))
-		}
-		fileInfo, err := os.Stat(a)
-		if err != nil || fileInfo.IsDir() || fileInfo.Size() > lang.MaxParseSize {
-			return "", false
-		}
-		b, err := os.ReadFile(a)
-		return string(b), err == nil
+		data, ok := repository.Read(relative)
+		return string(data), ok
 	}
 	for _, f := range sorted {
 		if f.Binary || vendored(f.Path) {
@@ -463,8 +451,8 @@ func (x *Index) checkedOut(t lang.Target) []lang.Target {
 			strings.TrimSuffix(path.Base(strings.TrimSuffix(c.source, "/")), ".git"))
 		own := &project{carts: map[string]*cart{}, pins: map[string]*cart{}}
 		read := func(name string, into map[string]*cart) bool {
-			source, err := os.ReadFile(filepath.Join(directory, name))
-			if err != nil || len(source) > lang.MaxParseSize {
+			source, ok := lang.ReadCapped(filepath.Join(directory, name))
+			if !ok {
 				return false
 			}
 			for _, c := range readCartfile(string(source)) {

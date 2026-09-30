@@ -2,7 +2,6 @@ package shader
 
 import (
 	"bytes"
-	"os"
 	"path"
 	"regexp"
 	"strings"
@@ -35,10 +34,10 @@ func newResolver(root string, all []*scan.File) *resolver {
 		r.folded[lower] = f.Path
 		r.byBase[path.Base(lower)] = append(r.byBase[path.Base(lower)], f.Path)
 		cargo = cargo || path.Base(f.Path) == "Cargo.toml"
-		if extensions[strings.ToLower(path.Ext(f.Path))] != wgsl || f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
+		if extensions[strings.ToLower(path.Ext(f.Path))] != wgsl {
 			continue
 		}
-		if source, err := os.ReadFile(f.AbsolutePath); err == nil && bytes.Contains(source, []byte("define_import_path")) {
+		if source, ok := lang.ReadScanned(f); ok && bytes.Contains(source, []byte("define_import_path")) {
 			for _, m := range defineImportPath.FindAllSubmatch(source, -1) {
 				r.modules[string(m[1])] = append(r.modules[string(m[1])], f.Path)
 			}

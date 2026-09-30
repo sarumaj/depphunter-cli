@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -48,32 +47,20 @@ type resolver struct {
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, projects: map[string]*project{},
 		single: map[string]*project{}, installed: map[string]string{}, recipes: map[string]*recipe{}}
-	absolute := map[string]string{}
+	repository := lang.NewSource(root, lang.SourceOptions{})
 	for _, f := range all {
 		if dubDirectory(f.Path) {
 			continue
 		}
 		r.files[f.Path] = true
-		absolute[f.Path] = f.AbsolutePath
+		repository.Add(f)
 		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
 			r.directories[d] = true
 		}
 	}
 	r.directories["."] = true
-	read := func(relative string) ([]byte, bool) {
-		if a, ok := absolute[relative]; ok {
-			data, err := os.ReadFile(a)
-			return data, err == nil
-		}
-		if root == "" {
-			return nil, false
-		}
-		// dub.selections.json is often ignored by git in libraries.
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
-		return data, err == nil
-	}
 	var manifests []string
-	for relative := range absolute {
+	for relative := range r.files {
 		if b := path.Base(relative); b == "dub.json" || b == "dub.sdl" {
 			manifests = append(manifests, relative)
 		}
@@ -84,7 +71,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if r.projects[directory] != nil {
 			continue
 		}
-		data, ok := read(relative)
+		data, ok := repository.Read(relative)
 		if !ok {
 			continue
 		}
@@ -114,9 +101,10 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		}
 	}
-	for _, relative := range sortedKeys(absolute) {
+	for _, relative := range sortedKeys(r.files) {
 		if extension := path.Ext(relative); extension == ".d" || extension == ".di" {
-			if recipe := readSingle(absolute[relative]); recipe != nil {
+			absolute, _ := repository.Absolute(relative)
+			if recipe := readSingle(absolute); recipe != nil {
 				p := &project{directory: path.Dir(relative), recipe: recipe, manifest: relative, subs: map[string]*project{}}
 				p.root = p
 				r.single[relative] = p
@@ -132,7 +120,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 	}
 	for _, p := range all2 {
 		if p.root == p {
-			if data, ok := read(path.Join(p.directory, "dub.selections.json")); ok {
+			if data, ok := repository.Read(path.Join(p.directory, "dub.selections.json")); ok {
 				p.selections = readSelections(data)
 			}
 		}

@@ -68,12 +68,11 @@ func newResolver(_ string, all []*scan.File) *resolver {
 		}
 		return p
 	}
-	readable := func(f *scan.File) bool { return !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize }
 	for _, f := range all {
 		r.files[f.Path] = true
 		base, directory := path.Base(f.Path), path.Dir(f.Path)
 		switch {
-		case !readable(f) || skipped(f.Path):
+		case !lang.Readable(f) || skipped(f.Path):
 		case manifestNames[base]:
 			source, err := os.ReadFile(f.AbsolutePath)
 			if err != nil {

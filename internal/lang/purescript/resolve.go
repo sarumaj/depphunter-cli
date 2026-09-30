@@ -115,10 +115,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 var kindRank = map[string]int{classYAML: 0, classDhall: 1, classBower: 2}
 
 func (r *resolver) read(f *scan.File) []byte {
-	if f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
-		return nil
-	}
-	source, _ := os.ReadFile(f.AbsolutePath)
+	source, _ := lang.ReadScanned(f)
 	return source
 }
 
@@ -250,8 +247,8 @@ func (r *resolver) loadDhall(file string) *dhall.Value {
 	if !r.files[file] || len(r.evaluated) > 1000 {
 		return nil
 	}
-	source, err := os.ReadFile(filepath.Join(r.root, filepath.FromSlash(file)))
-	if err != nil || len(source) > lang.MaxParseSize {
+	source, ok := lang.ReadCapped(filepath.Join(r.root, filepath.FromSlash(file)))
+	if !ok {
 		return nil
 	}
 	r.evaluated[file] = nil
@@ -852,10 +849,7 @@ func readSpagoInstalled(spago string) map[string]*installedPackage {
 // purs.json's. ok is false when it has none of them readable.
 func manifestDependencies(directory string) (dependencies []string, ok bool) {
 	read := func(name string) []byte {
-		source, err := os.ReadFile(filepath.Join(directory, name))
-		if err != nil || len(source) > lang.MaxParseSize {
-			return nil
-		}
+		source, _ := lang.ReadCapped(filepath.Join(directory, name))
 		return source
 	}
 	if m := readSpagoYAML(read("spago.yaml")); m != nil && m.isPackage {

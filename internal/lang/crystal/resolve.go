@@ -35,13 +35,14 @@ type resolver struct {
 // Implements: REQ-CRYSTAL-004, REQ-CRYSTAL-005, REQ-CRYSTAL-006, REQ-CRYSTAL-008
 func newResolver(root string, all []*scan.File, getenv func(string) string) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, projects: map[string]*project{}}
-	absolute := map[string]string{}
+	// shard.lock is often ignored by git in libraries, and lib/ always is.
+	repository := lang.NewSource(root, lang.SourceOptions{})
 	for _, f := range all {
 		if installed(f) {
 			continue
 		}
 		r.files[f.Path] = true
-		absolute[f.Path] = f.AbsolutePath
+		repository.Add(f)
 		if path.Ext(f.Path) == ".cr" {
 			r.sources = append(r.sources, f.Path)
 		}
@@ -65,33 +66,21 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 			return triples[i] < triples[j]
 		})
 	}
-	read := func(relative string) ([]byte, bool) {
-		if a, ok := absolute[relative]; ok {
-			data, err := os.ReadFile(a)
-			return data, err == nil
-		}
-		if root == "" {
-			return nil, false
-		}
-		// shard.lock is often ignored by git in libraries, and lib/ always is.
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
-		return data, err == nil
-	}
-	for relative := range absolute {
+	for relative := range r.files {
 		if path.Base(relative) != "shard.yml" {
 			continue
 		}
-		data, ok := read(relative)
+		data, ok := repository.Read(relative)
 		if !ok {
 			continue
 		}
 		directory := path.Dir(relative)
 		sh := readShard(data)
 		p := &project{directory: directory, name: sh.name, dependencies: sh.dependencies, lock: map[string]*locked{}, installed: map[string]*shard{}}
-		if data, ok := read(path.Join(directory, "shard.lock")); ok {
+		if data, ok := repository.Read(path.Join(directory, "shard.lock")); ok {
 			p.lock = readLock(data)
 		}
-		if data, ok := read(path.Join(directory, "shard.override.yml")); ok {
+		if data, ok := repository.Read(path.Join(directory, "shard.override.yml")); ok {
 			for name, d := range readOverride(data) {
 				if old := p.dependencies[name]; old != nil {
 					d.dev = old.dev
@@ -150,7 +139,7 @@ func (r *resolver) crystalPath(root, value string) []string {
 //
 // Implements: REQ-CRYSTAL-008
 func (p *project) readInstalled(library string) {
-	if data, err := os.ReadFile(filepath.Join(library, ".shards.info")); err == nil && len(data) <= lang.MaxParseSize {
+	if data, ok := lang.ReadCapped(filepath.Join(library, ".shards.info")); ok {
 		for name, l := range readLock(data) {
 			if p.lock[name] == nil {
 				p.lock[name] = l

@@ -1,7 +1,6 @@
 package ruby
 
 import (
-	"os"
 	"path"
 	"regexp"
 	"sort"
@@ -446,9 +445,4 @@ func (p *project) gemNames() []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func readFile(absolute string) (string, bool) {
-	data, err := os.ReadFile(absolute)
-	return string(data), err == nil
 }
