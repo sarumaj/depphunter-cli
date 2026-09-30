@@ -254,6 +254,297 @@ finding is modeled rather than sourced, since neither pack contains an insect:
 severity's color, a dark head and thorax, and six independently animated
 legs.
 
+## Architecture
+
+[How it works](#how-it-works) follows one run through its stages. This section
+maps the same program by Go package: what each one owns, which way the imports
+point, the contract a language plugin signs, and the rules that decide what
+depphunter may read and which servers it may talk to.
+
+### Package map
+
+Arrows point from importer to imported, as `go list` reports the imports of
+`./...`. `graph`, `trace` and `scan` are imported almost everywhere and are
+left out, and the 52 plugins and the readers they share are one box.
+
+```mermaid
+flowchart TB
+    main["cmd/depphunter"] --> app & config & latest & findings
+    app["internal/app"] --> analyze & all & index & auth & scope & userconf
+    app --> cache & findings & history & lsp & watch & latest
+    app --> server & web & export & editor & config
+    all["lang/all"] --> plugins & lang
+    plugins["lang/&lt;language&gt;, treesitter, oci, nuget, edn, …"] --> lang
+    analyze --> cache & lang
+    cache --> lang & store
+    config --> lang
+    index --> auth & plugins & lang & npmconf & pyconf & userconf & store
+    auth --> plugins & npmconf & pyconf & userconf
+    pyconf --> userconf
+    findings --> auth & plugins & lang & store
+    history --> store
+    lsp --> store
+    server --> findings & history & web & export & editor & minify & config
+    web --> export & minify & config
+```
+
+`analyze` never imports `index`, and `index` never imports `scope`. The walk
+declares what it needs as small interfaces in `internal/analyze/analyze.go`
+(`Indexes`, `TargetIndexes`, `Locator`, `Discovered`, `Traced`); `index.Config`
+and `index.Client` satisfy them, and `internal/app` connects the two. The
+private scope reaches `index` as a function, `Config.Private`. Keep those
+directions when the walk has a new question to ask.
+
+### Packages
+
+| Package | Responsibility | Key types and entry points |
+|---|---|---|
+| `cmd/depphunter` | A thin shell: the cobra command, flags through `config`, the log's output, then `app.Run`. | `newCommand`, `logOutput` |
+| `app` | One run: the cache, plugins, credentials, private scope and index client wired into one analysis (`app.go`), then the export (`export.go`) or the served map (`serve.go`) with its background loaders (`loaders.go`) and `--watch`. | `Run` |
+| `latest` | Runs a function on the newest value handed to it, one call at a time; a burst of re-analyses becomes one follow-up run of each loader. | `Runner[T]`, `New` |
+| `config` | Settings from defaults, user and project files, `DEPPHUNTER_*` and flags (viper); saving the view settings; what a project file may set. | `Config`, `UI`, `RegisterFlags`, `Load`, `SaveUI` |
+| `scan` | Lists files (`git ls-files`, or a walk with built-in ignores), maps names to languages (`lang.go`), reads `#!` lines, counts lines, flags binary and oversized files. | `File`, `Options`, `Scan`, `Language` |
+| `lang` | The plugin contract (`lang.go`) and the helpers every plugin shares; see below. | `Plugin`, `Resolver`, `Target`, `Extraction`, `Analyze` |
+| `lang/all` | The one list of plugins, in the order they run; the command and the benchmark both take it. | `Plugins`, `Options` |
+| `lang/<language>` | One plugin per ecosystem family (`golang`, `javascript`, `python`, …); shared readers beside them (`treesitter`, `oci`, `nuget`, `edn`, `starlark`, `cocoapods`, `juliapkg`, `luarocks`, `opam`), test helpers in `langtest`. | `Plugin{}` |
+| `cache` | Plugin extractions keyed by plugin, version, class and content hash; one gob file per project. A nil cache caches nothing. | `Cache`, `Open`, `Key` |
+| `analyze` | Turns files and plugin results into the graph, then walks dependencies of dependencies level by level. | `Run`, `Options`, `Stats` |
+| `graph` | The document shared by analysis, UI, exports and the extension; node IDs are built and parsed here only. | `Graph`, `Node`, `Edge`, `*ID`, `EcosystemOf`, `FileOf`, `(*Graph).Of` |
+| `trace` | The resolution report: every question the walk asked and who answered it, as text, Markdown or JSON. A nil report records nothing. | `Report`, `Lookup`, `Note` |
+| `userconf` | Where each package manager keeps its configuration on this machine, as the tool itself finds it. | `Machine`, `Platform`, `SystemRoot` |
+| `npmconf`, `pyconf` | Parse Yarn/Bun and uv/Poetry/Pipenv/PDM settings as written; they make no trust decisions. | parsers |
+| `auth` | Credentials this machine holds, each filed under its host, and the one rule for where one may be sent. | `Store`, `ReadFor`, `Apply`, `MaySend` |
+| `scope` | Which packages are the organization's own (`--private`, `GOPRIVATE`, `GONOPROXY`). | `Private`, `New`, `FromGoEnvironment` |
+| `index` | Where each package comes from, and, with `--online`, asking trusted indexes what a package depends on. | `Discoverer`, `Config`, `Client` |
+| `store` | Expiring answers from other people's servers, results computed for one project, and the atomic writer every on-disk cache uses. A nil store keeps nothing. | `Store`, `Get[T]`, `Result[T]`, `WriteAtomic` |
+| `findings` | Scanner reports, OSV and link checks, placed on files and packages; which documents and pinned packages to check (`graph.go`) and which report files to watch (`load.go`). | `Set`, `Finding`, `Collect`, `Documents`, `Pinned`, `Watched` |
+| `history`, `lsp` | Git history per file, and symbol references from installed language servers; both kept per project in a `store.Result`. | `History`, `Result`, `Cached`, `lsp.Servers` |
+| `watch` | fsnotify on analyzed directories, debounced. | `Watcher` |
+| `server` | Loopback HTTP API, token and cookie, SSE, the session shared with the editor panel; `response.go` keeps each body encoded once, with its ETag and gzip, and answers 304. | `Server`, `New`, `Handler` |
+| `export`, `web`, `minify`, `editor` | JSON, GraphML and DOT; the embedded UI and the self-contained HTML export; stripping comments from UI assets; editor command templates. | `export.Write`, `web.WriteStatic`, `editor.Command` |
+
+### The language plugin contract
+
+A plugin implements `lang.Plugin` ([internal/lang/lang.go]); the split between
+reading a file and resolving what it names is what makes caching possible
+([REQ-LANG-025]):
+
+- `Name()` and `Version()`: bump `Version` whenever `Extract` returns
+  something different for the same input, or stale cache entries are reused
+  ([REQ-LANG-026]).
+- `Claims(*scan.File)`: which files are the plugin's ([REQ-LANG-001]).
+- `Ecosystems()`: the islands its packages land on, with `Std` for a
+  standard library. An ecosystem several plugins share is spelled with a
+  constant from `ecosystems.go` (`lang.EcosystemNPM`, …).
+- `Extract(file, source)`: imports and symbols from the content alone. It is
+  cached by content, so it must not read other files.
+- `Resolver(root, files)`: built once per run from manifests and lock files;
+  `Resolve(file, RawImport)` returns a `Target` ([REQ-LANG-004]).
+
+Optional interfaces, discovered by type assertion: `Classifier` (extraction
+also depends on the path; `Class` joins the cache key), `Expander` (one
+import becomes several), `Transitive` (what a package depends on, from lock
+files), `Installed` (that answer came from an environment) and `Noter`
+(embed `lang.NoteList` to tell `--explain` what no single question shows).
+
+The helpers keep plugins from growing their own copies: `util.go`
+(`ForEachFile`, `SymbolSet`, `MaxParseSize`), `paths.go` (walking up
+directories, `Layout` and `PathSet` of the files a resolver was given,
+`ClimbsOut`), `text.go`, `memo.go` (`Memo`, a typed `sync.Map`),
+`version.go` and `gitpin.go` (pinning rules). `read.go` holds how a resolver
+reads ([REQ-LANG-031]): a file under the repository through `lang.Root`
+(`lang.OpenRoot`), which refuses a path that leaves the repository through
+`..` or a symbolic link with `ErrOutside`; this machine's configuration and
+installed trees through `lang.Machine`; and the scanned copy of a listed file
+before the disk through `Source`.
+
+Plugins are registered in one place, `all.Plugins` ([internal/lang/all]).
+`internal/app` and the cold-analysis benchmark both run that list. Its order
+is part of the output: plugins run one after another in it, so it decides
+the order of the graph's nodes and edges.
+
+Adding a language:
+
+1. Map its extensions and file names in `internal/scan/lang.go`
+   (`byExtension`, `byName`), with a case in `lang_test.go`.
+2. Create `internal/lang/<name>` with `Plugin`, `Extract` and a resolver.
+   Prefer a tolerant scanner, or `lang/treesitter` when a grammar is
+   vendored, and read through `lang.Root` and the `lang` helpers.
+3. Add a fixture project under `internal/lang/<name>/testdata/repo/` and
+   tests that call `langtest.Analyze`, `langtest.CheckImports` and
+   `langtest.CheckSymbols` (`testdata` is never annotated).
+4. Add the plugin to `all.Plugins`, where its place in the order matters.
+5. If a language server answers references, add it to `lsp.Servers`.
+6. For a new ecosystem, add it to the private-pattern prefixes (`ecosystems`
+   in `internal/scope/scope.go`) and, where OSV or Trivy know it, to
+   `osvEcosystems` and `trivyEcosystems` in `internal/findings`.
+7. If `--online` should reach its index, teach `internal/index` the
+   ecosystem: configuration locations in `userconf`, credentials in `auth`.
+8. Write its requirements in `docs/requirements/<scope>/`, add the scope to
+   the table in [that README][requirements], annotate the code and tests,
+   and regenerate the matrix.
+9. Describe it in `README.md` beside the other languages, and add any new
+   words to `.vscode/settings.json`.
+
+### Where packages come from: index, auth and userconf
+
+Three packages split one question. `userconf` knows *where* each tool's
+files are ([REQ-SUP-064]); `npmconf` and `pyconf` read *what* they say.
+`index` decides *which* index serves a package, and `auth` decides *which*
+credential may go with a request ([REQ-AUTH-020]). The repository is read,
+but never trusted with anything that decides what is sent where:
+
+- A project configuration file sets only what `projectKeys` in
+  `internal/config/config.go` allows; `userOnlyKeys` says why each other
+  setting (`online`, `trust_indexes`, `editor`, `python`) is left to the user
+  ([REQ-CFG-018]).
+- An index only the repository names is recorded and marked unknown
+  ([REQ-SUP-018]), and is never fetched from ([REQ-SUP-019]). Where both the
+  machine and the repository name an index, the machine's wins
+  ([REQ-SUP-016]). `--trust-index` vouches for such an index
+  ([REQ-SUP-042]), and only the user can give it ([REQ-SUP-043]).
+- Nothing is asked without `--online` ([REQ-SUP-020]), and lock files are
+  asked before indexes ([REQ-SUP-030]).
+- The private scope ([REQ-SUP-034]) is given to `index` once, through
+  `Config.Private`, and every choice of an index for a package goes through
+  `Config.owned` and `Config.nameable`: a private package is never named to a
+  public index ([REQ-SUP-038]) but is asked of a private index this machine
+  configures ([REQ-SUP-039]). `findings.Pinned` leaves it out of what is sent
+  to OSV ([REQ-SUP-040]).
+- Credentials come from this machine only, and go only to their host
+  ([REQ-AUTH-011], [REQ-SUP-033]). A credential in an index URL the
+  repository names is discarded ([REQ-AUTH-012]). `auth.MaySend` is the one
+  definition of where a credential may go whatever the configuration says
+  (https, or http to loopback); `Apply` and every credential sent outside it
+  (a Buf token, a Conan login) check it.
+- A resolver reads the repository through `lang.Root`, so neither `..` nor a
+  committed symbolic link reaches the rest of the machine ([REQ-LANG-031]).
+
+### The path of an `--online` lookup
+
+1. `app.Run` calls `wireIndexes`, which reads `auth.ReadFor`, builds
+   `scope.New` from `--private` and the Go environment, and gives an
+   `index.Discoverer`'s `Config` the credentials, trusted URLs and private
+   scope. `index.NewClient` keeps its answers for a day under
+   `<cache>/index` ([REQ-SUP-032]).
+2. `analyze.Run` calls `Discoverer.Discover` with the scanned files, so the
+   repository's `.npmrc` and similar files are read as claims. Every package
+   node is attributed with `Config.ForTarget`.
+3. `builder.expand` asks one level at a time, 12 at once, through `chain`:
+   the plugin's `Transitive` (lock files) first, then `Client.Dependencies`
+   ([REQ-SUP-030]).
+4. `Client.Dependencies` stops for installed packages, keeps only the
+   indexes `Config.nameable` allows, sets aside untrusted indexes, and checks
+   Hex keys. It then answers from this run's memo, from `store`, or with a
+   request whose credential `auth` picks by host. Requests go through
+   `getJSON[T]` or `acceptJSON[T]` and `readOK`; per-index listings are read
+   once through `lazy[T]`.
+5. Every exit records a `trace.Lookup` with its answer and reason
+   ([REQ-TRC-005], [REQ-TRC-006]). `Located` lets `analyze` move a package
+   to the index that actually had it ([REQ-SUP-063]).
+6. The report ([REQ-TRC-001]) goes to the log with `--explain`, and to
+   `/api/resolution` as JSON, `md` or `text`.
+
+### The web UI and the extension
+
+`web/embed.go` embeds `web/static`, and `web/static.go` inlines it for
+`--export html`. Headless tests of the modules are in `web/uitest`, and
+`scripts/shots.mjs` compares the whole page
+([Building and testing](#building-and-testing)).
+
+| Module | Owns |
+|---|---|
+| `index.html`, `app.js`, `style.css` | The page, application state, menus and wiring every module together |
+| `data.js` | Talking to the server, or reading the data a static export embeds |
+| `dom.js` | DOM helpers, and what several modules show alike: the toolbar popover (`drawer`), a finding's row (`findingItem`) and the catch button (`catchToggle`) |
+| `model.js`, `filter.js`, `history.js`, `findings.js` | The navigable tree and aggregates, filters and search, history metrics, findings by node |
+| `layout.js`, `labels.js`, `colors.js` | The archipelago layout, labels, color roles from CSS |
+| `scene.js`, `city.js`, `buildings.js`, `details.js`, `models.js` | three.js rendering, the procedural city, building types and facades, balconies and rooftop details, loading the `.glb` models |
+| `pins.js`, `bugs.js`, `fires.js`, `flames.js` | Findings over the map, bugs on buildings, reachable vulnerabilities as fire |
+| `panel.js`, `findinglist.js`, `backpack.js`, `stash.js`, `tour.js` | The side panel, the list of findings, the catch, photographs, the introduction |
+| `walk.js`, `tools.js`, `switcher.js`, `hands.js`, `avatar.js`, `parachute.js`, `health.js`, `wind.js` | Walk mode: the walker, its tools and hands, its marker on the map, the parachute, health and stamina |
+
+In the extension (`extension/src`), `extension.ts` runs one server per
+folder and registers the commands from one table, `COMMANDS`. `server.ts`
+starts the binary chosen by `binary.ts` and reads its address. `api.ts` talks
+to that server, and `panel.ts` shows the map in a tab. The activity-bar
+views, `view.ts`, `tree.ts`, `findings.ts` and `backpack.ts`, extend one base,
+`ListView` in `list.ts`. `graph.ts` is generated from `internal/graph`
+(`go test ./internal/graph -update`). `launcher.ts` finds the editor's
+command-line launcher, and `terminal.ts` puts depphunter on the `PATH` of the
+editor's terminals.
+
+### Requirements traceability
+
+Each requirement is one file,
+`docs/requirements/<scope>/REQ-<SCOPE>-<NNN>-<slug>.md`, with front matter as
+in [TEMPLATE.md][template]. Identifiers are never reused. `Implements: REQ-…`
+goes in the comment directly above the declaration that implements it, in a
+tracked source file outside `vendor/`, `node_modules/`, `testdata/` and
+`docs/`. `Verifies: REQ-…` is allowed only in tests (`_test.go`,
+`*.test.mjs`, `web/uitest/`, `extension/test/`, and CI workflows).
+`scripts/reqtrace.mjs` links each annotation to its declaration's name rather
+than its line. `--check` fails on an unknown identifier, `Verifies` outside a
+test, an `implemented` or `partial` requirement with no `Implements`, a
+leftover `uuid:` field, or a stale `TRACEABILITY.md`.
+
+### Conventions
+
+- American English in code, comments and documents (behavior, color,
+  canceled, modeled), except in names others define (Erlang's `behaviour`,
+  `Data.Colour`).
+- Full identifier names: `source`, `directory`, `dependencies`,
+  `packageName`, `ecosystem`, `index`, `reference`. No `src`, `dir`,
+  `deps`, `pkg`, `eco`, `idx` or `ref`.
+- Requirements carry no `uuid:`; the `REQ-…` identifier is the only key.
+- Tests that read machine configuration through `auth`, `index` or
+  `findings` pin `userconf.Platform = "linux"` and point
+  `userconf.SystemRoot` at an empty directory in `TestMain`. Other
+  platforms are tested with an explicit `GOOS`.
+- A resolver reads a file the scan did not list, or any path the repository
+  names, through `lang.Root` or `lang.Source`; a listed file by its
+  `AbsolutePath` or `lang.ReadScanned`, since the scan lists no symbolic
+  link.
+- "Off" is a nil receiver (`*trace.Report`, `*cache.Cache`, `*store.Store`,
+  `*index.Client`), not a flag checked by every caller.
+- A refactoring that means to change nothing proves it: the same `--export`
+  output over every `testdata` project before and after (apart from
+  `generatedAt`), and, for the page, `scripts/shots.mjs --compare` against a
+  baseline. The scripts that compare exports are scratch tools, not part of
+  the repository.
+
+[internal/lang/lang.go]: internal/lang/lang.go
+[internal/lang/all]: internal/lang/all/all.go
+[requirements]: docs/requirements/README.md
+[template]: docs/requirements/TEMPLATE.md
+[REQ-AUTH-011]: docs/requirements/auth/REQ-AUTH-011-credential-bound-to-host.md
+[REQ-AUTH-012]: docs/requirements/auth/REQ-AUTH-012-url-credential-from-machine-only.md
+[REQ-AUTH-020]: docs/requirements/auth/REQ-AUTH-020-credential-file-locations.md
+[REQ-CFG-018]: docs/requirements/cfg/REQ-CFG-018-project-config-allow-list.md
+[REQ-LANG-001]: docs/requirements/lang/REQ-LANG-001-plugins-claim-files.md
+[REQ-LANG-004]: docs/requirements/lang/REQ-LANG-004-import-resolution-targets.md
+[REQ-LANG-025]: docs/requirements/lang/REQ-LANG-025-extract-and-resolve-split.md
+[REQ-LANG-026]: docs/requirements/lang/REQ-LANG-026-content-addressed-extraction-cache.md
+[REQ-LANG-031]: docs/requirements/lang/REQ-LANG-031-reads-stay-inside-the-repository.md
+[REQ-SUP-016]: docs/requirements/sup/REQ-SUP-016-machine-configuration-preferred.md
+[REQ-SUP-018]: docs/requirements/sup/REQ-SUP-018-repository-only-index-marked.md
+[REQ-SUP-019]: docs/requirements/sup/REQ-SUP-019-repository-only-index-never-fetched.md
+[REQ-SUP-020]: docs/requirements/sup/REQ-SUP-020-online-allows-asking-trusted-indexes.md
+[REQ-SUP-030]: docs/requirements/sup/REQ-SUP-030-lock-files-asked-before-indexes.md
+[REQ-SUP-032]: docs/requirements/sup/REQ-SUP-032-index-answers-cached-one-day.md
+[REQ-SUP-033]: docs/requirements/sup/REQ-SUP-033-index-requests-carry-host-credentials.md
+[REQ-SUP-034]: docs/requirements/sup/REQ-SUP-034-private-package-patterns.md
+[REQ-SUP-038]: docs/requirements/sup/REQ-SUP-038-private-package-hidden-from-public-index.md
+[REQ-SUP-039]: docs/requirements/sup/REQ-SUP-039-private-package-asked-of-machine-index.md
+[REQ-SUP-040]: docs/requirements/sup/REQ-SUP-040-private-package-not-sent-to-osv.md
+[REQ-SUP-042]: docs/requirements/sup/REQ-SUP-042-trust-index-vouches-for-repository-index.md
+[REQ-SUP-043]: docs/requirements/sup/REQ-SUP-043-trust-index-only-from-user-and-cli.md
+[REQ-SUP-063]: docs/requirements/sup/REQ-SUP-063-additive-sources-fall-back-to-the-public-index.md
+[REQ-SUP-064]: docs/requirements/sup/REQ-SUP-064-tool-configuration-locations.md
+[REQ-TRC-001]: docs/requirements/trc/REQ-TRC-001-one-report-per-analysis.md
+[REQ-TRC-005]: docs/requirements/trc/REQ-TRC-005-per-question-answer-source.md
+[REQ-TRC-006]: docs/requirements/trc/REQ-TRC-006-distinct-unanswered-reasons.md
+
 ## Working on the extension
 
 The extension's manifest is at the root of the repository rather than in
