@@ -77,7 +77,7 @@ func newResolver(all []*scan.File) *resolver {
 		}
 		c := &config{directory: directory, file: b}
 		for _, root := range b.roots {
-			if p := path.Join(directory, root.value); !strings.HasPrefix(p, "../") {
+			if p := path.Join(directory, root.value); !lang.ClimbsOut(p) {
 				c.roots = append(c.roots, p)
 			}
 		}
@@ -180,7 +180,7 @@ func sortedLocks(m map[string]locked) []string {
 func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	switch rawImport.Name {
 	case kindDirectory:
-		if p := path.Join(path.Dir(file), rawImport.Module); r.Directories[p] && !strings.HasPrefix(p, "../") {
+		if p := path.Join(path.Dir(file), rawImport.Module); r.Directories[p] && !lang.ClimbsOut(p) {
 			return lang.Target{Local: p}
 		}
 		return lang.Target{}

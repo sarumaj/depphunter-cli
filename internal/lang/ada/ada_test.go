@@ -506,3 +506,19 @@ func scanFiles(t *testing.T, root string) []*scan.File {
 	t.Helper()
 	return langtest.Files(t, root)
 }
+
+// A Source_Dirs entry that climbs out of the repository names no directory, a bare
+// ".." no more than "../x", even with the layout listing both: the check does not
+// rely on the layout never holding a path above the root.
+//
+// Verifies: REQ-LANG-031
+func TestSourceDirectoryAboveTheRepository(t *testing.T) {
+	root := langtest.Write(t, map[string]string{"app.gpr": "project App is\nend App;\n"})
+	r := newResolver(root, langtest.Files(t, root))
+	r.Directories[".."], r.Directories["../x"] = true, true
+	for _, module := range []string{"..", "../x"} {
+		if got := r.Resolve("app.gpr", lang.RawImport{Module: module, Name: kindDirectory}); got != (lang.Target{}) {
+			t.Errorf("%s: got %+v, want nothing", module, got)
+		}
+	}
+}

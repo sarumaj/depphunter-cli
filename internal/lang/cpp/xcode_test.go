@@ -1,6 +1,7 @@
 package cpp
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -152,5 +153,31 @@ func TestXcodeBrokenSettings(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > langtest.TimeLimit(20*time.Second) {
 		t.Errorf("took %v", elapsed)
+	}
+}
+
+// An xcconfig does not include a file above the repository, a bare ".." no more
+// than "../x.xcconfig", and a search entry does not find a header there, even
+// with the file list holding those paths: the check does not rely on the file
+// list never holding a path above the root.
+//
+// Verifies: REQ-LANG-031
+func TestXcodePathsAboveTheRepository(t *testing.T) {
+	root := langtest.Write(t, map[string]string{
+		"Base.xcconfig":    "#include \"..\"\n#include \"../x.xcconfig\"\n",
+		"outside.xcconfig": "HEADER_SEARCH_PATHS = $(SRCROOT)/leaked\n",
+	})
+	outside := filepath.Join(root, "outside.xcconfig")
+	absolute := map[string]string{"Base.xcconfig": filepath.Join(root, "Base.xcconfig"), "..": outside, "../x.xcconfig": outside}
+	var paths []string
+	readXcconfig("Base.xcconfig", absolute, map[string]string{}, &paths, map[string]bool{}, 0)
+	if len(paths) != 0 {
+		t.Errorf("search paths read from above the repository: %q", paths)
+	}
+	files := map[string]bool{"..": true, "../x.h": true}
+	for _, name := range []string{"..", "../x.h"} {
+		if got := (searchDirectory{directory: "."}).find(name, files, nil); got != "" {
+			t.Errorf("%s: found %q", name, got)
+		}
 	}
 }

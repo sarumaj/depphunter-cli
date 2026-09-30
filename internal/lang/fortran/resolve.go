@@ -426,7 +426,7 @@ func (r *resolver) include(file, spec, kind string) lang.Target {
 		}
 		for d := range lang.DirectoryAndAncestors(directory) {
 			for _, t := range []string{path.Join(d, "include", spec), path.Join(d, spec)} {
-				if t != file && r.Files[t] && !strings.HasPrefix(t, "../") {
+				if t != file && r.Files[t] && !lang.ClimbsOut(t) {
 					return lang.Target{Local: t}
 				}
 			}

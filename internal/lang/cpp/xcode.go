@@ -369,7 +369,7 @@ func readXcconfig(file string, absolute, settings map[string]string, paths *[]st
 	for _, line := range strings.Split(source, "\n") {
 		line = strings.TrimSpace(line)
 		if match := xcodeInclude.FindStringSubmatch(line); match != nil {
-			if included := path.Join(path.Dir(file), match[1]); !path.IsAbs(match[1]) && !strings.HasPrefix(included, "../") {
+			if included := path.Join(path.Dir(file), match[1]); !path.IsAbs(match[1]) && !lang.ClimbsOut(included) {
 				readXcconfig(included, absolute, settings, paths, seen, depth+1)
 			}
 			continue
@@ -465,7 +465,7 @@ func searchEntries(project string, values []string, directories map[string]bool)
 // find looks an include up in a search entry: the file at directory/name, or for a
 // recursive entry, the shallowest file below the directory whose path ends in name.
 func (entry searchDirectory) find(name string, files map[string]bool, byBase map[string][]string) string {
-	if candidate := path.Join(entry.directory, name); files[candidate] && !strings.HasPrefix(candidate, "../") {
+	if candidate := path.Join(entry.directory, name); files[candidate] && !lang.ClimbsOut(candidate) {
 		return candidate
 	}
 	if !entry.recursive {

@@ -610,3 +610,31 @@ func TestInstalledSystems(t *testing.T) {
 		t.Errorf("no root: %+v", got)
 	}
 }
+
+// A load of a path above the repository finds nothing: (load "..") does not
+// become the file "...lisp" at the root by taking on the default type, as
+// (load "../x") does not become ../x.lisp. A qlfile's local source above the
+// repository is a package, not a directory, a bare ".." as much as "../x", even
+// with the layout listing both.
+//
+// Verifies: REQ-LANG-031
+func TestPathsAboveTheRepository(t *testing.T) {
+	root := langtest.Write(t, map[string]string{
+		"load.lisp": "(load \"..\")\n(load \"../x\")\n",
+		"...lisp":   "(defun f ())\n",
+		"x.lisp":    "(defun g ())\n",
+	})
+	r := newResolver(root, langtest.Files(t, root))
+	for _, module := range []string{"..", "../x"} {
+		if got := r.Resolve("load.lisp", lang.RawImport{Module: module, Name: kindLoad}); got != (lang.Target{}) {
+			t.Errorf("load %s: got %+v, want nothing", module, got)
+		}
+	}
+	r.Directories[".."], r.Directories["../x"] = true, true
+	for _, url := range []string{"..", "../x"} {
+		want := lang.Target{Ecosystem: ecosystemQuicklisp, Package: "x", Floating: true, Origin: url}
+		if got := r.localSource(qlEntry{source: "local", name: "x", url: url}, "."); got != want {
+			t.Errorf("local %s: got %+v, want %+v", url, got, want)
+		}
+	}
+}

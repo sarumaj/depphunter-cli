@@ -81,7 +81,7 @@ func (r *resolver) resolve(file string, rawImport lang.RawImport, external func(
 	}
 	directories = append(directories, r.database.directories(file)...)
 	for _, directory := range directories {
-		if candidate := path.Join(directory, name); r.files[candidate] && !strings.HasPrefix(candidate, "../") {
+		if candidate := path.Join(directory, name); r.files[candidate] && !lang.ClimbsOut(candidate) {
 			return lang.Target{Local: candidate}
 		}
 	}
@@ -95,7 +95,7 @@ func (r *resolver) resolve(file string, rawImport lang.RawImport, external func(
 	// shadow. A quoted one ("net/socket.h") is the project's when it has one.
 	if std == "" || rawImport.Name == quoted {
 		for _, directory := range conventional {
-			if candidate := path.Join(directory, name); r.files[candidate] && !strings.HasPrefix(candidate, "../") {
+			if candidate := path.Join(directory, name); r.files[candidate] && !lang.ClimbsOut(candidate) {
 				return lang.Target{Local: candidate}
 			}
 		}

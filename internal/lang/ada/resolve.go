@@ -361,7 +361,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		return r.project(file, rawImport.Module)
 	case kindDirectory:
 		directory, _ := directorySpec(rawImport.Module)
-		if t := path.Join(path.Dir(file), directory); t != "." && !strings.HasPrefix(t, "../") && r.Directories[t] {
+		if t := path.Join(path.Dir(file), directory); t != "." && !lang.ClimbsOut(t) && r.Directories[t] {
 			return lang.Target{Local: t}
 		}
 	case kindMain:

@@ -293,3 +293,22 @@ func TestTruncated(t *testing.T) {
 		}
 	}
 }
+
+// An include of a path above the repository is not the project's, a bare ".." no
+// more than "../x.h", quoted (beside the includer) or with angle brackets (from
+// the repository root), even with the files listing both: the check does not rely
+// on the file list never holding a path above the root.
+//
+// Verifies: REQ-LANG-031
+func TestIncludeAboveTheRepository(t *testing.T) {
+	root := langtest.Write(t, map[string]string{"main.c": "int main(void) { return 0; }\n"})
+	r := newResolver(t.TempDir(), langtest.Files(t, root))
+	r.files[".."], r.files["../x.h"] = true, true
+	for _, kind := range []string{quoted, bracket} {
+		for _, name := range []string{"..", "../x.h"} {
+			if got := r.Resolve("main.c", lang.RawImport{Module: name, Name: kind}); got.Local != "" {
+				t.Errorf("%s %s: got %+v, want no project file", kind, name, got)
+			}
+		}
+	}
+}

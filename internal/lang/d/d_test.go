@@ -434,3 +434,40 @@ func TestIslands(t *testing.T) {
 		}
 	}
 }
+
+// Paths above the repository name nothing in it, a bare ".." no more than
+// "../x": a dependency's or a selection's path, a sub-package directory and a
+// string import, even with the layout listing both, and a module probed from ".."
+// is not the file "...d" at the root. The checks do not rely on the layout never
+// holding a path above the root.
+//
+// Verifies: REQ-LANG-031
+func TestPathsAboveTheRepository(t *testing.T) {
+	t.Setenv("DUB_HOME", t.TempDir())
+	root := langtest.Write(t, map[string]string{
+		"sub/dub.json":            `{"name": "app", "dependencies": {"up": {"path": "../.."}, "side": {"path": "../../x"}}}`,
+		"sub/dub.selections.json": `{"fileVersion": 1, "versions": {"sel": {"path": "../.."}, "other": {"path": "../../x"}}}`,
+		"sub/source/app.d":        "module app;\n",
+		"...d":                    "module x;\n",
+	})
+	r := newResolver(root, langtest.Files(t, root))
+	if got := r.probe("..", ""); got != "" {
+		t.Errorf("probe of ..: got %q", got)
+	}
+	r.Directories[".."], r.Directories["../x"] = true, true
+	r.Files[".."], r.Files["../x"] = true, true
+	for _, testCase := range []struct{ file, module, kind string }{
+		{"sub/dub.json", "up", kindDependency},
+		{"sub/dub.json", "side", kindDependency},
+		{"sub/dub.selections.json", "sel", kindSelected},
+		{"sub/dub.selections.json", "other", kindSelected},
+		{"sub/dub.json", "../..", kindSubPath},
+		{"sub/dub.json", "../../x", kindSubPath},
+		{"sub/source/app.d", "../../..", kindString},
+		{"sub/source/app.d", "../../../x", kindString},
+	} {
+		if got := r.Resolve(testCase.file, lang.RawImport{Module: testCase.module, Name: testCase.kind}); got.Local != "" {
+			t.Errorf("%s %s %q: got %+v, want no directory or file", testCase.file, testCase.kind, testCase.module, got)
+		}
+	}
+}
