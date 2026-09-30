@@ -147,12 +147,26 @@ tool looks for it, reading the variables from the machine's environment only:
   `powershell/PowerShellGet` below `$XDG_CACHE_HOME` or `~/.cache`
   ([REQ-SUP-078](REQ-SUP-078-powershell-repositories.md)).
 
+An `XDG_*` variable (`XDG_CONFIG_HOME`, `XDG_CONFIG_DIRS`, `XDG_DATA_HOME`,
+`XDG_CACHE_HOME`, `XDG_RUNTIME_DIR`) is used only when its value is an absolute
+path; a relative one counts as unset, and the location falls back to its
+default. Of `XDG_CONFIG_DIRS` only the absolute entries are used. This is the
+XDG Base Directory Specification's rule: "All paths set in these environment
+variables must be absolute. If an implementation encounters a relative path in
+any of these variables it should consider the path invalid and ignore it." A
+list of locations holds no empty entry for a variable or home directory that is
+not set.
+
 ## Rationale
 
 CI images and Windows machines seldom keep the configuration at the Unix
 defaults: a pipeline points `CARGO_HOME`, `NPM_CONFIG_USERCONFIG` or
 `PIP_CONFIG_FILE` elsewhere, and `go env -w` writes GOPROXY to a file. Reading
-fixed `$HOME` paths missed the feed the machine actually uses.
+fixed `$HOME` paths missed the feed the machine actually uses. A relative XDG
+directory would be taken from the working directory, usually the repository
+being analyzed: a repository shipping `.config/pip/pip.conf` or
+`.config/containers/auth.json` would have them read as this machine's own
+configuration and credentials.
 
 ## Acceptance criteria
 
@@ -207,6 +221,12 @@ fixed `$HOME` paths missed the feed the machine actually uses.
     LuaRocks' follows `LUAROCKS_CONFIG_5_x` over `LUAROCKS_CONFIG` (a named
     file that does not exist falling through), `XDG_CONFIG_HOME` and
     `%APPDATA%`.
+20. A relative `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` or
+    `XDG_RUNTIME_DIR` is ignored by every location, and the relative entries of
+    `XDG_CONFIG_DIRS` are dropped: with `XDG_CONFIG_HOME=.config` and a
+    working directory holding `.config/pip/pip.conf` and
+    `.config/containers/auth.json`, neither the index nor the credential is
+    used.
 
 ## Notes
 

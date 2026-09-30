@@ -17,7 +17,7 @@ import (
 //
 // Implements: REQ-SUP-064
 func (m Machine) GitHubCLIConfigDirectory() string {
-	return cmp.Or(m.Environment("GH_CONFIG_DIR"), m.under("XDG_CONFIG_HOME", "gh"),
+	return cmp.Or(m.Environment("GH_CONFIG_DIR"), m.xdg("XDG_CONFIG_HOME", "gh"),
 		m.on(m.under("APPDATA", "GitHub CLI"), "windows"), m.home(".config", "gh"))
 }
 
@@ -89,7 +89,7 @@ func (m Machine) PSResourceGetRepositories() string {
 	if m.GOOS == "windows" {
 		return m.under("LOCALAPPDATA", "PSResourceGet", file)
 	}
-	dataHome := cmp.Or(absolute(m.Environment("XDG_DATA_HOME")), m.home(".local", "share"))
+	dataHome := cmp.Or(m.xdg("XDG_DATA_HOME"), m.home(".local", "share"))
 	macOS := m.on(firstFile(m.applicationSupport("PSResourceGet", file)), "darwin")
 	return cmp.Or(macOS, join(dataHome, "PSResourceGet", file))
 }
@@ -105,5 +105,5 @@ func (m Machine) PowerShellGetRepositories() string {
 	if m.GOOS == "windows" {
 		return m.under("LOCALAPPDATA", "Microsoft", "Windows", "PowerShell", "PowerShellGet", file)
 	}
-	return join(cmp.Or(m.Environment("XDG_CACHE_HOME"), m.home(".cache")), "powershell", "PowerShellGet", file)
+	return join(cmp.Or(m.xdg("XDG_CACHE_HOME"), m.home(".cache")), "powershell", "PowerShellGet", file)
 }

@@ -222,11 +222,8 @@ func join(directory, name string) string {
 func machinePip(m userconf.Machine, k sink) {
 	var index string
 	var extra []string
-	files, ok := m.PipConfigFiles()
+	files, _ := m.PipConfigFiles()
 	for _, name := range files {
-		if !ok || name == "" {
-			break
-		}
 		data, err := os.ReadFile(name)
 		if err != nil {
 			continue

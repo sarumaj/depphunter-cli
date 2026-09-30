@@ -2,7 +2,6 @@ package userconf
 
 import (
 	"cmp"
-	"path/filepath"
 	"strings"
 )
 
@@ -35,15 +34,15 @@ func (m Machine) UVConfigFiles() []string {
 	if f := m.Environment("UV_CONFIG_FILE"); f != "" {
 		return []string{f}
 	}
-	files := []string{cmp.Or(m.on(m.under("APPDATA", "uv", "uv.toml"), "windows"), m.xdgConfigHome("uv", "uv.toml"))}
+	user := cmp.Or(m.on(m.under("APPDATA", "uv", "uv.toml"), "windows"), m.xdgConfigHome("uv", "uv.toml"))
 	if m.GOOS == "windows" {
-		return append(files, present(m.under("ProgramData", "uv", "uv.toml"))...)
+		return present(user, m.under("ProgramData", "uv", "uv.toml"))
 	}
 	var systemFiles []string
-	for _, d := range filepath.SplitList(m.Environment("XDG_CONFIG_DIRS")) {
+	for _, d := range m.xdgConfigDirectories() {
 		systemFiles = append(systemFiles, join(d, "uv", "uv.toml"))
 	}
-	return append(files, cmp.Or(firstFile(systemFiles...), system("etc", "uv", "uv.toml")))
+	return present(user, cmp.Or(firstFile(systemFiles...), system("etc", "uv", "uv.toml")))
 }
 
 // UVProjectConfig reports whether a project's uv.toml is read: not under

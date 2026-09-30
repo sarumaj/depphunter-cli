@@ -89,7 +89,7 @@ func (m Machine) SbtCredentials() []string {
 // Implements: REQ-AUTH-020
 func (m Machine) CoursierConfigDirectory() string {
 	return cmp.Or(m.Environment("COURSIER_CONFIG_DIR"), m.byPlatform(m.under("APPDATA", "Coursier", "config"),
-		m.applicationSupport("Coursier"), m.absoluteXDGConfigHome("coursier")))
+		m.applicationSupport("Coursier"), m.xdgConfigHome("coursier")))
 }
 
 // CoursierCredentials is where Coursier's credentials are: `COURSIER_CREDENTIALS`
@@ -205,7 +205,7 @@ func (m Machine) GradleInitScripts() []string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) ClojureConfigDirectory() string {
-	return cmp.Or(m.Environment("CLJ_CONFIG"), m.under("XDG_CONFIG_HOME", "clojure"), m.home(".clojure"))
+	return cmp.Or(m.Environment("CLJ_CONFIG"), m.xdg("XDG_CONFIG_HOME", "clojure"), m.home(".clojure"))
 }
 
 // LeinProfiles is Leiningen's user profiles file: profiles.clj in `LEIN_HOME`, else
