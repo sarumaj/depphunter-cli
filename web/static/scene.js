@@ -279,6 +279,43 @@ export class MapScene {
     if (this.outlined) this.setOutline(...this.outlined);
   }
 
+  /**
+   * Compiles, while the page is idle, the programs the map has not drawn with yet but
+   * is about to: every material's with walk mode's fog, then the boxes' for the other
+   * styles. A program is otherwise compiled on the first frame that needs it, and a
+   * shader the size of the city's can hold that frame up for a second or more. Resolves
+   * once they are ready, or at once while walking, when there is nothing left to warm.
+   *
+   * Implements: REQ-PERF-012
+   */
+  warmUp() {
+    const run = this.warming = (this.warming || 0) + 1; // a later layout's warm-up replaces this one
+    if (this.walking || !this.mesh) return Promise.resolve();
+    const steps = [
+      () => this.precompile(this.scene, this.style, true),
+      ...Object.keys(STYLE_CODES).filter(style => style !== this.style).map(style => () => this.precompile(this.mesh, style, false)),
+    ];
+    return steps.reduce((done, step) => done.then(() => new Promise(resolve => idle(() => {
+      if (run !== this.warming || this.walking) resolve();
+      else step().then(resolve, resolve);
+    }))), Promise.resolve());
+  }
+
+  // Compiles `root`'s materials as they would be drawn in `style`, with or without the
+  // fog, and leaves them to find their current programs again on the next frame.
+  precompile(root, style, fog) {
+    const saved = { style: this.style, fog: this.scene.fog };
+    this.style = style;
+    this.scene.fog = fog ? new THREE.Fog(0x000000, 30, 160) : null;
+    const done = this.renderer.compileAsync(root, this.walkCamera, this.scene);
+    this.style = saved.style;
+    this.scene.fog = saved.fog;
+    root.traverse(object => {
+      for (const material of [object.material || []].flat()) material.needsUpdate = true;
+    });
+    return done;
+  }
+
   setRadius(r) {
     this.curve.uRadius.value = r;
     // The water surface sits at the bottom of the land boxes (layout LAND_H).
@@ -362,6 +399,7 @@ export class MapScene {
     this.scene.add(mesh);
     this.showGround();
     this.setLimits(boxes);
+    this.warmUp();
   }
 
   /**
@@ -888,6 +926,9 @@ export class MapScene {
 // Slower than the display refreshes, because a drift of dust does not need 60 of
 // these a second and a map left open should not cost one.
 const TICK = 66;
+// Runs `callback` when the page has nothing else to do, or within two seconds.
+const idle = callback => (window.requestIdleCallback ? requestIdleCallback(callback, { timeout: 2000 }) : setTimeout(callback, 200));
+
 // How long the map rests before a frame drawn smaller is drawn again in full, and
 // how soon after a frame the next has to be asked for to be timed against it.
 const SHARPEN = 300, CONTINUOUS = 50;
