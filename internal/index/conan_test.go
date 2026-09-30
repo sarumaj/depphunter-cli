@@ -249,7 +249,7 @@ func TestConanRecipeDependencies(t *testing.T) {
 		"conan.lock":    `{"version": "0.5", "requires": ["openssl/3.2.1#orev%1700000000.0", "zlib/1.3.1#zrev%1700000000.0", "libnghttp2/1.58.0#nrev%1.0"]}`,
 	})
 	config := NewDiscoverer(environment(nil), home).Discover(files)
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil))
 	got := c.Dependencies(conanTarget("libcurl", "[>=8 <9]", ""))
 	want := []lang.Target{
 		{Ecosystem: Conan, Package: "libnghttp2", Version: "1.58.0", Pinned: true, Registry: "@acme/stable"},
@@ -297,7 +297,7 @@ func TestConanLoginIsSentOnlyToTheAuthenticateEndpoint(t *testing.T) {
 	home := t.TempDir()
 	put(t, filepath.Join(home, ".conan2", "remotes.json"), `{"remotes": [{"name": "acme", "url": "`+remote.URL+`", "verify_ssl": true}]}`)
 	put(t, filepath.Join(home, ".conan2", "extensions", "plugins", "auth_remote.py"), "def auth_remote_plugin(remote, user=None):\n    return None, None\n")
-	c := NewClient(NewDiscoverer(environment(nil), home).Discover(nil), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+	c := NewClient(NewDiscoverer(environment(nil), home).Discover(nil), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil))
 	notes := notesOf(t, c, conanTarget("zlib", "1.3.1", ""))
 	if len(notes) != 1 || !strings.HasPrefix(notes[0], trace.NoteHelperNotRun+": Conan remote "+remote.URL+" wants a login") {
 		t.Errorf("notes %v", notes)
@@ -308,7 +308,7 @@ func TestConanLoginIsSentOnlyToTheAuthenticateEndpoint(t *testing.T) {
 	plain := "http://conan.acme.test"
 	home = conanHome(t, plain)
 	net := &unauthorized{}
-	c = NewClient(NewDiscoverer(environment(nil), home).Discover(nil), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+	c = NewClient(NewDiscoverer(environment(nil), home).Discover(nil), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil))
 	c.http = &http.Client{Transport: net}
 	if _, lookup := ask(t, c, conanTarget("zlib", "1.3.1", "")); !strings.Contains(lookup.Reason, "401") {
 		t.Errorf("plain http: %+v", lookup)
@@ -334,7 +334,7 @@ func TestConanLoginGoesWhereApplySendsACredential(t *testing.T) {
 			}
 			return http.StatusUnauthorized, ""
 		}}
-		c := NewClient(NewDiscoverer(environment(nil), home).Discover(nil), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+		c := NewClient(NewDiscoverer(environment(nil), home).Discover(nil), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil))
 		c.http = &http.Client{Transport: transport}
 		if _, _, ok := c.auth.ConanLogin(remote); !ok {
 			t.Fatalf("no login for %s", remote)
@@ -368,11 +368,13 @@ func TestConanRepositoryRemotesAndPrivatePackages(t *testing.T) {
 		".conan2/remotes.json": `{"remotes": [{"name": "acme", "url": "` + remote.URL + `", "verify_ssl": true}]}`,
 	})
 	home := t.TempDir()
-	c := NewClient(NewDiscoverer(environment(nil), home).Discover(files), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+	c := NewClient(NewDiscoverer(environment(nil), home).Discover(files), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil))
 	if _, lookup := ask(t, c, conanTarget("zlib", "1.3.1", "")); lookup.Reason != trace.ReasonUntrusted || lookup.Index != remote.URL {
 		t.Errorf("repository's remote: %+v", lookup)
 	}
-	c = NewClient(NewDiscoverer(environment(nil), home).Discover(nil), t.TempDir(), time.Hour, 5*time.Second, nil, scope.New([]string{"conan:acme-*"}))
+	config := NewDiscoverer(environment(nil), home).Discover(nil)
+	config.Private(scope.New([]string{"conan:acme-*"}).Match)
+	c = NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
 	if _, lookup := ask(t, c, conanTarget("acme-log", "1.0", "")); lookup.Reason != trace.ReasonPrivate {
 		t.Errorf("private: %+v", lookup)
 	}

@@ -15,7 +15,6 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
-	"github.com/sarumaj/depphunter-cli/internal/scope"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
 	"github.com/sarumaj/depphunter-cli/internal/userconf"
 )
@@ -280,7 +279,7 @@ func TestWallyDependencies(t *testing.T) {
 		"/UpliftGames/wally-index/HEAD/config.json": `{"api": "https://api.wally.run/", "fallback_registries": ["https://github.com/corp/wally-index"]}`,
 		"/corp/wally-index/HEAD/corp/tools":         wallyLine("corp/tools", "0.3.1", corp, map[string]string{"Log": "corp/log@0.1.0"}, nil, nil),
 	})
-	c := NewClient(Discover(nil, environment(nil), ""), t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	c := NewClient(Discover(nil, environment(nil), ""), t.TempDir(), time.Hour, 5*time.Second, nil)
 	want := []lang.Target{
 		{Ecosystem: Wally, Package: "sleitnick/comm", Version: ">=1.0.0, <2.0.0", Registry: public},
 		{Ecosystem: Wally, Package: "evaera/promise", Version: ">=4.0.0, <5.0.0", Registry: public},
@@ -384,7 +383,7 @@ func TestBufModuleDependencies(t *testing.T) {
 	t.Cleanup(func() { public[Buf] = was })
 	host := Host(server.URL)
 	credentials := auth.Read(t.TempDir(), environment(map[string]string{"BUF_TOKEN": "secret@" + host + ",other@buf.corp.example"}))
-	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, credentials, nil)
+	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, credentials)
 	got := c.Dependencies(lang.Target{Ecosystem: Buf, Package: host + "/acme/payments", Version: "v1.2.0"})
 	want := []lang.Target{
 		{Ecosystem: Buf, Package: host + "/bufbuild/protovalidate", Version: "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3", Pinned: true},
@@ -494,7 +493,7 @@ func TestBufTokenGoesWhereApplySendsACredential(t *testing.T) {
 	credentials := auth.Read(t.TempDir(), environment(map[string]string{"BUF_TOKEN": "token@buf.test"}))
 	for _, host := range plainHosts {
 		transport := &authorizations{sent: map[string]string{}, answer: func(*http.Request) (int, string) { return http.StatusOK, "{}" }}
-		c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, credentials, nil)
+		c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, credentials)
 		c.http = &http.Client{Transport: transport}
 		var reply struct{}
 		if err := c.bufCall(t.Context(), "http://"+host, "buf.test", "buf.registry.module.v1.GraphService/GetGraph", map[string]any{}, &reply); err != nil {
@@ -549,7 +548,7 @@ func TestCUEModuleDependencies(t *testing.T) {
 	put(t, filepath.Join(configDirectory, "logins.json"), `{"registries":{"`+host+`":{"access_token":"cue-token","token_type":"Bearer"}}}`)
 	variables := map[string]string{"CUE_REGISTRY": "example.com=" + host + "/modules+insecure,registry.corp.example", "CUE_CONFIG_DIR": configDirectory}
 	config := discoverOn(home, "linux", variables)
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)), scope.New(nil))
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)))
 	got := c.Dependencies(lang.Target{Ecosystem: CUE, Package: "example.com/lib", Version: "v0.2.0", Pinned: true})
 	want := []lang.Target{
 		{Ecosystem: CUE, Package: "cue.dev/x/k8s.io", Version: "v0.4.0", Pinned: true},

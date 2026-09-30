@@ -72,7 +72,7 @@ func TestHexOrganizationPackagesAskTheirOrganization(t *testing.T) {
 	home := t.TempDir()
 	variables := map[string]string{"HEX_API_URL": stub.URL + "/api", "HEX_API_KEY": "user-key"}
 	config := Discover(nil, environment(variables), home)
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)), nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)))
 	org := stub.URL + "/api/repos/acme"
 
 	billing := lang.Target{Ecosystem: Hex, Package: "billing", Version: "1.2.0", Registry: "hexpm:acme"}
@@ -123,7 +123,7 @@ func TestHexOrganizationPackagesAskTheirOrganization(t *testing.T) {
 	// Without a key: nothing asked, the reason reported.
 	before := len(stub.requests())
 	keyless := map[string]string{"HEX_API_URL": stub.URL + "/api"}
-	c = NewClient(Discover(nil, environment(keyless), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(keyless)), nil)
+	c = NewClient(Discover(nil, environment(keyless), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(keyless)))
 	if got, l := ask(t, c, billing); len(got) != 0 || l.Reason != trace.ReasonNoKey || l.Index != org {
 		t.Errorf("without a key: %v, %q at %s", got, l.Reason, l.Index)
 	}
@@ -144,7 +144,7 @@ func TestHexOrganizationKeyFromHexConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	variables := map[string]string{"HEX_HOME": hexHome}
-	c := NewClient(Discover(nil, environment(variables), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)), nil)
+	c := NewClient(Discover(nil, environment(variables), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)))
 	if got := names(c.Dependencies(lang.Target{Ecosystem: Hex, Package: "billing", Version: "1.2.0", Registry: "hexpm:acme"})); !slices.Equal(got, []string{"jason", "ledger"}) {
 		t.Errorf("billing: %v (asked %v)", got, stub.requests())
 	}
@@ -179,7 +179,7 @@ func TestPubTokenEndToEnd(t *testing.T) {
 	}
 	variables := map[string]string{"PUB_HOSTED_URL": server.URL + "/acme", "PUB_ACME_TOKEN": "pub-secret"}
 	store := auth.Read(home, environment(variables))
-	c := NewClient(Discover(nil, environment(variables), home), t.TempDir(), time.Hour, 5*time.Second, store, nil)
+	c := NewClient(Discover(nil, environment(variables), home), t.TempDir(), time.Hour, 5*time.Second, store)
 	if got := names(c.Dependencies(lang.Target{Ecosystem: Pub, Package: "billing", Version: "1.0.0"})); !slices.Equal(got, []string{"ledger"}) {
 		t.Errorf("billing: %v (asked %v)", got, asked)
 	}

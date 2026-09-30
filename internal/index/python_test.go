@@ -406,7 +406,7 @@ func TestUVIndexCredentialEndToEnd(t *testing.T) {
 	store := auth.Read(home, e)
 	d := NewDiscoverer(e, home)
 	d.Config().Credentials(store)
-	c := NewClient(d.Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store, nil)
+	c := NewClient(d.Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store)
 	if got := authOf(store, registry.URL+"/team/pypi/lib/1.0.0/json"); got != basicHeaderOf("ci:secret") {
 		t.Fatalf("credential %q", got)
 	}

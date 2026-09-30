@@ -284,7 +284,7 @@ func TestLocalFlatIndex(t *testing.T) {
 	if got := sources(config, PyPI); !slices.Equal(got, []string{directory}) {
 		t.Fatalf("sources %v", got)
 	}
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(nil)), nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(nil)))
 	for packageName, want := range map[string]string{"corp.lib": "certifi", "tool": "idna", "requests": "urllib3"} {
 		version := map[string]string{"corp.lib": "1.0", "tool": "", "requests": "2.0"}[packageName]
 		if got, l := ask(t, c, lang.Target{Ecosystem: PyPI, Package: packageName, Version: version}); !slices.Equal(got, []string{want}) {

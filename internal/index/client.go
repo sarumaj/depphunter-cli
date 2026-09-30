@@ -21,7 +21,6 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/ada"
 	"github.com/sarumaj/depphunter-cli/internal/lang/opam"
-	"github.com/sarumaj/depphunter-cli/internal/scope"
 	"github.com/sarumaj/depphunter-cli/internal/store"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
@@ -35,7 +34,6 @@ type Client struct {
 	http    *http.Client
 	cache   *store.Store
 	auth    *auth.Store
-	private *scope.Private
 	timeout time.Duration
 
 	mu   sync.Mutex
@@ -122,16 +120,14 @@ func (c *Client) note(code, message string) {
 }
 
 // NewClient prepares the client. directory holds the cached answers; ttl is how long one
-// stays usable; credentials are what this machine holds for its indexes, and private
-// names the packages that must not be asked of a public index.
-func NewClient(config *Config, directory string, ttl, timeout time.Duration,
-	credentials *auth.Store, private *scope.Private) *Client {
+// stays usable; credentials are what this machine holds for its indexes. The packages
+// that must not be asked of a public index are the configuration's (Config.Private).
+func NewClient(config *Config, directory string, ttl, timeout time.Duration, credentials *auth.Store) *Client {
 	return &Client{
 		config:       config,
 		http:         &http.Client{Timeout: timeout},
 		cache:        store.New(directory, ttl),
 		auth:         credentials,
-		private:      private,
 		timeout:      timeout,
 		seen:         map[string][]lang.Target{},
 		failed:       map[string]time.Time{},
@@ -176,13 +172,7 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	// index about corp.example/billing would not answer anyway, and the request
 	// itself is the disclosure. A private registry this machine configures is asked
 	// as usual, whether it replaces the public index or is asked beside it.
-	if c.private.Match(t.Ecosystem, t.Package) {
-		kept := candidates[:0:0]
-		for _, k := range candidates {
-			if !c.config.Public(t.Ecosystem, k.url) {
-				kept = append(kept, k)
-			}
-		}
+	if kept, owned := c.config.nameable(t, candidates); owned {
 		if len(kept) == 0 && len(candidates) > 0 {
 			l.Index, l.Reason = candidates[0].url, trace.ReasonPrivate
 			c.report(l)

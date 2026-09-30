@@ -41,7 +41,7 @@ func TestHexNoKeyIsNoted(t *testing.T) {
 	stub := newHexStub(t, "user-key")
 	home := t.TempDir()
 	variables := map[string]string{"HEX_API_URL": stub.URL + "/api"}
-	c := NewClient(Discover(nil, environment(variables), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)), nil)
+	c := NewClient(Discover(nil, environment(variables), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)))
 	got := notesOf(t, c,
 		lang.Target{Ecosystem: Hex, Package: "billing", Version: "1.2.0", Registry: "hexpm:acme"},
 		lang.Target{Ecosystem: Hex, Package: "ledger", Version: "2.0.0", Registry: "hexpm:acme"},
@@ -69,7 +69,7 @@ func TestHexForbiddenKeyIsNoted(t *testing.T) {
 	for key, want := range map[string]int{"repo-only": 1, "other": 0} {
 		home := t.TempDir()
 		variables := map[string]string{"HEX_API_URL": stub.URL + "/api", "HEX_API_KEY": key}
-		c := NewClient(Discover(nil, environment(variables), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)), nil)
+		c := NewClient(Discover(nil, environment(variables), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)))
 		got := notesOf(t, c,
 			lang.Target{Ecosystem: Hex, Package: "billing", Version: "1.2.0", Registry: "hexpm:acme"},
 			lang.Target{Ecosystem: Hex, Package: "ledger", Version: "2.0.0", Registry: "hexpm:acme"})

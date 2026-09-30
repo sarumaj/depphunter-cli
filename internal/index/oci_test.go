@@ -74,7 +74,7 @@ func ociOrder(c *Config, image string) string { return strings.Join(order(c, OCI
 // (every httptest TLS server has the same one).
 func tlsClient(t *testing.T, config *Config, r *registry, store *auth.Store) *Client {
 	t.Helper()
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, store, nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, store)
 	c.http = r.Client()
 	c.http.Timeout = 5 * time.Second
 	return c
@@ -496,7 +496,7 @@ func TestIdentityTokenNeverTravelsOverHTTP(t *testing.T) {
 	home := t.TempDir()
 	put(t, filepath.Join(home, ".docker", "config.json"), fmt.Sprintf(`{"auths":{%q:{"identitytoken":"refresh-1"}}}`, host))
 	store := auth.Read(home, nil)
-	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, store, nil)
+	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, store)
 	token, err := c.ociToken(context.Background(), "https://"+host, "team/app",
 		fmt.Sprintf(`Bearer realm="%s/token",service="reg"`, server.URL))
 	if err != nil || token != "anonymous" {

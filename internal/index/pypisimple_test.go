@@ -83,7 +83,7 @@ func simpleClient(t *testing.T, index, cache string, store *auth.Store) *Client 
 	t.Helper()
 	config := New()
 	config.Add(PyPI, Source{URL: index, Trusted: true})
-	return NewClient(config, cache, time.Hour, 5*time.Second, store, nil)
+	return NewClient(config, cache, time.Hour, 5*time.Second, store)
 }
 
 // An index without the JSON API is read through the Simple API: the PEP 691 page
@@ -228,7 +228,7 @@ func TestSimpleAPICredentials(t *testing.T) {
 	store := auth.Read(home, e)
 	d := NewDiscoverer(e, home)
 	d.Config().Credentials(store)
-	c := NewClient(d.Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store, nil)
+	c := NewClient(d.Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store)
 	if got := names(c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "lib"})); !slices.Equal(got, []string{"certifi"}) {
 		t.Errorf("lib: %v, asked %v", got, index.requests())
 	}

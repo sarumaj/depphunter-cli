@@ -456,8 +456,37 @@ func New() *Config {
 }
 
 // Private tells the configuration which packages are the organization's own (see
-// For). nil makes every package public.
+// For and Client.Dependencies). nil makes every package public. It is the one place
+// the private scope is given to this package: the client reads it from here.
 func (c *Config) Private(match func(ecosystem, packageName string) bool) { c.private = match }
+
+// owned reports whether a package is the organization's own (see Private), which is
+// never named to a public index or service.
+//
+// Implements: REQ-SUP-038
+func (c *Config) owned(ecosystem, packageName string) bool {
+	return c.private != nil && c.private(ecosystem, packageName)
+}
+
+// nameable is the candidates a package may be named to, in order: all of them, or,
+// for a package the organization owns, those that are not a public index. owned
+// says which it was. Every choice of an index for a package - the one the map
+// attributes it to (ForTarget) and the ones the client asks (Client.Dependencies) -
+// goes through here.
+//
+// Implements: REQ-SUP-038, REQ-SUP-039
+func (c *Config) nameable(t lang.Target, candidates []candidate) (kept []candidate, owned bool) {
+	if !c.owned(t.Ecosystem, t.Package) {
+		return candidates, false
+	}
+	kept = candidates[:0:0]
+	for _, k := range candidates {
+		if !c.Public(t.Ecosystem, k.url) {
+			kept = append(kept, k)
+		}
+	}
+	return kept, true
+}
 
 // SwitchOff records that the public default of an ecosystem is not used: only the
 // sources named are. origin is where that was said, so that under --watch what the
@@ -664,12 +693,8 @@ func (c *Config) ForTarget(t lang.Target) (index string, known bool) {
 	if len(candidates) == 0 {
 		return "", false
 	}
-	if c.private != nil && c.private(t.Ecosystem, t.Package) {
-		for _, k := range candidates {
-			if !c.Public(t.Ecosystem, k.url) {
-				return k.url, k.known
-			}
-		}
+	if kept, owned := c.nameable(t, candidates); owned && len(kept) > 0 {
+		return kept[0].url, kept[0].known
 	}
 	for _, k := range candidates {
 		if k.primary {

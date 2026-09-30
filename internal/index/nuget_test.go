@@ -274,7 +274,7 @@ func TestNuGetEnvironmentCredentials(t *testing.T) {
 	store := auth.Read(home, e)
 	d := NewDiscoverer(e, home)
 	d.Config().Credentials(store)
-	c := NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, store, nil)
+	c := NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, store)
 	d.Discover(nil)
 	for packageName, feed := range map[string]*nugetStub{"Acme.Tools": corp, "Acme.Vss": vss} {
 		if got, l := ask(t, c, lang.Target{Ecosystem: NuGet, Package: packageName, Version: "1.0.0"}); !slices.Equal(got, []string{"Acme.Core"}) || l.Index != feed.index() {
@@ -377,7 +377,7 @@ func TestPaketFeedWithEnvironmentPassword(t *testing.T) {
 	d := NewDiscoverer(e, home)
 	d.Config().Credentials(store)
 	d.Config().Trust([]string{feed.index()})
-	c := NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, store, nil)
+	c := NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, store)
 	d.Discover(write(t, map[string]string{"paket.dependencies": "source " + feed.index() + " username: \"ci\" password: \"%FEED_PAT%\"\nnuget Acme.Tools\n"}))
 	if got, l := ask(t, c, lang.Target{Ecosystem: NuGet, Package: "Acme.Tools", Version: "1.0.0"}); !slices.Equal(got, []string{"Acme.Core"}) || l.Index != feed.index() {
 		t.Errorf("Acme.Tools: %v from %s", got, l.Index)

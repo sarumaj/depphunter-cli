@@ -315,7 +315,7 @@ func TestSwiftPMRegistryDependencies(t *testing.T) {
 		`{"registries":{"mona":{"url":"`+registry.URL+`"}},"authentication":{"`+strings.TrimPrefix(registry.URL, "http://")+`":{"type":"token"}},"version":1}`)
 	put(t, filepath.Join(home, ".netrc"), "machine 127.0.0.1 login mona password tok\n")
 	config := NewDiscoverer(environment(nil), home).Discover(nil)
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil))
 	got := c.Dependencies(lang.Target{Ecosystem: SwiftPM, Package: "mona.LinkedList", Version: "1.0.0..<2.0.0"})
 	want := []lang.Target{
 		{Ecosystem: SwiftPM, Package: "acme.Exact", Version: "2.0.1", Pinned: true},
@@ -365,7 +365,7 @@ func TestARepositorysSwiftRegistryIsNotAsked(t *testing.T) {
 		"Package.swift":                          "import PackageDescription\n",
 		".swiftpm/configuration/registries.json": `{"registries":{"[default]":{"url":"` + registry.URL + `"}},"version":1}`,
 	})
-	c := NewClient(NewDiscoverer(environment(nil), home).Discover(files), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+	c := NewClient(NewDiscoverer(environment(nil), home).Discover(files), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil))
 	if _, lookup := ask(t, c, lang.Target{Ecosystem: SwiftPM, Package: "mona.LinkedList"}); lookup.Reason != trace.ReasonUntrusted || lookup.Index != registry.URL {
 		t.Errorf("lookup %+v", lookup)
 	}

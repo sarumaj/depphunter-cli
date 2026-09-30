@@ -125,7 +125,7 @@ func TestMavenProfileRepositoryWithServerCredentials(t *testing.T) {
   <activeProfiles><activeProfile>corp</activeProfile></activeProfiles>
 </settings>`)
 	d := NewDiscoverer(environment(nil), home)
-	c := NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(nil)), nil)
+	c := NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(nil)))
 	d.Discover(nil)
 	got, l := ask(t, c, lang.Target{Ecosystem: Maven, Package: "com.acme:billing", Version: "1.0"})
 	if !slices.Equal(got, []string{"g:acme-core"}) || l.Index != nexus.URL+"/repository/corp" {

@@ -330,7 +330,7 @@ func (c *Client) cpanMirror(ctx context.Context, base string, t lang.Target) ([]
 		name = t.Package + "-" + v
 	}
 	metacpan := c.config.publicURL(CPAN)
-	if c.private.Match(CPAN, t.Package) || metacpan == "" {
+	if c.config.owned(CPAN, t.Package) || metacpan == "" {
 		return []dependency{}, nil
 	}
 	found, err := c.cpanRelease(ctx, metacpan+"/v1/release/"+url.PathEscape(relative.author)+"/"+url.PathEscape(name))

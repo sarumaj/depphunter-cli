@@ -35,7 +35,7 @@ func rebar3Client(t *testing.T, stub *hexStub, global, hexConfig string, variabl
 	for k, v := range variables {
 		all[k] = v
 	}
-	return NewClient(Discover(nil, environment(all), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(all)), nil)
+	return NewClient(Discover(nil, environment(all), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(all)))
 }
 
 // paths are the stub's requests since before, without their Authorization.

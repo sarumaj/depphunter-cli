@@ -191,7 +191,8 @@ func TestPowerShellFeedsAndPrivateModules(t *testing.T) {
 	config := New()
 	config.Add(PowerShell, Source{URL: feed.index(), Kind: Listed, Trusted: true, Origin: OriginMachine, powershellName: "Corp"})
 	config.Add(PowerShell, Source{URL: galleryServer.URL + "/api/v2", Kind: Listed, Trusted: true, Origin: OriginMachine, powershellName: "PSGallery"})
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New([]string{"psgallery:Acme.*"}))
+	config.Private(scope.New([]string{"psgallery:Acme.*"}).Match)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
 	if got, lookup := ask(t, c, lang.Target{Ecosystem: PowerShell, Package: "Acme.Tools", Version: "1.0.0", Pinned: true}); !reflect.DeepEqual(got, []string{"Acme.Core"}) {
 		t.Errorf("v3 feed: %v %+v", got, lookup)
 	}
