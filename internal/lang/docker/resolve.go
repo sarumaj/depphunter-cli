@@ -10,6 +10,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/oci"
+	"github.com/sarumaj/depphunter-cli/internal/lang/yamlnode"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -169,11 +170,7 @@ func (r *resolver) read(p string) []byte {
 
 // services is the services: mapping of a Compose file of the repository.
 func (r *resolver) services(p string) *yaml.Node {
-	var doc yaml.Node
-	if source := r.read(p); source == nil || yaml.Unmarshal(source, &doc) != nil {
-		return nil
-	}
-	return field(&doc, "services")
+	return field(yamlnode.Parse(r.read(p)), "services")
 }
 
 // environment is what the .env file of directory sets, read once. The file is often left out of

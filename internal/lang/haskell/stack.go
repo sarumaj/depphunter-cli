@@ -9,48 +9,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/yamlnode"
 )
-
-// yamlDoc parses a YAML file to its top mapping node; nil when it is not one.
-func yamlDoc(source []byte) *yaml.Node {
-	var doc yaml.Node
-	if yaml.Unmarshal(source, &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
-		return nil
-	}
-	return doc.Content[0]
-}
-
-// get is the value of key in a mapping node.
-func get(m *yaml.Node, key string) *yaml.Node {
-	if m == nil || m.Kind != yaml.MappingNode {
-		return nil
-	}
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		if m.Content[i].Value == key {
-			return m.Content[i+1]
-		}
-	}
-	return nil
-}
-
-// scalars are a node's strings: the scalar itself, or a sequence's scalars.
-func scalars(n *yaml.Node) []*yaml.Node {
-	switch {
-	case n == nil:
-		return nil
-	case n.Kind == yaml.ScalarNode:
-		return []*yaml.Node{n}
-	case n.Kind == yaml.SequenceNode:
-		var out []*yaml.Node
-		for _, c := range n.Content {
-			if c.Kind == yaml.ScalarNode {
-				out = append(out, c)
-			}
-		}
-		return out
-	}
-	return nil
-}
 
 // hpackDependencies reads an hpack dependencies value: a list of "name constraint" strings
 // or of {name, version} maps, or a map of name to constraint (or to {version}).
@@ -73,14 +33,14 @@ func hpackDependencies(n *yaml.Node) []dependency {
 			add(e.text, "", e.line)
 		}
 	case n.Kind == yaml.SequenceNode:
-		for _, c := range n.Content {
+		for _, c := range yamlnode.Items(n) {
 			switch c.Kind {
 			case yaml.ScalarNode:
 				add(c.Value, "", c.Line)
 			case yaml.MappingNode:
-				if name := get(c, "name"); name != nil {
+				if name := yamlnode.Get(c, "name"); name != nil {
 					v := ""
-					if version := get(c, "version"); version != nil {
+					if version := yamlnode.Get(c, "version"); version != nil {
 						v = version.Value
 					}
 					add(name.Value, v, c.Line)
@@ -88,12 +48,12 @@ func hpackDependencies(n *yaml.Node) []dependency {
 			}
 		}
 	case n.Kind == yaml.MappingNode:
-		for i := 0; i+1 < len(n.Content); i += 2 {
-			k, v := n.Content[i], n.Content[i+1]
+		for _, entry := range yamlnode.Pairs(n) {
+			k, v := entry.Key, entry.Value
 			c := v.Value
 			if v.Kind == yaml.MappingNode {
 				c = ""
-				if version := get(v, "version"); version != nil {
+				if version := yamlnode.Get(v, "version"); version != nil {
 					c = version.Value
 				}
 			}
@@ -124,57 +84,57 @@ var hpackSections = []struct {
 //
 // Implements: REQ-HASKELL-004, REQ-HASKELL-006
 func readHpack(source []byte, file string) *cabalPackage {
-	doc := yamlDoc(source)
+	doc := yamlnode.Mapping(yamlnode.Parse(source))
 	if doc == nil {
 		return nil
 	}
 	p := &cabalPackage{file: file, directory: path.Dir(file)}
-	if n := get(doc, "name"); n != nil {
+	if n := yamlnode.Get(doc, "name"); n != nil {
 		p.name = n.Value
 	}
-	if v := get(doc, "version"); v != nil {
+	if v := yamlnode.Get(doc, "version"); v != nil {
 		p.version = v.Value
 	}
 	var fill func(c *component, m *yaml.Node)
 	fill = func(c *component, m *yaml.Node) {
-		for _, s := range scalars(get(m, "source-dirs")) {
+		for _, s := range yamlnode.Scalars(yamlnode.Get(m, "source-dirs")) {
 			c.directories = append(c.directories, path.Clean(s.Value))
 		}
 		for _, key := range []string{"exposed-modules", "other-modules"} {
-			for _, s := range scalars(get(m, key)) {
+			for _, s := range yamlnode.Scalars(yamlnode.Get(m, key)) {
 				c.modules = append(c.modules, s.Value)
 			}
 		}
-		c.dependencies = append(c.dependencies, hpackDependencies(get(m, "dependencies"))...)
-		when := get(m, "when")
+		c.dependencies = append(c.dependencies, hpackDependencies(yamlnode.Get(m, "dependencies"))...)
+		when := yamlnode.Get(m, "when")
 		if when != nil && when.Kind == yaml.MappingNode {
 			fill(c, when)
 			for _, k := range []string{"then", "else"} {
-				fill(c, get(when, k))
+				fill(c, yamlnode.Get(when, k))
 			}
 		} else if when != nil && when.Kind == yaml.SequenceNode {
-			for _, w := range when.Content {
+			for _, w := range yamlnode.Items(when) {
 				fill(c, w)
 				for _, k := range []string{"then", "else"} {
-					fill(c, get(w, k))
+					fill(c, yamlnode.Get(w, k))
 				}
 			}
 		}
 	}
-	if customSetup := get(doc, "custom-setup"); customSetup != nil {
-		p.setup = &component{kind: "custom-setup", line: customSetup.Line, dependencies: hpackDependencies(get(customSetup, "dependencies"))}
+	if customSetup := yamlnode.Get(doc, "custom-setup"); customSetup != nil {
+		p.setup = &component{kind: "custom-setup", line: customSetup.Line, dependencies: hpackDependencies(yamlnode.Get(customSetup, "dependencies"))}
 	}
 	common := &component{}
 	fill(common, doc)
 	for _, s := range hpackSections {
-		n := get(doc, s.key)
+		n := yamlnode.Get(doc, s.key)
 		if n == nil || n.Kind != yaml.MappingNode {
 			continue
 		}
 		var list [][2]*yaml.Node
 		if s.named {
-			for i := 0; i+1 < len(n.Content); i += 2 {
-				list = append(list, [2]*yaml.Node{n.Content[i], n.Content[i+1]})
+			for _, entry := range yamlnode.Pairs(n) {
+				list = append(list, [2]*yaml.Node{entry.Key, entry.Value})
 			}
 		} else {
 			list = append(list, [2]*yaml.Node{nil, n})
@@ -263,24 +223,20 @@ func splitID(s string) (string, string, bool) {
 //
 // Implements: REQ-HASKELL-007
 func readStack(source []byte) *stackProject {
-	doc := yamlDoc(source)
+	doc := yamlnode.Mapping(yamlnode.Parse(source))
 	if doc == nil {
 		return nil
 	}
 	p := &stackProject{}
 	for _, key := range []string{"snapshot", "resolver"} {
-		if n := get(doc, key); n != nil && n.Kind == yaml.ScalarNode && p.snapshot == "" {
+		if n := yamlnode.Get(doc, key); n != nil && n.Kind == yaml.ScalarNode && p.snapshot == "" {
 			p.snapshot = n.Value
 		}
 	}
-	for _, n := range scalars(get(doc, "packages")) {
+	for _, n := range yamlnode.Scalars(yamlnode.Get(doc, "packages")) {
 		p.members = append(p.members, cline{text: n.Value, line: n.Line})
 	}
-	extras := get(doc, "extra-deps")
-	if extras == nil || extras.Kind != yaml.SequenceNode {
-		return p
-	}
-	for _, e := range extras.Content {
+	for _, e := range yamlnode.Items(yamlnode.Get(doc, "extra-deps")) {
 		switch e.Kind {
 		case yaml.ScalarNode:
 			v := e.Value
@@ -293,11 +249,11 @@ func readStack(source []byte) *stackProject {
 			}
 		case yaml.MappingNode:
 			gitNode := ""
-			if g := get(e, "git"); g != nil {
+			if g := yamlnode.Get(e, "git"); g != nil {
 				gitNode = g.Value
-			} else if g := get(e, "github"); g != nil {
+			} else if g := yamlnode.Get(e, "github"); g != nil {
 				gitNode = "https://github.com/" + g.Value
-			} else if u := get(e, "url"); u != nil {
+			} else if u := yamlnode.Get(e, "url"); u != nil {
 				p.extras = append(p.extras, extraDependency{name: archiveName(u.Value), origin: u.Value, line: e.Line})
 				continue
 			}
@@ -305,10 +261,10 @@ func readStack(source []byte) *stackProject {
 				continue
 			}
 			commit := ""
-			if c := get(e, "commit"); c != nil {
+			if c := yamlnode.Get(e, "commit"); c != nil {
 				commit = c.Value
 			}
-			subs := scalars(get(e, "subdirs"))
+			subs := yamlnode.Scalars(yamlnode.Get(e, "subdirs"))
 			if len(subs) == 0 {
 				p.extras = append(p.extras, extraDependency{name: repositoryName(gitNode, ""), version: commit, origin: gitNode, line: e.Line})
 			}
@@ -374,27 +330,23 @@ type stackLock struct {
 //
 // Implements: REQ-HASKELL-008
 func readStackLock(source []byte) *stackLock {
-	doc := yamlDoc(source)
+	doc := yamlnode.Mapping(yamlnode.Parse(source))
 	if doc == nil {
 		return nil
 	}
 	l := &stackLock{packages: map[string]extraDependency{}}
-	packages := get(doc, "packages")
-	if packages == nil || packages.Kind != yaml.SequenceNode {
-		return l
-	}
-	for _, e := range packages.Content {
-		c := get(e, "completed")
+	for _, e := range yamlnode.Items(yamlnode.Get(doc, "packages")) {
+		c := yamlnode.Get(e, "completed")
 		if c == nil {
 			continue
 		}
-		if h := get(c, "hackage"); h != nil {
+		if h := yamlnode.Get(c, "hackage"); h != nil {
 			if name, version, ok := splitID(h.Value); ok {
 				l.packages[name] = extraDependency{name: name, version: version}
 			}
 			continue
 		}
-		name, version, gitNode := get(c, "name"), get(c, "commit"), get(c, "git")
+		name, version, gitNode := yamlnode.Get(c, "name"), yamlnode.Get(c, "commit"), yamlnode.Get(c, "git")
 		if name == nil {
 			continue
 		}
@@ -404,7 +356,7 @@ func readStackLock(source []byte) *stackLock {
 		}
 		if version != nil {
 			d.version = version.Value
-		} else if v := get(c, "version"); v != nil {
+		} else if v := yamlnode.Get(c, "version"); v != nil {
 			d.version = v.Value
 		}
 		l.packages[d.name] = d

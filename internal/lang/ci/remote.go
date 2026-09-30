@@ -4,10 +4,9 @@ import (
 	"path"
 	"strings"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/oci"
+	"github.com/sarumaj/depphunter-cli/internal/lang/yamlnode"
 )
 
 // ActionDependencies reads what an action of another repository runs, from its
@@ -21,7 +20,7 @@ import (
 //
 // Implements: REQ-CI-016
 func ActionDependencies(source []byte) (dependencies []lang.Target, dockerfile string) {
-	root := parse(source)
+	root := yamlReader.Mapping(yamlnode.Parse(source))
 	if root == nil {
 		return nil, ""
 	}
@@ -30,8 +29,7 @@ func ActionDependencies(source []byte) (dependencies []lang.Target, dockerfile s
 			dependencies = append(dependencies, t)
 		}
 	}
-	runs := field(root, "runs")
-	if image := text(field(runs, "image")); strings.EqualFold(text(field(runs, "using")), "docker") &&
+	if image := yamlReader.Text(root, "runs", "image"); strings.EqualFold(yamlReader.Text(root, "runs", "using"), "docker") &&
 		!strings.HasPrefix(image, "docker://") && strings.HasSuffix(image, "Dockerfile") {
 		dockerfile = image
 	}
@@ -46,7 +44,7 @@ func ActionDependencies(source []byte) (dependencies []lang.Target, dockerfile s
 //
 // Implements: REQ-CI-016
 func WorkflowDependencies(source []byte, repository, reference string) []lang.Target {
-	root := parse(source)
+	root := yamlReader.Mapping(yamlnode.Parse(source))
 	if root == nil {
 		return nil
 	}
@@ -57,15 +55,6 @@ func WorkflowDependencies(source []byte, repository, reference string) []lang.Ta
 		}
 	}
 	return out
-}
-
-// parse reads a YAML document's top-level mapping, nil when there is none.
-func parse(source []byte) *yaml.Node {
-	var document yaml.Node
-	if yaml.Unmarshal(source, &document) != nil {
-		return nil
-	}
-	return mapping(&document)
 }
 
 // remoteTarget resolves a reference read from a file of repository at reference,

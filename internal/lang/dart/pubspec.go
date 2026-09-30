@@ -6,6 +6,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/yamlnode"
 )
 
 // A pub package is a directory with a pubspec.yaml: its name, what it depends on
@@ -45,19 +46,15 @@ func readPubspec(source []byte) (*pubspec, error) {
 		return nil, err
 	}
 	p := &pubspec{memberLine: map[string]int{}}
-	root := mapping(&doc)
-	if root == nil {
-		return p, nil
-	}
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		key, value := root.Content[i].Value, root.Content[i+1]
+	for _, entry := range yamlnode.Pairs(&doc) {
+		key, value := entry.Key.Value, entry.Value
 		switch key {
 		case "name":
 			p.name = value.Value
 		case "resolution":
 			p.resolution = value.Value
 		case "workspace":
-			for _, m := range value.Content {
+			for _, m := range yamlnode.Items(value) {
 				if m.Kind == yaml.ScalarNode && m.Value != "" {
 					p.workspace = append(p.workspace, m.Value)
 					p.memberLine[m.Value] = m.Line
@@ -65,15 +62,12 @@ func readPubspec(source []byte) (*pubspec, error) {
 			}
 		case "melos":
 			p.melos = true
-			if m := mapping(value); m != nil {
-				p.melosPackages = scalars(lookup(m, "packages"))
+			for _, glob := range yamlnode.Scalars(yamlnode.Get(value, "packages")) {
+				p.melosPackages = append(p.melosPackages, glob.Value)
 			}
 		case "dependencies", "dev_dependencies", "dependency_overrides":
-			if value.Kind != yaml.MappingNode {
-				continue
-			}
-			for j := 0; j+1 < len(value.Content); j += 2 {
-				p.dependencies = append(p.dependencies, readDependency(key, value.Content[j], value.Content[j+1]))
+			for _, dependency := range yamlnode.Pairs(value) {
+				p.dependencies = append(p.dependencies, readDependency(key, dependency.Key, dependency.Value))
 			}
 		}
 	}
@@ -89,26 +83,26 @@ func readDependency(section string, k, v *yaml.Node) *dependency {
 			d.constraint = v.Value
 		}
 	case yaml.MappingNode:
-		d.constraint = stringOf(lookup(v, "version"))
-		if n := lookup(v, "path"); n != nil {
+		d.constraint = yamlnode.Scalar(v, "version")
+		if n := yamlnode.Get(v, "path"); n != nil {
 			d.source, d.path = "path", n.Value
 		}
-		if n := lookup(v, "sdk"); n != nil {
+		if n := yamlnode.Get(v, "sdk"); n != nil {
 			d.source, d.url = "sdk", n.Value
 		}
-		if n := lookup(v, "git"); n != nil {
+		if n := yamlnode.Get(v, "git"); n != nil {
 			d.source = "git"
 			if n.Kind == yaml.ScalarNode {
 				d.url = n.Value
 			} else {
-				d.url, d.reference = stringOf(lookup(n, "url")), stringOf(lookup(n, "ref"))
+				d.url, d.reference = yamlnode.Scalar(n, "url"), yamlnode.Scalar(n, "ref")
 			}
 		}
-		if n := lookup(v, "hosted"); n != nil {
+		if n := yamlnode.Get(v, "hosted"); n != nil {
 			if n.Kind == yaml.ScalarNode {
 				d.url = n.Value
 			} else {
-				d.url = stringOf(lookup(n, "url"))
+				d.url = yamlnode.Scalar(n, "url")
 			}
 		}
 	}
@@ -138,53 +132,6 @@ func orAny(c string) string {
 		return "any"
 	}
 	return c
-}
-
-// stringOf is a scalar's value; "" when missing or not a scalar.
-func stringOf(n *yaml.Node) string {
-	if n == nil || n.Kind != yaml.ScalarNode {
-		return ""
-	}
-	return n.Value
-}
-
-// lookup is a mapping's value for key, nil when missing.
-func lookup(m *yaml.Node, key string) *yaml.Node {
-	if m == nil || m.Kind != yaml.MappingNode {
-		return nil
-	}
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		if m.Content[i].Value == key {
-			return m.Content[i+1]
-		}
-	}
-	return nil
-}
-
-func mapping(n *yaml.Node) *yaml.Node {
-	if n != nil && n.Kind == yaml.DocumentNode && len(n.Content) > 0 {
-		n = n.Content[0]
-	}
-	if n == nil || n.Kind != yaml.MappingNode {
-		return nil
-	}
-	return n
-}
-
-func scalars(n *yaml.Node) []string {
-	if n == nil {
-		return nil
-	}
-	if n.Kind == yaml.ScalarNode {
-		return []string{n.Value}
-	}
-	var out []string
-	for _, c := range n.Content {
-		if c.Kind == yaml.ScalarNode {
-			out = append(out, c.Value)
-		}
-	}
-	return out
 }
 
 // locked is a package pubspec.lock records.
@@ -221,12 +168,12 @@ func readLock(source []byte) map[string]*locked {
 		d := &p.Description
 		switch p.Source {
 		case "path":
-			l.path = stringOf(lookup(d, "path"))
-			l.relative = stringOf(lookup(d, "relative")) == "true"
+			l.path = yamlnode.Scalar(d, "path")
+			l.relative = yamlnode.Scalar(d, "relative") == "true"
 		case "git":
-			l.url, l.resolvedReference = stringOf(lookup(d, "url")), stringOf(lookup(d, "resolved-ref"))
+			l.url, l.resolvedReference = yamlnode.Scalar(d, "url"), yamlnode.Scalar(d, "resolved-ref")
 		case "hosted":
-			l.url = stringOf(lookup(d, "url"))
+			l.url = yamlnode.Scalar(d, "url")
 		}
 		out[name] = l
 	}

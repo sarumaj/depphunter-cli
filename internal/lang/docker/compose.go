@@ -8,6 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/yamlnode"
 )
 
 // extractCompose reads a Compose file's services. A service that is built depends on
@@ -24,30 +25,27 @@ import (
 // Implements: REQ-DOCKER-007, REQ-DOCKER-008, REQ-DOCKER-009
 func extractCompose(source []byte) *lang.Extraction {
 	extraction := &lang.Extraction{}
-	var doc yaml.Node
-	if err := yaml.Unmarshal(source, &doc); err != nil {
-		return extraction // a Compose file that does not parse has no dependencies
-	}
-	for _, item := range includes(field(&doc, "include")) {
-		if p := text(item); p != "" && !remote(p) && !path.IsAbs(p) {
+	doc := yamlnode.Parse(source) // nil, and so no dependencies, when it does not parse
+	for _, item := range includes(field(doc, "include")) {
+		if p := yamlnode.Text(item); p != "" && !remote(p) && !path.IsAbs(p) {
 			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "include: " + p, Module: p, Name: kindInclude, Line: item.Line})
 		}
 	}
 	var symbols lang.SymbolSet
-	services := field(&doc, "services")
+	services := field(doc, "services")
 	for _, service := range pairs(services) {
-		symbols.Add(service.key.Value, "service", service.key.Line)
-		image, build, _, via := inherit("", services, service.value, nil)
+		symbols.Add(service.Key.Value, "service", service.Key.Line)
+		image, build, _, via := inherit("", services, service.Value, nil)
 		if len(via) > 0 {
 			// The service extends one of another file: the resolver reads it.
 			extraction.Imports = append(extraction.Imports, lang.RawImport{
-				Spec: "extends: " + via[0].written, Module: service.key.Value, Name: kindExtends, Line: via[0].line,
+				Spec: "extends: " + via[0].written, Module: service.Key.Value, Name: kindExtends, Line: via[0].line,
 			})
 			continue
 		}
 		n := len(extraction.Imports)
 		serviceImports(extraction, image, build)
-		if extension := field(service.value, "extends"); extension != nil {
+		if extension := field(service.Value, "extends"); extension != nil {
 			for i := n; i < len(extraction.Imports); i++ {
 				extraction.Imports[i].Line = extension.Line // what the service takes, where it takes it
 			}
@@ -63,20 +61,12 @@ func includes(n *yaml.Node) []*yaml.Node {
 	if n != nil && n.Kind == yaml.ScalarNode {
 		return []*yaml.Node{n}
 	}
-	if n == nil || n.Kind != yaml.SequenceNode {
-		return nil
-	}
 	var out []*yaml.Node
-	for _, item := range n.Content {
+	for _, item := range yamlnode.Items(n) {
 		if item.Kind == yaml.ScalarNode {
 			out = append(out, item)
-			continue
-		}
-		p := field(item, "path")
-		if p != nil && p.Kind == yaml.SequenceNode {
-			out = append(out, p.Content...)
-		} else if p != nil {
-			out = append(out, p)
+		} else {
+			out = append(out, yamlnode.List(field(item, "path"))...)
 		}
 	}
 	return out
@@ -109,9 +99,9 @@ func inherit(file string, services, service *yaml.Node, load func(from, written 
 			}
 		}
 		extension := field(service, "extends")
-		name, other := text(extension), ""
+		name, other := yamlnode.Text(extension), ""
 		if extension != nil && extension.Kind == yaml.MappingNode {
-			name, other = text(field(extension, "service")), text(field(extension, "file"))
+			name, other = yamlnode.Text(field(extension, "service")), yamlnode.Text(field(extension, "file"))
 		}
 		if name == "" {
 			return image, build, buildFile, via
@@ -140,35 +130,33 @@ func inherit(file string, services, service *yaml.Node, load func(from, written 
 // serviceImports records what a service with this image: and build: depends on.
 func serviceImports(extraction *lang.Extraction, image, build *yaml.Node) {
 	if build == nil {
-		if reference := text(image); reference != "" {
+		if reference := yamlnode.Text(image); reference != "" {
 			extraction.Imports = append(extraction.Imports, lang.RawImport{
 				Spec: "image: " + reference, Module: reference, Name: kindCompose, Line: image.Line,
 			})
 		}
 		return
 	}
-	context, dockerfile := text(build), "Dockerfile"
+	context, dockerfile := yamlnode.Text(build), "Dockerfile"
 	if build.Kind == yaml.MappingNode {
-		context = text(field(build, "context"))
-		if d := text(field(build, "dockerfile")); d != "" {
+		context = yamlnode.Text(field(build, "context"))
+		if d := yamlnode.Text(field(build, "dockerfile")); d != "" {
 			dockerfile = d
 		} else if inline := field(build, "dockerfile_inline"); inline != nil {
 			// Built from a Dockerfile written into this file: its images are this
 			// file's, on the lines they are written on.
 			dockerfile = ""
-			for _, rawImport := range extractDockerfile([]byte(text(inline))).Imports {
+			for _, rawImport := range extractDockerfile([]byte(yamlnode.Text(inline))).Imports {
 				rawImport.Line += inline.Line
 				extraction.Imports = append(extraction.Imports, rawImport)
 			}
 		}
 		for _, extra := range pairs(field(build, "additional_contexts")) {
-			addContext(extraction, text(extra.value), extra.value.Line)
+			addContext(extraction, yamlnode.Text(extra.Value), extra.Value.Line)
 		}
-		if list := field(build, "additional_contexts"); list != nil && list.Kind == yaml.SequenceNode {
-			for _, item := range list.Content {
-				_, value, _ := strings.Cut(text(item), "=")
-				addContext(extraction, value, item.Line)
-			}
+		for _, item := range yamlnode.Items(field(build, "additional_contexts")) {
+			_, value, _ := strings.Cut(yamlnode.Text(item), "=")
+			addContext(extraction, value, item.Line)
 		}
 	}
 	context = cmp.Or(context, ".")
@@ -200,79 +188,12 @@ func remote(context string) bool {
 		strings.HasPrefix(context, "github.com/")
 }
 
-// ---------------------------------------------------------------- YAML helpers
-
-// mapping unwraps documents and aliases and returns n when it is a mapping.
-func mapping(n *yaml.Node) *yaml.Node {
-	for n != nil && (n.Kind == yaml.DocumentNode || n.Kind == yaml.AliasNode) {
-		if n.Kind == yaml.AliasNode {
-			n = n.Alias
-		} else if len(n.Content) > 0 {
-			n = n.Content[0]
-		} else {
-			return nil
-		}
-	}
-	if n == nil || n.Kind != yaml.MappingNode {
-		return nil
-	}
-	return n
-}
-
-type pair struct{ key, value *yaml.Node }
-
-// pairs lists a mapping's entries in order, aliases followed. A merge key ("<<: *base",
-// the usual way a Compose file shares settings between services) contributes the
-// entries of the mappings it names, after the mapping's own and only where the
-// mapping does not set the key itself.
-func pairs(n *yaml.Node) []pair {
-	m := mapping(n)
-	if m == nil {
-		return nil
-	}
-	var out, merged []pair
-	seen := map[string]bool{}
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		v := m.Content[i+1]
-		if v.Kind == yaml.AliasNode {
-			v = v.Alias
-		}
-		if m.Content[i].Value == "<<" && m.Content[i].Tag == "!!merge" {
-			sources := []*yaml.Node{v}
-			if v.Kind == yaml.SequenceNode {
-				sources = v.Content
-			}
-			for _, source := range sources {
-				merged = append(merged, pairs(source)...)
-			}
-			continue
-		}
-		seen[m.Content[i].Value] = true
-		out = append(out, pair{m.Content[i], v})
-	}
-	for _, p := range merged {
-		if !seen[p.key.Value] {
-			seen[p.key.Value] = true
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-// field returns the value of key in a mapping, or nil.
+// field and pairs read a mapping with its aliases followed and its merge keys applied:
+// "<<: *base" is the usual way a Compose file shares settings between services.
 func field(n *yaml.Node, key string) *yaml.Node {
-	for _, p := range pairs(n) {
-		if p.key.Value == key {
-			return p.value
-		}
-	}
-	return nil
+	return yamlReader.Get(yamlReader.Merged(n), key)
 }
 
-// text returns a scalar's value, "" for anything else.
-func text(n *yaml.Node) string {
-	if n == nil || n.Kind != yaml.ScalarNode {
-		return ""
-	}
-	return strings.TrimSpace(n.Value)
-}
+func pairs(n *yaml.Node) []yamlnode.Pair { return yamlReader.Pairs(yamlReader.Merged(n)) }
+
+var yamlReader = yamlnode.Reader{Aliases: true}

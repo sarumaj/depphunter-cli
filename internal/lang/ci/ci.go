@@ -18,6 +18,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/oci"
+	"github.com/sarumaj/depphunter-cli/internal/lang/yamlnode"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -25,6 +26,9 @@ const (
 	ecosystemActions = "actions"
 	ecosystemGitLab  = "gitlab-ci"
 )
+
+// yamlReader follows aliases: a pipeline shares job settings through anchors.
+var yamlReader = yamlnode.Reader{Aliases: true}
 
 // Import kinds, carried in RawImport.Name so the resolver knows how to read Module.
 const (
@@ -102,13 +106,9 @@ func (Plugin) Class(f *scan.File) string {
 //
 // Implements: REQ-CI-001
 func (p Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(source, &doc); err != nil {
-		return &lang.Extraction{}, nil // a pipeline that does not parse has no dependencies
-	}
-	root := mapping(&doc)
+	root := yamlReader.Mapping(yamlnode.Parse(source))
 	if root == nil {
-		return &lang.Extraction{}, nil
+		return &lang.Extraction{}, nil // a pipeline that does not parse has no dependencies
 	}
 	switch p.Class(f) {
 	case "action":
@@ -117,92 +117,6 @@ func (p Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 		return extractWorkflow(root), nil
 	}
 	return extractGitLab(root), nil
-}
-
-// ---------------------------------------------------------------- YAML helpers
-
-// mapping unwraps a document node and returns it when it is a mapping.
-func mapping(n *yaml.Node) *yaml.Node {
-	if n == nil {
-		return nil
-	}
-	if n.Kind == yaml.DocumentNode && len(n.Content) > 0 {
-		n = n.Content[0]
-	}
-	if n.Kind == yaml.AliasNode {
-		n = n.Alias
-	}
-	if n == nil || n.Kind != yaml.MappingNode {
-		return nil
-	}
-	return n
-}
-
-// field returns the value of key in a mapping, or nil.
-func field(n *yaml.Node, key string) *yaml.Node {
-	m := mapping(n)
-	if m == nil {
-		return nil
-	}
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		if m.Content[i].Value == key {
-			v := m.Content[i+1]
-			if v.Kind == yaml.AliasNode {
-				v = v.Alias
-			}
-			return v
-		}
-	}
-	return nil
-}
-
-type pair struct{ key, value *yaml.Node }
-
-// pairs lists a mapping's entries in order.
-func pairs(n *yaml.Node) []pair {
-	m := mapping(n)
-	if m == nil {
-		return nil
-	}
-	var out []pair
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		v := m.Content[i+1]
-		if v.Kind == yaml.AliasNode {
-			v = v.Alias
-		}
-		out = append(out, pair{m.Content[i], v})
-	}
-	return out
-}
-
-// items lists a sequence's entries; a lone value counts as a sequence of one, which is
-// how both platforms let a single include or service be written without a dash.
-func items(n *yaml.Node) []*yaml.Node {
-	if n == nil {
-		return nil
-	}
-	if n.Kind == yaml.AliasNode {
-		n = n.Alias
-	}
-	if n.Kind != yaml.SequenceNode {
-		return []*yaml.Node{n}
-	}
-	out := make([]*yaml.Node, 0, len(n.Content))
-	for _, c := range n.Content {
-		if c.Kind == yaml.AliasNode {
-			c = c.Alias
-		}
-		out = append(out, c)
-	}
-	return out
-}
-
-// text returns a scalar's value, "" for anything else.
-func text(n *yaml.Node) string {
-	if n == nil || n.Kind != yaml.ScalarNode {
-		return ""
-	}
-	return strings.TrimSpace(n.Value)
 }
 
 // comment returns the version a pinned reference documents beside itself: the
