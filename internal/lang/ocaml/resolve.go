@@ -155,13 +155,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 				"(--online asks opam-repository)")
 		}
 	}
-	sort.Slice(r.sets, func(i, j int) bool {
-		depthI, depthJ := lang.Depth(r.sets[i].directory), lang.Depth(r.sets[j].directory)
-		if depthI != depthJ {
-			return depthI < depthJ
-		}
-		return r.sets[i].directory < r.sets[j].directory
-	})
+	sort.Slice(r.sets, func(i, j int) bool { return lang.ShallowestFirst(r.sets[i].directory, r.sets[j].directory) })
 	return r
 }
 

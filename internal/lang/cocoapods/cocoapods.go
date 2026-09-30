@@ -209,13 +209,7 @@ func Read(root string, all []*scan.File) *Index {
 	for _, p := range byDirectory {
 		x.projects = append(x.projects, p)
 	}
-	sort.Slice(x.projects, func(i, j int) bool {
-		a, b := x.projects[i].directory, x.projects[j].directory
-		if lang.Depth(a) != lang.Depth(b) {
-			return lang.Depth(a) < lang.Depth(b)
-		}
-		return a < b
-	})
+	sort.Slice(x.projects, func(i, j int) bool { return lang.ShallowestFirst(x.projects[i].directory, x.projects[j].directory) })
 	return x
 }
 

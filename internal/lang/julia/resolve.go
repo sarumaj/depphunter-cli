@@ -128,13 +128,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			p.manifest = m
 		}
 	}
-	sort.Slice(r.projects, func(i, j int) bool {
-		depthI, depthJ := lang.Depth(r.projects[i].directory), lang.Depth(r.projects[j].directory)
-		if depthI != depthJ {
-			return depthI < depthJ
-		}
-		return r.projects[i].directory < r.projects[j].directory
-	})
+	sort.Slice(r.projects, func(i, j int) bool { return lang.ShallowestFirst(r.projects[i].directory, r.projects[j].directory) })
 	for _, p := range r.projects {
 		r.byFile[p.file] = p
 		if p.name != "" {

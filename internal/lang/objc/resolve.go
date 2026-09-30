@@ -34,12 +34,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	for _, directories := range r.named {
-		sort.Slice(directories, func(i, j int) bool {
-			if a, b := strings.Count(directories[i], "/"), strings.Count(directories[j], "/"); a != b {
-				return a < b
-			}
-			return directories[i] < directories[j]
-		})
+		sort.Slice(directories, func(i, j int) bool { return lang.ShallowestFirst(directories[i], directories[j]) })
 	}
 	return r
 }

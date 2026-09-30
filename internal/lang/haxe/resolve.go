@@ -108,13 +108,7 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 	for _, m := range r.manifests {
 		r.all = append(r.all, m)
 	}
-	sort.Slice(r.all, func(i, j int) bool {
-		depthI, depthJ := strings.Count(r.all[i].file, "/"), strings.Count(r.all[j].file, "/")
-		if depthI != depthJ {
-			return depthI < depthJ
-		}
-		return r.all[i].file < r.all[j].file
-	})
+	sort.Slice(r.all, func(i, j int) bool { return lang.ShallowestFirst(r.all[i].file, r.all[j].file) })
 	for _, m := range r.all {
 		r.byDirectory[path.Dir(m.file)] = append(r.byDirectory[path.Dir(m.file)], m)
 		if m.owner != "" {

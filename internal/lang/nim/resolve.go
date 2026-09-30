@@ -108,13 +108,7 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 		r.projects[directory] = p
 		r.order = append(r.order, p)
 	}
-	sort.Slice(r.order, func(i, j int) bool {
-		depthI, depthJ := lang.Depth(r.order[i].directory), lang.Depth(r.order[j].directory)
-		if depthI != depthJ {
-			return depthI < depthJ
-		}
-		return r.order[i].directory < r.order[j].directory
-	})
+	sort.Slice(r.order, func(i, j int) bool { return lang.ShallowestFirst(r.order[i].directory, r.order[j].directory) })
 	for _, p := range r.order {
 		p.develop = r.readDevelop(p.directory, onDisk)
 	}

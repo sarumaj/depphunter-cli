@@ -28,6 +28,17 @@ func DeepestFirst(a, b string) bool {
 	return a < b
 }
 
+// ShallowestFirst orders directories shallowest first, then by name: the
+// order in which a file that no project governs sees every project, the
+// repository's own first, and one that does not depend on map order. Files
+// sort the same way, by how deep they are, then by path.
+func ShallowestFirst(a, b string) bool {
+	if depthA, depthB := Depth(a), Depth(b); depthA != depthB {
+		return depthA < depthB
+	}
+	return a < b
+}
+
 // Ancestors yields the directories above p, nearest first, ending with "."
 // (or "/" for an absolute path). For a file that is its own directory first,
 // the one whose manifest usually governs it. The top level has no ancestors.

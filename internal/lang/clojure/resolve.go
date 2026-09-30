@@ -107,13 +107,7 @@ func newResolver(_ string, all []*scan.File) *resolver {
 		r.directories = append(r.directories, directory)
 		sort.Strings(p.files)
 	}
-	sort.Slice(r.directories, func(i, j int) bool {
-		a, b := r.directories[i], r.directories[j]
-		if da, database := lang.Depth(a), lang.Depth(b); da != database {
-			return da < database
-		}
-		return a < b
-	})
+	sort.Slice(r.directories, func(i, j int) bool { return lang.ShallowestFirst(r.directories[i], r.directories[j]) })
 	for _, files := range r.byNS {
 		sort.Strings(files)
 	}
