@@ -44,6 +44,8 @@ type resolver struct {
 	// trees are the LuaRocks trees installed in the repository (lua_modules/,
 	// .luarocks/), the root's first, each by rock name.
 	trees []map[string]*installedRock
+	// repository reads the repository's files, and nothing outside it.
+	repository lang.Root
 	lang.NoteList
 }
 
@@ -73,16 +75,34 @@ func ignored(p string) bool {
 	return false
 }
 
-// Implements: REQ-LUA-004, REQ-LUA-007, REQ-LUA-009, REQ-LUA-010
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{Layout: lang.NewLayout(), suffixes: map[string][]string{},
 		forward: map[string]string{}, rev: map[string]string{}, luaurc: map[string]map[string]string{},
-		models: map[string]*rojoNode{}}
-	repository := lang.OpenRoot(root)
-	read := func(relative string) ([]byte, bool) {
-		return repository.ReadBounded(repository.Join(relative))
+		models: map[string]*rojoNode{}, repository: lang.OpenRoot(root)}
+	rockspecs, wallies, rojos := r.indexFiles(all)
+	r.readRockspecs(rockspecs)
+	r.readInstalled(root)
+	r.readWallies(wallies)
+	r.readRojos(rojos)
+	return r
+}
+
+// read reads a file of the repository by its slash-separated relative path.
+func (r *resolver) read(relative string) ([]byte, bool) {
+	return r.repository.ReadBounded(r.repository.Join(relative))
+}
+
+// indexFiles records the layout and the module path suffixes of every source, and
+// reads the language server configurations on the way. The manifests come back to be
+// read once every file is known, since a rockspec's modules and a Rojo project's
+// $paths name other files. What a package manager installed is left out: it is
+// read as installed rocks, never as the project's own files.
+func (r *resolver) indexFiles(all []*scan.File) (rockspecs, wallies, rojos []string) {
+	configurations := map[string]func(directory string, source []byte){
+		".luarc.json":  r.addModuleRoots,
+		".luarc.jsonc": r.addModuleRoots,
+		".luaurc":      r.addAliases,
 	}
-	var rockspecs, wallies, rojos []string
 	for _, f := range all {
 		p := f.Path
 		r.Add(p)
@@ -97,59 +117,67 @@ func newResolver(root string, all []*scan.File) *resolver {
 			wallies = append(wallies, p)
 		case strings.HasSuffix(base, ".project.json"):
 			rojos = append(rojos, p)
-		case base == ".luarc.json" || base == ".luarc.jsonc":
-			if b, ok := read(p); ok {
-				r.luarc = append(r.luarc, readLuarc(b, path.Dir(p))...)
-			}
-		case base == ".luaurc":
-			if b, ok := read(p); ok {
-				r.luaurc[path.Dir(p)] = readLuaurc(b)
+		}
+		if readConfiguration := configurations[base]; readConfiguration != nil {
+			if b, ok := r.read(p); ok {
+				readConfiguration(path.Dir(p), b)
 			}
 		}
-		if extension := path.Ext(p); extension == ".lua" || extension == ".luau" || extension == ".tl" {
-			module := strings.TrimSuffix(p, extension)
-			if path.Base(module) == "init" {
-				module = path.Dir(module)
-			}
-			segments := strings.Split(module, "/")
-			for i := range segments {
-				key := strings.Join(segments[i:], "/")
-				r.suffixes[key] = append(r.suffixes[key], p)
-			}
-		}
+		r.indexModule(p)
 	}
 	if len(r.Files) > 0 {
 		r.Directories["."] = true // the top level is a directory here, as soon as it holds a file
 	}
-	locks := map[string]map[string]string{}
-	lockOf := func(directory string) map[string]string {
-		if l, ok := locks[directory]; ok {
-			return l
-		}
-		var l map[string]string
-		if b, ok := read(path.Join(directory, "luarocks.lock")); ok {
-			l = luarocks.ReadLock(b)
-			// Implements: REQ-LUA-007, REQ-TRC-017
-			if lock := path.Join(directory, "luarocks.lock"); len(l) > 0 {
-				if !r.Files[lock] {
-					r.NoteIgnored(lock)
-				}
-				r.Note(lock, trace.NoteFlat, "luarocks.lock pins versions but records no edges: offline, "+
-					"--resolve-depth follows only rocks installed in lua_modules/ or .luarocks/ (--online asks the rocks servers)")
-			}
-		}
-		locks[directory] = l
-		return l
+	return rockspecs, wallies, rojos
+}
+
+// addModuleRoots adds the module roots a lua-language-server configuration names.
+func (r *resolver) addModuleRoots(directory string, source []byte) {
+	r.luarc = append(r.luarc, readLuarc(source, directory)...)
+}
+
+// addAliases records a .luaurc's require aliases, which hold for its directory and
+// below.
+//
+// Implements: REQ-LUA-010
+func (r *resolver) addAliases(directory string, source []byte) {
+	r.luaurc[directory] = readLuaurc(source)
+}
+
+// indexModule files a source under every suffix of its module path, so that a
+// require naming only the tail of the path still finds it.
+//
+// Implements: REQ-LUA-004
+func (r *resolver) indexModule(p string) {
+	extension := path.Ext(p)
+	if extension != ".lua" && extension != ".luau" && extension != ".tl" {
+		return
 	}
+	module := strings.TrimSuffix(p, extension)
+	if path.Base(module) == "init" {
+		module = path.Dir(module)
+	}
+	segments := strings.Split(module, "/")
+	for i := range segments {
+		key := strings.Join(segments[i:], "/")
+		r.suffixes[key] = append(r.suffixes[key], p)
+	}
+}
+
+// readRockspecs reads the rockspecs, each with the luarocks.lock beside it or else
+// the root's, and orders them shallowest first, then by path: governing walks them
+// backward to find the nearest.
+func (r *resolver) readRockspecs(rockspecs []string) {
+	locks := map[string]map[string]string{}
 	for _, p := range rockspecs {
-		b, ok := read(p)
+		b, ok := r.read(p)
 		if !ok {
 			continue
 		}
 		newRockspec := &rockspec{directory: path.Dir(p), path: p, spec: luarocks.ReadRockspec(b), modules: map[string]string{}, declared: map[string]string{}}
-		newRockspec.lock = lockOf(newRockspec.directory)
+		newRockspec.lock = r.readLock(locks, newRockspec.directory)
 		if newRockspec.lock == nil {
-			newRockspec.lock = lockOf(".")
+			newRockspec.lock = r.readLock(locks, ".")
 		}
 		for _, d := range newRockspec.spec.Dependencies {
 			if _, ok := newRockspec.declared[d.Name]; !ok {
@@ -171,22 +199,62 @@ func newResolver(root string, all []*scan.File) *resolver {
 		return lang.Depth(r.rockspecs[i].directory) < lang.Depth(r.rockspecs[j].directory) ||
 			lang.Depth(r.rockspecs[i].directory) == lang.Depth(r.rockspecs[j].directory) && r.rockspecs[i].path < r.rockspecs[j].path
 	})
+}
+
+// readLock reads a directory's luarocks.lock once, however many rockspecs share it,
+// so that its notes are given once. A directory without one has a nil lock.
+//
+// Implements: REQ-LUA-007, REQ-TRC-017
+func (r *resolver) readLock(locks map[string]map[string]string, directory string) map[string]string {
+	if l, ok := locks[directory]; ok {
+		return l
+	}
+	var l map[string]string
+	lock := path.Join(directory, "luarocks.lock")
+	if b, ok := r.read(lock); ok {
+		l = luarocks.ReadLock(b)
+		if len(l) > 0 {
+			if !r.Files[lock] {
+				r.NoteIgnored(lock)
+			}
+			r.Note(lock, trace.NoteFlat, "luarocks.lock pins versions but records no edges: offline, "+
+				"--resolve-depth follows only rocks installed in lua_modules/ or .luarocks/ (--online asks the rocks servers)")
+		}
+	}
+	locks[directory] = l
+	return l
+}
+
+// readInstalled reads the LuaRocks trees at the root and beside each rockspec, the
+// root's first, each tree once.
+//
+// Implements: REQ-LUA-013
+func (r *resolver) readInstalled(root string) {
 	seen, directories := map[string]bool{}, []string{"."}
 	for _, rockspec := range r.rockspecs {
 		directories = append(directories, rockspec.directory)
 	}
 	for _, directory := range directories {
 		for _, tree := range []string{"lua_modules", ".luarocks"} {
-			if t := path.Join(directory, tree); !seen[t] {
-				seen[t] = true
-				if rocks := readTree(repository, filepath.Join(root, filepath.FromSlash(t))); len(rocks) > 0 {
-					r.trees = append(r.trees, rocks)
-				}
+			t := path.Join(directory, tree)
+			if seen[t] {
+				continue
+			}
+			seen[t] = true
+			if rocks := readTree(r.repository, filepath.Join(root, filepath.FromSlash(t))); len(rocks) > 0 {
+				r.trees = append(r.trees, rocks)
 			}
 		}
 	}
+}
+
+// readWallies reads the Wally manifests, each with the wally.lock beside it,
+// shallowest first. Of two dependencies under one alias the first is kept.
+//
+// Implements: REQ-LUA-009
+func (r *resolver) readWallies(wallies []string) {
 	for _, p := range wallies {
-		b, ok := read(p)
+		b, ok := r.read(p)
 		if !ok {
 			continue
 		}
@@ -198,20 +266,27 @@ func newResolver(root string, all []*scan.File) *resolver {
 				w.dependencies[d.alias] = d
 			}
 		}
-		if b, ok := read(path.Join(w.directory, "wally.lock")); ok {
+		if b, ok := r.read(path.Join(w.directory, "wally.lock")); ok {
 			w.lock = readWallyLock(b)
 		}
 		r.wallies = append(r.wallies, w)
 	}
 	sort.SliceStable(r.wallies, func(i, j int) bool { return lang.Depth(r.wallies[i].directory) < lang.Depth(r.wallies[j].directory) })
-	// Rojo: place projects (a DataModel tree) say where each $path lands in the
-	// game; default.project.json first, then the others by path.
+}
+
+// readRojos reads the Rojo projects. Place projects (a DataModel tree) say where each
+// $path lands in the game, and the first to place an instance or a path wins, so
+// default.project.json is read first, then the others by path. A model project
+// (default.project.json of another tree) is kept for the $path naming its directory.
+//
+// Implements: REQ-LUA-010
+func (r *resolver) readRojos(rojos []string) {
 	sort.SliceStable(rojos, func(i, j int) bool {
 		defaultI, defaultJ := path.Base(rojos[i]) == "default.project.json", path.Base(rojos[j]) == "default.project.json"
 		return defaultI && !defaultJ || defaultI == defaultJ && rojos[i] < rojos[j]
 	})
 	for _, p := range rojos {
-		b, ok := read(p)
+		b, ok := r.read(p)
 		if !ok {
 			continue
 		}
@@ -222,24 +297,25 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if !ok || tree.class != "DataModel" {
 			continue
 		}
-		var walk func(n *rojoNode, instance string)
-		walk = func(n *rojoNode, instance string) {
-			if n.path != "" {
-				filePath := path.Clean(path.Join(path.Dir(p), n.path))
-				if _, ok := r.forward[instance]; !ok {
-					r.forward[instance] = filePath
-				}
-				if _, ok := r.rev[filePath]; !ok {
-					r.rev[filePath] = instance
-				}
-			}
-			for _, c := range n.children {
-				walk(c, instance+"/"+c.name)
-			}
-		}
-		walk(tree, "game")
+		r.place(tree, path.Dir(p), "game")
 	}
-	return r
+}
+
+// place maps a place project's instances to the project paths their $path names, both
+// ways, the first mapping of each winning.
+func (r *resolver) place(n *rojoNode, directory, instance string) {
+	if n.path != "" {
+		filePath := path.Clean(path.Join(directory, n.path))
+		if _, ok := r.forward[instance]; !ok {
+			r.forward[instance] = filePath
+		}
+		if _, ok := r.rev[filePath]; !ok {
+			r.rev[filePath] = instance
+		}
+	}
+	for _, c := range n.children {
+		r.place(c, directory, instance+"/"+c.name)
+	}
 }
 
 // readTree reads the rocks installed in a LuaRocks tree:

@@ -43,20 +43,39 @@ type resolver struct {
 	locks             []map[string]*locked
 	dependencyModules map[string]string // module -> application, from deps/ and _build/ on disk
 	injected          map[string]*injection
-	gleamModules      map[string]string // Gleam module (gleam/list) -> its .gleam file
+	gleamModules      map[string]string   // Gleam module (gleam/list) -> its .gleam file
+	byDirectory       map[string]*project // the projects by directory
 	lang.NoteList
 }
 
 // The notes a resolver keeps reach --explain only through lang.Noter.
 var _ lang.Noter = (*resolver)(nil)
 
-// Implements: REQ-BEAM-006, REQ-BEAM-008, REQ-BEAM-010, REQ-BEAM-012
+// Implements: REQ-BEAM-008, REQ-BEAM-012
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{Layout: lang.NewLayout(), exModules: map[string]string{},
 		exRoots: map[string]bool{}, erlModules: map[string]string{}, appFiles: map[string]string{},
 		appDirectories: map[string]string{}, dependencyModules: map[string]string{}, injected: map[string]*injection{},
-		gleamModules: map[string]string{}}
+		gleamModules: map[string]string{}, byDirectory: map[string]*project{}}
 	repository := lang.NewSource(root)
+	files := r.indexFiles(repository, all)
+	r.readSources(repository, files)
+	r.linkProjects(repository)
+	if root != "" {
+		for _, p := range r.projects {
+			r.readInstalled(root, p.directory)
+		}
+	}
+	// Deepest first, so that projectOf meets the nearest project above a file first.
+	sort.SliceStable(r.projects, func(i, j int) bool { return lang.Depth(r.projects[i].directory) > lang.Depth(r.projects[j].directory) })
+	return r
+}
+
+// indexFiles records every file in the layout, and every Gleam module, before any
+// BEAM file is read: include lookups and Gleam imports reach files BEAM does not
+// claim. The BEAM files come back sorted by path, because a duplicate module's
+// winner is decided by the order they are read in.
+func (r *resolver) indexFiles(repository *lang.Source, all []*scan.File) []*scan.File {
 	var files []*scan.File
 	for _, f := range all {
 		r.Add(f.Path)
@@ -71,51 +90,36 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
-	byDirectory := map[string]*project{}
-	projectAt := func(directory string) *project {
-		if p := byDirectory[directory]; p != nil {
-			return p
-		}
-		p := &project{directory: directory, dependencies: map[string]*dependency{}}
-		byDirectory[directory] = p
-		r.projects = append(r.projects, p)
+	return files
+}
+
+// projectAt is the project of a directory, made the first time a manifest there asks
+// for it: a directory may hold both a mix.exs and a rebar.config.
+func (r *resolver) projectAt(directory string) *project {
+	if p := r.byDirectory[directory]; p != nil {
 		return p
 	}
+	p := &project{directory: directory, dependencies: map[string]*dependency{}}
+	r.byDirectory[directory] = p
+	r.projects = append(r.projects, p)
+	return p
+}
+
+// readSources reads the modules and manifests. The dispatch is by extension more than
+// by name (an .exs may be a mix.exs, an .app.src is named after its application), so
+// it stays a switch rather than a table of base names.
+//
+// Implements: REQ-BEAM-006
+func (r *resolver) readSources(repository *lang.Source, files []*scan.File) {
 	for _, f := range files {
 		source, ok := repository.Read(f.Path)
 		if !ok {
 			continue
 		}
 		base := path.Base(f.Path)
-		directory := path.Dir(f.Path)
 		switch extension := strings.ToLower(path.Ext(f.Path)); {
 		case extension == ".ex" || extension == ".exs":
-			er := newExReader(source)
-			er.read()
-			for m := range er.defined {
-				if er.implementations[m] {
-					continue // Proto.Type is named by no reference
-				}
-				if previous, duplicate := r.exModules[m]; !duplicate || testPath(previous) && !testPath(f.Path) {
-					r.exModules[m] = f.Path
-				}
-				r.exRoots[strings.SplitN(m, ".", 2)[0]] = true
-			}
-			for m, in := range er.injected {
-				r.injected[m] = in
-			}
-			if base == "mix.exs" && er.mixProject() {
-				p := projectAt(directory)
-				p.mix = true
-				app, _ := mixProjectInfo(er.tokens)
-				if app != "" {
-					p.app = app
-					r.appDirectories[app], r.appFiles[app] = directory, f.Path
-				}
-				for _, d := range mixDependencies(er.tokens) {
-					p.dependencies[d.app] = d
-				}
-			}
+			r.readElixir(f.Path, source)
 		case extension == ".erl" || extension == ".xrl" || extension == ".yrl":
 			// leex and yecc sources compile to the module named after them.
 			m := strings.TrimSuffix(base, path.Ext(base))
@@ -123,94 +127,162 @@ func newResolver(root string, all []*scan.File) *resolver {
 				r.erlModules[m] = f.Path
 			}
 		case base == "rebar.config":
-			p := projectAt(directory)
-			forms := erlForms(source)
-			registry := rebarRegistry(forms)
-			p.rebar = &registry
-			for _, d := range rebarDependencies(forms) {
-				if p.dependencies[d.app] == nil {
-					p.dependencies[d.app] = d
-				}
-			}
+			r.readRebarConfig(path.Dir(f.Path), source)
 		case strings.HasSuffix(base, ".app.src"):
-			if name, _, _ := appSource(source); name != "" {
-				appDirectory := directory
-				if path.Base(directory) == "src" {
-					appDirectory = path.Dir(directory)
-				}
-				r.appDirectories[name], r.appFiles[name] = appDirectory, f.Path
-			}
+			r.readAppSource(f.Path, source)
 		}
 	}
-	// Enclosing projects first, so a child finds its parent's lock.
+}
+
+// readElixir indexes the modules an Elixir file defines and, for a mix.exs using
+// Mix.Project, the project it declares. A module defined in both test code and
+// library code belongs to the library, whichever is read first.
+func (r *resolver) readElixir(file string, source []byte) {
+	er := newExReader(source)
+	er.read()
+	for m := range er.defined {
+		if er.implementations[m] {
+			continue // Proto.Type is named by no reference
+		}
+		if previous, duplicate := r.exModules[m]; !duplicate || testPath(previous) && !testPath(file) {
+			r.exModules[m] = file
+		}
+		r.exRoots[strings.SplitN(m, ".", 2)[0]] = true
+	}
+	for m, in := range er.injected {
+		r.injected[m] = in
+	}
+	if path.Base(file) != "mix.exs" || !er.mixProject() {
+		return
+	}
+	directory := path.Dir(file)
+	p := r.projectAt(directory)
+	p.mix = true
+	if app, _ := mixProjectInfo(er.tokens); app != "" {
+		p.app = app
+		r.appDirectories[app], r.appFiles[app] = directory, file
+	}
+	for _, d := range mixDependencies(er.tokens) {
+		p.dependencies[d.app] = d
+	}
+}
+
+// readRebarConfig records a rebar3 project. Where a mix.exs in the same directory
+// already declared an application, Mix's declaration wins.
+func (r *resolver) readRebarConfig(directory string, source []byte) {
+	p := r.projectAt(directory)
+	forms := erlForms(source)
+	registry := rebarRegistry(forms)
+	p.rebar = &registry
+	for _, d := range rebarDependencies(forms) {
+		if p.dependencies[d.app] == nil {
+			p.dependencies[d.app] = d
+		}
+	}
+}
+
+// readAppSource records an OTP application's directory: the one holding src/, since
+// that is where its include/ and priv/ are.
+func (r *resolver) readAppSource(file string, source []byte) {
+	name, _, _ := appSource(source)
+	if name == "" {
+		return
+	}
+	appDirectory := path.Dir(file)
+	if path.Base(appDirectory) == "src" {
+		appDirectory = path.Dir(appDirectory)
+	}
+	r.appDirectories[name], r.appFiles[name] = appDirectory, file
+}
+
+// linkProjects gives each project its enclosing project, its lock (its own, else
+// the enclosing one's), the applications it knows and the Hex registry rebar3 uses
+// for it. Enclosing projects go first, so a child finds its parent complete.
+func (r *resolver) linkProjects(repository *lang.Source) {
 	sort.Slice(r.projects, func(i, j int) bool { return lang.Depth(r.projects[i].directory) < lang.Depth(r.projects[j].directory) })
 	for _, p := range r.projects {
-		if q, ok := lang.Nearest(byDirectory, p.directory); ok {
+		if q, ok := lang.Nearest(r.byDirectory, p.directory); ok {
 			p.parent = q
 		}
-		// mix.lock and rebar.lock are committed by applications and git-ignored by
-		// libraries; what is on disk is what was resolved.
-		lock := map[string]*locked{}
-		rebarLock, mixLock := path.Join(p.directory, "rebar.lock"), path.Join(p.directory, "mix.lock")
-		rebarLocked, mixLocked := 0, 0
-		if source, ok := repository.Read(rebarLock); ok {
-			for k, v := range readRebarLock(source) {
-				lock[k] = v
-				rebarLocked++
-			}
-		}
-		if source, ok := repository.Read(mixLock); ok {
-			for k, v := range readMixLock(source) {
-				lock[k] = v
-				mixLocked++
-			}
-		}
-		// Implements: REQ-BEAM-010, REQ-TRC-017
-		for _, l := range []struct {
-			file string
-			n    int
-		}{{rebarLock, rebarLocked}, {mixLock, mixLocked}} {
-			if l.n > 0 && !repository.Listed(l.file) {
-				r.NoteIgnored(l.file)
-			}
-		}
-		if rebarLocked > 0 && mixLocked == 0 {
-			r.Note(rebarLock, trace.NoteFlat, "rebar.lock pins versions but records no edges, only a depth: "+
-				"offline, --resolve-depth adds nothing past the packages it pins (--online asks Hex)")
-		}
-		if len(lock) > 0 {
+		if lock := r.readLocks(repository, p.directory); len(lock) > 0 {
 			p.lock = lock
 			r.locks = append(r.locks, lock)
 		} else if p.parent != nil {
 			p.lock = p.parent.lock
 		}
-		p.known = map[string]string{}
-		for q := p; q != nil; q = q.parent {
-			for app := range q.dependencies {
-				p.known[fold(app)] = app
-			}
-		}
-		for app := range p.lock {
-			if _, ok := p.known[fold(app)]; !ok {
-				p.known[fold(app)] = app
-			}
-		}
-		// rebar3 takes its repositories from the project it runs in, the outermost
-		// one; a rebar.config beside a Mix project's mix.exs is Mix's to read.
-		for q := p; q != nil; q = q.parent {
-			if q.rebar != nil && !q.mix {
-				p.registry = *q.rebar
-			}
-		}
-		if p.mix {
-			p.registry = ""
-		}
-		if root != "" {
-			r.readInstalled(root, p.directory)
+		p.known = p.knownApplications()
+		p.registry = p.hexRegistry()
+	}
+}
+
+// readLocks reads a project's rebar.lock and mix.lock into one lock, mix.lock's
+// entries winning. They are committed by applications and git-ignored by libraries;
+// what is on disk is what was resolved, and --explain says when it is ignored.
+//
+// Implements: REQ-BEAM-010, REQ-TRC-017
+func (r *resolver) readLocks(repository *lang.Source, directory string) map[string]*locked {
+	lock := map[string]*locked{}
+	rebarLock, mixLock := path.Join(directory, "rebar.lock"), path.Join(directory, "mix.lock")
+	rebarLocked, mixLocked := 0, 0
+	if source, ok := repository.Read(rebarLock); ok {
+		for k, v := range readRebarLock(source) {
+			lock[k] = v
+			rebarLocked++
 		}
 	}
-	sort.SliceStable(r.projects, func(i, j int) bool { return lang.Depth(r.projects[i].directory) > lang.Depth(r.projects[j].directory) })
-	return r
+	if source, ok := repository.Read(mixLock); ok {
+		for k, v := range readMixLock(source) {
+			lock[k] = v
+			mixLocked++
+		}
+	}
+	for _, l := range []struct {
+		file string
+		n    int
+	}{{rebarLock, rebarLocked}, {mixLock, mixLocked}} {
+		if l.n > 0 && !repository.Listed(l.file) {
+			r.NoteIgnored(l.file)
+		}
+	}
+	if rebarLocked > 0 && mixLocked == 0 {
+		r.Note(rebarLock, trace.NoteFlat, "rebar.lock pins versions but records no edges, only a depth: "+
+			"offline, --resolve-depth adds nothing past the packages it pins (--online asks Hex)")
+	}
+	return lock
+}
+
+// knownApplications folds the applications a project declares, or an enclosing
+// project declares, or its lock holds, to their spelling: a reference may spell an
+// application differently. A declaration's spelling wins over the lock's.
+func (p *project) knownApplications() map[string]string {
+	known := map[string]string{}
+	for q := p; q != nil; q = q.parent {
+		for app := range q.dependencies {
+			known[fold(app)] = app
+		}
+	}
+	for app := range p.lock {
+		if _, ok := known[fold(app)]; !ok {
+			known[fold(app)] = app
+		}
+	}
+	return known
+}
+
+// hexRegistry is the registry of the Hex packages a project names no repository for.
+// rebar3 takes its repositories from the project it runs in, the outermost one; a
+// rebar.config beside a Mix project's mix.exs is Mix's to read, and Mix uses hex.pm.
+func (p *project) hexRegistry() string {
+	if p.mix {
+		return ""
+	}
+	registry := ""
+	for q := p; q != nil; q = q.parent {
+		if q.rebar != nil && !q.mix {
+			registry = *q.rebar
+		}
+	}
+	return registry
 }
 
 var defmoduleLine = regexp.MustCompile(`(?m)^\s*defmodule\s+([A-Z][A-Za-z0-9_.]*)`)

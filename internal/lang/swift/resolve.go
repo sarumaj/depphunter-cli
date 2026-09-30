@@ -26,6 +26,10 @@ type resolver struct {
 	projects []*project
 	types    map[string][]string // type name -> files declaring it at the top level
 	pods     *cocoapods.Index    // what Podfiles and Cartfiles declare
+	// repository reads the repository's files while the resolver is built, and
+	// byDirectory is its projects by directory.
+	repository  *lang.Source
+	byDirectory map[string]*project
 	lang.NoteList
 }
 
@@ -42,99 +46,165 @@ type project struct {
 	names     map[string]string     // pre-5.2 `name:` of a package, lower case -> identity
 }
 
-// Implements: REQ-SWIFT-004, REQ-SWIFT-007, REQ-SWIFT-009, REQ-SWIFT-010, REQ-SWIFT-011, REQ-SWIFT-013
+// Implements: REQ-SWIFT-004, REQ-SWIFT-007, REQ-SWIFT-011, REQ-SWIFT-013
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{root: root, Layout: lang.NewLayout(), modules: map[string][]string{},
-		named: map[string][]string{}, types: map[string][]string{}}
+		named: map[string][]string{}, types: map[string][]string{},
+		repository: lang.NewSource(root), byDirectory: map[string]*project{}}
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
-	repository := lang.NewSource(root)
-	byDirectory := map[string]*project{}
-	get := func(directory string) *project {
-		p := byDirectory[directory]
-		if p == nil {
-			p = &project{directory: directory, declared: map[string]dependency{}, pins: map[string]pin{}, products: map[string]string{}, names: map[string]string{}}
-			byDirectory[directory] = p
-		}
-		return p
+	swiftDirectories := r.indexFiles(sorted)
+	r.readManifests(sorted)
+	r.sortIndexes()
+	r.indexNamed(swiftDirectories)
+	r.indexTypes(sorted)
+	r.pods = cocoapods.Read(root, all)
+	return r
+}
+
+// read reads a repository file as text, on disk too when the scan left it out.
+func (r *resolver) read(relative string) (string, bool) {
+	data, ok := r.repository.Read(relative)
+	return string(data), ok
+}
+
+// projectAt is the project of a directory, made the first time a manifest there asks
+// for it: a Package.swift and Xcode projects may share a directory.
+func (r *resolver) projectAt(directory string) *project {
+	p := r.byDirectory[directory]
+	if p == nil {
+		p = &project{directory: directory, declared: map[string]dependency{}, pins: map[string]pin{}, products: map[string]string{}, names: map[string]string{}}
+		r.byDirectory[directory] = p
 	}
-	read := func(relative string) (string, bool) {
-		data, ok := repository.Read(relative) // on disk too when the scan left it out
-		return string(data), ok
-	}
-	var swiftDirectories []string
+	return p
+}
+
+// indexFiles records every file in the layout and returns the directories holding
+// Swift outside build output, the candidates for an Xcode project's modules.
+func (r *resolver) indexFiles(sorted []*scan.File) (swiftDirectories []string) {
 	for _, f := range sorted {
 		r.Add(f.Path)
-		repository.Add(f)
+		r.repository.Add(f)
 		if strings.HasSuffix(f.Path, ".swift") && !buildOutput(f.Path) {
 			swiftDirectories = append(swiftDirectories, path.Dir(f.Path))
 		}
 	}
-	var manifests []string
+	return swiftDirectories
+}
+
+// readManifests reads the Xcode projects and their workspaces' Package.resolved files
+// in path order, then the Package.swift manifests: what a manifest declares
+// replaces what an Xcode project beside it declares for the same package.
+func (r *resolver) readManifests(sorted []*scan.File) {
+	var packages []string
+	readers := map[string]func(file, directory string){
+		"Package.swift":    func(file, _ string) { packages = append(packages, file) },
+		"project.pbxproj":  r.readXcodeProject,
+		"Package.resolved": r.readWorkspaceResolved,
+	}
 	for _, f := range sorted {
 		if buildOutput(f.Path) {
 			continue
 		}
-		directory, base := path.Dir(f.Path), path.Base(f.Path)
-		switch {
-		case base == "Package.swift":
-			manifests = append(manifests, f.Path)
-		case base == "project.pbxproj" && strings.HasSuffix(directory, ".xcodeproj"):
-			source, _ := read(f.Path)
-			p := get(path.Dir(directory))
-			dependencies, products := xcodePackages(source)
-			for _, d := range dependencies {
-				p.declare(d, path.Dir(directory))
-			}
-			for k, v := range products {
-				p.products[k] = v
-			}
-		case base == "Package.resolved" && strings.HasSuffix(directory, "xcshareddata/swiftpm"):
-			// X.xcodeproj/project.xcworkspace/xcshareddata/swiftpm or
-			// X.xcworkspace/xcshareddata/swiftpm: the project is beside X.
-			d := directory
-			for d != "." && !strings.HasSuffix(d, ".xcodeproj") && !strings.HasSuffix(d, ".xcworkspace") {
-				d = path.Dir(d)
-			}
-			if strings.HasSuffix(d, ".xcworkspace") && strings.HasSuffix(path.Dir(d), ".xcodeproj") {
-				d = path.Dir(d)
-			}
-			if d != "." {
-				source, _ := read(f.Path)
-				pins := readResolved([]byte(source))
-				get(path.Dir(d)).pin(pins)
-				r.noteResolved(f.Path, path.Dir(d), len(pins))
-			}
+		if readManifest := readers[path.Base(f.Path)]; readManifest != nil {
+			readManifest(f.Path, path.Dir(f.Path))
 		}
 	}
-	for _, m := range manifests {
-		directory := path.Dir(m)
-		source, _ := read(m)
-		source = stripComments(source)
-		p := get(directory)
-		for _, d := range dependencies(source) {
-			p.declare(d, directory)
+	for _, m := range packages {
+		r.readPackage(m)
+	}
+}
+
+// readXcodeProject records the Swift packages an Xcode project references, for the
+// project beside the .xcodeproj.
+//
+// Implements: REQ-SWIFT-010
+func (r *resolver) readXcodeProject(file, directory string) {
+	if !strings.HasSuffix(directory, ".xcodeproj") {
+		return
+	}
+	source, _ := r.read(file)
+	p := r.projectAt(path.Dir(directory))
+	dependencies, products := xcodePackages(source)
+	for _, d := range dependencies {
+		p.declare(d, path.Dir(directory))
+	}
+	for k, v := range products {
+		p.products[k] = v
+	}
+}
+
+// readWorkspaceResolved reads the Package.resolved Xcode keeps in a workspace:
+// X.xcodeproj/project.xcworkspace/xcshareddata/swiftpm or
+// X.xcworkspace/xcshareddata/swiftpm. Its pins are the project's beside X.
+//
+// Implements: REQ-SWIFT-009
+func (r *resolver) readWorkspaceResolved(file, directory string) {
+	if !strings.HasSuffix(directory, "xcshareddata/swiftpm") {
+		return
+	}
+	d := directory
+	for d != "." && !strings.HasSuffix(d, ".xcodeproj") && !strings.HasSuffix(d, ".xcworkspace") {
+		d = path.Dir(d)
+	}
+	if strings.HasSuffix(d, ".xcworkspace") && strings.HasSuffix(path.Dir(d), ".xcodeproj") {
+		d = path.Dir(d)
+	}
+	if d == "." {
+		return
+	}
+	source, _ := r.read(file)
+	pins := readResolved([]byte(source))
+	r.projectAt(path.Dir(d)).pin(pins)
+	r.noteResolved(file, path.Dir(d), len(pins))
+}
+
+// readPackage reads a Package.swift: the packages it depends on, the products they
+// give, and the directories of its targets, each a module.
+func (r *resolver) readPackage(manifest string) {
+	directory := path.Dir(manifest)
+	source, _ := r.read(manifest)
+	source = stripComments(source)
+	p := r.projectAt(directory)
+	for _, d := range dependencies(source) {
+		p.declare(d, directory)
+	}
+	for _, t := range targets(source) {
+		for k, v := range t.products {
+			p.products[k] = v
 		}
-		for _, t := range targets(source) {
-			for k, v := range t.products {
-				p.products[k] = v
-			}
-			if d := r.targetDirectory(directory, t); d != "" {
-				name := c99name(t.name)
-				r.modules[name] = append(r.modules[name], d)
-				r.targets = append(r.targets, d)
-			}
-		}
-		if lock, ok := read(path.Join(directory, "Package.resolved")); ok {
-			pins := readResolved([]byte(lock))
-			p.pin(pins)
-			if !repository.Listed(path.Join(directory, "Package.resolved")) && len(pins) > 0 {
-				r.NoteIgnored(path.Join(directory, "Package.resolved"))
-			}
-			r.noteResolved(path.Join(directory, "Package.resolved"), directory, len(pins))
+		if d := r.targetDirectory(directory, t); d != "" {
+			name := c99name(t.name)
+			r.modules[name] = append(r.modules[name], d)
+			r.targets = append(r.targets, d)
 		}
 	}
-	for _, p := range byDirectory {
+	r.readLock(p)
+}
+
+// readLock reads the Package.resolved beside a Package.swift, which SwiftPM leaves
+// out of git for a library; one on disk only is still what was resolved, and
+// --explain says so.
+//
+// Implements: REQ-SWIFT-009, REQ-TRC-017
+func (r *resolver) readLock(p *project) {
+	resolved := path.Join(p.directory, "Package.resolved")
+	lock, ok := r.read(resolved)
+	if !ok {
+		return
+	}
+	pins := readResolved([]byte(lock))
+	p.pin(pins)
+	if !r.repository.Listed(resolved) && len(pins) > 0 {
+		r.NoteIgnored(resolved)
+	}
+	r.noteResolved(resolved, p.directory, len(pins))
+}
+
+// sortIndexes orders the projects and each module's directories shallowest first,
+// and the targets deepest first, so that a file's nearest target comes first.
+func (r *resolver) sortIndexes() {
+	for _, p := range r.byDirectory {
 		r.projects = append(r.projects, p)
 	}
 	sort.Slice(r.projects, func(i, j int) bool { return lang.ShallowestFirst(r.projects[i].directory, r.projects[j].directory) })
@@ -143,9 +213,12 @@ func newResolver(root string, all []*scan.File) *resolver {
 		r.modules[name] = directories
 	}
 	sort.Slice(r.targets, func(i, j int) bool { return lang.DeepestFirst(r.targets[i], r.targets[j]) })
-	// Directories that may be modules of an Xcode project: every directory holding
-	// Swift, or holding directories that do, by its name - except dependency
-	// checkouts (CocoaPods, Carthage).
+}
+
+// indexNamed files the directories that may be modules of an Xcode project by base
+// name, shallowest first: every directory holding Swift, or holding directories that
+// do, except dependency checkouts (CocoaPods, Carthage).
+func (r *resolver) indexNamed(swiftDirectories []string) {
 	seen := map[string]bool{}
 	for _, d := range swiftDirectories {
 		for ; d != "." && !seen[d]; d = path.Dir(d) {
@@ -159,9 +232,6 @@ func newResolver(root string, all []*scan.File) *resolver {
 		sortShallow(directories)
 		r.named[name] = directories
 	}
-	r.indexTypes(sorted)
-	r.pods = cocoapods.Read(root, all)
-	return r
 }
 
 // declare records a dependency; a path dependency's path is made relative to the

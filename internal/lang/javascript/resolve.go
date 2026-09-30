@@ -68,93 +68,174 @@ func newResolver(all []*scan.File) *resolver {
 		locks: map[string]map[string]string{}, byName: map[string]string{}, configs: map[string]*tsconfig{},
 		kits: map[string]bool{}, tree: newTree(),
 	}
+	byPath := r.indexFiles(all)
+	r.readManifests(all)
+	r.readLocks(all)
+	r.readConfigs(all, byPath)
+	return r
+}
+
+// indexFiles records every file in the layout and returns them by path, for the
+// tsconfig files that extend one another.
+func (r *resolver) indexFiles(all []*scan.File) map[string]*scan.File {
 	byPath := map[string]*scan.File{}
 	for _, f := range all {
 		r.Add(f.Path)
 		byPath[f.Path] = f
 	}
-	yarn := map[string]yarnDescriptors{} // yarn.lock dir -> its descriptors
+	return byPath
+}
+
+// readManifests reads the package.json files and marks the SvelteKit projects. They
+// fill what no lock file reads, so they may be read in a pass of their own.
+func (r *resolver) readManifests(all []*scan.File) {
+	readers := map[string]func(f *scan.File, directory string){
+		"svelte.config.js":  r.addKit,
+		"svelte.config.mjs": r.addKit,
+		"svelte.config.cjs": r.addKit,
+		"svelte.config.ts":  r.addKit,
+		"package.json":      r.readPackageJSON,
+	}
+	for _, f := range all {
+		if readManifest := readers[path.Base(f.Path)]; readManifest != nil {
+			readManifest(f, path.Dir(f.Path))
+		}
+	}
+}
+
+// addKit marks a directory holding a SvelteKit svelte.config, where $lib resolves.
+func (r *resolver) addKit(_ *scan.File, directory string) {
+	r.kits[directory] = true
+}
+
+// readPackageJSON records the ranges a package.json declares, of every kind, a
+// regular dependency's range winning, and the directory of a workspace package by
+// its name.
+func (r *resolver) readPackageJSON(f *scan.File, directory string) {
+	var manifest struct {
+		Name                                                                  string
+		Dependencies, DevDependencies, PeerDependencies, OptionalDependencies map[string]string
+	}
+	if readJSON(f.AbsolutePath, &manifest) != nil {
+		return
+	}
+	dependencies := map[string]string{}
+	for _, m := range []map[string]string{manifest.OptionalDependencies, manifest.PeerDependencies, manifest.DevDependencies, manifest.Dependencies} {
+		for k, v := range m {
+			dependencies[k] = v
+		}
+	}
+	r.dependencies[directory] = dependencies
+	if manifest.Name != "" {
+		r.byName[manifest.Name] = directory
+	}
+}
+
+// readLocks reads the lock files in path order. One decoding of each serves both the
+// versions the project's imports pin and the tree the transitive walk follows: a
+// monorepo's pnpm-lock.yaml runs to megabytes of YAML. yarn.lock pins ranges, so it
+// is applied once every package.json is read, and bun.lock last of all.
+func (r *resolver) readLocks(all []*scan.File) {
+	yarn := map[string]yarnDescriptors{} // yarn.lock directory -> its descriptors
 	var bunDirectories []string          // bun.lock directories, in path order
 	buns := map[string]*bunLock{}
-	for _, f := range all {
-		directory := path.Dir(f.Path)
-		switch path.Base(f.Path) {
-		case "svelte.config.js", "svelte.config.mjs", "svelte.config.cjs", "svelte.config.ts":
-			r.kits[directory] = true
-		case "package.json":
-			var pj struct {
-				Name                                                                  string
-				Dependencies, DevDependencies, PeerDependencies, OptionalDependencies map[string]string
+	readers := map[string]func(f *scan.File, directory string){
+		"package-lock.json":   r.readPackageLock,
+		"npm-shrinkwrap.json": r.readPackageLock,
+		"yarn.lock": func(f *scan.File, directory string) {
+			if descriptors, ok := r.readYarnLock(f); ok {
+				yarn[directory] = descriptors
 			}
-			if readJSON(f.AbsolutePath, &pj) != nil {
-				continue
-			}
-			dependencies := map[string]string{}
-			for _, m := range []map[string]string{pj.OptionalDependencies, pj.PeerDependencies, pj.DevDependencies, pj.Dependencies} {
-				for k, v := range m {
-					dependencies[k] = v
-				}
-			}
-			r.dependencies[directory] = dependencies
-			if pj.Name != "" {
-				r.byName[pj.Name] = directory
-			}
-		// One decoding of each lock file serves both the versions the project's
-		// imports pin and the tree the transitive walk follows: a monorepo's
-		// pnpm-lock.yaml runs to megabytes of YAML.
-		case "package-lock.json", "npm-shrinkwrap.json":
-			// npm-shrinkwrap.json is package-lock.json's format under the name a
-			// published package's lock takes; beside one, npm reads only it.
-			// Implements: REQ-JS-007
-			if path.Base(f.Path) == "package-lock.json" && r.Files[path.Join(directory, "npm-shrinkwrap.json")] {
-				continue
-			}
-			var lock packageLock
-			if readJSON(f.AbsolutePath, &lock) == nil {
-				r.noteUnpinned(f.Path, lock.pinGit(r.tree))
-				r.addLock(directory, lock.versions())
-				r.tree.addPackageLockTree(&lock)
-			}
-		case "yarn.lock":
-			if data, err := os.ReadFile(f.AbsolutePath); err == nil {
-				entries := readYarnEntries(data)
-				r.noteUnpinned(f.Path, unpinnedGit(entries))
-				yarn[directory] = newYarnDescriptors(yarnVersions(entries))
-				r.tree.addYarnTree(entries)
-			}
-		case "pnpm-lock.yaml":
+		},
+		"pnpm-lock.yaml": r.readPnpmLock,
+		"bun.lockb":      r.noteBinaryBunLock,
+		"bun.lock": func(f *scan.File, directory string) {
 			data, err := os.ReadFile(f.AbsolutePath)
 			if err != nil {
-				continue
-			}
-			lock, err := readPnpmLock(data)
-			if err != nil {
-				continue
-			}
-			for importer, versions := range lock.versions() {
-				r.addLock(path.Join(directory, importer), versions)
-			}
-			r.tree.addPnpmTree(lock)
-		case "bun.lockb":
-			// Implements: REQ-JS-017, REQ-TRC-017
-			if !r.Files[path.Join(directory, "bun.lock")] && !r.Files[path.Join(directory, "yarn.lock")] {
-				r.Note(f.Path, trace.NoteUnread, "Bun's binary lock file is not read: nothing here pins "+
-					"what it installed or records its edges; `bun install --save-text-lockfile` writes bun.lock, "+
-					"which is read")
-			}
-		case "bun.lock":
-			data, err := os.ReadFile(f.AbsolutePath)
-			if err != nil {
-				continue
+				return
 			}
 			if lock, err := readBunLock(data); err == nil {
 				bunDirectories = append(bunDirectories, directory)
 				buns[directory] = lock
 			}
+		},
+	}
+	for _, f := range all {
+		if readLock := readers[path.Base(f.Path)]; readLock != nil {
+			readLock(f, path.Dir(f.Path))
 		}
 	}
-	// yarn.lock keys are "name@range": pin each declared range of the packages below.
-	// Implements: REQ-JS-008
+	r.pinYarnRanges(yarn)
+	r.addBunLocks(bunDirectories, buns)
+}
+
+// readPackageLock reads a package-lock.json or npm-shrinkwrap.json: the same format,
+// the second under the name a published package's lock takes. Beside a
+// shrinkwrap, npm reads only it.
+//
+// Implements: REQ-JS-007
+func (r *resolver) readPackageLock(f *scan.File, directory string) {
+	if path.Base(f.Path) == "package-lock.json" && r.Files[path.Join(directory, "npm-shrinkwrap.json")] {
+		return
+	}
+	var lock packageLock
+	if readJSON(f.AbsolutePath, &lock) != nil {
+		return
+	}
+	r.noteUnpinned(f.Path, lock.pinGit(r.tree))
+	r.addLock(directory, lock.versions())
+	r.tree.addPackageLockTree(&lock)
+}
+
+// readYarnLock reads a yarn.lock's tree and returns its descriptors, which pin the
+// ranges of the package.json files below it.
+func (r *resolver) readYarnLock(f *scan.File) (yarnDescriptors, bool) {
+	data, err := os.ReadFile(f.AbsolutePath)
+	if err != nil {
+		return yarnDescriptors{}, false
+	}
+	entries := readYarnEntries(data)
+	r.noteUnpinned(f.Path, unpinnedGit(entries))
+	descriptors := newYarnDescriptors(yarnVersions(entries))
+	r.tree.addYarnTree(entries)
+	return descriptors, true
+}
+
+// readPnpmLock reads a pnpm-lock.yaml, whose importers are the workspace packages
+// below it.
+func (r *resolver) readPnpmLock(f *scan.File, directory string) {
+	data, err := os.ReadFile(f.AbsolutePath)
+	if err != nil {
+		return
+	}
+	lock, err := readPnpmLock(data)
+	if err != nil {
+		return
+	}
+	for importer, versions := range lock.versions() {
+		r.addLock(path.Join(directory, importer), versions)
+	}
+	r.tree.addPnpmTree(lock)
+}
+
+// noteBinaryBunLock says a bun.lockb was not read, unless a lock beside it that is
+// read pins the same packages.
+//
+// Implements: REQ-JS-017, REQ-TRC-017
+func (r *resolver) noteBinaryBunLock(f *scan.File, directory string) {
+	if r.Files[path.Join(directory, "bun.lock")] || r.Files[path.Join(directory, "yarn.lock")] {
+		return
+	}
+	r.Note(f.Path, trace.NoteUnread, "Bun's binary lock file is not read: nothing here pins "+
+		"what it installed or records its edges; `bun install --save-text-lockfile` writes bun.lock, "+
+		"which is read")
+}
+
+// pinYarnRanges pins each range a package.json below a yarn.lock declares: yarn.lock
+// keys are "name@range".
+//
+// Implements: REQ-JS-008
+func (r *resolver) pinYarnRanges(yarn map[string]yarnDescriptors) {
 	for lockDirectory, descriptors := range yarn {
 		for packageDirectory, dependencies := range r.dependencies {
 			if !lang.WithinOrEqual(packageDirectory, lockDirectory) {
@@ -169,10 +250,15 @@ func newResolver(all []*scan.File) *resolver {
 			r.addLock(packageDirectory, pinned)
 		}
 	}
-	// bun.lock comes last: beside another lock file it only answers for what that
-	// one does not, so adding Bun's lock never changes a version another gave.
-	// Implements: REQ-JS-016
-	for _, directory := range bunDirectories {
+}
+
+// addBunLocks adds the bun.lock files last: beside another lock file one only
+// answers for what that one does not, so adding Bun's lock never changes a version
+// another gave.
+//
+// Implements: REQ-JS-016
+func (r *resolver) addBunLocks(directories []string, buns map[string]*bunLock) {
+	for _, directory := range directories {
 		lock := buns[directory]
 		entries := lock.entries()
 		for importer, versions := range lock.versions(entries) {
@@ -180,17 +266,21 @@ func newResolver(all []*scan.File) *resolver {
 		}
 		r.tree.addBunTree(entries)
 	}
-	// tsconfig.json wins over jsconfig.json in the same directory.
+}
+
+// readConfigs reads the effective tsconfig or jsconfig of each directory holding
+// one; tsconfig.json wins over jsconfig.json in the same directory.
+func (r *resolver) readConfigs(all []*scan.File, byPath map[string]*scan.File) {
 	for _, name := range []string{"jsconfig.json", "tsconfig.json"} {
 		for _, f := range all {
-			if path.Base(f.Path) == name {
-				if c := loadTSConfig(f.Path, byPath, map[string]bool{}); c != nil {
-					r.configs[path.Dir(f.Path)] = c
-				}
+			if path.Base(f.Path) != name {
+				continue
+			}
+			if config := loadTSConfig(f.Path, byPath, map[string]bool{}); config != nil {
+				r.configs[path.Dir(f.Path)] = config
 			}
 		}
 	}
-	return r
 }
 
 func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
