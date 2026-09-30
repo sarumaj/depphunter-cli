@@ -1,5 +1,4 @@
 // Implements: REQ-DIST-017
-import potpack from './vendor/potpack.js';
 
 import { bulk } from './model.js';
 import { FACADE, STORY } from './buildings.js';
@@ -232,19 +231,75 @@ function maxFileLoc(n, max = 1) {
   return max;
 }
 
-// Packs a terrace's children into a near-square area with potpack. Each box carries
-// its gap; positions are offset by the terrace padding. potpack's sort is stable and
-// children arrive in name order, so the same tree always packs the same way.
+// Packs a terrace's children as densely as a near-square allows: bottom-left onto a
+// skyline (packAt), in two orders and at a few strip widths around the square's,
+// keeping whichever takes the least area. Each box carries its gap; positions are
+// offset by the terrace padding. The sorts are stable and children arrive in name
+// order, so the same tree always packs the same way.
 // Implements: REQ-MAP-043, REQ-MAP-010
 function shelf(items) {
   if (!items.length) return { w: FILE + 2 * PAD, d: FILE + 2 * PAD };
   const boxes = items.map(it => ({ w: it.w + GAP, h: it.d + GAP, it }));
-  const { w, h } = potpack(boxes);
-  for (const b of boxes) {
-    b.it.x = PAD + b.x;
-    b.it.z = PAD + b.y;
+  const area = boxes.reduce((a, b) => a + b.w * b.h, 0);
+  const widest = Math.max(...boxes.map(b => b.w));
+  let best = null;
+  for (const order of ORDERS) {
+    const sorted = [...boxes].sort(order);
+    for (const k of WIDTHS) {
+      const packed = packAt(sorted, Math.max(widest, Math.sqrt(area) * k));
+      // Near-square: a long strip packs tighter, and makes a terrace nobody can take in.
+      const long = Math.max(packed.w / packed.h, packed.h / packed.w);
+      const score = packed.w * packed.h * (long > 2 ? long / 2 : 1);
+      if (!best || score < best.score - 1e-9) best = { ...packed, sorted, score };
+    }
   }
-  return { w: Math.max(w - GAP, FILE) + 2 * PAD, d: Math.max(h - GAP, FILE) + 2 * PAD };
+  best.at.forEach((p, i) => {
+    best.sorted[i].it.x = PAD + p.x;
+    best.sorted[i].it.z = PAD + p.z;
+  });
+  return { w: Math.max(best.w - GAP, FILE) + 2 * PAD, d: Math.max(best.h - GAP, FILE) + 2 * PAD };
+}
+
+// The strip widths shelf tries, as multiples of the side of a square of the boxes' area,
+// and the orders it places them in: tallest first, and largest first.
+const WIDTHS = [0.8, 0.9, 1, 1.1, 1.2, 1.35, 1.5];
+const ORDERS = [
+  (a, b) => b.h - a.h || b.w - a.w,
+  (a, b) => b.w * b.h - a.w * a.h,
+];
+
+// Places boxes, in order, each where its top comes lowest on a skyline no wider than
+// `width` (the leftmost such place); returns their corners and the space they take.
+function packAt(boxes, width) {
+  let sky = [{ x: 0, y: 0, w: width }];
+  const at = [];
+  let w = 0, h = 0;
+  for (const box of boxes) {
+    let place = null;
+    for (let i = 0; i < sky.length && sky[i].x + box.w <= width + 1e-9; i++) {
+      let y = 0;
+      for (let j = i, end = sky[i].x + box.w; j < sky.length && sky[j].x < end - 1e-9; j++) y = Math.max(y, sky[j].y);
+      if (!place || y < place.y - 1e-9) place = { x: sky[i].x, y };
+    }
+    at.push({ x: place.x, z: place.y });
+    w = Math.max(w, place.x + box.w);
+    h = Math.max(h, place.y + box.h);
+    // The box's top replaces the skyline under it.
+    const x0 = place.x, x1 = place.x + box.w, next = [];
+    for (const s of sky) {
+      if (s.x + s.w <= x0 + 1e-9 || s.x >= x1 - 1e-9) { next.push(s); continue; }
+      if (s.x < x0) next.push({ x: s.x, y: s.y, w: x0 - s.x });
+      if (s.x + s.w > x1) next.push({ x: x1, y: s.y, w: s.x + s.w - x1 });
+    }
+    next.push({ x: x0, y: place.y + box.h, w: box.w });
+    next.sort((a, b) => a.x - b.x);
+    sky = next.reduce((out, s) => {
+      const last = out[out.length - 1];
+      if (last && Math.abs(last.y - s.y) < 1e-9) last.w += s.w; else out.push({ ...s });
+      return out;
+    }, []);
+  }
+  return { at, w, h };
 }
 
 function bounds(boxes) {

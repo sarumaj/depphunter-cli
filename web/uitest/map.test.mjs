@@ -405,6 +405,23 @@ describe('positions', () => {
       }
     }
   });
+
+  // Verifies: REQ-MAP-043
+  it('leave little of a terrace empty around large children among small ones', () => {
+    // Two directories of twenty-five files opened among twenty-five loose ones: the
+    // shape a square packer leaves a lawn beside (potpack left 18% of it empty), and
+    // what an empty share compounds into at every level above.
+    const nodes = [ROOT, directory('a'), directory('b')];
+    for (const d of ['a', 'b']) for (let k = 0; k < 25; k++) nodes.push(file(`${d}/f${k}.go`, `d:${d}`, { loc: 10 }));
+    for (let k = 0; k < 25; k++) nodes.push(file(`f${k}.go`, 'd:.', { loc: 10 }));
+    const { L } = draw({ nodes, edges: [] }, { expanded: ['d:a', 'd:b'] });
+    const root = L.byNode.get('d:.');
+    const PAD = 0.55, GAP = 0.35;
+    const kids = L.boxes.filter(b => b.kind !== 'land' && b.node.parentNode === root.node);
+    const used = kids.reduce((a, b) => a + (b.w + GAP) * (b.d + GAP), 0);
+    const space = (root.w - 2 * PAD + GAP) * (root.d - 2 * PAD + GAP);
+    assert.ok(used / space >= 0.9, `${(100 * used / space).toFixed(0)}% of the terrace is packed`);
+  });
 });
 
 // ---------------------------------------------------------------- expanding

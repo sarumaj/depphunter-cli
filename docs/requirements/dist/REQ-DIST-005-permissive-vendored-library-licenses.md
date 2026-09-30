@@ -23,7 +23,7 @@ Compatible licenses keep the product redistributable under its own license.
 ## Acceptance criteria
 
 1. `web/static/vendor/README.md` lists three.js (MIT), highlight.js (BSD
-   3-Clause), potpack (ISC) and fzf (BSD 3-Clause), and the models' sources
+   3-Clause) and fzf (BSD 3-Clause), and the models' sources
    (MIT, CC0).
 2. Each listed license file (`*.LICENSE`) exists in `web/static/vendor/`.
 
