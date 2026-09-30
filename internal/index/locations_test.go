@@ -1,12 +1,15 @@
 package index
 
 import (
+	"encoding/base64"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/userconf"
 )
 
@@ -218,5 +221,39 @@ func TestDiscoverComposerSingleHome(t *testing.T) {
 	got := strings.Join(order(discoverOn(home, "linux", nil), Composer, "acme/lib", ""), " ")
 	if strings.Contains(got, "legacy.corp") || !strings.Contains(got, "https://xdg.corp") {
 		t.Errorf("asked %s, want the XDG home's repository and not ~/.composer's", got)
+	}
+}
+
+// A relative XDG_CONFIG_HOME names no directory: taken from the working directory,
+// usually the repository analyzed, it would make the repository's files this
+// machine's configuration and credentials. The same files under an absolute
+// XDG_CONFIG_HOME are read, so the test does not pass for another reason.
+//
+// Verifies: REQ-SUP-064, REQ-AUTH-020
+func TestRelativeXDGConfigHomeReadsNothingFromTheRepository(t *testing.T) {
+	home, repository := t.TempDir(), t.TempDir()
+	put(t, filepath.Join(repository, ".config", "pip", "pip.conf"), "[global]\nindex-url = https://repository.corp/simple\n")
+	credential := base64.StdEncoding.EncodeToString([]byte("repository:secret"))
+	put(t, filepath.Join(repository, ".config", "containers", "auth.json"), `{"auths":{"registry.corp":{"auth":"`+credential+`"}}}`)
+	t.Chdir(repository)
+
+	for _, testCase := range []struct {
+		xdgConfigHome, index, authorization string
+	}{
+		{".config", "https://pypi.org/simple", ""},
+		{filepath.Join(repository, ".config"), "https://repository.corp/simple", "Basic " + credential},
+	} {
+		variables := map[string]string{"XDG_CONFIG_HOME": testCase.xdgConfigHome}
+		if got := strings.Join(order(Discover(nil, environment(variables), home), PyPI, "requests", ""), " "); got != testCase.index {
+			t.Errorf("XDG_CONFIG_HOME=%s: pip index %s, want %s", testCase.xdgConfigHome, got, testCase.index)
+		}
+		request, err := http.NewRequest(http.MethodGet, "https://registry.corp/v2/", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		auth.Read(home, environment(variables)).Apply(request)
+		if got := request.Header.Get("Authorization"); got != testCase.authorization {
+			t.Errorf("XDG_CONFIG_HOME=%s: registry.corp authorization %q, want %q", testCase.xdgConfigHome, got, testCase.authorization)
+		}
 	}
 }

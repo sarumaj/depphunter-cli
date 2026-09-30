@@ -158,7 +158,7 @@ func (m Machine) CocoaPodsRepositories() string {
 // Implements: REQ-SUP-064
 func (m Machine) SwiftPMRegistries() string {
 	idiomatic := m.on(firstFile(m.home("Library", "org.swift.swiftpm", "configuration", "registries.json")), "darwin")
-	directory := cmp.Or(m.under("XDG_CONFIG_HOME", "swiftpm"), m.home(".swiftpm"))
+	directory := cmp.Or(m.xdg("XDG_CONFIG_HOME", "swiftpm"), m.home(".swiftpm"))
 	return cmp.Or(idiomatic, join(directory, "configuration", "registries.json"))
 }
 

@@ -6,6 +6,28 @@ import (
 	"testing"
 )
 
+// The relative entries of XDG_CONFIG_DIRS are dropped and the absolute ones kept;
+// with none absolute, the list is the default's.
+//
+// Verifies: REQ-SUP-064
+func TestRelativeXDGConfigDirectoriesDropped(t *testing.T) {
+	home, directories, working := t.TempDir(), t.TempDir(), t.TempDir()
+	touch(t, filepath.Join(working, "relative", "uv", "uv.toml"))
+	t.Chdir(working)
+	m := machine(t, home, "linux", map[string]string{"XDG_CONFIG_DIRS": "relative" + string(filepath.ListSeparator) + directories})
+	if got := m.UVConfigFiles(); !slices.Equal(got, []string{filepath.Join(home, ".config", "uv", "uv.toml"), filepath.Join(SystemRoot, "etc", "uv", "uv.toml")}) {
+		t.Errorf("uv: %v", got)
+	}
+	files, _ := m.PipConfigFiles()
+	if want := filepath.Join(directories, "pip", "pip.conf"); len(files) == 0 || files[0] != want || slices.Contains(files, filepath.Join("relative", "pip", "pip.conf")) {
+		t.Errorf("pip: %v, want %s first and no relative file", files, want)
+	}
+	m = machine(t, home, "linux", map[string]string{"XDG_CONFIG_DIRS": "relative"})
+	if files, _ := m.PipConfigFiles(); len(files) == 0 || files[0] != filepath.Join(SystemRoot, "etc", "xdg", "pip", "pip.conf") {
+		t.Errorf("pip without an absolute entry: %v, want /etc/xdg's first", files)
+	}
+}
+
 // uv reads the user's uv.toml and the system's (the first $XDG_CONFIG_DIRS one that
 // exists, else /etc/uv); UV_CONFIG_FILE names the one file read, UV_NO_CONFIG
 // reads none, and neither lets a project's uv.toml count.

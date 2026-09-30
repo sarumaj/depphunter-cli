@@ -131,15 +131,6 @@ func (m Machine) applicationSupport(element ...string) string {
 	return m.home(append([]string{"Library", "Application Support"}, element...)...)
 }
 
-// absolute is path when it is absolute, else "": the XDG specification has a
-// relative XDG_* value ignored.
-func absolute(path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	return ""
-}
-
 // present is paths without the "" ones, nil when none is left.
 func present(paths ...string) []string {
 	var out []string
@@ -167,8 +158,7 @@ func (m Machine) names(match func(string) bool) []string {
 }
 
 // ConfigDirectory is os.UserConfigDir for this machine: %APPDATA% on Windows,
-// ~/Library/Application Support on macOS, else $XDG_CONFIG_HOME when it is absolute
-// or ~/.config.
+// ~/Library/Application Support on macOS, else $XDG_CONFIG_HOME or ~/.config.
 //
 // Implements: REQ-SUP-064
 func (m Machine) ConfigDirectory() string {
@@ -178,19 +168,33 @@ func (m Machine) ConfigDirectory() string {
 	case "darwin", "ios":
 		return m.applicationSupport()
 	}
-	return m.absoluteXDGConfigHome()
+	return m.xdgConfigHome()
 }
 
-// absoluteXDGConfigHome is a path under $XDG_CONFIG_HOME when it is absolute, else
-// under ~/.config.
-func (m Machine) absoluteXDGConfigHome(element ...string) string {
-	return join(cmp.Or(absolute(m.Environment("XDG_CONFIG_HOME")), m.home(".config")), element...)
+// xdg is a path under the directory an XDG_* variable names, "" unless that is
+// absolute: the XDG Base Directory Specification has a relative path ignored, and
+// one would be taken from the working directory, often the repository analyzed.
+func (m Machine) xdg(variable string, element ...string) string {
+	if directory := m.Environment(variable); filepath.IsAbs(directory) {
+		return join(directory, element...)
+	}
+	return ""
 }
 
-// xdgConfigHome is $XDG_CONFIG_HOME, else ~/.config, as the tools that follow the
-// XDG layout on every platform (Composer, Podman, pip on Linux) take it.
+// xdgConfigHome is a path under $XDG_CONFIG_HOME, else under ~/.config.
 func (m Machine) xdgConfigHome(element ...string) string {
-	return join(cmp.Or(m.Environment("XDG_CONFIG_HOME"), m.home(".config")), element...)
+	return join(cmp.Or(m.xdg("XDG_CONFIG_HOME"), m.home(".config")), element...)
+}
+
+// xdgConfigDirectories are the absolute directories of $XDG_CONFIG_DIRS (see xdg).
+func (m Machine) xdgConfigDirectories() []string {
+	var out []string
+	for _, directory := range filepath.SplitList(m.Environment("XDG_CONFIG_DIRS")) {
+		if filepath.IsAbs(directory) {
+			out = append(out, directory)
+		}
+	}
+	return out
 }
 
 // ---------------------------------------------------------------- Cargo
@@ -340,7 +344,7 @@ func (m Machine) YarnClassicConfig() string { return m.home(".yarnrc") }
 //
 // Implements: REQ-SUP-064
 func (m Machine) BunConfig() string {
-	return cmp.Or(firstFile(m.under("XDG_CONFIG_HOME", ".bunfig.toml")), m.home(".bunfig.toml"))
+	return cmp.Or(firstFile(m.xdg("XDG_CONFIG_HOME", ".bunfig.toml")), m.home(".bunfig.toml"))
 }
 
 // ---------------------------------------------------------------- pip
@@ -368,11 +372,11 @@ func (m Machine) PipConfigFiles() (files []string, ok bool) {
 	case "darwin", "ios":
 		files = append(files, system("Library", "Application Support", "pip", base))
 	default:
-		directories := m.Environment("XDG_CONFIG_DIRS")
-		if directories == "" {
+		directories := m.xdgConfigDirectories()
+		if directories == nil {
 			files = append(files, system("etc", "xdg", "pip", base))
 		}
-		for _, d := range filepath.SplitList(directories) {
+		for _, d := range directories {
 			files = append(files, join(d, "pip", base))
 		}
 		files = append(files, system("etc", base))
@@ -395,10 +399,7 @@ func (m Machine) PipConfigFiles() (files []string, ok bool) {
 		}
 		files = append(files, join(user, base))
 	}
-	if environment != "" {
-		files = append(files, environment)
-	}
-	return files, true
+	return present(append(files, environment)...), true
 }
 
 // ---------------------------------------------------------------- containers
@@ -422,7 +423,7 @@ func (m Machine) ContainerAuthFiles() []string {
 		}
 	}
 	if m.GOOS == "linux" {
-		add(m.under("XDG_RUNTIME_DIR", "containers", "auth.json"))
+		add(m.xdg("XDG_RUNTIME_DIR", "containers", "auth.json"))
 	} else {
 		add(m.home(".config", "containers", "auth.json"))
 	}
