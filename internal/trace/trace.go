@@ -12,8 +12,8 @@
 package trace
 
 import (
+	"cmp"
 	"slices"
-	"sort"
 	"sync"
 	"time"
 
@@ -290,13 +290,16 @@ func once(list []string) []string {
 }
 
 // SetSources records the indexes the run discovered.
-func (r *Report) SetSources(s []Source) {
+func (r *Report) SetSources(s []Source) { r.locked(func() { r.Sources = s }) }
+
+// locked runs change under the report's lock; a nil report records nothing.
+func (r *Report) locked(change func()) {
 	if r == nil {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.Sources = s
+	change()
 }
 
 // Enter says which plugin's walk is about to ask, and how far past the direct
@@ -305,35 +308,22 @@ func (r *Report) SetSources(s []Source) {
 //
 // Implements: REQ-TRC-004
 func (r *Report) Enter(plugin string, depth int) {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.plugin, r.level = plugin, depth
+	r.locked(func() { r.plugin, r.level = plugin, depth })
 }
 
 // Done closes the round Enter opened.
 func (r *Report) Done(asked, answered, added, edges int, took time.Duration) {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.Levels = append(r.Levels, Level{
-		Plugin: r.plugin, Depth: r.level, Asked: asked, Answered: answered,
-		Added: added, Edges: edges, Millis: took.Milliseconds(),
+	r.locked(func() {
+		r.Levels = append(r.Levels, Level{
+			Plugin: r.plugin, Depth: r.level, Asked: asked, Answered: answered,
+			Added: added, Edges: edges, Millis: took.Milliseconds(),
+		})
 	})
 }
 
 // Skip records an ecosystem whose walk never started.
 func (r *Report) Skip(plugin, reason string) {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.Skipped = append(r.Skipped, Skip{Plugin: plugin, Reason: reason})
+	r.locked(func() { r.Skipped = append(r.Skipped, Skip{Plugin: plugin, Reason: reason}) })
 }
 
 // Note records what a resolver or an index had to say. Plugin defaults to the plugin
@@ -341,19 +331,17 @@ func (r *Report) Skip(plugin, reason string) {
 //
 // Implements: REQ-TRC-017
 func (r *Report) Note(n Note) {
-	if r == nil || n.Message == "" {
+	if n.Message == "" {
 		return
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if n.Plugin == "" {
-		n.Plugin = r.plugin
-	}
-	// A note is about a file or a registry, not a question: an index that refuses
-	// a key refuses it for every package asked of it, and says so once.
-	if !slices.Contains(r.Notes, n) {
-		r.Notes = append(r.Notes, n)
-	}
+	r.locked(func() {
+		n.Plugin = cmp.Or(n.Plugin, r.plugin)
+		// A note is about a file or a registry, not a question: an index that
+		// refuses a key refuses it for every package asked of it, and says so once.
+		if !slices.Contains(r.Notes, n) {
+			r.Notes = append(r.Notes, n)
+		}
+	})
 }
 
 // Add records one question. The level and the plugin are the walk's, not the
@@ -361,38 +349,35 @@ func (r *Report) Note(n Note) {
 //
 // Implements: REQ-TRC-005, REQ-TRC-014
 func (r *Report) Add(l Lookup) {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	l.Plugin, l.Level = r.plugin, r.level
-	r.Totals.Asked++
-	r.Totals.Requests += len(l.Requests)
-	switch l.Answer {
-	case FromLock:
-		r.Totals.FromLock++
-	case FromInstalled:
-		r.Totals.FromInstalled++
-	case FromIndex:
-		r.Totals.FromIndex++
-	case FromCache:
-		r.Totals.FromCache++
-	case FromMemo:
-		r.Totals.FromMemo++
-	case NoAnswer:
-		r.Totals.Unanswered++
-		if len(l.Requests) > 0 || l.Reason == "" {
-			// Something was asked and it did not work out, as against a question
-			// that was deliberately not asked at all.
-			r.Totals.Failed++
+	r.locked(func() {
+		l.Plugin, l.Level = r.plugin, r.level
+		r.Totals.Asked++
+		r.Totals.Requests += len(l.Requests)
+		switch l.Answer {
+		case FromLock:
+			r.Totals.FromLock++
+		case FromInstalled:
+			r.Totals.FromInstalled++
+		case FromIndex:
+			r.Totals.FromIndex++
+		case FromCache:
+			r.Totals.FromCache++
+		case FromMemo:
+			r.Totals.FromMemo++
+		case NoAnswer:
+			r.Totals.Unanswered++
+			if len(l.Requests) > 0 || l.Reason == "" {
+				// Something was asked and it did not work out, as against a question
+				// that was deliberately not asked at all.
+				r.Totals.Failed++
+			}
 		}
-	}
-	if len(r.Lookups) >= maxLookups {
-		r.Dropped++
-		return
-	}
-	r.Lookups = append(r.Lookups, l)
+		if len(r.Lookups) >= maxLookups {
+			r.Dropped++
+			return
+		}
+		r.Lookups = append(r.Lookups, l)
+	})
 }
 
 // Summarize reads the finished graph for what the walk itself cannot say: which index
@@ -445,35 +430,21 @@ func (r *Report) Summarize(g *graph.Graph) {
 	for _, u := range use {
 		r.Indexes = append(r.Indexes, *u)
 	}
-	sort.Slice(r.Indexes, func(i, j int) bool {
-		if r.Indexes[i].Ecosystem != r.Indexes[j].Ecosystem {
-			return r.Indexes[i].Ecosystem < r.Indexes[j].Ecosystem
-		}
-		return r.Indexes[i].Index < r.Indexes[j].Index
+	slices.SortFunc(r.Indexes, func(a, b Use) int {
+		return cmp.Or(cmp.Compare(a.Ecosystem, b.Ecosystem), cmp.Compare(a.Index, b.Index))
 	})
 }
 
 // Finish puts the report in an order that does not depend on which worker came back
 // first, so two runs over the same repository produce the same report.
 func (r *Report) Finish() {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.GeneratedAt = time.Now().UTC()
-	// Implements: REQ-TRC-017
-	sort.Slice(r.Notes, func(i, j int) bool { return noteLess(r.Notes[i], r.Notes[j]) })
-	sort.SliceStable(r.Lookups, func(i, j int) bool {
-		a, b := r.Lookups[i], r.Lookups[j]
-		switch {
-		case a.Level != b.Level:
-			return a.Level < b.Level
-		case a.Ecosystem != b.Ecosystem:
-			return a.Ecosystem < b.Ecosystem
-		default:
-			return a.Package < b.Package
-		}
+	r.locked(func() {
+		r.GeneratedAt = time.Now().UTC()
+		// Implements: REQ-TRC-017
+		slices.SortFunc(r.Notes, compareNotes)
+		slices.SortStableFunc(r.Lookups, func(a, b Lookup) int {
+			return cmp.Or(cmp.Compare(a.Level, b.Level), cmp.Compare(a.Ecosystem, b.Ecosystem), cmp.Compare(a.Package, b.Package))
+		})
 	})
 }
 
@@ -497,17 +468,14 @@ func (r *Report) Reasons() []Reason {
 	}
 	count := map[string]int{}
 	for _, l := range r.Unanswered() {
-		count[or(l.Reason, requestSummary(l))]++
+		count[cmp.Or(l.Reason, requestSummary(l))]++
 	}
 	out := make([]Reason, 0, len(count))
 	for why, n := range count {
 		out = append(out, Reason{Count: n, Why: why})
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Count != out[j].Count {
-			return out[i].Count > out[j].Count
-		}
-		return out[i].Why < out[j].Why
+	slices.SortFunc(out, func(a, b Reason) int {
+		return cmp.Or(cmp.Compare(b.Count, a.Count), cmp.Compare(a.Why, b.Why))
 	})
 	return out
 }
@@ -524,23 +492,12 @@ func (r *Report) Unanswered() []Lookup {
 			out = append(out, l)
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		return len(out[i].Requests) > len(out[j].Requests)
-	})
+	slices.SortStableFunc(out, func(a, b Lookup) int { return cmp.Compare(len(b.Requests), len(a.Requests)) })
 	return out
 }
 
-// noteLess orders notes by plugin, file, code and message, so a report lists them
-// the same way whichever worker gave them first.
-func noteLess(a, b Note) bool {
-	switch {
-	case a.Plugin != b.Plugin:
-		return a.Plugin < b.Plugin
-	case a.File != b.File:
-		return a.File < b.File
-	case a.Code != b.Code:
-		return a.Code < b.Code
-	default:
-		return a.Message < b.Message
-	}
+// compareNotes orders notes by plugin, file, code and message, so a report lists
+// them the same way whichever worker gave them first.
+func compareNotes(a, b Note) int {
+	return cmp.Or(cmp.Compare(a.Plugin, b.Plugin), cmp.Compare(a.File, b.File), cmp.Compare(a.Code, b.Code), cmp.Compare(a.Message, b.Message))
 }
