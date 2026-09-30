@@ -19,6 +19,8 @@ const { boxColor, languageColors, assignSlots } = await import('../static/colors
 const { effectiveMode, computeMetrics, historyT } = await import('../static/history.js');
 const { MapScene } = await import('../static/scene.js');
 const THREE = await import('../static/vendor/three.module.min.js');
+const { FACADE, STORY } = await import('../static/buildings.js');
+const FLOOR = STORY * FACADE; // the height of an empty file: a story
 
 // ---------------------------------------------------------------- fixtures
 
@@ -153,26 +155,26 @@ describe('directories', () => {
       assert.equal(L.boxes.filter(x => x.node === b.node).length, 1, 'a collapsed directory is more than one box');
       near(b.w, b.d, 'a district is not square');
     }
-    near(one.w, 1.4, 'the smallest district is not at the minimum side');
-    assert.ok(four.w > 1.4);
+    near(one.w, 1.4 * FACADE, 'the smallest district is not at the minimum side');
+    assert.ok(four.w > 1.4 * FACADE);
     near(sixteen.w / four.w, 2, 'four times the files is not twice the side');
   });
 });
 
 describe('files', () => {
   // Verifies: REQ-MAP-005
-  it('stand as 1 x 1 buildings from the floor to ten units for the longest', () => {
+  it('stand on a facade-sized footprint, from a story to ten units above it for the longest', () => {
     for (const heightScale of Object.keys(SCALES)) {
       const { L } = draw(repository(), { expanded: ['d:src', 'd:src/util', 'd:lib'], heightScale });
       const buildings = L.boxes.filter(b => b.node.kind === 'file');
       assert.equal(buildings.length, 7);
       for (const b of buildings) {
         assert.equal(b.kind, 'building');
-        assert.equal(b.w, 1);
-        assert.equal(b.d, 1);
+        assert.equal(b.w, FACADE);
+        assert.equal(b.d, FACADE);
       }
-      near(L.byNode.get('f:main.go').h, 10.2, `${heightScale}: the longest file`);
-      near(L.byNode.get('f:empty.go').h, 0.2, `${heightScale}: the empty file`);
+      near(L.byNode.get('f:main.go').h, FLOOR + 10, `${heightScale}: the longest file`);
+      near(L.byNode.get('f:empty.go').h, FLOOR, `${heightScale}: the empty file`);
     }
   });
 
@@ -231,7 +233,7 @@ describe('height scales', () => {
 
     // Linear: above the floor, height is in proportion to lines.
     const lin = draw(repository(), { expanded: ['d:src'], heightScale: 'linear' }).L;
-    const above = id => lin.byNode.get(id).h - 0.2;
+    const above = id => lin.byNode.get(id).h - FLOOR;
     near(above('f:src/a.go') / above('f:src/b.go'), 300 / 120, 'linear is not proportional');
 
     // The same file comes out differently on each, the compressed scales raising it.
@@ -285,10 +287,13 @@ describe('islands', () => {
     const nodes = [ROOT], edgesOut = [];
     uses.forEach((n, i) => {
       const name = `eco${i}`;
-      nodes.push(ecosystem(name), packageNode(name, 'p'));
+      // Islands of four packages, wide enough against the mainland its files make
+      // that a side has room for one of them.
+      const packages = ['p', 'q', 'r', 's'];
+      nodes.push(ecosystem(name), ...packages.map(p => packageNode(name, p)));
       for (let k = 0; k < n; k++) {
         nodes.push(file(`${name}-${k}.go`, 'd:.', { loc: 10 }));
-        edgesOut.push(importEdge(`f:${name}-${k}.go`, `p:${name}:p`));
+        edgesOut.push(...packages.map(p => importEdge(`f:${name}-${k}.go`, `p:${name}:${p}`)));
       }
     });
     return draw({ nodes, edges: edgesOut }).L;

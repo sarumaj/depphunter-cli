@@ -25,4 +25,4 @@ much is folded into it.
 
 1. A collapsed directory is one box of kind `district`.
 2. A district over four times as many files has twice the side length, above the
-   minimum side of 1.4 units.
+   minimum side of 1.4 building footprints.

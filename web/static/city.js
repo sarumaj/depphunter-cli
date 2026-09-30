@@ -1110,7 +1110,7 @@ vec3 cityTexture(vec3 base) {
     vec2 seed = vSeed + n.xz * 3.1;
     if (circuit) c = chipFace(base, u, faceW, lp.y, sz.y, seed);
     else if (galaxy) c = crystalFace(base, u, faceW, lp.y, sz.y, seed);
-    else return facade(base, u, faceW, lp.y + vBuild.z, vBuild.w, vBuild.z + sz.y, seed, n);
+    else return facade(base, u / FACADE, faceW / FACADE, (lp.y + vBuild.z) / FACADE, vBuild.w / FACADE, (vBuild.z + sz.y) / FACADE, seed, n);
   }
   // Anything standing on something is darker where the two meet. There are no lights
   // in this scene and so no shadows either, and without this a building floats over

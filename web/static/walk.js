@@ -33,18 +33,18 @@ import { ToolWheel, EMPTY, carriedRing, cycle, keyFor, keysFor, rowOrder, toolFo
 import { inBlaze } from './flames.js';
 import { massTop } from './details.js';
 
-// A building is one unit wide and its stories 0.3 high (city.js): the walker is
-// about a story and a half tall.
+// A story is 0.84 units (buildings.js STORY and FACADE): the walker stands a little
+// over half as tall, a door a little taller than them.
 const EYE = 0.45;           // eye height above the feet
 // Implements: REQ-WALK-004
 const WALK = 2.6, RUN = 7, FLY = 10; // units per second
 // A jump clears a curb and a terrace wall and nothing more. At this gravity it tops
-// out about 0.4 units up, which against a story of 0.3 is a person leaving the ground
+// out about 0.4 units up, which against a story of 0.84 is a person leaving the ground
 // rather than one clearing a tree.
 // Implements: REQ-WALK-005
 const JUMP = 3.2, GRAVITY = 13;
-// Half a story (0.3): a curb, a ramp's slope and a bridge's arch are walked, a
-// terrace wall (0.28 in layout.js) is not - that takes the ramp or a jump.
+// A curb, a ramp's slope and a bridge's arch are walked, a terrace wall (0.28 in
+// layout.js) is not - that takes the ramp or a jump.
 // Implements: REQ-WALK-006
 const STEP = 0.15;          // highest ledge walked up without jumping
 const BODY = 0.12;          // walker radius for collisions

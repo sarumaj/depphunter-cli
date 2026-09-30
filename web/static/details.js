@@ -21,7 +21,7 @@
 // massTop gives the walker the tiers' roofs.
 
 import * as THREE from './vendor/three.module.min.js';
-import { TYPE, STORY, DECO, HELIPAD, archetype, buildParameters, seedOf } from './buildings.js';
+import { TYPE, STORY, FACADE, DECO, HELIPAD, archetype, buildParameters, seedOf, isGround } from './buildings.js';
 
 /** How far a balcony, an awning or a cornice stands out of a facade. */
 export const OVERHANG = 0.075;
@@ -42,7 +42,6 @@ const SLAB = 0.018;    // a balcony slab's thickness
 const LEDGE = 0.028;   // a cornice's depth and height
 const PARAPET_RAIL = 0.06;
 
-const isLarge = b => Math.max(b.w, b.d) > 1.5;
 const next = s => {
   const v = Math.sin(s * 12.9898 + 4.1414) * 43758.5453;
   return v - Math.floor(v);
@@ -61,7 +60,7 @@ const tierCache = new WeakMap();
  * Implements: REQ-CITY-034
  */
 export function tiersOf(b) {
-  if (b.h < DECO || isLarge(b) || b.kind === 'symbol') return null;
+  if (b.h < DECO || isGround(b) || b.kind === 'symbol') return null;
   let tiers = tierCache.get(b);
   if (tiers === undefined) {
     tiers = archetype(b) === TYPE.deco ? [
@@ -134,7 +133,7 @@ const _up = new THREE.Vector3(0, 1, 0);
 export function detailsOf(b) {
   const out = [];
   const [type, variant] = buildParameters(b);
-  if (type < 0 || isLarge(b) || b.kind === 'symbol' || Math.min(b.w, b.d) < 0.6) return out;
+  if (type < 0 || isGround(b) || b.kind === 'symbol' || Math.min(b.w, b.d) < 0.6) return out;
   const seed = seedOf(b);
   const tiers = tiersOf(b);
   const roofAt = tiers ? tiers[0].y1 : b.h;
@@ -144,53 +143,56 @@ export function detailsOf(b) {
     out.push({ kind, matrix: Array.from(_m.elements), tinted, variant });
   };
   const upper = type === TYPE.mixed ? (variant < 0.5 ? TYPE.residential : TYPE.brick) : type;
-  const podiumTop = type === TYPE.mixed ? STORY * (b.h > 1.6 ? 2 : 1) : 0;
+  // A facade is laid out FACADE times smaller than it is drawn: what is measured on
+  // it is measured in its units (laid), and placed in the world's.
+  const laid = v => v / FACADE, story = STORY * FACADE;
+  const podiumTop = type === TYPE.mixed ? story * (laid(b.h) > 1.6 ? 2 : 1) : 0;
 
   for (const f of faces(b)) {
-    const bays = Math.max(1, Math.floor(f.width / bayWidth(upper)));
+    const bays = Math.max(1, Math.floor(laid(f.width) / bayWidth(upper)));
     const bay = f.width / bays;
     const along = u => [f.at[0] + f.u[0] * u, f.at[1] + f.u[1] * u];
     // Balconies: under every French window of a residential facade, story by story
     // up to the one under the cornice.
     if (upper === TYPE.residential) {
       const every = variant < 0.5 ? 1 : 2, offset = Math.floor(variant * 10);
-      for (let k = 1; (k + 0.86) * STORY < roofAt - 0.075; k++) {
-        if (k * STORY < podiumTop) continue;
+      for (let k = 1; (k + 0.86) * STORY < laid(roofAt) - 0.075; k++) {
+        if (k * story < podiumTop) continue;
         for (let i = 0; i < bays; i++) {
           if ((i + offset) % every !== 0) continue;
           const u = -f.width / 2 + (i + 0.5) * bay;
           const [x, z] = along(u);
-          put('balcony', x, b.y + k * STORY, z, f.turn, bay * 0.84, 1, 1, true);
+          put('balcony', x, b.y + k * story, z, f.turn, bay * 0.84, FACADE, 1, true);
         }
       }
     }
     // Awnings over the shops: on the ground floor of every type with shops, over
     // each bay the shader gives an awning, where the building is a story high.
-    const shops = type !== TYPE.office && type !== TYPE.warehouse && type !== TYPE.panel && roofAt > STORY + 0.02;
+    const shops = type !== TYPE.office && type !== TYPE.warehouse && type !== TYPE.panel && laid(roofAt) > STORY + 0.02;
     if (shops) {
-      const groundBays = Math.max(1, Math.floor(f.width / bayWidth(upper)));
+      const groundBays = Math.max(1, Math.floor(laid(f.width) / bayWidth(upper)));
       const groundBay = f.width / groundBays;
       const door = doorBay(variant, f.id, groundBays);
       for (let i = 0; i < groundBays; i++) {
         if (i === door || fract(variant * 3.3 + i * 0.37) < 0.35) continue;
         const u = -f.width / 2 + (i + 0.5) * groundBay;
         const [x, z] = along(u);
-        put('awning', x, b.y + STORY * 0.8, z, f.turn, groundBay * 0.92, 1, 1, true);
+        put('awning', x, b.y + story * 0.8, z, f.turn, groundBay * 0.92, FACADE, 1, true);
       }
     }
     // A cornice under the roof line of brick, art-deco and mixed buildings, and on
     // brick a string course over the ground floor.
     if (upper === TYPE.brick || type === TYPE.deco || type === TYPE.mixed) {
       const [x, z] = along(0);
-      put('ledge', x, b.y + roofAt - 0.05, z, f.turn, f.width + 2 * LEDGE, LEDGE, LEDGE, true);
-      if (upper === TYPE.brick && roofAt > STORY * 2) put('ledge', x, b.y + STORY - 0.012, z, f.turn, f.width + 2 * LEDGE * 0.6, LEDGE * 0.8, LEDGE * 0.6, true);
+      put('ledge', x, b.y + roofAt - 0.05 * FACADE, z, f.turn, f.width + 2 * LEDGE, LEDGE * FACADE, LEDGE, true);
+      if (upper === TYPE.brick && roofAt > story * 2) put('ledge', x, b.y + story - 0.012 * FACADE, z, f.turn, f.width + 2 * LEDGE * 0.6, LEDGE * 0.8 * FACADE, LEDGE * 0.6, true);
     }
   }
   // The tiers of a setback tower carry a cornice each.
   if (tiers) {
     for (const t of tiers.slice(1)) {
       for (const f of faces(b, t.w, t.d)) {
-        put('ledge', f.at[0], b.y + t.y1 - 0.05, f.at[1], f.turn, f.width + 2 * LEDGE, LEDGE, LEDGE, true);
+        put('ledge', f.at[0], b.y + t.y1 - 0.05 * FACADE, f.at[1], f.turn, f.width + 2 * LEDGE, LEDGE * FACADE, LEDGE, true);
       }
     }
   }
@@ -418,7 +420,7 @@ export class Details {
     this.lastView = '';
     this.pending = false;
     this.eligible = [];
-    if (on) boxes.forEach((b, i) => { if (b.kind !== 'land' && b.kind !== 'terrace' && b.kind !== 'symbol' && !isLarge(b)) this.eligible.push(i); });
+    if (on) boxes.forEach((b, i) => { if (b.kind !== 'land' && b.kind !== 'terrace' && b.kind !== 'symbol' && !isGround(b)) this.eligible.push(i); });
     this.rebuild();
   }
 
