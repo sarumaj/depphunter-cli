@@ -4110,7 +4110,7 @@ extension are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 [BSD 3-Clause](LICENSE) © 2026 Dawid Ciepiela. The embedded three.js (MIT),
-highlight.js (BSD 3-Clause), potpack (ISC) and fzf-for-js (BSD 3-Clause), and
+highlight.js (BSD 3-Clause) and fzf-for-js (BSD 3-Clause), and
 the 3D models built from webxr-input-profiles (MIT) and a low-poly nature pack
 (CC0), retain their own licenses; see
 [web/static/vendor](web/static/vendor/README.md).

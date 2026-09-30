@@ -237,8 +237,7 @@ Go itself provides `go/parser` for Go sources, `net/http` for the server and
 `embed` for the UI. The browser UI vendors, in
 [web/static/vendor](web/static/vendor/README.md):
 [three.js](https://threejs.org) (WebGL rendering, orbit controls),
-[highlight.js](https://highlightjs.org) (source highlighting),
-[potpack](https://github.com/mapbox/potpack) (packing terraces) and
+[highlight.js](https://highlightjs.org) (source highlighting) and
 [fzf-for-js](https://github.com/ajitid/fzf-for-js) (fuzzy search). External
 tools are optional: `git` for file listing and history, language servers for
 `--lsp`.
