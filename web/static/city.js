@@ -29,6 +29,7 @@
 import * as THREE from './vendor/three.module.min.js';
 import { plants } from './models.js';
 import { looksGLSL } from './buildings.js';
+import { Scatter } from './lod.js';
 
 /** Box kinds as the shaders see them (attribute aKind). */
 export function kindCode(b) {
@@ -1911,18 +1912,16 @@ export function makeProps(boxes, bendable, style = 'city') {
 
   const group = new THREE.Group();
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
-  const c = new THREE.Color();
+  const cells = new Map(), scatters = [];
   const add = (geo, color, items, place, tint, options) => {
-    const mesh = new THREE.InstancedMesh(geo, bendable(new THREE.MeshBasicMaterial({ color, vertexColors: true, ...options })), Math.max(1, items.length));
-    mesh.count = items.length;
-    items.forEach((it, i) => {
-      mesh.setMatrixAt(i, place(it, m));
-      if (tint) mesh.setColorAt(i, tint(it, c));
-    });
-    mesh.frustumCulled = false;
-    mesh.userData.day = color;
-    group.add(mesh);
-    return mesh;
+    const material = bendable(new THREE.MeshBasicMaterial({ color, vertexColors: true, ...options }));
+    const scatter = new Scatter(geo, material, items, place, tint, cells);
+    for (const mesh of scatter.meshes) {
+      mesh.userData.day = color;
+      group.add(mesh);
+    }
+    scatters.push(scatter);
+    return scatter;
   };
   const plantAt = (it, m) => m.compose(p.set(it.x, it.y, it.z), q.setFromAxisAngle(UP, it.r * 6.28), s.setScalar(it.s));
   const lampAt = (it, m) => m.compose(p.set(it.x, it.y, it.z), q.identity(), s.setScalar(1));
@@ -1933,17 +1932,18 @@ export function makeProps(boxes, bendable, style = 'city') {
   });
   add(set.low, '#ffffff', bushes, plantAt, set.tint(set.lowHue));
   add(set.pole, set.poleColor, lamps, lampAt);
-  group.userData.heads = add(set.lampHead, set.headColor, lamps, lampAt);
+  for (const mesh of add(set.lampHead, set.headColor, lamps, lampAt).meshes) mesh.userData.heads = true;
   group.userData.night = set.headNight;
   if (set.glowAt !== undefined) {
     for (const [r, opacity] of GLOW) {
-      const mesh = add(glowShell(r, set.glowAt), set.headNight, lamps, lampAt, null, {
+      const glow = add(glowShell(r, set.glowAt), set.headNight, lamps, lampAt, null, {
         vertexColors: false, transparent: true, opacity,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
-      mesh.userData.glow = opacity;
+      for (const mesh of glow.meshes) mesh.userData.glow = opacity;
     }
   }
+  group.userData.lod = { cells, scatters };
   // What a walker cannot walk through. A trunk, a capacitor's case, a crystal and a
   // lamp post are all a circle standing on a spot; a bush is something to walk over.
   group.userData.obstacles = [
@@ -2011,7 +2011,7 @@ export function setNight(group, night) {
     // A glow is the one thing that does not go down with the light: it is the
     // light. It is drawn a little stronger in the dark, as one looks.
     if (mesh.userData.glow) mesh.material.opacity = mesh.userData.glow * (night ? 1.5 : 1);
-    else if (mesh === group.userData.heads && night) mesh.material.color.set(group.userData.night);
+    else if (mesh.userData.heads && night) mesh.material.color.set(group.userData.night);
     else mesh.material.color.set(mesh.userData.day).multiplyScalar(night ? 0.4 : 1);
   }
 }

@@ -1,0 +1,23 @@
+{
+  "": {
+    "swift-dependencies": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/primary.swiftdeps"
+  },
+  "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/checkouts/swift-collections/Sources/SpanPreview/InputSpan.swift": {
+    "dependencies": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/InputSpan.d",
+    "object": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/InputSpan.swift.o",
+    "swiftmodule": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/InputSpan~partial.swiftmodule",
+    "swift-dependencies": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/InputSpan.swiftdeps",
+    "diagnostics": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/InputSpan.dia"  },
+  "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/checkouts/swift-collections/Sources/SpanPreview/MutableSpan+InputSpanHelpers.swift": {
+    "dependencies": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/MutableSpan+InputSpanHelpers.d",
+    "object": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/MutableSpan+InputSpanHelpers.swift.o",
+    "swiftmodule": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/MutableSpan+InputSpanHelpers~partial.swiftmodule",
+    "swift-dependencies": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/MutableSpan+InputSpanHelpers.swiftdeps",
+    "diagnostics": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/MutableSpan+InputSpanHelpers.dia"  },
+  "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/checkouts/swift-collections/Sources/SpanPreview/OutputSpan+InputSpanHelpers.swift": {
+    "dependencies": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/OutputSpan+InputSpanHelpers.d",
+    "object": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/OutputSpan+InputSpanHelpers.swift.o",
+    "swiftmodule": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/OutputSpan+InputSpanHelpers~partial.swiftmodule",
+    "swift-dependencies": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/OutputSpan+InputSpanHelpers.swiftdeps",
+    "diagnostics": "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/.build/checkouts/swift-nio/.build/index-build/arm64-apple-macosx/debug/SpanPreview.build/OutputSpan+InputSpanHelpers.dia"  }
+}

@@ -18,11 +18,13 @@ describe('vegetation without the plant models', () => {
     const land = box('land', 0, 0, 12, 12, { y: -0.45, h: 0.45 });
     const group = makeProps([land], m => m, 'city');
     assert.ok(group.userData.obstacles.length, 'a shore with no trees on it');
-    // Two meshes a species, trunk then crown, before the bushes and the lamps.
-    const species = group.children.slice(0, 6);
+    // Two kinds a species, trunk then crown, before the bushes and the lamps; each
+    // kind drawn in full and coarse (lod.js).
+    const species = group.children.filter(mesh => !mesh.userData.coarse).slice(0, 6);
     for (const mesh of species) {
       const position = mesh.geometry.getAttribute('position');
       assert.ok(position && position.count > 0, 'a tree species drawn with no geometry');
+      assert.ok(mesh.count > 0, 'a tree species with no instances drawn');
     }
   });
 });

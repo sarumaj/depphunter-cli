@@ -1,0 +1,47 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "LocalKit-arm64-apple-macosx-debug.module": ["<LocalKit-arm64-apple-macosx-debug.module>"]
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<LocalKit-arm64-apple-macosx-debug.module>"]
+  "test": ["<LocalKit-arm64-apple-macosx-debug.module>"]
+default: "main"
+nodes:
+  "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/Sources/LocalKit/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/LocalKit.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/Sources/LocalKit/LocalKit.swift"]
+    outputs: ["/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/LocalKit.build/sources"]
+    description: "Write auxiliary file /Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/LocalKit.build/sources"
+
+  "/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Library/Developer/CommandLineTools/usr/bin/swiftc"]
+    outputs: ["/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt"
+
+  "<LocalKit-arm64-apple-macosx-debug.module>":
+    tool: phony
+    inputs: ["/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/Modules/LocalKit.swiftmodule"]
+    outputs: ["<LocalKit-arm64-apple-macosx-debug.module>"]
+
+  "C.LocalKit-arm64-apple-macosx-debug.module":
+    tool: shell
+    inputs: ["/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/Sources/LocalKit/LocalKit.swift","/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/swift-version--1AB21518FC5DEDBE.txt","/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/LocalKit.build/sources"]
+    outputs: ["/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/Modules/LocalKit.swiftmodule"]
+    description: "Compiling Swift Module 'LocalKit' (1 sources)"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-module-name","LocalKit","-emit-dependencies","-emit-module","-emit-module-path","/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/Modules/LocalKit.swiftmodule","-output-file-map","/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/LocalKit.build/output-file-map.json","-parse-as-library","-incremental","@/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/LocalKit.build/sources","-I","/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/Modules","-target","arm64-apple-macosx12.0","-incremental","-enable-batch-mode","-serialize-diagnostics","-Onone","-enable-testing","-j11","-DSWIFT_PACKAGE","-DDEBUG","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/ModuleCache","-parseable-output","-parse-as-library","-emit-objc-header","-emit-objc-header-path","/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/.build/index-build/arm64-apple-macosx/debug/LocalKit.build/include/LocalKit-Swift.h","-swift-version","5","-Xfrontend","-experimental-lazy-typecheck","-Xfrontend","-experimental-skip-all-function-bodies","-Xfrontend","-experimental-allow-module-with-compiler-errors","-Xfrontend","-empty-abi-descriptor","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g","-Xcc","-isysroot","-Xcc","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-Xcc","-fPIC","-Xcc","-g","-package-name","localkit"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/Sources/LocalKit/","/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/Package.swift","/Users/cieda000/github/sarumaj/depphunter-cli/internal/lang/swift/testdata/repo/Local/LocalKit/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+
