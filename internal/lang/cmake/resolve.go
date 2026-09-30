@@ -248,9 +248,7 @@ func (r *resolver) paths(file, s string) []string {
 	}
 	if rest, ok := strings.CutPrefix(s, markCurrent); ok {
 		s = strings.TrimLeft(rest, "/")
-		if s == "" {
-			s = "."
-		}
+		s = cmp.Or(s, ".")
 	}
 	if strings.ContainsAny(s, markRoot+markCurrent) || path.IsAbs(s) || (len(s) > 1 && s[1] == ':') {
 		return nil // this machine's path
@@ -517,9 +515,7 @@ func (r *resolver) fetched(file string, rawImport lang.RawImport) lang.Target {
 	switch {
 	case referenceKnown && reference != "":
 		t.Pinned = true
-		if t.Version == "" {
-			t.Version = reference
-		}
+		t.Version = cmp.Or(t.Version, reference)
 	case lang.Commit(t.Version):
 		t.Pinned = true
 	case t.Version == "" || head:

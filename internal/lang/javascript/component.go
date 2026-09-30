@@ -2,6 +2,7 @@ package javascript
 
 import (
 	"bytes"
+	"cmp"
 	"path"
 	"strings"
 
@@ -211,9 +212,7 @@ func newScript(extension string, attributes map[string]string, start, end int) (
 	switch t := strings.ToLower(attributes["type"]); t {
 	case "", "module", "text/javascript", "application/javascript":
 	case "text/typescript", "ts":
-		if language == "" {
-			language = "ts"
-		}
+		language = cmp.Or(language, "ts")
 	default:
 		return script{}, false // JSON, templates and other data blocks
 	}

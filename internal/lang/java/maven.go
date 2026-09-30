@@ -4,7 +4,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"unicode"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -38,10 +37,10 @@ type artifact struct {
 func (a *artifact) key() string { return a.group + ":" + a.name }
 
 type maven struct {
-	artifacts  map[string]*artifact   // declared, by group:artifact
-	groups     map[string][]*artifact // declared, by group, sorted by name
-	candidates []*artifact            // declared and virtual, sorted by key
-	memo       sync.Map               // import -> lang.Target
+	artifacts  map[string]*artifact           // declared, by group:artifact
+	groups     map[string][]*artifact         // declared, by group, sorted by name
+	candidates []*artifact                    // declared and virtual, sorted by key
+	memo       lang.Memo[string, lang.Target] // import -> its artifact
 }
 
 // scalaSuffix is the Scala binary version sbt appends to an artifact built for
@@ -331,19 +330,13 @@ func (r *resolver) artifactOf(spec string, wildcard bool) lang.Target {
 	if wildcard {
 		key += ".*" // the guess for an unmatched import differs
 	}
-	if t, ok := r.memo.Load(key); ok {
-		return t.(lang.Target)
-	}
-	segments := strings.Split(spec, ".")
-	best, _ := r.best(spec, segments)
-	var t lang.Target
-	if best != nil {
-		t = lang.Target{Ecosystem: lang.EcosystemMaven, Package: best.key(), Version: best.version, Requested: best.requested, Pinned: pinnedMaven(best.version)}
-	} else {
-		t = lang.Target{Ecosystem: lang.EcosystemMaven, Package: guessArtifact(segments, wildcard), Unresolved: true}
-	}
-	r.memo.Store(key, t)
-	return t
+	return r.memo.Get(key, func(string) lang.Target {
+		segments := strings.Split(spec, ".")
+		if best, _ := r.best(spec, segments); best != nil {
+			return lang.Target{Ecosystem: lang.EcosystemMaven, Package: best.key(), Version: best.version, Requested: best.requested, Pinned: pinnedMaven(best.version)}
+		}
+		return lang.Target{Ecosystem: lang.EcosystemMaven, Package: guessArtifact(segments, wildcard), Unresolved: true}
+	})
 }
 
 // best is the candidate matching an import best (score, then better), with its

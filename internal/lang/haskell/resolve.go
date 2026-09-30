@@ -1,6 +1,7 @@
 package haskell
 
 import (
+	"cmp"
 	"os"
 	"path"
 	"sort"
@@ -78,9 +79,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 				continue
 			}
 			p := readCabal(source, f.Path)
-			if p.name == "" {
-				p.name = strings.TrimSuffix(base, ".cabal")
-			}
+			p.name = cmp.Or(p.name, strings.TrimSuffix(base, ".cabal"))
 			r.addPackage(p)
 		case base == "package.yaml":
 			hpack[path.Dir(f.Path)] = f

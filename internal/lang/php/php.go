@@ -299,9 +299,7 @@ func parseUse(text string) []use {
 		if item == "" || qualifiedName == "" {
 			return
 		}
-		if alias == "" {
-			alias = qualifiedName[strings.LastIndex(qualifiedName, `\`)+1:]
-		}
+		alias = cmp.Or(alias, qualifiedName[strings.LastIndex(qualifiedName, `\`)+1:])
 		out = append(out, use{kind, qualifiedName, alias})
 	}
 	if i := strings.Index(text, "{"); i >= 0 {

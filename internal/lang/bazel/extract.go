@@ -1,6 +1,7 @@
 package bazel
 
 import (
+	"cmp"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -123,10 +124,7 @@ func (x *extractor) load(call *starlark.Node) {
 		if !ok {
 			continue
 		}
-		local := a.Name
-		if local == "" {
-			local = name
-		}
+		local := cmp.Or(a.Name, name)
 		x.loads[local] = loaded{label: label, name: name}
 	}
 }
@@ -160,10 +158,7 @@ func (x *extractor) statement(statement starlark.Statement) {
 				}
 			}
 		} else if statement.Column == 0 {
-			kind := symbolKinds[callee]
-			if kind == "" {
-				kind = "var"
-			}
+			kind := cmp.Or(symbolKinds[callee], "var")
 			for _, t := range statement.Targets {
 				x.symbols.Add(t, kind, statement.Line)
 			}
@@ -278,10 +273,7 @@ func (x *extractor) labels(v *starlark.Node) {
 		case "artifact", "maven_artifact":
 			coordinate, ok := v.Position(0).StringValue()
 			if _, loadedFrom := x.loads[callee]; ok && loadedFrom {
-				hub := v.KeywordString("repository_name")
-				if hub == "" {
-					hub = "maven"
-				}
+				hub := cmp.Or(v.KeywordString("repository_name"), "maven")
 				x.add(importMaven, "artifact("+coordinate+")", coordinate+"\n"+hub, v.Line)
 			}
 		}
@@ -354,10 +346,7 @@ func (x *extractor) call(n *starlark.Node, top bool) {
 		x.lockLabels(n)
 	case hubRules[rule]:
 		if rule == "maven_install" {
-			hub := n.KeywordString("name")
-			if hub == "" {
-				hub = "maven"
-			}
+			hub := cmp.Or(n.KeywordString("name"), "maven")
 			x.artifacts(n, hub)
 		}
 		x.lockLabels(n)
@@ -472,16 +461,10 @@ func (x *extractor) tag(extension, tag string, n *starlark.Node) {
 	x.lockLabels(n)
 	switch {
 	case extension == "maven" && tag == "install":
-		hub := n.KeywordString("name")
-		if hub == "" {
-			hub = "maven"
-		}
+		hub := cmp.Or(n.KeywordString("name"), "maven")
 		x.artifacts(n, hub)
 	case extension == "maven" && tag == "artifact":
-		hub := n.KeywordString("name")
-		if hub == "" {
-			hub = "maven"
-		}
+		hub := cmp.Or(n.KeywordString("name"), "maven")
 		if c := coordinate(n); c != "" {
 			x.add(importMaven, c, c+"\n"+hub, n.Line)
 		}

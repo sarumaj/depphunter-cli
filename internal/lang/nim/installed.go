@@ -1,6 +1,7 @@
 package nim
 
 import (
+	"cmp"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -59,12 +60,8 @@ func readInstalled(files lang.Root, directory, name, version string, local bool)
 			if n := e.Name(); strings.HasSuffix(n, ".nimble") && !e.IsDir() {
 				if data, ok := files.ReadBounded(filepath.Join(directory, n)); ok {
 					nf := readNimble(data, strings.TrimSuffix(n, ".nimble"))
-					if p.name == "" {
-						p.name = nf.name
-					}
-					if p.version == "" {
-						p.version = nf.version
-					}
+					p.name = cmp.Or(p.name, nf.name)
+					p.version = cmp.Or(p.version, nf.version)
 					p.dependencies = nf.dependencies
 					if local && nf.sourceDirectory != "" {
 						if files.IsDirectory(filepath.Join(directory, filepath.FromSlash(nf.sourceDirectory))) {

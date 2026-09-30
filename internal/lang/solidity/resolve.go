@@ -1,13 +1,12 @@
 package solidity
 
 import (
-	"os"
+	"cmp"
 	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/javascript"
@@ -42,17 +41,9 @@ var generated = map[string][]string{
 	"typechain-types": hardhatConfigs,
 }
 
-var besideMemo sync.Map // absolute path of a marker file -> bool
+var besideMemo lang.Memo[string, bool] // absolute path of a marker file -> it exists
 
-func exists(absolute string) bool {
-	if v, ok := besideMemo.Load(absolute); ok {
-		return v.(bool)
-	}
-	// Lstat: a marker committed as a symbolic link says nothing of its target.
-	_, err := os.Lstat(absolute)
-	besideMemo.Store(absolute, err == nil)
-	return err == nil
-}
+func exists(absolute string) bool { return besideMemo.Get(absolute, lang.Present) }
 
 // absoluteRoot is the scan root of f: its absolute path without its relative one.
 func absoluteRoot(f *scan.File) (string, bool) {
@@ -310,10 +301,7 @@ func (r *resolver) remappings(p *project, txt []string) []remapping {
 		}
 		sort.Strings(names)
 		for _, n := range names {
-			v := p.locked[n].version
-			if v == "" {
-				v = p.dependencies[n].version
-			}
+			v := cmp.Or(p.locked[n].version, p.dependencies[n].version)
 			if v == "" {
 				continue
 			}

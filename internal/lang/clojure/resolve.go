@@ -43,8 +43,8 @@ type resolver struct {
 	named             map[string]*project              // own artifact -> project (defproject names)
 	governingProjects map[string][]*project            // directory -> its governing projects
 	byStem            map[string][]string              // source path without its extension -> sources
-	memo              sync.Map                         // resolutions shared by the files of a directory
-	classes           sync.Map                         // governing project dirs -> *classMatcher
+	memo              lang.Memo[string, lang.Target]   // resolutions shared by the files of a directory
+	classes           lang.Memo[string, *classMatcher] // governing project directories -> their matcher
 }
 
 // classMatcher is the Java plugin's artifact matcher over the Maven artifacts a set
@@ -424,12 +424,7 @@ func (r *resolver) namespace(file, namespace string) lang.Target {
 	// Everything below depends on the file's directory, extension and name only
 	// through the governing projects, extensionPreferences and bbContext.
 	key := path.Dir(file) + "|" + path.Ext(file) + "|" + strconv.FormatBool(path.Base(file) == bbEdn) + "|" + namespace
-	if t, ok := r.memo.Load(key); ok {
-		return t.(lang.Target)
-	}
-	t := r.resolveNS(file, namespace)
-	r.memo.Store(key, t)
-	return t
+	return r.memo.Get(key, func(string) lang.Target { return r.resolveNS(file, namespace) })
 }
 
 func (r *resolver) resolveNS(file, namespace string) lang.Target {
@@ -695,12 +690,7 @@ func (r *resolver) npm(file, spec string, onlyDeclared bool) lang.Target {
 // Implements: REQ-CLOJURE-006
 func (r *resolver) class(file, class string) lang.Target {
 	key := "class|" + path.Dir(file) + "|" + path.Ext(file) + "|" + class
-	if t, ok := r.memo.Load(key); ok {
-		return t.(lang.Target)
-	}
-	t := r.resolveClass(file, class)
-	r.memo.Store(key, t)
-	return t
+	return r.memo.Get(key, func(string) lang.Target { return r.resolveClass(file, class) })
 }
 
 func (r *resolver) resolveClass(file, class string) lang.Target {
@@ -765,8 +755,7 @@ func (r *resolver) javaArtifact(class string, governing []*project) (lang.Target
 	for i, p := range governing {
 		directories[i] = p.directory
 	}
-	v, _ := r.classes.LoadOrStore(strings.Join(directories, "\x00"), &classMatcher{})
-	matcher := v.(*classMatcher)
+	matcher := r.classes.LoadOrStore(strings.Join(directories, "\x00"), &classMatcher{})
 	matcher.once.Do(func() {
 		// Clojure's own root packages are no artifact's: org.clojure/clojure does not
 		// ship clojure.core.async's deftypes.

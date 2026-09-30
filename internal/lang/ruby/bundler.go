@@ -1,6 +1,7 @@
 package ruby
 
 import (
+	"cmp"
 	"path"
 	"regexp"
 	"sort"
@@ -387,9 +388,7 @@ func readProject(directory, gemfile string, gemspecs map[string][]string, read f
 		for _, f := range gemspecs[d] {
 			source, _ := read(f)
 			name, declarations, paths := readGemspec(source)
-			if name == "" {
-				name = strings.TrimSuffix(path.Base(f), ".gemspec")
-			}
+			name = cmp.Or(name, strings.TrimSuffix(path.Base(f), ".gemspec"))
 			p.own[strings.ToLower(name)] = f
 			for _, rp := range paths {
 				p.loadPath = append(p.loadPath, path.Join(d, rp))

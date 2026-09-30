@@ -1,6 +1,7 @@
 package cmake
 
 import (
+	"cmp"
 	"maps"
 	"path"
 	"strings"
@@ -524,9 +525,7 @@ func (e *extractor) cpm(c command, values []value) {
 		url = u
 	}
 	hash = firstOf(keyValue, "URL_HASH")
-	if name == "" {
-		name = path.Base(strings.TrimSuffix(strings.TrimSuffix(repository, "/"), ".git"))
-	}
+	name = cmp.Or(name, path.Base(strings.TrimSuffix(strings.TrimSuffix(repository, "/"), ".git")))
 	shown := first
 	if isKeyword(first) || c.name == "cpmdeclarepackage" {
 		shown = name

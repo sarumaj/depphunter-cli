@@ -708,10 +708,7 @@ func lockTarget(l *locked) lang.Target {
 	if l.git != "" {
 		return lang.Target{Ecosystem: ecosystemHex, Package: l.app, Version: l.reference, Origin: l.git, Pinned: lang.Commit(l.reference)}
 	}
-	packageName := l.packageName
-	if packageName == "" {
-		packageName = l.app
-	}
+	packageName := cmp.Or(l.packageName, l.app)
 	return lang.Target{Ecosystem: ecosystemHex, Package: packageName, Version: l.version, Pinned: true, Registry: l.repository}
 }
 
@@ -753,10 +750,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 		if d.optional {
 			continue // not chosen: an optional dependency the lock did not resolve
 		}
-		packageName := d.packageName
-		if packageName == "" {
-			packageName = d.app
-		}
+		packageName := cmp.Or(d.packageName, d.app)
 		v, pinned := hexPinned(d.requirement)
 		out = append(out, lang.Target{Ecosystem: ecosystemHex, Package: packageName, Version: v, Pinned: pinned, Registry: d.repository})
 	}

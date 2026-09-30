@@ -1,6 +1,7 @@
 package perl
 
 import (
+	"cmp"
 	"path"
 	"slices"
 	"sort"
@@ -108,9 +109,7 @@ func newResolver(root string, all []*scan.File, p Plugin) *resolver {
 		// and the metadata generated from them.
 		sort.SliceStable(ms, func(i, j int) bool { return len(ms[i].requirements) > 0 && len(ms[j].requirements) == 0 })
 		for _, m := range ms {
-			if project.name == "" {
-				project.name = m.name
-			}
+			project.name = cmp.Or(project.name, m.name)
 			for _, requirement := range m.requirements {
 				if requirement.relation == "conflicts" || requirement.module == "perl" {
 					continue

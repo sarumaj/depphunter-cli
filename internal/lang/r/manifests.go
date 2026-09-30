@@ -1,6 +1,7 @@
 package r
 
 import (
+	"cmp"
 	"encoding/json"
 	"path"
 	"regexp"
@@ -315,10 +316,7 @@ func readRenvLock(source []byte, directory string) *lockfile {
 		l.repositories[r.Name] = r.URL
 	}
 	for key, p := range doc.Packages {
-		name := p.Package
-		if name == "" {
-			name = key
-		}
+		name := cmp.Or(p.Package, key)
 		lockedPackage := &locked{name: name, version: p.Version}
 		source := strings.ToLower(p.Source)
 		switch {

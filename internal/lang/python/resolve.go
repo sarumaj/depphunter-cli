@@ -1,6 +1,7 @@
 package python
 
 import (
+	"cmp"
 	"encoding/json"
 	"maps"
 	"os"
@@ -319,9 +320,7 @@ func (r *resolver) declared(d *dist) lang.Target {
 	t := lang.Target{Ecosystem: lang.EcosystemPyPI, Package: d.name, Version: d.version, Requested: d.requested, Pinned: d.pinned, Git: d.git}
 	if in := r.environment.get(d.name); in != nil && in.origin != "" {
 		t.Origin = in.origin
-		if t.Version == "" {
-			t.Version = in.version
-		}
+		t.Version = cmp.Or(t.Version, in.version)
 	}
 	return t
 }

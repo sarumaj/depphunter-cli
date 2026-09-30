@@ -1,6 +1,7 @@
 package terraform
 
 import (
+	"cmp"
 	"regexp"
 	"strings"
 )
@@ -142,9 +143,7 @@ func terragruntPath(expression []token) (string, bool) {
 	}
 	if rest, ok := strings.CutPrefix(s, "${get_terragrunt_dir()}"); ok {
 		s = strings.TrimPrefix(rest, "/")
-		if s == "" {
-			s = "."
-		}
+		s = cmp.Or(s, ".")
 	}
 	if s == "" || strings.Contains(s, "${") || strings.HasPrefix(s, "/") {
 		return "", false

@@ -1,6 +1,9 @@
 package elm
 
-import "strings"
+import (
+	"cmp"
+	"strings"
+)
 
 // coreModules are the modules of elm/core. Elm imports Basics, List, Maybe,
 // Result, String, Char, Tuple, Debug, Platform, Platform.Cmd and Platform.Sub into
@@ -171,9 +174,7 @@ func knownPackage(module string, declared func(string) bool) (name string, ok bo
 		if declared(packageName) {
 			return packageName, true
 		}
-		if first == "" {
-			first = packageName
-		}
+		first = cmp.Or(first, packageName)
 	}
 	return first, first != ""
 }

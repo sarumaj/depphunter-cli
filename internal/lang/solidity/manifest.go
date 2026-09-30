@@ -3,6 +3,7 @@ package solidity
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"sort"
 	"strings"
 
@@ -193,9 +194,7 @@ func readSoldeerLock(source []byte) []lockEntry {
 	for _, d := range m.Dependencies {
 		e := lockEntry{name: stringOf(d["name"]), version: stringOf(d["version"]), url: stringOf(d["url"]),
 			git: stringOf(d["git"]), rev: stringOf(d["rev"]), checksum: stringOf(d["checksum"])}
-		if e.url == "" {
-			e.url = stringOf(d["source"]) // the lock files of Soldeer before 0.3
-		}
+		e.url = cmp.Or(e.url, stringOf(d["source"])) // the lock files of Soldeer before 0.3
 		if e.name != "" {
 			out = append(out, e)
 		}

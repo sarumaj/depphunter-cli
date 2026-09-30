@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
@@ -104,6 +105,39 @@ func Collect(ctx context.Context, o Options) *Set {
 // report rewritten by a scanner is a finding fixed, or a new one, and the map should
 // say so without being restarted.
 func Files(root string, patterns []string) []string { return expand(root, patterns) }
+
+// Watched says what to watch for the scanner reports, so that rewriting one is a
+// change the watcher sees: named reports as single files, and the directory of every
+// pattern that is a glob.
+//
+// A report usually sits in a directory holding a great deal besides - often the
+// repository root - and a watch on the directory fires for every file written into
+// it. A glob has no one file to watch, and a new file matching it is news, so there
+// the whole directory stays watched.
+//
+// Implements: REQ-FND-023
+func Watched(root string, patterns []string) (directories, files []string) {
+	globbed := map[string]bool{}
+	for _, p := range patterns {
+		if !strings.ContainsAny(p, "*?[") {
+			continue
+		}
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(root, p)
+		}
+		d := filepath.Dir(p)
+		if !globbed[d] {
+			globbed[d] = true
+			directories = append(directories, d)
+		}
+	}
+	for _, f := range Files(root, patterns) {
+		if !globbed[filepath.Dir(f)] {
+			files = append(files, f)
+		}
+	}
+	return directories, files
+}
 
 // expand turns the configured patterns into file names, in a stable order. A pattern
 // is relative to the repository unless it is absolute.

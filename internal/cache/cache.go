@@ -8,11 +8,13 @@ import (
 	"encoding/gob"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/store"
 )
 
 // format changes whenever the on-disk layout does; older files are ignored.
@@ -147,19 +149,7 @@ func (c *Cache) write(data file) error {
 	if err := os.MkdirAll(filepath.Dir(c.path), 0o755); err != nil {
 		return err
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(c.path), ".cache-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(temporary.Name())
-	if err := gob.NewEncoder(temporary).Encode(data); err != nil {
-		temporary.Close()
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	return os.Rename(temporary.Name(), c.path)
+	return store.WriteAtomic(c.path, func(w io.Writer) error { return gob.NewEncoder(w).Encode(data) })
 }
 
 // fail puts back the mark Save took, so a save that did not happen is tried again.

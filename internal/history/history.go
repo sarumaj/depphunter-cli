@@ -5,18 +5,15 @@ package history
 import (
 	"bufio"
 	"bytes"
-	"compress/gzip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/store"
 )
 
 // ErrNoHistory means the project is not in a git work tree or has no commits.
@@ -202,10 +199,19 @@ func (h *History) Only(paths map[string]bool) *History {
 
 // ---------------------------------------------------------------- cache
 
+// histories are the cached histories of root in directory, one per HEAD and commit
+// limit (cacheKey).
+func histories(directory, root string) store.Result[History] {
+	return store.NewResult[History](directory, root, "history")
+}
+
+// cacheKey is what a history is cached under: the HEAD it was read at and its commit
+// limit.
+func cacheKey(head string, maxCommits int) string { return fmt.Sprintf("%s-%d", head, maxCommits) }
+
 // cacheFile names the cached history of root at head, read with a commit limit.
 func cacheFile(directory, root, head string, maxCommits int) string {
-	sum := sha256.Sum256([]byte(root))
-	return filepath.Join(directory, fmt.Sprintf("%s-history-%s-%d.json.gz", hex.EncodeToString(sum[:12]), head, maxCommits))
+	return histories(directory, root).File(cacheKey(head, maxCommits))
 }
 
 // Cached returns the history of root at HEAD, collecting and caching it in directory when
@@ -218,43 +224,14 @@ func Cached(ctx context.Context, directory, root string, maxCommits int) (*Histo
 	if err != nil {
 		return nil, err
 	}
-	file := cacheFile(directory, root, head, maxCommits)
-	if directory != "" {
-		if f, err := os.Open(file); err == nil {
-			defer f.Close()
-			if gzipReader, err := gzip.NewReader(f); err == nil {
-				var h History
-				if json.NewDecoder(gzipReader).Decode(&h) == nil && h.Head == head {
-					return &h, nil
-				}
-			}
-		}
+	results, key := histories(directory, root), cacheKey(head, maxCommits)
+	if h, ok := results.Load(key); ok && h.Head == head {
+		return h, nil
 	}
 	h, err := Collect(ctx, root, maxCommits)
 	if err != nil {
 		return nil, err
 	}
-	if directory != "" {
-		save(directory, root, file, h)
-	}
+	results.Save(key, h)
 	return h, nil
-}
-
-func save(directory, root, file string, h *History) {
-	if err := os.MkdirAll(directory, 0o755); err != nil {
-		return
-	}
-	old, _ := filepath.Glob(strings.Replace(cacheFile(directory, root, "*", 0), "-0.json.gz", "-*.json.gz", 1))
-	for _, o := range old {
-		os.Remove(o)
-	}
-	var buffer bytes.Buffer
-	gzipWriter := gzip.NewWriter(&buffer)
-	if json.NewEncoder(gzipWriter).Encode(h) != nil || gzipWriter.Close() != nil {
-		return
-	}
-	temporary := file + ".tmp"
-	if os.WriteFile(temporary, buffer.Bytes(), 0o644) == nil {
-		os.Rename(temporary, file)
-	}
 }

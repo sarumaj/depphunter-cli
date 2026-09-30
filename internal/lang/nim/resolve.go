@@ -1,6 +1,7 @@
 package nim
 
 import (
+	"cmp"
 	"path"
 	"path/filepath"
 	"sort"
@@ -554,9 +555,7 @@ func (r *resolver) target(p *project, name string) lang.Target {
 			lockedPackage = al
 		}
 		t.Version, t.Pinned = lockedPackage.shown(), true
-		if url == "" {
-			url = lockedPackage.url
-		}
+		url = cmp.Or(url, lockedPackage.url)
 		if d != nil && d.version != "" && d.version != t.Version && d.version != "=="+t.Version && d.version != "== "+t.Version {
 			t.Requested = d.version
 		}

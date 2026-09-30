@@ -15,11 +15,9 @@
 package fsharp
 
 import (
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/nuget"
@@ -80,17 +78,8 @@ func downloaded(f *scan.File) bool {
 	return false
 }
 
-var paketDirectories sync.Map // absolute directory -> it has a paket.dependencies
-
-func hasPaket(directory string) bool {
-	if v, ok := paketDirectories.Load(directory); ok {
-		return v.(bool)
-	}
-	// Lstat: a marker committed as a symbolic link says nothing of its target.
-	_, err := os.Lstat(filepath.Join(directory, "paket.dependencies"))
-	paketDirectories.Store(directory, err == nil)
-	return err == nil
-}
+// hasPaket reports whether an absolute directory has a paket.dependencies.
+var hasPaket = lang.MarkerMemo("paket.dependencies")
 
 // Class tells project files and Paket's files apart from sources and from other
 // files sharing their extensions (.lock, .references).

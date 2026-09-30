@@ -2,6 +2,7 @@ package shader
 
 import (
 	"bytes"
+	"cmp"
 	"path"
 	"regexp"
 	"strings"
@@ -251,10 +252,7 @@ func (r *resolver) crate(file string, segments []string) lang.Target {
 	if v := c.Locked(segments[0]); v != "" {
 		return lang.Target{Ecosystem: ecosystemCrates, Package: segments[0], Version: v, Pinned: true}
 	}
-	v := bevy.Requested
-	if v == "" {
-		v = bevy.Version
-	}
+	v := cmp.Or(bevy.Requested, bevy.Version)
 	return lang.Target{Ecosystem: ecosystemCrates, Package: segments[0], Version: v}
 }
 

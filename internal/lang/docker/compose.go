@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"cmp"
 	"path"
 	"strings"
 
@@ -170,9 +171,7 @@ func serviceImports(extraction *lang.Extraction, image, build *yaml.Node) {
 			}
 		}
 	}
-	if context == "" {
-		context = "."
-	}
+	context = cmp.Or(context, ".")
 	// A remote context (a Git URL, an archive) is built from somewhere else, and a
 	// Dockerfile given by absolute path is outside the repository.
 	if dockerfile == "" || remote(context) || path.IsAbs(dockerfile) || path.IsAbs(context) {

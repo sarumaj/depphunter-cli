@@ -1,6 +1,7 @@
 package ada
 
 import (
+	"cmp"
 	"os"
 	"path"
 	"path/filepath"
@@ -594,9 +595,7 @@ func (r *resolver) crate(c *crateDirectory, name string) lang.Target {
 		}
 		if state.version != "" {
 			t.Version, t.Pinned = state.version, true
-			if constraint == "" {
-				constraint = state.versions // a crate only the solution has
-			}
+			constraint = cmp.Or(constraint, state.versions) // a crate only the solution has
 			if constraint != "" && constraint != state.version && constraint != "="+state.version {
 				t.Requested = constraint
 			}

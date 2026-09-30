@@ -1,6 +1,7 @@
 package commonlisp
 
 import (
+	"cmp"
 	"path"
 	"strings"
 
@@ -189,9 +190,7 @@ func (x *extractor) top(n *Node, depth int) {
 	case "in-package":
 		if len(kids) > 1 {
 			if p := name(unquote(kids[1])); p != "" {
-				if x.current == "" {
-					x.current = p
-				}
+				x.current = cmp.Or(x.current, p)
 				x.add("in-package "+p, p, kindInPackage, n.Line)
 			}
 		}

@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -33,7 +32,7 @@ type resolver struct {
 	home        string              // ELM_HOME
 	// installed memoizes the elm.json of installed packages, by "author/name@version"
 	// (nil when not on disk).
-	installed sync.Map
+	installed lang.Memo[string, *manifest] // name@version -> its installed elm.json, or nil
 }
 
 // elmHome is where the compiler keeps downloaded packages: ELM_HOME, else ~/.elm.
@@ -399,21 +398,17 @@ func (r *resolver) installedManifest(name, version string) *manifest {
 	if r.home == "" || version == "" || !validName(name) {
 		return nil
 	}
-	key := name + "@" + version
-	if m, ok := r.installed.Load(key); ok {
-		return m.(*manifest)
-	}
-	var found *manifest
-	for _, elmVersion := range elmVersions(nil) {
-		source, err := os.ReadFile(filepath.Join(r.home, elmVersion, "packages", filepath.FromSlash(name), version, "elm.json"))
-		if err == nil {
-			if found = readManifest(source); found != nil {
-				break
+	return r.installed.Get(name+"@"+version, func(string) *manifest {
+		for _, elmVersion := range elmVersions(nil) {
+			source, err := os.ReadFile(filepath.Join(r.home, elmVersion, "packages", filepath.FromSlash(name), version, "elm.json"))
+			if err == nil {
+				if found := readManifest(source); found != nil {
+					return found
+				}
 			}
 		}
-	}
-	r.installed.Store(key, found)
-	return found
+		return nil
+	})
 }
 
 // validName reports whether a package name is author/name without path tricks.

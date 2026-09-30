@@ -20,7 +20,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"sync"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -98,7 +97,7 @@ func haxelibDirectory(p string) bool {
 	return strings.HasPrefix(p, ".haxelib/") || strings.Contains(p, "/.haxelib/")
 }
 
-var sniffed sync.Map // absolute path and size -> bool: a Lime project file
+var sniffed lang.Memo[string, bool] // absolute path and size -> a Lime project file
 
 // sniffProject reads the head of a project.xml to tell a Lime/OpenFL project
 // from another tool's file of that name.
@@ -106,14 +105,10 @@ func sniffProject(f *scan.File) bool {
 	if f.TooLarge || f.Size > lang.MaxParseSize {
 		return false
 	}
-	key := fmt.Sprintf("%s\x00%d", f.AbsolutePath, f.Size)
-	if v, ok := sniffed.Load(key); ok {
-		return v.(bool)
-	}
-	source, err := os.ReadFile(f.AbsolutePath)
-	ok := err == nil && limeProject(source)
-	sniffed.Store(key, ok)
-	return ok
+	return sniffed.Get(fmt.Sprintf("%s\x00%d", f.AbsolutePath, f.Size), func(string) bool {
+		source, err := os.ReadFile(f.AbsolutePath)
+		return err == nil && limeProject(source)
+	})
 }
 
 // Implements: REQ-HAXE-009

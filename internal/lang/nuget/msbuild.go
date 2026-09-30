@@ -2,6 +2,7 @@ package nuget
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -89,9 +90,7 @@ func ReadProject(data []byte) Project {
 			stack = stack[:len(stack)-1]
 			switch {
 			case len(stack) >= 2 && stack[len(stack)-2] == "ItemGroup" && current != nil && (name == "Version" || name == "VersionOverride"):
-				if current.Version == "" {
-					current.Version = strings.TrimSpace(text)
-				}
+				current.Version = cmp.Or(current.Version, strings.TrimSpace(text))
 			case len(stack) >= 1 && stack[len(stack)-1] == "ItemGroup":
 				current = nil
 			case len(stack) >= 1 && stack[len(stack)-1] == "PropertyGroup":

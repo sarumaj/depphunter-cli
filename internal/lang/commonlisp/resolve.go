@@ -2,6 +2,7 @@ package commonlisp
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"io/fs"
 	"os"
@@ -55,8 +56,8 @@ type resolver struct {
 	stems          map[string][]string          // path without extension -> files
 	registered     map[string]string            // package -> system, asdf:register-system-packages
 	pins           map[string]*pins
-	pinDirectories []string // shallowest first
-	declared       sync.Map // file -> *declaration
+	pinDirectories []string                        // shallowest first
+	declared       lang.Memo[string, *declaration] // file -> its declaration
 	// installed are the systems Qlot installed into .qlot/ and ocicl into
 	// systems/, by name, and installedNames their names, sorted.
 	installed      map[string]*installedSystem
@@ -101,16 +102,12 @@ func ignored(f *scan.File) bool {
 	return false
 }
 
-var ociclDirectories sync.Map // absolute directory -> bool
+var ociclDirectories lang.Memo[string, bool] // absolute directory -> it has an ocicl.csv
 
 func besideOcicl(directory string) bool {
-	if v, ok := ociclDirectories.Load(directory); ok {
-		return v.(bool)
-	}
-	// Lstat: a marker committed as a symbolic link says nothing of its target.
-	_, err := os.Lstat(path.Join(directory, "ocicl.csv"))
-	ociclDirectories.Store(directory, err == nil)
-	return err == nil
+	return ociclDirectories.Get(directory, func(directory string) bool {
+		return lang.Present(path.Join(directory, "ocicl.csv"))
+	})
 }
 
 // newResolver reads the repository's .asd files for its systems, the
@@ -541,10 +538,7 @@ func (r *resolver) pinned(p *pins, system, project string) (lang.Target, bool) {
 }
 
 func ociclTarget(e ociclEntry) lang.Target {
-	v := e.version()
-	if v == "" {
-		v = e.digest
-	}
+	v := cmp.Or(e.version(), e.digest)
 	return lang.Target{Ecosystem: ecosystemQuicklisp, Package: e.project, Version: v, Pinned: e.digest != ""}
 }
 
@@ -665,7 +659,7 @@ func (r *resolver) localSource(e qlEntry, directory string) lang.Target {
 // nearest .asd files' systems, else all) and what they depend on.
 func (r *resolver) declarationOf(file string) *declaration {
 	if d, ok := r.declared.Load(file); ok {
-		return d.(*declaration)
+		return d
 	}
 	d := &declaration{set: map[string]bool{}}
 	references := r.fileSystems[file]
@@ -731,8 +725,7 @@ func (r *resolver) declarationOf(file string) *declaration {
 		d.names = append(d.names, n)
 	}
 	sort.Strings(d.names)
-	v, _ := r.declared.LoadOrStore(file, d)
-	return v.(*declaration)
+	return r.declared.LoadOrStore(file, d)
 }
 
 // fold is a name without case, a cl- prefix or -cl suffix and punctuation:

@@ -1,6 +1,7 @@
 package bazel
 
 import (
+	"cmp"
 	"path"
 	"strings"
 
@@ -127,10 +128,7 @@ func (r *resolver) readModule(w *workspace, file string, source []byte, depth in
 			if d.name == "" {
 				continue
 			}
-			apparent := d.repositoryName
-			if apparent == "" {
-				apparent = d.name
-			}
+			apparent := cmp.Or(d.repositoryName, d.name)
 			w.dependencies[apparent] = d
 			w.byModule[d.name] = d
 		case "single_version_override", "git_override", "archive_override", "local_path_override":
@@ -198,10 +196,7 @@ func (r *resolver) readModule(w *workspace, file string, source []byte, depth in
 func (r *resolver) extensionTag(w *workspace, extension, tag string, n *starlark.Node) {
 	switch extension + "." + tag {
 	case "maven.install", "maven.artifact":
-		name := n.KeywordString("name")
-		if name == "" {
-			name = "maven"
-		}
+		name := cmp.Or(n.KeywordString("name"), "maven")
 		h := w.hub(name, lang.EcosystemMaven)
 		if tag == "artifact" {
 			if c := coordinate(n); c != "" {
@@ -230,22 +225,13 @@ func (r *resolver) extensionTag(w *workspace, extension, tag string, n *starlark
 			w.addGo(lang.Target{Ecosystem: lang.EcosystemGo, Package: p, Version: v, Pinned: lang.Pinned(v)})
 		}
 	case "npm.npm_translate_lock":
-		name := n.KeywordString("name")
-		if name == "" {
-			name = "npm"
-		}
+		name := cmp.Or(n.KeywordString("name"), "npm")
 		r.pnpm(w, w.hub(name, lang.EcosystemNPM), n.KeywordString("pnpm_lock"))
 	case "crate.from_cargo", "crate.from_specs":
-		name := n.KeywordString("name")
-		if name == "" {
-			name = "crates"
-		}
+		name := cmp.Or(n.KeywordString("name"), "crates")
 		r.cargo(w, w.hub(name, lang.EcosystemCrates), n)
 	case "crate.spec":
-		name := n.KeywordString("repositories")
-		if name == "" {
-			name = "crates"
-		}
+		name := cmp.Or(n.KeywordString("repositories"), "crates")
 		if p := n.KeywordString("package"); p != "" {
 			v := n.KeywordString("version")
 			w.hub(name, lang.EcosystemCrates).add(normalizeCrate(p), lang.Target{Ecosystem: lang.EcosystemCrates, Package: p, Version: v, Pinned: exactCargo(v)}, false)
@@ -266,10 +252,7 @@ func (r *resolver) readRules(w *workspace, source []byte, isWorkspace bool) {
 		if statement.Definition == "" && statement.X.Callee() == "load" {
 			for i, a := range statement.X.Arguments {
 				if s, ok := a.Value.StringValue(); ok && i > 0 {
-					local := a.Name
-					if local == "" {
-						local = s
-					}
+					local := cmp.Or(a.Name, s)
 					loads[local] = s
 				}
 			}
@@ -308,27 +291,19 @@ func (r *resolver) repositoryRule(w *workspace, rule string, n *starlark.Node) {
 	name := n.KeywordString("name")
 	switch rule {
 	case "maven_install":
-		if name == "" {
-			name = "maven"
-		}
+		name = cmp.Or(name, "maven")
 		r.mavenInstall(w, w.hub(name, lang.EcosystemMaven), n, "maven_install_json")
 		return
 	case "pip_parse", "pip_install":
-		if name == "" {
-			name = "pip"
-		}
+		name = cmp.Or(name, "pip")
 		r.pipParse(w, w.hub(name, lang.EcosystemPyPI), n)
 		return
 	case "npm_translate_lock":
-		if name == "" {
-			name = "npm"
-		}
+		name = cmp.Or(name, "npm")
 		r.pnpm(w, w.hub(name, lang.EcosystemNPM), n.KeywordString("pnpm_lock"))
 		return
 	case "crates_repository":
-		if name == "" {
-			name = "crates"
-		}
+		name = cmp.Or(name, "crates")
 		r.cargo(w, w.hub(name, lang.EcosystemCrates), n)
 		return
 	}

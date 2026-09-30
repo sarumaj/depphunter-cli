@@ -36,14 +36,14 @@ type resolver struct {
 	packageOf   map[string]string   // module file -> the package it declares
 	firsts      map[string]bool     // first segments of the repository's packages
 	manifests   map[string]*manifest
-	byDirectory map[string][]*manifest // directory -> manifests in it
-	all         []*manifest            // every manifest, shallowest first
-	own         map[string]string      // library the repository is (haxelib.json name) -> its class path
-	lix         map[string]*lixScope   // directory with haxe_libraries/ -> its pins
-	lixFile     map[string]*lixLibrary // haxe_libraries/<name>.hxml -> its pin
-	installed   map[string]*installed  // lower-case library name -> as installed
-	limeFiles   map[string]bool        // project files that are Lime's
-	probed      sync.Map               // absolute path -> bool: exists
+	byDirectory map[string][]*manifest  // directory -> manifests in it
+	all         []*manifest             // every manifest, shallowest first
+	own         map[string]string       // library the repository is (haxelib.json name) -> its class path
+	lix         map[string]*lixScope    // directory with haxe_libraries/ -> its pins
+	lixFile     map[string]*lixLibrary  // haxe_libraries/<name>.hxml -> its pin
+	installed   map[string]*installed   // lower-case library name -> as installed
+	limeFiles   map[string]bool         // project files that are Lime's
+	probed      lang.Memo[string, bool] // absolute path -> it exists
 }
 
 // Implements: REQ-HAXE-004, REQ-HAXE-005, REQ-HAXE-006, REQ-HAXE-007, REQ-HAXE-008
@@ -654,12 +654,10 @@ func (r *resolver) Installed(t lang.Target) bool {
 
 // exists reports whether an absolute path exists through files, remembered.
 func (r *resolver) exists(files lang.Root, p string) bool {
-	if v, ok := r.probed.Load(p); ok {
-		return v.(bool)
-	}
-	_, err := files.Stat(p)
-	r.probed.Store(p, err == nil)
-	return err == nil
+	return r.probed.Get(p, func(p string) bool {
+		_, err := files.Stat(p)
+		return err == nil
+	})
 }
 
 // installedFor is the library installed for a file (lix's cache, a haxelib

@@ -283,10 +283,7 @@ func (r *resolver) readPOM(absolute string) {
 	if lang.UnmarshalXML(data, &pom) != nil {
 		return
 	}
-	group := pom.GroupID
-	if group == "" {
-		group = pom.Parent.GroupID
-	}
+	group := cmp.Or(pom.GroupID, pom.Parent.GroupID)
 	if group != "" {
 		r.own = append(r.own, group)
 	}
@@ -384,9 +381,7 @@ func (r *resolver) readSBTs(files []*scan.File) {
 				b.scala = b.values[string(m[2])]
 			}
 		}
-		if global == "" {
-			global = b.scala
-		}
+		global = cmp.Or(global, b.scala)
 		builds = append(builds, b)
 	}
 	for _, b := range builds {

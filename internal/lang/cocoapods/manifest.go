@@ -1,6 +1,7 @@
 package cocoapods
 
 import (
+	"cmp"
 	"encoding/json"
 	"regexp"
 	"slices"
@@ -396,9 +397,7 @@ func readLock(source []byte) (map[string]*locked, map[string][]string) {
 			for k, dependencies := range v {
 				n, version := podLine(k)
 				l := get(n)
-				if l.version == "" {
-					l.version = version
-				}
+				l.version = cmp.Or(l.version, version)
 				list, _ := dependencies.([]any)
 				addDependencies(l, Root(n), list)
 			}
