@@ -387,19 +387,8 @@ func (r *resolver) dependencyTarget(d dependency, from string) lang.Target {
 	default:
 		t.Version, t.Floating = d.version, true // #:version is a minimum
 	}
-	if d.url != "" && !public(d.url) {
+	if d.url != "" && !lang.PublicForge(d.url) {
 		t.Origin = d.url
 	}
 	return t
-}
-
-// public reports whether a git URL is on a public forge, whose packages are
-// named, not origins.
-func public(url string) bool {
-	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
-	switch host {
-	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "git.sr.ht", "sr.ht":
-		return true
-	}
-	return false
 }

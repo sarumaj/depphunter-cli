@@ -80,7 +80,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			data, err := os.ReadFile(a)
 			return data, err == nil
 		}
-		if root == "" || !inside(relative) {
+		if root == "" || !lang.Inside(relative) {
 			return nil, false
 		}
 		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
@@ -158,7 +158,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	// Enclosing projects first, so a child finds its parent's lock.
-	sort.Slice(r.projects, func(i, j int) bool { return depth(r.projects[i].directory) < depth(r.projects[j].directory) })
+	sort.Slice(r.projects, func(i, j int) bool { return lang.Depth(r.projects[i].directory) < lang.Depth(r.projects[j].directory) })
 	for _, p := range r.projects {
 		for d := p.directory; d != "."; {
 			d = path.Dir(d)
@@ -228,7 +228,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			r.readInstalled(root, p.directory)
 		}
 	}
-	sort.SliceStable(r.projects, func(i, j int) bool { return depth(r.projects[i].directory) > depth(r.projects[j].directory) })
+	sort.SliceStable(r.projects, func(i, j int) bool { return lang.Depth(r.projects[i].directory) > lang.Depth(r.projects[j].directory) })
 	return r
 }
 
@@ -307,24 +307,10 @@ func testPath(p string) bool {
 	return false
 }
 
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
-}
-
-// inside reports whether a cleaned relative path stays in the repository.
-func inside(p string) bool { return p != ".." && !strings.HasPrefix(p, "../") && !path.IsAbs(p) }
-
-func under(file, directory string) bool {
-	return directory == "." || strings.HasPrefix(file, directory+"/")
-}
-
 // projectOf is the project a file belongs to: the nearest one above it.
 func (r *resolver) projectOf(file string) *project {
 	for _, p := range r.projects {
-		if under(file, p.directory) {
+		if lang.Within(file, p.directory) {
 			return p
 		}
 	}
@@ -578,7 +564,7 @@ func (r *resolver) gleamModule(p *project, module string) lang.Target {
 func (r *resolver) appDirectoryOf(file string) string {
 	best := ""
 	for _, d := range r.appDirectories {
-		if under(file, d) && (best == "" || depth(d) > depth(best)) {
+		if lang.Within(file, d) && (best == "" || lang.Depth(d) > lang.Depth(best)) {
 			best = d
 		}
 	}
@@ -610,7 +596,7 @@ func (r *resolver) include(file, name string) lang.Target {
 		}
 	}
 	for _, c := range candidates {
-		if inside(c) && r.files[c] {
+		if lang.Inside(c) && r.files[c] {
 			return lang.Target{Local: c}
 		}
 	}
@@ -658,7 +644,7 @@ func (r *resolver) dependency(file, app string) lang.Target {
 	}
 	if d != nil && d.path != "" {
 		directory := path.Join(p.directory, d.path)
-		if inside(directory) {
+		if lang.Inside(directory) {
 			for _, m := range []string{"mix.exs", "rebar.config"} {
 				if f := path.Join(directory, m); r.files[f] {
 					return lang.Target{Local: f}

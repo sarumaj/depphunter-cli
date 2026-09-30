@@ -106,7 +106,7 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 		r.order = append(r.order, p)
 	}
 	sort.Slice(r.order, func(i, j int) bool {
-		depthI, depthJ := depth(r.order[i].directory), depth(r.order[j].directory)
+		depthI, depthJ := lang.Depth(r.order[i].directory), lang.Depth(r.order[j].directory)
 		if depthI != depthJ {
 			return depthI < depthJ
 		}
@@ -145,13 +145,6 @@ func (r *resolver) crystalPath(root, value string) []string {
 		}
 	}
 	return out
-}
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
 }
 
 // readInstalled lists what shards installed into lib/: each directory (or the
@@ -426,7 +419,7 @@ func (r *resolver) sourceRoots(file string) []string {
 // spelling is folded, or "".
 func (p *project) match(first string) string {
 	want := fold(first)
-	for _, names := range [][]string{sortedKeys(p.dependencies), sortedKeys(p.lock)} {
+	for _, names := range [][]string{lang.SortedKeys(p.dependencies), lang.SortedKeys(p.lock)} {
 		for _, name := range names {
 			if fold(name) == want {
 				return name
@@ -461,7 +454,7 @@ func (r *resolver) shardTarget(p *project, name string) lang.Target {
 	if l != nil && l.url != "" && url == "" {
 		url = l.url
 	}
-	if !public(url) {
+	if !lang.PublicOrUnnamed(url) {
 		t.Origin = url
 	}
 	switch {
@@ -498,21 +491,6 @@ func pinRule(t *lang.Target, d *dependency) {
 	default:
 		t.Version, t.Floating = d.version, true
 	}
-}
-
-// public reports whether a shard's repository is on a public forge (or unknown),
-// as opposed to a git server of the organization's own, which is recorded as the
-// shard's origin.
-func public(url string) bool {
-	if url == "" {
-		return true
-	}
-	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
-	switch host {
-	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "git.sr.ht", "sr.ht":
-		return true
-	}
-	return false
 }
 
 // Expand turns `require "./dir/*"` (the .cr files of dir) and
@@ -608,7 +586,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			continue
 		}
 		var out []lang.Target
-		for _, name := range sortedKeys(sh.dependencies) {
+		for _, name := range lang.SortedKeys(sh.dependencies) {
 			d := sh.dependencies[name]
 			if d.dev {
 				continue
@@ -622,7 +600,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			dependencyTarget := lang.Target{Ecosystem: ecosystemShards, Package: name}
 			if d.path == "" {
 				pinRule(&dependencyTarget, d)
-				if !public(d.url) {
+				if !lang.PublicOrUnnamed(d.url) {
 					dependencyTarget.Origin = d.url
 				}
 				out = append(out, dependencyTarget)

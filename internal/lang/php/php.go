@@ -347,7 +347,7 @@ func includePath(text string) (string, bool) {
 			break
 		}
 	}
-	for strings.HasPrefix(expression, "(") && strings.HasSuffix(expression, ")") && balanced(expression[1:len(expression)-1]) {
+	for strings.HasPrefix(expression, "(") && strings.HasSuffix(expression, ")") && lang.BalancedParentheses(expression[1:len(expression)-1]) {
 		expression = strings.TrimSpace(expression[1 : len(expression)-1])
 	}
 	var out strings.Builder
@@ -426,21 +426,4 @@ func splitConcat(s string) []string {
 		}
 	}
 	return append(parts, s[start:])
-}
-
-// balanced reports whether s closes every bracket it opens, so "(a) . (b)" is not
-// mistaken for one parenthesized expression.
-func balanced(s string) bool {
-	depth := 0
-	for _, c := range s {
-		switch c {
-		case '(':
-			depth++
-		case ')':
-			if depth--; depth < 0 {
-				return false
-			}
-		}
-	}
-	return depth == 0
 }

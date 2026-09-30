@@ -114,7 +114,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	sort.Slice(r.order, func(i, j int) bool {
-		depthI, depthJ := depth(r.order[i].directory), depth(r.order[j].directory)
+		depthI, depthJ := lang.Depth(r.order[i].directory), lang.Depth(r.order[j].directory)
 		if depthI != depthJ {
 			return depthI < depthJ
 		}
@@ -142,13 +142,6 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	return r
-}
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
 }
 
 type declared struct {
@@ -187,7 +180,7 @@ func declarations(files []*scan.File) []declared {
 // Naming packages' explicit entries, and which projects' sources every Ada
 // source's directory can see.
 func (r *resolver) readProjects(sources []*scan.File) {
-	paths := sortedKeys(r.gprs)
+	paths := lang.SortedKeys(r.gprs)
 	for _, projectPath := range paths {
 		p := r.gprs[projectPath]
 		if !p.g.directoriesSet {
@@ -247,7 +240,7 @@ func (r *resolver) projectsOf(directory string) []*project {
 		return projects
 	}
 	var out []*project
-	for _, projectPath := range sortedKeys(r.gprs) {
+	for _, projectPath := range lang.SortedKeys(r.gprs) {
 		p := r.gprs[projectPath]
 		for _, sourceDirectory := range p.directories {
 			if directory == sourceDirectory.directory || sourceDirectory.recursive && (sourceDirectory.directory == "." || strings.HasPrefix(directory, sourceDirectory.directory+"/")) {
@@ -319,20 +312,11 @@ func pick(from string, files []string) string {
 		if f == from {
 			continue
 		}
-		if n := commonDirectories(f, from); n > bestLength {
+		if n := lang.CommonDirectories(f, from); n > bestLength {
 			best, bestLength = f, n
 		}
 	}
 	return best
-}
-
-func commonDirectories(a, b string) int {
-	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
-	n := 0
-	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
-		n++
-	}
-	return n
 }
 
 // choose picks the unit's file for an importing file: among the files in
@@ -500,7 +484,7 @@ func (c *crateDirectory) known() []string {
 		set[n] = true
 	}
 	delete(set, c.m.name)
-	return sortedKeys(set)
+	return lang.SortedKeys(set)
 }
 
 func (c *crateDirectory) knows(name string) bool {
@@ -669,7 +653,7 @@ func (r *resolver) pinned(c *crateDirectory, t lang.Target, constraint, director
 		default:
 			t.Floating = true
 		}
-		if !public(url) {
+		if !lang.PublicOrUnnamed(url) {
 			t.Origin = url
 		}
 	case directory != "":
@@ -704,20 +688,6 @@ func (r *resolver) localCrate(directory, relative string) lang.Target {
 	return lang.Target{}
 }
 
-// public reports whether a repository is on a public forge (or unknown), as
-// opposed to a git server of the organization's own.
-func public(url string) bool {
-	if url == "" {
-		return true
-	}
-	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
-	switch host {
-	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "git.sr.ht", "sr.ht":
-		return true
-	}
-	return false
-}
-
 // Dependencies lists what a crate depends on: the lock file's solution says
 // (each at the version it chose), else the alire.toml of the crate Alire
 // fetched.
@@ -746,7 +716,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			continue
 		}
 		var out []lang.Target
-		for _, name := range sortedKeys(installed.m.dependencies) {
+		for _, name := range lang.SortedKeys(installed.m.dependencies) {
 			if dependencyTarget := r.dependency(c, name, installed.m.dependencies[name].constraint); dependencyTarget.Ecosystem != "" {
 				out = append(out, dependencyTarget)
 			}

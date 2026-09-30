@@ -207,7 +207,7 @@ func (r *resolver) local(file, module string) (string, bool) {
 	}
 	best, score := "", -1
 	for _, d := range directories {
-		s := common(file, d)
+		s := lang.CommonSegments(file, d)
 		if d == "" || strings.HasPrefix(file, d+"/") {
 			s += 1 << 20 // the module the file is in
 		}
@@ -216,16 +216,6 @@ func (r *resolver) local(file, module string) (string, bool) {
 		}
 	}
 	return best, true
-}
-
-// common is the number of leading path segments a and b share.
-func common(a, b string) int {
-	aParts, bParts := strings.Split(a, "/"), strings.Split(b, "/")
-	n := 0
-	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
-		n++
-	}
-	return n
 }
 
 // localFile is the file Puppet's autoloader reads for a name in the module
@@ -285,7 +275,7 @@ func (r *resolver) declared(file, module string) *dependency {
 	for _, d := range r.pfDirectories {
 		lists = append(lists, r.puppetfiles[d].dependencies)
 	}
-	for _, d := range sortedKeys(r.metadata) {
+	for _, d := range lang.SortedKeys(r.metadata) {
 		lists = append(lists, r.metadata[d].dependencies)
 	}
 	for _, list := range lists {
@@ -296,15 +286,6 @@ func (r *resolver) declared(file, module string) *dependency {
 		}
 	}
 	return nil
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // installedModule is a module r10k installed beside a Puppetfile, named by

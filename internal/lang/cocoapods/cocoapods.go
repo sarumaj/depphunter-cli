@@ -211,8 +211,8 @@ func Read(root string, all []*scan.File) *Index {
 	}
 	sort.Slice(x.projects, func(i, j int) bool {
 		a, b := x.projects[i].directory, x.projects[j].directory
-		if depth(a) != depth(b) {
-			return depth(a) < depth(b)
+		if lang.Depth(a) != lang.Depth(b) {
+			return lang.Depth(a) < lang.Depth(b)
 		}
 		return a < b
 	})
@@ -223,13 +223,6 @@ func (p *project) declare(d *declaration) {
 	if _, ok := p.declared[Root(d.name)]; !ok {
 		p.declared[Root(d.name)] = d
 	}
-}
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
 }
 
 // vendored reports whether a path is inside a dependency checkout: CocoaPods' Pods
@@ -600,16 +593,8 @@ func trimPlatform(f string) string {
 	return f
 }
 
-// fold reduces a name to lower-case letters and digits.
-func fold(s string) string {
-	var b strings.Builder
-	for _, c := range strings.ToLower(s) {
-		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' {
-			b.WriteRune(c)
-		}
-	}
-	return b.String()
-}
+// fold is the key pods and modules are matched by, under the name the tests use.
+func fold(s string) string { return lang.FoldAlphanumeric(s) }
 
 // cart finds the Carthage dependency (declared or resolved) whose repository is
 // named like a module.
@@ -729,15 +714,4 @@ func (x *Index) Vendored(file, local string) (lang.Target, bool) {
 		}
 	}
 	return lang.Target{}, false
-}
-
-// Sources are the spec repositories a Podfile names with `source` (for the index
-// discovery).
-func Sources(source []byte) []string { return readPodfile(string(source)).sources }
-
-// SpecRepos reads a Podfile.lock's SPEC REPOS: repository -> the pods installed from
-// it. "trunk" is CocoaPods' own.
-func SpecRepositories(source []byte) map[string][]string {
-	_, repositories := readLock(source)
-	return repositories
 }

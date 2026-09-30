@@ -110,11 +110,11 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		}
 	}
-	sort.Slice(r.packages, func(i, j int) bool { return deeper(r.packages[i].directory, r.packages[j].directory) })
+	sort.Slice(r.packages, func(i, j int) bool { return lang.DeepestFirst(r.packages[i].directory, r.packages[j].directory) })
 	for _, p := range r.packages {
 		covered := false
 		for d := range projectDirectories {
-			if within(p.directory, d) || p.directory == d {
+			if lang.Within(p.directory, d) || p.directory == d {
 				covered = true
 				break
 			}
@@ -126,7 +126,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 	for d := range projectDirectories {
 		r.projects = append(r.projects, r.readProject(d, read))
 	}
-	sort.Slice(r.projects, func(i, j int) bool { return deeper(r.projects[i].directory, r.projects[j].directory) })
+	sort.Slice(r.projects, func(i, j int) bool { return lang.DeepestFirst(r.projects[i].directory, r.projects[j].directory) })
 	for _, p := range r.packages {
 		p.project = r.projectOf(p.file)
 	}
@@ -138,7 +138,7 @@ func (r *resolver) addPackage(p *cabalPackage) {
 	info := &packageInfo{cabalPackage: p}
 	r.packages = append(r.packages, info)
 	r.byDirectory[p.directory] = info
-	if q := r.byName[p.name]; q == nil || depth(p.directory) < depth(q.directory) {
+	if q := r.byName[p.name]; q == nil || lang.Depth(p.directory) < lang.Depth(q.directory) {
 		r.byName[p.name] = info
 	}
 }
@@ -267,27 +267,9 @@ func moduleName(source []byte, literate bool) string {
 	return ""
 }
 
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
-}
-
-func deeper(a, b string) bool {
-	if da, database := depth(a), depth(b); da != database {
-		return da > database
-	}
-	return a < b
-}
-
-func within(file, directory string) bool {
-	return directory == "." || strings.HasPrefix(file, directory+"/")
-}
-
 func (r *resolver) packageInfoOf(file string) *packageInfo {
 	for _, p := range r.packages {
-		if within(file, p.directory) {
+		if lang.Within(file, p.directory) {
 			return p
 		}
 	}
@@ -296,7 +278,7 @@ func (r *resolver) packageInfoOf(file string) *packageInfo {
 
 func (r *resolver) projectOf(file string) *projectInfo {
 	for _, p := range r.projects {
-		if within(file, p.directory) {
+		if lang.Within(file, p.directory) {
 			return p
 		}
 	}
@@ -311,8 +293,8 @@ func (p *packageInfo) components(file string) []*component {
 	for _, c := range p.comps {
 		n := -1
 		for _, d := range c.directories {
-			if directory := path.Join(p.directory, d); within(file, directory) {
-				n = max(n, depth(directory))
+			if directory := path.Join(p.directory, d); lang.Within(file, directory) {
+				n = max(n, lang.Depth(directory))
 			}
 		}
 		switch {
@@ -568,7 +550,7 @@ func (r *resolver) localIn(file, module string, boot bool, keep func(*packageInf
 		for _, component := range own.components(file) {
 			for _, d := range component.directories {
 				for _, c := range ok {
-					if within(c, path.Join(own.directory, d)) {
+					if lang.Within(c, path.Join(own.directory, d)) {
 						return c
 					}
 				}
@@ -577,21 +559,11 @@ func (r *resolver) localIn(file, module string, boot bool, keep func(*packageInf
 	}
 	best, bestLength := ok[0], -1
 	for _, c := range ok {
-		if n := common(file, c); n > bestLength {
+		if n := lang.CommonDirectories(file, c); n > bestLength {
 			best, bestLength = c, n
 		}
 	}
 	return best
-}
-
-// common is the number of leading directories two paths share.
-func common(a, b string) int {
-	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
-	n := 0
-	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
-		n++
-	}
-	return n
 }
 
 // probe looks for the source of a module under the importer's component directories
@@ -638,7 +610,7 @@ func (r *resolver) packageOf(file string, own *packageInfo, module string) strin
 	names := map[string]string{}
 	for name := range declared {
 		if !stdPackages[name] {
-			names[fold(name)] = name
+			names[lang.FoldSeparators(name)] = name
 		}
 	}
 	if p := runMatch(module, names); p != "" {
@@ -658,10 +630,10 @@ func (r *resolver) packageOf(file string, own *packageInfo, module string) strin
 	for name := range declared {
 		first, _, _ := strings.Cut(name, "-")
 		if !stdPackages[name] && first != name {
-			if _, duplicate := firsts[fold(first)]; duplicate {
-				firsts[fold(first)] = ""
+			if _, duplicate := firsts[lang.FoldSeparators(first)]; duplicate {
+				firsts[lang.FoldSeparators(first)] = ""
 			} else {
-				firsts[fold(first)] = name
+				firsts[lang.FoldSeparators(first)] = name
 			}
 		}
 	}
@@ -671,7 +643,7 @@ func (r *resolver) packageOf(file string, own *packageInfo, module string) strin
 	if project != nil {
 		known := map[string]string{}
 		for _, name := range project.names() {
-			known[fold(name)] = name
+			known[lang.FoldSeparators(name)] = name
 		}
 		if p := runMatch(module, known); p != "" {
 			return p

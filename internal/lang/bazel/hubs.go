@@ -40,7 +40,7 @@ func mavenTarget(coordinate string) (lang.Target, bool) {
 	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
 		return lang.Target{}, false
 	}
-	t := lang.Target{Ecosystem: ecosystemMaven, Package: parts[0] + ":" + parts[1]}
+	t := lang.Target{Ecosystem: lang.EcosystemMaven, Package: parts[0] + ":" + parts[1]}
 	if len(parts) >= 3 {
 		t.Version = parts[len(parts)-1]
 		if len(parts) == 3 && strings.Contains(t.Version, "@") { // g:a:v@packaging
@@ -103,13 +103,13 @@ func readMavenLock(h *hub, source []byte) {
 		}
 		return parts[0] + ":" + parts[1]
 	}
-	for _, key := range sortedKeys(doc.Artifacts) {
+	for _, key := range lang.SortedKeys(doc.Artifacts) {
 		v := doc.Artifacts[key].Version
 		if name := groupArtifactOf(key); name != "" && v != "" {
-			h.add(normalizeMaven(name), lang.Target{Ecosystem: ecosystemMaven, Package: name, Version: v, Pinned: true}, true)
+			h.add(normalizeMaven(name), lang.Target{Ecosystem: lang.EcosystemMaven, Package: name, Version: v, Pinned: true}, true)
 		}
 	}
-	for _, key := range sortedKeys(doc.Dependencies) {
+	for _, key := range lang.SortedKeys(doc.Dependencies) {
 		from := groupArtifactOf(key)
 		for _, d := range doc.Dependencies[key] {
 			if to := groupArtifactOf(d); from != "" && to != "" && to != from {
@@ -189,7 +189,7 @@ func readRequirements(h *hub, source []byte) {
 		if m == nil {
 			continue
 		}
-		t := lang.Target{Ecosystem: ecosystemPyPI, Package: m[1]}
+		t := lang.Target{Ecosystem: lang.EcosystemPyPI, Package: m[1]}
 		if m[2] == "==" || m[2] == "===" {
 			t.Version, t.Pinned = m[3], lang.Pinned(m[3])
 		} else if m[2] != "" {
@@ -210,7 +210,7 @@ func readGoMod(source []byte) []lang.Target {
 	}
 	var out []lang.Target
 	for _, require := range f.Require {
-		out = append(out, lang.Target{Ecosystem: ecosystemGo, Package: require.Mod.Path, Version: require.Mod.Version, Pinned: lang.Pinned(require.Mod.Version)})
+		out = append(out, lang.Target{Ecosystem: lang.EcosystemGo, Package: require.Mod.Path, Version: require.Mod.Version, Pinned: lang.Pinned(require.Mod.Version)})
 	}
 	return out
 }
@@ -257,12 +257,12 @@ func (r *resolver) pnpm(w *workspace, h *hub, lockLabel string) {
 		doc = document
 	}
 	all := []dependencyTable{doc.Dependencies, doc.DevDependencies}
-	for _, k := range sortedKeys(doc.Importers) {
+	for _, k := range lang.SortedKeys(doc.Importers) {
 		i := doc.Importers[k]
 		all = append(all, i.Dependencies, i.DevDependencies, i.OptionalDependencies)
 	}
 	for _, d := range all {
-		for _, name := range sortedKeys(d) {
+		for _, name := range lang.SortedKeys(d) {
 			v := ""
 			switch value := d[name].(type) {
 			case string:
@@ -278,7 +278,7 @@ func (r *resolver) pnpm(w *workspace, h *hub, lockLabel string) {
 			if strings.Contains(v, ":") || v == "" {
 				continue
 			}
-			h.add(name, lang.Target{Ecosystem: ecosystemNPM, Package: name, Version: v, Pinned: lang.PinnedSemver(v)}, true)
+			h.add(name, lang.Target{Ecosystem: lang.EcosystemNPM, Package: name, Version: v, Pinned: lang.PinnedSemver(v)}, true)
 		}
 	}
 }
@@ -304,7 +304,7 @@ func (r *resolver) cargo(w *workspace, h *hub, n *starlark.Node) {
 				continue
 			}
 			v := d.Items[i+1].KeywordString("version")
-			h.add(normalizeCrate(name), lang.Target{Ecosystem: ecosystemCrates, Package: name, Version: v, Pinned: exactCargo(v)}, false)
+			h.add(normalizeCrate(name), lang.Target{Ecosystem: lang.EcosystemCrates, Package: name, Version: v, Pinned: exactCargo(v)}, false)
 		}
 	}
 	p := w.labelPath(n.KeywordString("cargo_lockfile"))
@@ -335,7 +335,7 @@ func (r *resolver) cargo(w *workspace, h *hub, n *starlark.Node) {
 		versions[packageName.Name] = append(versions[packageName.Name], packageName.Version)
 	}
 	for _, name := range names {
-		t := lang.Target{Ecosystem: ecosystemCrates, Package: name}
+		t := lang.Target{Ecosystem: lang.EcosystemCrates, Package: name}
 		if candidates := versions[name]; len(candidates) == 1 {
 			t.Version, t.Pinned = candidates[0], true
 		}

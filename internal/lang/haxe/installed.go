@@ -98,7 +98,7 @@ func (r *resolver) readLix(root string, all []*scan.File, getenv func(string) st
 		for _, classPath := range h.classPaths {
 			switch {
 			case strings.HasPrefix(classPath, "${SCOPE_DIR}"):
-				if relative := path.Join(scope, strings.TrimPrefix(classPath, "${SCOPE_DIR}")); inside(relative) && r.directories[relative] && l.local == "" {
+				if relative := path.Join(scope, strings.TrimPrefix(classPath, "${SCOPE_DIR}")); lang.Inside(relative) && r.directories[relative] && l.local == "" {
 					l.local = relative
 				}
 			case strings.HasPrefix(classPath, "${HAXE_LIBCACHE}"), strings.HasPrefix(classPath, "${HAXESHIM_LIBCACHE}"):
@@ -113,7 +113,7 @@ func (r *resolver) readLix(root string, all []*scan.File, getenv func(string) st
 			case filepath.IsAbs(classPath):
 				l.absolute = append(l.absolute, classPath)
 			default:
-				if relative := path.Join(scope, classPath); inside(relative) && r.directories[relative] && l.local == "" {
+				if relative := path.Join(scope, classPath); lang.Inside(relative) && r.directories[relative] && l.local == "" {
 					l.local = relative
 				}
 			}
@@ -127,7 +127,7 @@ func (r *resolver) readLix(root string, all []*scan.File, getenv func(string) st
 		r.lixFile[f.Path] = l
 	}
 	for _, s := range r.lix {
-		s.names = sortedKeys(s.libraries)
+		s.names = lang.SortedKeys(s.libraries)
 	}
 }
 
@@ -159,7 +159,7 @@ func readInstall(l *lixLibrary, url, defined string) {
 		case strings.HasPrefix(u, "git:"):
 			u = strings.TrimPrefix(u, "git:")
 		}
-		if !public(u) {
+		if !lang.PublicOrUnnamed(u) {
 			l.origin = u
 		}
 		switch {
@@ -195,7 +195,7 @@ func (r *resolver) repositories(root string, getenv func(string) string) (local 
 		seen := map[string]bool{}
 		for _, d := range directories {
 			absolute := filepath.Join(root, filepath.FromSlash(d), ".haxelib")
-			if !seen[absolute] && isDirectory(absolute) {
+			if !seen[absolute] && lang.IsDirectory(absolute) {
 				seen[absolute] = true
 				local = append(local, absolute)
 			}
@@ -206,20 +206,15 @@ func (r *resolver) repositories(root string, getenv func(string) string) (local 
 	}
 	if h := getenv("HOME"); h != "" {
 		if data, err := os.ReadFile(filepath.Join(h, ".haxelib")); err == nil {
-			if p := strings.TrimSpace(string(data)); p != "" && isDirectory(p) {
+			if p := strings.TrimSpace(string(data)); p != "" && lang.IsDirectory(p) {
 				return local, p
 			}
 		}
-		if p := filepath.Join(h, "haxelib"); isDirectory(p) {
+		if p := filepath.Join(h, "haxelib"); lang.IsDirectory(p) {
 			return local, p
 		}
 	}
 	return local, ""
-}
-
-func isDirectory(p string) bool {
-	fileInfo, err := os.Stat(p)
-	return err == nil && fileInfo.IsDir()
 }
 
 // readInstalled finds the libraries installed for the repository: every
@@ -270,7 +265,7 @@ func (r *resolver) readInstalled(root string, getenv func(string) string) {
 			continue
 		}
 		directory := filepath.Join(global, strings.ReplaceAll(name, ".", ","))
-		if !isDirectory(directory) {
+		if !lang.IsDirectory(directory) {
 			// Names are case-insensitive in haxelib: look the directory up.
 			if !listed {
 				listing, _ = os.ReadDir(global)
@@ -298,10 +293,10 @@ func (r *resolver) readInstalled(root string, getenv func(string) string) {
 // else the version .current names (1.2.3 in 1,2,3/, git in git/).
 func installedLibrary(libraryDirectory, name, want string) *installed {
 	directory, version := "", ""
-	if dev := readTrim(filepath.Join(libraryDirectory, ".dev")); dev != "" && isDirectory(dev) {
+	if dev := readTrim(filepath.Join(libraryDirectory, ".dev")); dev != "" && lang.IsDirectory(dev) {
 		directory, version = dev, "dev"
 	} else {
-		if want != "" && lang.Pinned(want) && isDirectory(filepath.Join(libraryDirectory, strings.ReplaceAll(want, ".", ","))) {
+		if want != "" && lang.Pinned(want) && lang.IsDirectory(filepath.Join(libraryDirectory, strings.ReplaceAll(want, ".", ","))) {
 			version = want
 		} else {
 			version = readTrim(filepath.Join(libraryDirectory, ".current"))
@@ -311,7 +306,7 @@ func installedLibrary(libraryDirectory, name, want string) *installed {
 		}
 		directory = filepath.Join(libraryDirectory, strings.ReplaceAll(version, ".", ","))
 	}
-	if !isDirectory(directory) {
+	if !lang.IsDirectory(directory) {
 		return nil
 	}
 	in := &installed{name: name, version: version, classPaths: []string{directory}}

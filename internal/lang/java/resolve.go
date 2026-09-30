@@ -243,7 +243,7 @@ func JDK(spec string) (lang.Target, bool) {
 	for _, p := range jdkPrefixes {
 		if strings.HasPrefix(spec+".", p) || strings.HasPrefix(spec, p) {
 			segments := strings.Split(spec, ".")
-			return lang.Target{Ecosystem: ecosystemJDK, Package: strings.Join(segments[:min(2, len(segments))], ".")}, true
+			return lang.Target{Ecosystem: lang.EcosystemJDK, Package: strings.Join(segments[:min(2, len(segments))], ".")}, true
 		}
 	}
 	return lang.Target{}, false

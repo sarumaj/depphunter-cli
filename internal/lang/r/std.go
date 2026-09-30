@@ -1,24 +1,24 @@
 package r
 
-import "strings"
+import "github.com/sarumaj/depphunter-cli/internal/lang"
 
 // basePackages are the packages of priority "base": they ship with R itself, are
 // versioned with it and are on no repository.
 //
 // Implements: REQ-R-006
-var basePackages = set("base compiler datasets grDevices graphics grid methods parallel splines stats stats4 tcltk tools utils")
+var basePackages = lang.WordSet("base compiler datasets grDevices graphics grid methods parallel splines stats stats4 tcltk tools utils")
 
 // recommendedPackages ship with every binary R installation too, but are ordinary CRAN
 // packages updated on their own: they are the project's dependency when it declares
 // or locks one, and part of R otherwise (REQ-R-006).
-var recommendedPackages = set("MASS lattice Matrix nlme survival boot cluster codetools foreign KernSmooth rpart class nnet spatial mgcv")
+var recommendedPackages = lang.WordSet("MASS lattice Matrix nlme survival boot cluster codetools foreign KernSmooth rpart class nnet spatial mgcv")
 
 // biocPackages are Bioconductor's infrastructure and most-used packages. Without a lock
 // that records its source, a package is only known to come from Bioconductor rather
 // than CRAN by name.
 //
 // Implements: REQ-R-007
-var biocPackages = set(`Biobase BiocGenerics S4Vectors IRanges GenomicRanges GenomeInfoDb
+var biocPackages = lang.WordSet(`Biobase BiocGenerics S4Vectors IRanges GenomicRanges GenomeInfoDb
 SummarizedExperiment SingleCellExperiment DelayedArray HDF5Array XVector Biostrings BSgenome
 GenomicFeatures GenomicAlignments Rsamtools rtracklayer AnnotationDbi AnnotationHub ExperimentHub
 BiocParallel BiocFileCache BiocIO BiocStyle BiocCheck MultiAssayExperiment DESeq2 edgeR limma
@@ -29,7 +29,7 @@ tximeta EnhancedVolcano apeglm`)
 
 // common are base R functions called everywhere; no package defines one of these
 // for its files to be linked by, so they are not recorded as calls.
-var common = set(`c list length paste paste0 is.null stop warning message print cat format
+var common = lang.WordSet(`c list length paste paste0 is.null stop warning message print cat format
 names seq_len seq_along vapply sapply lapply rep invisible identical is.na nchar sprintf
 character logical integer numeric vector unlist match.arg missing inherits stopifnot
 structure class attr setdiff union intersect unique sort order rev which any all sum max min
@@ -47,11 +47,3 @@ vapply Negate identity nargs sys.call sys.function match.call parent.frame
 UseMethod NextMethod standardGeneric new validity setClass setGeneric setMethod
 setRefClass R6Class source sys.source here p_load use tar_source loadNamespace
 suppressPackageStartupMessages local options signature representation`)
-
-func set(s string) map[string]bool {
-	m := map[string]bool{}
-	for _, f := range strings.Fields(s) {
-		m[f] = true
-	}
-	return m
-}

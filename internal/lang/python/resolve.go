@@ -305,18 +305,18 @@ func (r *resolver) distribution(parts []string) lang.Target {
 			return r.declared(d)
 		}
 		if in.origin != "" {
-			return lang.Target{Ecosystem: ecosystemPyPI, Package: in.name, Version: in.version, Origin: in.origin}
+			return lang.Target{Ecosystem: lang.EcosystemPyPI, Package: in.name, Version: in.version, Origin: in.origin}
 		}
-		return lang.Target{Ecosystem: ecosystemPyPI, Package: in.name, Unresolved: true}
+		return lang.Target{Ecosystem: lang.EcosystemPyPI, Package: in.name, Unresolved: true}
 	}
-	return lang.Target{Ecosystem: ecosystemPyPI, Package: candidates[0], Unresolved: true}
+	return lang.Target{Ecosystem: lang.EcosystemPyPI, Package: candidates[0], Unresolved: true}
 }
 
 // declared is the target of a distribution the project declares. Installed from
 // outside any index, it says where from, and takes the installed version when the
 // project names none.
 func (r *resolver) declared(d *dist) lang.Target {
-	t := lang.Target{Ecosystem: ecosystemPyPI, Package: d.name, Version: d.version, Requested: d.requested, Pinned: d.pinned, Git: d.git}
+	t := lang.Target{Ecosystem: lang.EcosystemPyPI, Package: d.name, Version: d.version, Requested: d.requested, Pinned: d.pinned, Git: d.git}
 	if in := r.environment.get(d.name); in != nil && in.origin != "" {
 		t.Origin = in.origin
 		if t.Version == "" {
@@ -621,7 +621,7 @@ func requirementName(requirement string) string {
 //
 // Implements: REQ-SUP-009
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecosystemPyPI {
+	if t.Ecosystem != lang.EcosystemPyPI {
 		return nil
 	}
 	if _, locked := r.tree[normalize(t.Package)]; !locked {
@@ -633,7 +633,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 		if d := r.distMap[normalize(dependency)]; d != nil {
 			name, version, pinned = d.name, d.version, d.pinned
 		}
-		out = append(out, lang.Target{Ecosystem: ecosystemPyPI, Package: name, Version: version, Pinned: pinned})
+		out = append(out, lang.Target{Ecosystem: lang.EcosystemPyPI, Package: name, Version: version, Pinned: pinned})
 	}
 	return out
 }
@@ -662,9 +662,9 @@ func (r *resolver) installedDependencies(t lang.Target) []lang.Target {
 		case r.distMap[normalize(requirement)] != nil:
 			out = append(out, r.declared(r.distMap[normalize(requirement)]))
 		case dependency != nil:
-			out = append(out, lang.Target{Ecosystem: ecosystemPyPI, Package: dependency.name, Version: dependency.version, Origin: dependency.origin})
+			out = append(out, lang.Target{Ecosystem: lang.EcosystemPyPI, Package: dependency.name, Version: dependency.version, Origin: dependency.origin})
 		default:
-			out = append(out, lang.Target{Ecosystem: ecosystemPyPI, Package: requirement})
+			out = append(out, lang.Target{Ecosystem: lang.EcosystemPyPI, Package: requirement})
 		}
 	}
 	return out

@@ -109,7 +109,7 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 		r.order = append(r.order, p)
 	}
 	sort.Slice(r.order, func(i, j int) bool {
-		depthI, depthJ := depth(r.order[i].directory), depth(r.order[j].directory)
+		depthI, depthJ := lang.Depth(r.order[i].directory), lang.Depth(r.order[j].directory)
 		if depthI != depthJ {
 			return depthI < depthJ
 		}
@@ -190,13 +190,6 @@ func (r *resolver) library() string {
 		return r.stdRoots[0]
 	}
 	return ""
-}
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
 }
 
 // fold is how names are compared: case and `_`/`-` do not matter (Nim is
@@ -598,15 +591,7 @@ func (r *resolver) target(p *project, name string) lang.Target {
 // unknown), as opposed to a server of the organization's own, which is
 // recorded as the package's origin.
 func public(url string) bool {
-	if url == "" || strings.HasPrefix(url, "file://") {
-		return url == ""
-	}
-	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
-	switch host {
-	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "git.sr.ht", "sr.ht":
-		return true
-	}
-	return false
+	return !strings.HasPrefix(url, "file://") && lang.PublicOrUnnamed(url)
 }
 
 // Dependencies lists what a nimble package depends on: nimble.lock's
@@ -699,13 +684,4 @@ func (r *resolver) Installed(t lang.Target) bool {
 	}
 	installedPackage, _ := r.installedOf(t)
 	return installedPackage != nil
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }

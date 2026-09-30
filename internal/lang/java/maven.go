@@ -338,9 +338,9 @@ func (r *resolver) artifactOf(spec string, wildcard bool) lang.Target {
 	best, _ := r.best(spec, segments)
 	var t lang.Target
 	if best != nil {
-		t = lang.Target{Ecosystem: ecosystemMaven, Package: best.key(), Version: best.version, Requested: best.requested, Pinned: pinnedMaven(best.version)}
+		t = lang.Target{Ecosystem: lang.EcosystemMaven, Package: best.key(), Version: best.version, Requested: best.requested, Pinned: pinnedMaven(best.version)}
 	} else {
-		t = lang.Target{Ecosystem: ecosystemMaven, Package: guessArtifact(segments, wildcard), Unresolved: true}
+		t = lang.Target{Ecosystem: lang.EcosystemMaven, Package: guessArtifact(segments, wildcard), Unresolved: true}
 	}
 	r.memo.Store(key, t)
 	return t

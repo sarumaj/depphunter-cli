@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	ecosystemCrates = "crates"
+	ecosystemCrates = lang.EcosystemCrates
 	ecosystemUnreal = "unreal-engine"
 )
 

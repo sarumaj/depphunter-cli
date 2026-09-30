@@ -250,18 +250,6 @@ func set(names ...string) map[string]bool {
 	return m
 }
 
-// fold reduces a module or package name to what the two share: lower case, letters
-// and digits only (swift-argument-parser is swiftargumentparser).
-func fold(s string) string {
-	var b strings.Builder
-	for _, c := range strings.ToLower(s) {
-		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' {
-			b.WriteRune(c)
-		}
-	}
-	return b.String()
-}
-
 // c99name is the module name SwiftPM gives a target: characters that cannot be in an
 // identifier become "_" (target "my-lib" is module my_lib).
 func c99name(name string) string {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -108,7 +109,7 @@ func newResolver(_ string, all []*scan.File) *resolver {
 	}
 	sort.Slice(r.directories, func(i, j int) bool {
 		a, b := r.directories[i], r.directories[j]
-		if da, database := depth(a), depth(b); da != database {
+		if da, database := lang.Depth(a), lang.Depth(b); da != database {
 			return da < database
 		}
 		return a < b
@@ -131,13 +132,6 @@ func newResolver(_ string, all []*scan.File) *resolver {
 	return r
 }
 
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
-}
-
 func (r *resolver) addManifest(p *project, file string, m *manifest) {
 	p.files = append(p.files, file)
 	if m.kind == bbEdn {
@@ -153,7 +147,7 @@ func (r *resolver) addManifest(p *project, file string, m *manifest) {
 	}
 	for _, root := range m.paths {
 		root = path.Join(p.directory, root)
-		if !strings.HasPrefix(root, "../") && root != ".." && !contains(p.roots, root) {
+		if !strings.HasPrefix(root, "../") && root != ".." && !slices.Contains(p.roots, root) {
 			p.roots = append(p.roots, root)
 		}
 	}
@@ -173,15 +167,6 @@ func (r *resolver) addManifest(p *project, file string, m *manifest) {
 		}
 	}
 	r.coordinates[file] = libraries
-}
-
-func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 // readNPM reads the npm dependencies ClojureScript builds install: package.json's
@@ -348,7 +333,7 @@ func (r *resolver) localNS(file, namespace string, governing []*project) string 
 			}
 			if files := r.byStem[stem]; files != nil {
 				for _, extension := range extensions {
-					if c := stem + extension; c != file && contains(files, c) {
+					if c := stem + extension; c != file && slices.Contains(files, c) {
 						return c
 					}
 				}
@@ -438,7 +423,7 @@ func (r *resolver) bbContext(file string, governing []*project) bool {
 //
 // Implements: REQ-CLOJURE-004, REQ-CLOJURE-005, REQ-CLOJURE-007
 func (r *resolver) namespace(file, namespace string) lang.Target {
-	if contains(r.byNS[namespace], file) {
+	if slices.Contains(r.byNS[namespace], file) {
 		// Its own namespace: in ClojureScript, the macros of the same name (a .clj
 		// beside the .cljs, or the .cljc itself, which is no edge).
 		if p := r.localNS(file, namespace, r.governing(file)); p != "" {
@@ -672,16 +657,6 @@ func score(namespace, art string) int {
 	return 0
 }
 
-// npmName is the package a JavaScript module specifier names: "@mui/material/Button"
-// is @mui/material, "react-dom/client" is react-dom.
-func npmName(spec string) string {
-	parts := strings.Split(spec, "/")
-	if strings.HasPrefix(spec, "@") && len(parts) > 1 {
-		return parts[0] + "/" + parts[1]
-	}
-	return parts[0]
-}
-
 // npm resolves a ClojureScript string require to an npm package declared by a
 // governing project's package.json (or a library's deps.cljs), or to Node's own
 // module. onlyDeclared is for symbol requires, which name npm packages only when
@@ -701,7 +676,7 @@ func (r *resolver) npm(file, spec string, onlyDeclared bool) lang.Target {
 		}
 		return lang.Target{}
 	}
-	name := npmName(strings.TrimPrefix(spec, "node:"))
+	name := lang.NPMPackageName(strings.TrimPrefix(spec, "node:"))
 	if !onlyDeclared && (strings.HasPrefix(spec, "node:") || jsBuiltins[name]) {
 		return lang.Target{Ecosystem: ecosystemNode, Package: name}
 	}

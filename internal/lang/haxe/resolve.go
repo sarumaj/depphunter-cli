@@ -229,21 +229,17 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		}
 		return lang.Target{}
 	case kindCP:
-		if d := path.Join(directory, rawImport.Module); inside(d) && (r.directories[d] || d == ".") {
+		if d := path.Join(directory, rawImport.Module); lang.Inside(d) && (r.directories[d] || d == ".") {
 			return lang.Target{Local: d}
 		}
 	case kindHXML, kindFile:
-		if f := path.Join(directory, rawImport.Module); inside(f) && (r.files[f] || r.directories[f]) {
+		if f := path.Join(directory, rawImport.Module); lang.Inside(f) && (r.files[f] || r.directories[f]) {
 			return lang.Target{Local: f}
 		}
 	case kindMain:
 		return r.main(file, rawImport.Module)
 	}
 	return lang.Target{}
-}
-
-func inside(p string) bool {
-	return p != ".." && !strings.HasPrefix(p, "../") && !strings.HasPrefix(p, "/")
 }
 
 // main resolves a build's main class under the class paths it names, else
@@ -290,7 +286,7 @@ func nearest(from string, list []string) string {
 		if f == from {
 			continue
 		}
-		if n := common(from, f); n > bestN {
+		if n := lang.CommonDirectories(from, f); n > bestN {
 			best, bestN = f, n
 		}
 	}
@@ -298,15 +294,6 @@ func nearest(from string, list []string) string {
 		return list[0]
 	}
 	return best
-}
-
-func common(a, b string) int {
-	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
-	n := 0
-	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
-		n++
-	}
-	return n
 }
 
 // module resolves an import, a using or a qualified name.
@@ -508,7 +495,7 @@ func pinRule(t *lang.Target, v string) {
 	v = strings.TrimSpace(v)
 	if vcs, rest, ok := strings.Cut(v, ":"); ok && (vcs == "git" || vcs == "hg") {
 		url, reference, _ := strings.Cut(rest, "#")
-		if !public(url) {
+		if !lang.PublicOrUnnamed(url) {
 			t.Origin = url
 		}
 		switch {
@@ -531,21 +518,6 @@ func pinRule(t *lang.Target, v string) {
 func tagLike(reference string) bool {
 	s := strings.TrimPrefix(reference, "v")
 	return s != "" && s[0] >= '0' && s[0] <= '9'
-}
-
-// public reports whether a repository is on a public forge (or unknown), as
-// opposed to a git server of the organization's own, which is recorded as the
-// library's origin.
-func public(url string) bool {
-	if url == "" {
-		return true
-	}
-	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
-	switch host {
-	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "git.sr.ht", "sr.ht":
-		return true
-	}
-	return false
 }
 
 // Expand turns `import a.b.*` of a package of the repository into one import
@@ -638,7 +610,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 		return nil
 	}
 	k := strings.ToLower(t.Package)
-	for _, directory := range sortedKeys(r.lix) {
+	for _, directory := range lang.SortedKeys(r.lix) {
 		s := r.lix[directory]
 		l := s.libraries[k]
 		if l == nil {
@@ -688,15 +660,6 @@ func (r *resolver) Installed(t lang.Target) bool {
 	return r.installed[k] != nil
 }
 
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
 // exists reports whether an absolute path exists, remembered.
 func (r *resolver) exists(p string) bool {
 	if v, ok := r.probed.Load(p); ok {
@@ -739,7 +702,7 @@ func (r *resolver) installedFor(file string, segments []string, wild bool) strin
 			return in.name
 		}
 	}
-	for _, k := range sortedKeys(r.installed) {
+	for _, k := range lang.SortedKeys(r.installed) {
 		if in := r.installed[k]; !seen[k] && in.local && try(in.classPaths) {
 			return in.name
 		}

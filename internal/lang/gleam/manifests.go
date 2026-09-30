@@ -2,7 +2,6 @@ package gleam
 
 import (
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -128,7 +127,7 @@ func extractConfig(source []byte) *lang.Extraction {
 	c := readConfig(source)
 	lines := keyLines(source)
 	extraction := &lang.Extraction{}
-	for _, name := range sortedKeys(c.dependencies) {
+	for _, name := range lang.SortedKeys(c.dependencies) {
 		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindDependency, Line: lines[name]})
 	}
 	if c.name != "" {
@@ -148,7 +147,7 @@ func extractManifest(source []byte) *lang.Extraction {
 		return extraction
 	}
 	lines := packageLines(source)
-	for _, name := range sortedKeys(m.packages) {
+	for _, name := range lang.SortedKeys(m.packages) {
 		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindLocked, Line: lines[name]})
 	}
 	return extraction
@@ -187,14 +186,5 @@ func packageLines(source []byte) map[string]int {
 			}
 		}
 	}
-	return out
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
 	return out
 }

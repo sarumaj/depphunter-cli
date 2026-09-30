@@ -3,8 +3,6 @@ package purescript
 import (
 	"encoding/json"
 	"path"
-	"regexp"
-	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -241,12 +239,12 @@ func readBower(source []byte) *bowerManifest {
 		return nil
 	}
 	out := &bowerManifest{name: strings.TrimPrefix(raw.Name, "purescript-")}
-	lines := stringLines(source)
+	lines := lang.JSONStringLines(source)
 	for _, section := range []struct {
 		m    map[string]string
 		test bool
 	}{{raw.Dependencies, false}, {raw.DevDependencies, true}} {
-		for _, k := range sortedKeys(section.m) {
+		for _, k := range lang.SortedKeys(section.m) {
 			name, ok := strings.CutPrefix(k, "purescript-")
 			if !ok || name == "" {
 				continue
@@ -347,7 +345,7 @@ func extractLock(source []byte) *lang.Extraction {
 	if l == nil {
 		return extraction
 	}
-	for _, name := range sortedKeys(l.packages) {
+	for _, name := range lang.SortedKeys(l.packages) {
 		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindLock, Line: l.packages[name].line})
 	}
 	return extraction
@@ -398,30 +396,6 @@ func extractBower(source []byte) *lang.Extraction {
 		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "purescript-" + d.name, Module: d.name, Name: kindDependency, Line: d.line})
 	}
 	return extraction
-}
-
-var jsonString = regexp.MustCompile(`"((?:[^"\\]|\\.)*)"`)
-
-// stringLines is the first line each JSON string is written on.
-func stringLines(source []byte) map[string]int {
-	out := map[string]int{}
-	for i, l := range strings.Split(string(source), "\n") {
-		for _, m := range jsonString.FindAllStringSubmatch(l, -1) {
-			if _, ok := out[m[1]]; !ok {
-				out[m[1]] = i + 1
-			}
-		}
-	}
-	return out
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // gitName names a package installed from git by its repository (and the

@@ -19,7 +19,7 @@ const (
 // cudaHeaders are the CUDA Toolkit's headers included by name (runtime and driver
 // APIs, their types, the math libraries' entry points). The libraries with many
 // headers are matched by cudaLibrary; thrust/, cub/ and the others by cudaDirectories.
-var cudaHeaders = set(`cuda.h cudaGL.h cudaEGL.h cudaGLTypedefs.h cudaEGLTypedefs.h
+var cudaHeaders = lang.WordSet(`cuda.h cudaGL.h cudaEGL.h cudaGLTypedefs.h cudaEGLTypedefs.h
 cudaTypedefs.h cudaProfiler.h cudaProfilerTypedefs.h cudaVDPAU.h cudaD3D9.h cudaD3D10.h
 cudaD3D11.h cudla.h cudaNvSci.h
 cuda_runtime.h cuda_runtime_api.h cuda_device_runtime_api.h cuda_fp16.h cuda_fp16.hpp
@@ -46,7 +46,7 @@ var cudaLibrary = regexp.MustCompile(`^(?:(?:cublas|cusparse|cusolver|cufft|cura
 
 // cudaDirectories are the toolkit's header directories: Thrust, CUB and libcu++ (cuda/,
 // nv/), NVTX 3, cooperative groups and the compiler's crt/.
-var cudaDirectories = set(`thrust cub cuda nv nvtx3 cooperative_groups crt`)
+var cudaDirectories = lang.WordSet(`thrust cub cuda nv nvtx3 cooperative_groups crt`)
 
 // metalHeader matches the Metal Shading Language's library headers (metal_stdlib,
 // metal_math, metal_raytracing ...).

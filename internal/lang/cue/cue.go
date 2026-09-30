@@ -19,7 +19,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -29,8 +28,8 @@ import (
 const (
 	ecosystemCUE   = "cue"
 	ecosystemStd   = "cue-std"
-	ecosystemGo    = "go"     // the golang plugin's island: Go packages cue.mod/gen was generated from
-	ecosystemGoStd = "go-std" // and the Go standard library's
+	ecosystemGo    = lang.EcosystemGo    // the golang plugin's island: Go packages cue.mod/gen was generated from
+	ecosystemGoStd = lang.EcosystemGoStd // and the Go standard library's
 	classModule    = "module"
 	maxImport      = 64 // files one import of a multi-file package links to
 )
@@ -121,15 +120,6 @@ var std = map[string]bool{
 	"regexp": true, "strconv": true, "strings": true, "struct": true, "text/tabwriter": true,
 	"text/template": true, "time": true, "tool": true, "tool/cli": true, "tool/exec": true,
 	"tool/file": true, "tool/http": true, "tool/os": true, "uuid": true,
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 func readFile(absolute string, limit int64) []byte {

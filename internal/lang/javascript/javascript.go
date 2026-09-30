@@ -19,11 +19,6 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
-const (
-	ecosystemNPM  = "npm"
-	ecosystemNode = "node"
-)
-
 // Captures: @import is a module specifier; @def.<kind> the name of a top-level
 // definition (methods are named after their class).
 //
@@ -98,8 +93,8 @@ func (Plugin) Claims(f *scan.File) bool {
 // Implements: REQ-JS-005
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecosystemNPM, Name: "npm"},
-		{ID: ecosystemNode, Name: "Node.js built-ins", Std: true},
+		{ID: lang.EcosystemNPM, Name: "npm"},
+		{ID: lang.EcosystemNode, Name: "Node.js built-ins", Std: true},
 	}
 }
 

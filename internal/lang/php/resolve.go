@@ -44,7 +44,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			r.readDeclarations(f)
 		}
 	}
-	sort.SliceStable(r.projects, func(i, j int) bool { return depth(r.projects[i].directory) < depth(r.projects[j].directory) })
+	sort.SliceStable(r.projects, func(i, j int) bool { return lang.Depth(r.projects[i].directory) < lang.Depth(r.projects[j].directory) })
 	sort.SliceStable(r.local, func(i, j int) bool {
 		a, b := r.local[i], r.local[j]
 		if len(a.prefix) != len(b.prefix) {
@@ -53,13 +53,6 @@ func newResolver(root string, all []*scan.File) *resolver {
 		return a.prefix+strings.Join(a.directories, ",") < b.prefix+strings.Join(b.directories, ",")
 	})
 	return r
-}
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
 }
 
 var (
@@ -238,18 +231,6 @@ func kebab(s string) string {
 	return strings.ToLower(camelBoundary.ReplaceAllString(s, "$1-$2"))
 }
 
-// fold is a name reduced to what namespace and package names share: lower case,
-// letters and digits only (GuzzleHttp, guzzlehttp; HttpFoundation, http-foundation).
-func fold(s string) string {
-	var b strings.Builder
-	for _, c := range strings.ToLower(s) {
-		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' {
-			b.WriteRune(c)
-		}
-	}
-	return b.String()
-}
-
 // guess attributes a namespaced name no autoload rule claims. A declared package
 // whose vendor and name are the namespace's first two segments (case and dashes
 // aside), whose name is the first segment (PHPUnit is phpunit/phpunit), the only
@@ -273,14 +254,14 @@ func (r *resolver) guess(qualifiedName string, projects []*project) lang.Target 
 		for _, name := range names {
 			vendor, packageName, _ := strings.Cut(name, "/")
 			switch {
-			case fold(vendor) == fold(s1) && fold(packageName) == fold(s2):
+			case lang.FoldAlphanumeric(vendor) == lang.FoldAlphanumeric(s1) && lang.FoldAlphanumeric(packageName) == lang.FoldAlphanumeric(s2):
 				return p.target(name)
-			case fold(vendor) == fold(s1):
+			case lang.FoldAlphanumeric(vendor) == lang.FoldAlphanumeric(s1):
 				byVendor = append(byVendor, name)
 			}
 		}
 		for _, name := range names {
-			if _, packageName, _ := strings.Cut(name, "/"); fold(packageName) == fold(s1) {
+			if _, packageName, _ := strings.Cut(name, "/"); lang.FoldAlphanumeric(packageName) == lang.FoldAlphanumeric(s1) {
 				return p.target(name)
 			}
 		}
@@ -291,7 +272,7 @@ func (r *resolver) guess(qualifiedName string, projects []*project) lang.Target 
 		// (Psr\Http\Message is psr/http-message, not psr/http-factory).
 		for k := len(segments) - 1; k > 2; k-- {
 			for _, name := range byVendor {
-				if _, packageName, _ := strings.Cut(name, "/"); fold(packageName) == fold(strings.Join(segments[1:k], "")) {
+				if _, packageName, _ := strings.Cut(name, "/"); lang.FoldAlphanumeric(packageName) == lang.FoldAlphanumeric(strings.Join(segments[1:k], "")) {
 					return p.target(name)
 				}
 			}

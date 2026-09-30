@@ -26,11 +26,11 @@ import (
 // The ecosystems of the package managers read, with the ids their own plugins use,
 // so the packages merge with the manifests' ones.
 const (
-	ecosystemPyPI   = "pypi"
-	ecosystemNPM    = "npm"
-	ecosystemGo     = "go"
-	ecosystemCrates = "crates"
-	ecosystemGems   = "rubygems"
+	ecosystemPyPI   = lang.EcosystemPyPI
+	ecosystemNPM    = lang.EcosystemNPM
+	ecosystemGo     = lang.EcosystemGo
+	ecosystemCrates = lang.EcosystemCrates
+	ecosystemGems   = lang.EcosystemRubyGems
 )
 
 // Import kinds, carried in RawImport.Name. A package's is its ecosystem, "@", and the

@@ -218,11 +218,11 @@ func (r *resolver) resolve(spec, from string) lang.Target {
 	}
 	if name, ok := strings.CutPrefix(spec, "node:"); ok {
 		packageName, _ := splitPackage(name)
-		return lang.Target{Ecosystem: ecosystemNode, Package: packageName}
+		return lang.Target{Ecosystem: lang.EcosystemNode, Package: packageName}
 	}
 	packageName, subpath := splitPackage(spec)
 	if builtins[packageName] {
-		return lang.Target{Ecosystem: ecosystemNode, Package: packageName}
+		return lang.Target{Ecosystem: lang.EcosystemNode, Package: packageName}
 	}
 	if packageDirectory, ok := r.byName[packageName]; ok {
 		if subpath != "" {
@@ -243,7 +243,7 @@ func (r *resolver) resolve(spec, from string) lang.Target {
 		return lang.Target{}
 	}
 	t, declared := r.declared(packageName, directory)
-	t.Ecosystem, t.Package, t.Unresolved = ecosystemNPM, packageName, !declared
+	t.Ecosystem, t.Package, t.Unresolved = lang.EcosystemNPM, packageName, !declared
 	t.Platform = r.tree.platform[packageName] // Implements: REQ-JS-018
 	t.Origin = r.gitOrigin(t)
 	return t
@@ -853,7 +853,7 @@ func (p *Packages) Package(spec, file string) (lang.Target, bool) {
 	if !declared {
 		return lang.Target{}, false
 	}
-	t.Ecosystem, t.Package = ecosystemNPM, packageName
+	t.Ecosystem, t.Package = lang.EcosystemNPM, packageName
 	t.Origin = p.r.gitOrigin(t)
 	return t, true
 }

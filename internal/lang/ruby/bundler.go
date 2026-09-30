@@ -368,7 +368,7 @@ func readProject(directory, gemfile string, gemspecs map[string][]string, read f
 		for _, d := range declarations {
 			declare(d)
 			if relative, ok := strings.CutPrefix(d.origin, "path:"); ok {
-				if gDirectory := path.Join(directory, relative); inside(gDirectory) {
+				if gDirectory := path.Join(directory, relative); lang.Inside(gDirectory) {
 					p.loadPath = append(p.loadPath, path.Join(gDirectory, "lib"))
 					p.own[strings.ToLower(d.name)] = gDirectory
 				}
@@ -406,7 +406,7 @@ func readProject(directory, gemfile string, gemspecs map[string][]string, read f
 			p.locked = specs
 			for name, s := range specs {
 				if s.path {
-					if gDirectory := path.Join(directory, s.origin); inside(gDirectory) {
+					if gDirectory := path.Join(directory, s.origin); lang.Inside(gDirectory) {
 						p.loadPath = append(p.loadPath, path.Join(gDirectory, "lib"))
 						if _, ok := p.own[name]; !ok {
 							p.own[name] = gDirectory
@@ -424,9 +424,6 @@ func readProject(directory, gemfile string, gemspecs map[string][]string, read f
 	sort.Strings(p.loadPath)
 	return p
 }
-
-// inside reports whether a cleaned relative path stays in the repository.
-func inside(p string) bool { return p != ".." && !strings.HasPrefix(p, "../") && !path.IsAbs(p) }
 
 // has reports whether the project declares or locks a gem.
 func (p *project) has(name string) bool {

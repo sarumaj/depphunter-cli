@@ -264,7 +264,7 @@ func (r *resolver) module(file, module string) lang.Target {
 	if f, ok := p.modules[module]; ok {
 		return lang.Target{Local: f}
 	}
-	for _, name := range sortedKeys(p.dependencies) {
+	for _, name := range lang.SortedKeys(p.dependencies) {
 		if q := r.pathPackage(p, name); q != nil {
 			if f, ok := q.modules[module]; ok {
 				return lang.Target{Local: f}
@@ -311,7 +311,7 @@ func (r *resolver) pathPackage(p *gleamPackage, name string) *gleamPackage {
 		return nil
 	}
 	directory := path.Join(p.directory, relative)
-	if !inside(directory) {
+	if !lang.Inside(directory) {
 		return nil
 	}
 	return r.packages[directory]
@@ -363,7 +363,7 @@ func (r *resolver) javascript(file, spec string) lang.Target {
 		return lang.Target{}
 	}
 	if !strings.HasPrefix(spec, "./") && !strings.HasPrefix(spec, "../") {
-		name := npmName(spec)
+		name := lang.NPMPackageName(spec)
 		p := r.packageOf(file)
 		if v, ok := p.npm[name]; ok {
 			return lang.Target{Ecosystem: ecosystemNPM, Package: name, Version: v, Pinned: lang.PinnedSemver(v)}
@@ -401,16 +401,6 @@ func (r *resolver) javascript(file, spec string) lang.Target {
 		return lang.Target{}
 	}
 	return r.hexTarget(p, name)
-}
-
-// npmName is the package a JavaScript module specifier names: "@scope/pkg/x" is
-// @scope/pkg, "react-dom/client" is react-dom.
-func npmName(spec string) string {
-	parts := strings.Split(spec, "/")
-	if strings.HasPrefix(spec, "@") && len(parts) > 1 {
-		return parts[0] + "/" + parts[1]
-	}
-	return parts[0]
 }
 
 // hexTarget is a package as the package's manifest.toml locks it or its
@@ -470,7 +460,7 @@ func (r *resolver) lockTarget(p *gleamPackage, l *locked, d *dependency) lang.Ta
 // outside the repository is dropped.
 func (r *resolver) localTarget(p *gleamPackage, relative string) lang.Target {
 	directory := path.Join(p.directory, relative)
-	if !inside(directory) {
+	if !lang.Inside(directory) {
 		return lang.Target{}
 	}
 	if f := path.Join(directory, "gleam.toml"); r.files[f] {
@@ -482,9 +472,6 @@ func (r *resolver) localTarget(p *gleamPackage, relative string) lang.Target {
 	return lang.Target{}
 }
 
-// inside reports whether a cleaned relative path stays in the repository.
-func inside(p string) bool { return p != ".." && !strings.HasPrefix(p, "../") && !path.IsAbs(p) }
-
 // Dependencies implements lang.Transitive from manifest.toml, whose every package
 // lists the packages it requires; each is pinned by the same manifest.
 //
@@ -495,7 +482,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	}
 	var owner *gleamPackage
 	var entry *locked
-	for _, directory := range sortedKeys(r.packages) {
+	for _, directory := range lang.SortedKeys(r.packages) {
 		p := r.packages[directory]
 		if p.manifest == nil {
 			continue

@@ -1,6 +1,10 @@
 package fortran
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
+)
 
 // intrinsic maps the modules compilers provide to the fortran-std package they
 // are shown as: the standard's intrinsic modules by their own name, OpenMP's and
@@ -115,11 +119,6 @@ func stems(packageName string) []string {
 	return out
 }
 
-// fold drops the separators of a name for loose comparison.
-func fold(s string) string {
-	return strings.NewReplacer("-", "", "_", "", ".", "").Replace(strings.ToLower(s))
-}
-
 // spells reports whether a module's name spells package packageName: the name itself,
 // or one of its stems followed by "_" (stdlib_kinds, json_module, regex_module),
 // or folded the same (test_drive and test-drive), or folded starting with a stem
@@ -127,7 +126,7 @@ func fold(s string) string {
 //
 // Implements: REQ-FORTRAN-007
 func spells(module, packageName string) bool {
-	if fold(module) == fold(packageName) {
+	if lang.FoldSeparators(module) == lang.FoldSeparators(packageName) {
 		return true
 	}
 	for _, s := range stems(packageName) {
@@ -137,7 +136,7 @@ func spells(module, packageName string) bool {
 		if module == s || strings.HasPrefix(module, s+"_") {
 			return true
 		}
-		if f := fold(s); len(f) >= 4 && strings.HasPrefix(fold(module), f) {
+		if f := lang.FoldSeparators(s); len(f) >= 4 && strings.HasPrefix(lang.FoldSeparators(module), f) {
 			return true
 		}
 	}

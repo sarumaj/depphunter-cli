@@ -89,13 +89,13 @@ func newResolver(root string, all []*scan.File) *resolver {
 			if r.packages[d] == nil {
 				r.packages[d] = &zigPackage{directory: d, facts: newFacts()}
 			}
-			if base == "build.zig.zon" && readable(f) {
+			if base == "build.zig.zon" && lang.Readable(f) {
 				if source, err := os.ReadFile(f.AbsolutePath); err == nil {
 					r.packages[d].zon = readZon(source)
 				}
 			}
 		}
-		if path.Ext(f.Path) == ".zig" && readable(f) {
+		if path.Ext(f.Path) == ".zig" && lang.Readable(f) {
 			sources = append(sources, f)
 		}
 	}
@@ -118,7 +118,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 		imports[f.Path] = importedNames(source)
 	}
-	for _, directory := range sortedKeys(r.packages) {
+	for _, directory := range lang.SortedKeys(r.packages) {
 		p := r.packages[directory]
 		if p.zon == nil {
 			continue
@@ -150,8 +150,6 @@ func importedNames(source []byte) []string {
 		}
 	}
 }
-
-func readable(f *scan.File) bool { return !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize }
 
 func hasAny(source []byte, words [][]byte) bool {
 	for _, w := range words {
@@ -185,7 +183,7 @@ func (r *resolver) packageOf(file string) *zigPackage {
 // Implements: REQ-ZIG-004
 func (r *resolver) roots(imports map[string][]string) {
 	reached := map[string][]croot{}
-	for _, directory := range sortedKeys(r.packages) {
+	for _, directory := range lang.SortedKeys(r.packages) {
 		p := r.packages[directory]
 		seenRoot := map[string]int{}
 		var roots []croot
@@ -253,15 +251,6 @@ func (r *resolver) roots(imports map[string][]string) {
 			r.rootOf[f] = main[0]
 		}
 	}
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // Resolve maps an import to its target.
@@ -372,7 +361,7 @@ func (r *resolver) module(file, name string) lang.Target {
 		return lang.Target{}
 	}
 	var hit string
-	for _, directory := range sortedKeys(r.packages) {
+	for _, directory := range lang.SortedKeys(r.packages) {
 		if f := r.packages[directory].facts.exports[name]; f != "" && r.files[f] {
 			if hit != "" && hit != f {
 				return lang.Target{} // exported by several packages: ambiguous

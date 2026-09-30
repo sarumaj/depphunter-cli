@@ -28,9 +28,9 @@ import (
 // The islands are the BEAM plugin's, so a Gleam package and the same package
 // reached from Elixir or Erlang are one node.
 const (
-	ecosystemHex = "hex"
-	ecosystemOTP = "erlang-std"
-	ecosystemNPM = "npm"
+	ecosystemHex = lang.EcosystemHex
+	ecosystemOTP = lang.EcosystemErlangStd
+	ecosystemNPM = lang.EcosystemNPM
 )
 
 const (

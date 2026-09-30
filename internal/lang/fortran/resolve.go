@@ -75,7 +75,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	sort.Slice(r.order, func(i, j int) bool {
-		depthI, depthJ := depth(r.order[i].directory), depth(r.order[j].directory)
+		depthI, depthJ := lang.Depth(r.order[i].directory), lang.Depth(r.order[j].directory)
 		if depthI != depthJ {
 			return depthI < depthJ
 		}
@@ -96,13 +96,6 @@ func newResolver(root string, all []*scan.File) *resolver {
 		sort.Strings(list)
 	}
 	return r
-}
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
 }
 
 // declared is what one source file defines: modules and submodules, the latter
@@ -338,7 +331,7 @@ func (r *resolver) local(file string, files []string) lang.Target {
 		if f == file {
 			continue
 		}
-		if n := commonDirectories(f, file); n > bestLength {
+		if n := lang.CommonDirectories(f, file); n > bestLength {
 			best, bestLength = f, n
 		}
 	}
@@ -346,15 +339,6 @@ func (r *resolver) local(file string, files []string) lang.Target {
 		return lang.Target{}
 	}
 	return lang.Target{Local: best}
-}
-
-func commonDirectories(a, b string) int {
-	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
-	n := 0
-	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
-		n++
-	}
-	return n
 }
 
 // use resolves a module: a project file that defines it, the compiler's
@@ -389,7 +373,7 @@ func (r *resolver) use(file, module, kind string) lang.Target {
 	}
 	for _, dev := range []bool{false, true} {
 		for _, p := range scope {
-			for _, name := range sortedKeys(p.m.dependencies) {
+			for _, name := range lang.SortedKeys(p.m.dependencies) {
 				if d := p.m.dependencies[name]; d.dev == dev && d.path == "" && spells(module, name) {
 					return r.dependency(p, name)
 				}
@@ -405,11 +389,11 @@ func (r *resolver) use(file, module, kind string) lang.Target {
 	}
 	if packageName := knownPackage(module); packageName != "" {
 		for _, p := range scope {
-			if p.m.name != "" && fold(p.m.name) == fold(packageName) {
+			if p.m.name != "" && lang.FoldSeparators(p.m.name) == lang.FoldSeparators(packageName) {
 				return lang.Target{} // the project's own module, missing
 			}
-			for _, name := range sortedKeys(p.m.dependencies) {
-				if fold(name) == fold(packageName) {
+			for _, name := range lang.SortedKeys(p.m.dependencies) {
+				if lang.FoldSeparators(name) == lang.FoldSeparators(packageName) {
 					return r.dependency(p, name)
 				}
 			}
@@ -497,7 +481,7 @@ func (r *resolver) dependency(p *project, name string) lang.Target {
 		if c := p.cache[name]; c != nil {
 			r.cachedVersion(&t, c, nil)
 		}
-		if !public(p.cacheGit(name)) {
+		if !lang.PublicOrUnnamed(p.cacheGit(name)) {
 			t.Origin = p.cacheGit(name)
 		}
 		return t
@@ -522,7 +506,7 @@ func (r *resolver) dependency(p *project, name string) lang.Target {
 	}
 	t := lang.Target{Ecosystem: ecosystemFpm, Package: name}
 	pinRule(&t, d)
-	if d.git != "" && !public(d.git) {
+	if d.git != "" && !lang.PublicForge(d.git) {
 		t.Origin = d.git
 	}
 	if c := p.cache[name]; c != nil {
@@ -579,21 +563,6 @@ func pinRule(t *lang.Target, d *dependency) {
 	}
 }
 
-// public reports whether a repository is on a public forge (or unknown), as
-// opposed to a git server of the organization's own, which is recorded as the
-// package's origin (and keeps it from being named to an index).
-func public(url string) bool {
-	if url == "" {
-		return true
-	}
-	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
-	switch host {
-	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "git.sr.ht", "sr.ht":
-		return true
-	}
-	return false
-}
-
 // Dependencies lists what a dependency fpm fetched into build/dependencies/
 // depends on, from the fpm.toml it ships (not its dev-dependencies), versioned
 // as the fetching project's cache and manifest say.
@@ -609,7 +578,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			continue
 		}
 		var out []lang.Target
-		for _, name := range sortedKeys(in.m.dependencies) {
+		for _, name := range lang.SortedKeys(in.m.dependencies) {
 			d := in.m.dependencies[name]
 			if d.dev || d.path != "" {
 				continue
@@ -628,7 +597,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			}
 			dependencyTarget := lang.Target{Ecosystem: ecosystemFpm, Package: name}
 			pinRule(&dependencyTarget, d)
-			if d.git != "" && !public(d.git) {
+			if d.git != "" && !lang.PublicForge(d.git) {
 				dependencyTarget.Origin = d.git
 			}
 			out = append(out, dependencyTarget)

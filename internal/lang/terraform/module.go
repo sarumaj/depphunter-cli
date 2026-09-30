@@ -154,7 +154,7 @@ func readModule(root *block) *fileInfo {
 			}
 		}
 	}
-	locals := sortedKeys(used)
+	locals := lang.SortedKeys(used)
 	for _, local := range locals {
 		if local == builtin || fileInfo.seen["required_providers "+local] || fileInfo.seen["provider \""+local+"\""] {
 			continue
@@ -348,14 +348,5 @@ func lockEntries(root *block) []lockEntry {
 		}
 		out = append(out, e)
 	}
-	return out
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
 	return out
 }

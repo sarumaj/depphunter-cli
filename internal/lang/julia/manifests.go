@@ -166,7 +166,7 @@ func extractProject(source []byte) *lang.Extraction {
 		set.Add(p.name, "package", p.lines["name"])
 	}
 	for _, section := range dependencySections {
-		for _, name := range sortedKeys(p.section) {
+		for _, name := range lang.SortedKeys(p.section) {
 			if p.section[name] == section {
 				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: section + "." + name, Module: name, Name: kindDependency + "\n" + section, Line: p.lines[section+"."+name]})
 			}
@@ -184,22 +184,13 @@ func extractProject(source []byte) *lang.Extraction {
 	for _, w := range p.workspace {
 		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "workspace.projects " + w, Module: w, Name: kindMember, Line: p.lines["workspace.projects"]})
 	}
-	for _, extension := range sortedKeys(p.extensions) {
+	for _, extension := range lang.SortedKeys(p.extensions) {
 		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "extensions." + extension, Module: extension, Name: kindExtension, Line: p.lines["extensions."+extension]})
 		set.Add(extension, "extension", p.lines["extensions."+extension])
 	}
 	extraction.Symbols = append(extraction.Symbols, set.List()...)
 	sort.SliceStable(extraction.Imports, func(i, j int) bool { return extraction.Imports[i].Line < extraction.Imports[j].Line })
 	return extraction
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 // manifest is a Manifest.toml: every package of the environment, resolved.
@@ -255,7 +246,7 @@ func readManifest(source []byte) *manifest {
 			lines[h[1]] = append(lines[h[1]], i+1)
 		}
 	}
-	for _, name := range sortedKeys(tables) {
+	for _, name := range lang.SortedKeys(tables) {
 		list, ok := tables[name].([]map[string]any)
 		if !ok {
 			continue
@@ -276,7 +267,7 @@ func readManifest(source []byte) *manifest {
 					}
 				}
 			case map[string]any: // names that are ambiguous are written with their UUIDs
-				e.dependencies = sortedKeys(d)
+				e.dependencies = lang.SortedKeys(d)
 			}
 			if k < len(lines[name]) {
 				e.line = lines[name][k]
@@ -319,7 +310,7 @@ func extractArtifacts(source []byte) *lang.Extraction {
 	}
 	lines := keyLines(source)
 	var set lang.SymbolSet
-	for _, name := range sortedKeys(doc) {
+	for _, name := range lang.SortedKeys(doc) {
 		set.Add(name, "artifact", lines[name])
 	}
 	extraction.Symbols = set.List()

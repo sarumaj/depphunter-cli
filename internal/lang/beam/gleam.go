@@ -1,9 +1,13 @@
 package beam
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
+)
 
 // gleamStdlib are gleam_stdlib's modules, past and present: gleam/<name>.
-var gleamStdlib = setOf(`base bit_array bit_builder bit_string bool bytes_builder bytes_tree dict dynamic
+var gleamStdlib = lang.WordSet(`base bit_array bit_builder bit_string bool bytes_builder bytes_tree dict dynamic
 float function int io iterator list map option order pair queue regex result set string
 string_builder string_tree uri`)
 

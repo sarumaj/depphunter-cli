@@ -218,7 +218,7 @@ func readModule(source []byte) *moduleFile {
 		parsed.path = stripMajor(v.text)
 	}
 	if d := fields["deps"]; d != nil {
-		for _, k := range sortedKeys(d.fields) {
+		for _, k := range lang.SortedKeys(d.fields) {
 			x := d.fields[k]
 			md := &moduleDependency{key: k, path: stripMajor(k), line: x.line}
 			if v := x.fields["v"]; v != nil {

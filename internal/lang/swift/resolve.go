@@ -64,7 +64,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if a, ok := absolute[relative]; ok {
 			return readFile(a)
 		}
-		if root == "" || !inside(relative) {
+		if root == "" || !lang.Inside(relative) {
 			return "", false
 		}
 		return readFile(filepath.Join(root, filepath.FromSlash(relative))) // a file the scan left out
@@ -149,8 +149,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 	}
 	sort.Slice(r.projects, func(i, j int) bool {
 		a, b := r.projects[i].directory, r.projects[j].directory
-		if depth(a) != depth(b) {
-			return depth(a) < depth(b)
+		if lang.Depth(a) != lang.Depth(b) {
+			return lang.Depth(a) < lang.Depth(b)
 		}
 		return a < b
 	})
@@ -160,8 +160,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 	}
 	sort.Slice(r.targets, func(i, j int) bool {
 		a, b := r.targets[i], r.targets[j]
-		if depth(a) != depth(b) {
-			return depth(a) > depth(b)
+		if lang.Depth(a) != lang.Depth(b) {
+			return lang.Depth(a) > lang.Depth(b)
 		}
 		return a < b
 	})
@@ -243,7 +243,7 @@ func (p *project) has(id string) bool {
 func (r *resolver) targetDirectory(directory string, t target) string {
 	if t.path != "" {
 		d := path.Join(directory, t.path)
-		if inside(d) && (r.directories[d] || d == ".") {
+		if lang.Inside(d) && (r.directories[d] || d == ".") {
 			return d
 		}
 		return ""
@@ -265,18 +265,11 @@ func (r *resolver) targetDirectory(directory string, t target) string {
 
 func sortShallow(directories []string) {
 	sort.SliceStable(directories, func(i, j int) bool {
-		if depth(directories[i]) != depth(directories[j]) {
-			return depth(directories[i]) < depth(directories[j])
+		if lang.Depth(directories[i]) != lang.Depth(directories[j]) {
+			return lang.Depth(directories[i]) < lang.Depth(directories[j])
 		}
 		return directories[i] < directories[j]
 	})
-}
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
 }
 
 // vendored reports whether a directory holds checkouts of dependencies.
@@ -288,10 +281,6 @@ func vendored(d string) bool {
 		}
 	}
 	return false
-}
-
-func inside(p string) bool {
-	return p != ".." && !strings.HasPrefix(p, "../") && !path.IsAbs(p)
 }
 
 func readFile(absolute string) (string, bool) {
@@ -345,7 +334,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		return r.packageName(r.projectsOf(file), strings.ToLower(rawImport.Module), rawImport.Module)
 	case kindPath:
 		d := path.Clean(path.Dir(file) + strings.TrimPrefix(rawImport.Module, "__DIR__"))
-		if inside(d) && r.directories[d] {
+		if lang.Inside(d) && r.directories[d] {
 			return lang.Target{Local: d}
 		}
 	case kindType:
@@ -427,15 +416,15 @@ func (r *resolver) packageOf(projects []*project, m string) (string, bool) {
 	if url := knownPackages[m]; url != "" && has(identity(url)) {
 		return identity(url), true
 	}
-	want := fold(m)
+	want := lang.FoldAlphanumeric(m)
 	best, bestLength := "", 0
 	for _, p := range projects {
 		for _, id := range p.identities() {
-			f := fold(id)
+			f := lang.FoldAlphanumeric(id)
 			short := strings.TrimPrefix(f, "swift")
 			_, after, dotted := strings.Cut(id, ".") // a registry id: scope.name
 			switch {
-			case f == want || short == want || strings.TrimSuffix(f, "swift") == want || dotted && fold(after) == want:
+			case f == want || short == want || strings.TrimSuffix(f, "swift") == want || dotted && lang.FoldAlphanumeric(after) == want:
 				return id, true
 			case len(short) >= 3 && strings.HasPrefix(want, short) && len(short) > bestLength:
 				best, bestLength = id, len(short)
@@ -475,7 +464,7 @@ func (r *resolver) packageName(projects []*project, id, spelled string) lang.Tar
 		}
 	}
 	if d != nil && d.path != "" {
-		if inside(d.path) && r.directories[d.path] {
+		if lang.Inside(d.path) && r.directories[d.path] {
 			return lang.Target{Local: d.path}
 		}
 		return lang.Target{}
@@ -537,22 +526,12 @@ func (r *resolver) projectsOf(file string) []*project {
 func (r *resolver) nearest(file string, directories []string) string {
 	best, bestLength := directories[0], -1
 	for _, d := range directories {
-		n := common(file, d)
+		n := lang.CommonSegments(file, d)
 		if n > bestLength {
 			best, bestLength = d, n
 		}
 	}
 	return best
-}
-
-// common counts the leading path segments two paths share.
-func common(a, b string) int {
-	aParts, bParts := strings.Split(a, "/"), strings.Split(b, "/")
-	n := 0
-	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
-		n++
-	}
-	return n
 }
 
 // moduleOf is the directory of the module a file belongs to: the deepest target

@@ -102,13 +102,13 @@ func eachTable(v any, function func(map[string]any)) {
 // dependsOn walks a depends-on table: crate = "constraint" entries, and every
 // alternative of 'case(os)' and similar expressions.
 func dependsOn(t map[string]any, function func(name, constraint string)) {
-	for _, k := range sortedKeys(t) {
+	for _, k := range lang.SortedKeys(t) {
 		switch v := t[k].(type) {
 		case string:
 			function(k, v)
 		case map[string]any:
 			if strings.HasPrefix(k, "case(") {
-				for _, alternative := range sortedKeys(v) {
+				for _, alternative := range lang.SortedKeys(v) {
 					if at, ok := v[alternative].(map[string]any); ok {
 						dependsOn(at, function)
 					}
@@ -131,19 +131,10 @@ func strings_(v any, function func(string)) {
 			strings_(x, function)
 		}
 	case map[string]any:
-		for _, k := range sortedKeys(v) {
+		for _, k := range lang.SortedKeys(v) {
 			strings_(v[k], function)
 		}
 	}
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // lineIndex finds the line of a key: BurntSushi's decoder keeps no positions.
@@ -198,11 +189,11 @@ func (x lineIndex) find(prefix, key string) int {
 func extractManifest(source []byte) *lang.Extraction {
 	m := readManifest(source)
 	extraction := &lang.Extraction{}
-	for _, name := range sortedKeys(m.dependencies) {
+	for _, name := range lang.SortedKeys(m.dependencies) {
 		d := m.dependencies[name]
 		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindDependency, Line: d.line})
 	}
-	for _, name := range sortedKeys(m.pins) {
+	for _, name := range lang.SortedKeys(m.pins) {
 		if _, ok := m.dependencies[name]; !ok {
 			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindPin, Line: m.pins[name].line})
 		}

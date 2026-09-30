@@ -39,13 +39,6 @@ type resolver struct {
 	protoc      []protocRoot // the -I directories build scripts give protoc
 }
 
-func depth(p string) int {
-	if p == "." {
-		return 0
-	}
-	return strings.Count(p, "/") + 1
-}
-
 // newResolver reads every Buf configuration and lock file of the repository.
 //
 // Implements: REQ-PROTO-004, REQ-PROTO-005, REQ-PROTO-007
@@ -113,7 +106,7 @@ func newResolver(all []*scan.File) *resolver {
 		c.lock = r.locks[c.directory]
 	}
 	r.protoc = readProtocRoots(all, r.directories)
-	sort.SliceStable(r.all, func(i, j int) bool { return depth(r.all[i].directory) < depth(r.all[j].directory) })
+	sort.SliceStable(r.all, func(i, j int) bool { return lang.Depth(r.all[i].directory) < lang.Depth(r.all[j].directory) })
 	return r
 }
 
@@ -127,11 +120,6 @@ func nearest(m map[string]*config, directory string) *config {
 			return nil
 		}
 	}
-}
-
-// under reports whether p is directory or inside it.
-func under(p, directory string) bool {
-	return directory == "." || p == directory || strings.HasPrefix(p, directory+"/")
 }
 
 // scope is what Buf's configuration says about one file: its workspace's import roots
@@ -150,7 +138,7 @@ type scope struct {
 func (r *resolver) scopeOf(file string) scope {
 	directory := path.Dir(file)
 	workspaceConfig, module := nearest(r.work, directory), nearest(r.modules, directory)
-	if workspaceConfig != nil && module != nil && !under(module.directory, workspaceConfig.directory) {
+	if workspaceConfig != nil && module != nil && !lang.WithinOrEqual(module.directory, workspaceConfig.directory) {
 		module = nil // a module above the workspace is not part of it
 	}
 	var current scope
@@ -344,17 +332,17 @@ func (current scope) match(name string) *dependency {
 	if !ok {
 		return nil
 	}
-	first = fold(first)
+	first = lang.FoldSeparators(first)
 	var byRepository, byOwner []*dependency
 	for i := range current.dependencies {
 		segments := strings.Split(current.dependencies[i].name, "/")
 		if len(segments) < 3 {
 			continue
 		}
-		if fold(segments[len(segments)-1]) == first {
+		if lang.FoldSeparators(segments[len(segments)-1]) == first {
 			byRepository = append(byRepository, &current.dependencies[i])
 		}
-		if fold(segments[len(segments)-2]) == first {
+		if lang.FoldSeparators(segments[len(segments)-2]) == first {
 			byOwner = append(byOwner, &current.dependencies[i])
 		}
 	}
@@ -367,10 +355,6 @@ func (current scope) match(name string) *dependency {
 	return nil
 }
 
-func fold(s string) string {
-	return strings.NewReplacer("-", "", "_", "", ".", "").Replace(strings.ToLower(s))
-}
-
 // bySuffix finds the project file whose path ends in the import ("foo/bar.proto" in
 // third_party/foo/bar.proto): the only one, or else the one closest to the importer
 // when that is closer than all the others.
@@ -381,7 +365,7 @@ func (r *resolver) bySuffix(file, name string) string {
 		if !strings.HasSuffix(p, "/"+name) {
 			continue
 		}
-		n := commonDirectories(file, p)
+		n := lang.CommonSubdirectories(file, p)
 		switch {
 		case n > bestLength:
 			best, bestLength, tie = p, n, false
@@ -393,14 +377,4 @@ func (r *resolver) bySuffix(file, name string) string {
 		return ""
 	}
 	return best
-}
-
-// commonDirectories counts the leading directories two paths share.
-func commonDirectories(a, b string) int {
-	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
-	n := 0
-	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] && aParts[n] != "." {
-		n++
-	}
-	return n
 }

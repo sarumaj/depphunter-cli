@@ -73,7 +73,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 				r.descriptions = append(r.descriptions, p)
 				if d.name != "" {
 					scopes[p.directory] = true
-					if q := r.named[d.name]; q == nil || depth(p.directory) < depth(q.directory) {
+					if q := r.named[d.name]; q == nil || lang.Depth(p.directory) < lang.Depth(q.directory) {
 						r.named[d.name] = p
 					}
 				}
@@ -84,7 +84,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 			sources = append(sources, f)
 		}
 	}
-	sort.Slice(r.descriptions, func(i, j int) bool { return deeper(r.descriptions[i].directory, r.descriptions[j].directory) })
+	sort.Slice(r.descriptions, func(i, j int) bool {
+		return lang.DeepestFirst(r.descriptions[i].directory, r.descriptions[j].directory)
+	})
 	// renv.lock is committed by projects and packages alike; packrat keeps its lock in
 	// packrat/. Either may be git-ignored, so what is on disk counts too.
 	read := func(relative string) ([]byte, bool) {
@@ -108,11 +110,11 @@ func newResolver(root string, all []*scan.File) *resolver {
 			r.locks = append(r.locks, readPackratLock(source, d))
 		}
 	}
-	sort.Slice(r.locks, func(i, j int) bool { return deeper(r.locks[i].directory, r.locks[j].directory) })
+	sort.Slice(r.locks, func(i, j int) bool { return lang.DeepestFirst(r.locks[i].directory, r.locks[j].directory) })
 	for s := range scopes {
 		r.scopes = append(r.scopes, s)
 	}
-	sort.Slice(r.scopes, func(i, j int) bool { return deeper(r.scopes[i], r.scopes[j]) })
+	sort.Slice(r.scopes, func(i, j int) bool { return lang.DeepestFirst(r.scopes[i], r.scopes[j]) })
 	r.index(sources)
 	return r
 }
@@ -148,28 +150,9 @@ func (r *resolver) index(sources []*scan.File) {
 	}
 }
 
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
-}
-
-// deeper orders directories deepest first, then by name.
-func deeper(a, b string) bool {
-	if da, database := depth(a), depth(b); da != database {
-		return da > database
-	}
-	return a < b
-}
-
-func within(file, directory string) bool {
-	return directory == "." || strings.HasPrefix(file, directory+"/")
-}
-
 func (r *resolver) scopeOf(file string) string {
 	for _, s := range r.scopes {
-		if within(file, s) {
+		if lang.Within(file, s) {
 			return s
 		}
 	}
@@ -179,7 +162,7 @@ func (r *resolver) scopeOf(file string) string {
 // descriptionOf is the nearest DESCRIPTION above a file; packageOf the nearest that is a package.
 func (r *resolver) descriptionOf(file string) *rpkg {
 	for _, p := range r.descriptions {
-		if within(file, p.directory) {
+		if lang.Within(file, p.directory) {
 			return p
 		}
 	}
@@ -188,7 +171,7 @@ func (r *resolver) descriptionOf(file string) *rpkg {
 
 func (r *resolver) packageOf(file string) *rpkg {
 	for _, p := range r.descriptions {
-		if p.description.name != "" && within(file, p.directory) {
+		if p.description.name != "" && lang.Within(file, p.directory) {
 			return p
 		}
 	}
@@ -197,7 +180,7 @@ func (r *resolver) packageOf(file string) *rpkg {
 
 func (r *resolver) lockOf(file string) *lockfile {
 	for _, l := range r.locks {
-		if within(file, l.directory) {
+		if lang.Within(file, l.directory) {
 			return l
 		}
 	}
@@ -229,7 +212,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		}
 		for _, b := range bases {
 			p := path.Join(b, module)
-			if !inside(p) {
+			if !lang.Inside(p) {
 				continue
 			}
 			for _, candidate := range []string{p + ".R", p + ".r", p + "/__init__.R", p + "/__init__.r"} {
@@ -245,13 +228,13 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 			return lang.Target{}
 		}
 		for _, b := range ancestors(directory) {
-			if p := path.Join(b, rawImport.Module); inside(p) && r.files[p] {
+			if p := path.Join(b, rawImport.Module); lang.Inside(p) && r.files[p] {
 				return lang.Target{Local: p}
 			}
 		}
 	case kindSourceDirectory:
 		for _, b := range ancestors(directory) {
-			if p := path.Join(b, rawImport.Module); inside(p) && (r.directories[p] || r.files[p]) {
+			if p := path.Join(b, rawImport.Module); lang.Inside(p) && (r.directories[p] || r.files[p]) {
 				return lang.Target{Local: p}
 			}
 		}
@@ -268,8 +251,6 @@ func ancestors(directory string) []string {
 	}
 	return out
 }
-
-func inside(p string) bool { return p != ".." && !strings.HasPrefix(p, "../") && !path.IsAbs(p) }
 
 // call resolves a function a file calls to the file of its scope (its package, or
 // its project) that defines it. R has no per-file imports inside a package - every
@@ -325,7 +306,7 @@ func (r *resolver) call(file, name string) lang.Target {
 // Implements: REQ-R-006, REQ-R-007, REQ-R-009
 func (r *resolver) packageName(file, name string, manifest bool) lang.Target {
 	if own := r.packageOf(file); own != nil && own.description.name == name {
-		if within(file, path.Join(own.directory, "R")) || manifest {
+		if lang.Within(file, path.Join(own.directory, "R")) || manifest {
 			return lang.Target{}
 		}
 		return r.local(own, false)

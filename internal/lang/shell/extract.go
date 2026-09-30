@@ -2,6 +2,7 @@ package shell
 
 import (
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -304,9 +305,9 @@ func (x *extractor) invoke(words []*word, line int) {
 		for i := 1; i < len(words); i++ {
 			s := name(words[i])
 			switch {
-			case contains(stop, s):
+			case slices.Contains(stop, s):
 				return
-			case contains(valued, s):
+			case slices.Contains(valued, s):
 				i++
 			case strings.HasPrefix(s, "-") || strings.HasPrefix(s, "+"):
 				if in == "pwsh" && strings.EqualFold(s, "-File") && i+1 < len(words) {
@@ -328,15 +329,6 @@ func (x *extractor) invoke(words []*word, line int) {
 	if strings.ContainsAny(v[:1], markers) || strings.Contains(v, "/") {
 		x.path(words[0].raw, words[0], kindExec, line)
 	}
-}
-
-func contains(list []string, s string) bool {
-	for _, l := range list {
-		if l == s {
-			return true
-		}
-	}
-	return false
 }
 
 // direnv reads direnv's stdlib commands in an .envrc.

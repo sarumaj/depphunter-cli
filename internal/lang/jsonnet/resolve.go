@@ -75,7 +75,7 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 		r.order = append(r.order, p)
 	}
 	sort.Slice(r.order, func(i, j int) bool {
-		depthI, depthJ := depth(r.order[i].directory), depth(r.order[j].directory)
+		depthI, depthJ := lang.Depth(r.order[i].directory), lang.Depth(r.order[j].directory)
 		if depthI != depthJ {
 			return depthI < depthJ
 		}
@@ -110,13 +110,6 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 		}
 	}
 	return r
-}
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
 }
 
 // within reports whether p lies in directory, returning the rest.

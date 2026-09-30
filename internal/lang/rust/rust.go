@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	ecosystemCrates = "crates"
-	ecosystemStd    = "rust-std"
+	ecosystemStd = "rust-std"
 )
 
 // @use is a use tree; @crate an extern crate; @mod a `mod name;` declaration (its
@@ -48,7 +47,7 @@ func (Plugin) Version() int             { return 1 }
 func (Plugin) Claims(f *scan.File) bool { return strings.HasSuffix(f.Path, ".rs") && !f.Binary }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecosystemCrates, Name: "crates.io"},
+		{ID: lang.EcosystemCrates, Name: "crates.io"},
 		{ID: ecosystemStd, Name: "Rust standard library", Std: true},
 	}
 }

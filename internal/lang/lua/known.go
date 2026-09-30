@@ -99,8 +99,3 @@ func candidates(module string) []string {
 	f := strings.ToLower(first)
 	return append(out, f, "lua-"+f, f+"-lua", "lua"+f, f+".nvim", "nvim-"+f)
 }
-
-// fold is a rock name for matching: lower case without - _ and dots.
-func fold(s string) string { return folder.Replace(strings.ToLower(s)) }
-
-var folder = strings.NewReplacer("-", "", "_", "", ".", "")

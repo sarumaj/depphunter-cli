@@ -166,7 +166,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 		newRockspec.rocks = sortedKeys(newRockspec.declared, newRockspec.lock)
 		for _, rock := range newRockspec.rocks {
-			newRockspec.folded = append(newRockspec.folded, fold(rock))
+			newRockspec.folded = append(newRockspec.folded, lang.FoldSeparators(rock))
 		}
 		for _, m := range newRockspec.spec.Modules {
 			if f := r.moduleFile(newRockspec.directory, m.File); f != "" {
@@ -176,8 +176,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 		r.rockspecs = append(r.rockspecs, newRockspec)
 	}
 	sort.SliceStable(r.rockspecs, func(i, j int) bool {
-		return depth(r.rockspecs[i].directory) < depth(r.rockspecs[j].directory) ||
-			depth(r.rockspecs[i].directory) == depth(r.rockspecs[j].directory) && r.rockspecs[i].path < r.rockspecs[j].path
+		return lang.Depth(r.rockspecs[i].directory) < lang.Depth(r.rockspecs[j].directory) ||
+			lang.Depth(r.rockspecs[i].directory) == lang.Depth(r.rockspecs[j].directory) && r.rockspecs[i].path < r.rockspecs[j].path
 	})
 	seen, directories := map[string]bool{}, []string{"."}
 	for _, rockspec := range r.rockspecs {
@@ -211,7 +211,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 		r.wallies = append(r.wallies, w)
 	}
-	sort.SliceStable(r.wallies, func(i, j int) bool { return depth(r.wallies[i].directory) < depth(r.wallies[j].directory) })
+	sort.SliceStable(r.wallies, func(i, j int) bool { return lang.Depth(r.wallies[i].directory) < lang.Depth(r.wallies[j].directory) })
 	// Rojo: place projects (a DataModel tree) say where each $path lands in the
 	// game; default.project.json first, then the others by path.
 	sort.SliceStable(rojos, func(i, j int) bool {
@@ -281,13 +281,6 @@ func readTree(tree string) map[string]*installedRock {
 	return out
 }
 
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
-}
-
 // moduleFile finds the project file a rockspec's build.modules entry names: relative
 // to the rockspec, else to the project root (a rockspecs/ directory's rockspecs name
 // files of the source tree).
@@ -305,7 +298,7 @@ func (r *resolver) moduleFile(directory, file string) string {
 func (r *resolver) governing(file string) []*rockspec {
 	var out []*rockspec
 	for i := len(r.rockspecs) - 1; i >= 0; i-- {
-		if rockspec := r.rockspecs[i]; within(file, rockspec.directory) {
+		if rockspec := r.rockspecs[i]; lang.Within(file, rockspec.directory) {
 			out = append(out, rockspec)
 		}
 	}
@@ -313,10 +306,6 @@ func (r *resolver) governing(file string) []*rockspec {
 		return r.rockspecs
 	}
 	return out
-}
-
-func within(file, directory string) bool {
-	return directory == "." || strings.HasPrefix(file, directory+"/")
 }
 
 // Resolve maps one import.
@@ -528,7 +517,7 @@ func (r *resolver) declares(governing []*rockspec, name string) bool {
 // declared finds a rock the governing rockspecs declare or their locks hold, by
 // name; with first set also a fork named <owner>-<first> (kong-pgmoon for pgmoon).
 func (r *resolver) declared(governing []*rockspec, name, first string) (lang.Target, bool) {
-	want, fork := fold(name), "-"+strings.ToLower(first)
+	want, fork := lang.FoldSeparators(name), "-"+strings.ToLower(first)
 	for _, rockspec := range governing {
 		for k, rock := range rockspec.rocks {
 			if rockspec.folded[k] == want || (first != "" && strings.HasSuffix(rock, fork)) {
@@ -636,7 +625,7 @@ func (r *resolver) wallyIn(file string, elements []string) lang.Target {
 func (r *resolver) wallyOf(file string) []*wally {
 	var out []*wally
 	for i := len(r.wallies) - 1; i >= 0; i-- {
-		if within(file, r.wallies[i].directory) {
+		if lang.Within(file, r.wallies[i].directory) {
 			out = append(out, r.wallies[i])
 		}
 	}

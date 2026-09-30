@@ -3,6 +3,8 @@ package shell
 import (
 	"regexp"
 	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
 // Packages a script installs with a language's package manager are dependencies of
@@ -109,7 +111,7 @@ func (x *extractor) packageName(spec, ecosystem, packageName, version string, li
 	x.add(spec, packageName, ecosystem+"@"+version, line)
 }
 
-var pipValued = set("-c --constraint -i --index-url --extra-index-url -t --target --prefix -f --find-links --root --platform --python-version --implementation --abi --src --upgrade-strategy --progress-bar --trusted-host --cache-dir --log --timeout --retries --proxy --no-binary --only-binary -C --config-settings --python --with --index")
+var pipValued = lang.WordSet("-c --constraint -i --index-url --extra-index-url -t --target --prefix -f --find-links --root --platform --python-version --implementation --abi --src --upgrade-strategy --progress-bar --trusted-host --cache-dir --log --timeout --retries --proxy --no-binary --only-binary -C --config-settings --python --with --index")
 
 // pip reads pip install (and uv's and pipx's): requirement specifiers become pypi
 // packages, -r files edges to those files.
@@ -140,7 +142,7 @@ func (x *extractor) pip(words []*word, i, line int) {
 	})
 }
 
-var npmValued = set("--prefix --registry --tag --cache --userconfig -w --workspace --omit --include --save-prefix --filter -C --dir --cwd")
+var npmValued = lang.WordSet("--prefix --registry --tag --cache --userconfig -w --workspace --omit --include --save-prefix --filter -C --dir --cwd")
 
 // npm reads npm install/add (and pnpm's, yarn's and bun's): name[@version].
 func (x *extractor) npm(words []*word, i, line int) {
@@ -157,7 +159,7 @@ func (x *extractor) npm(words []*word, i, line int) {
 	})
 }
 
-var goValued = set("-tags -ldflags -gcflags -asmflags -mod -modfile -o -p -pkgdir -toolexec -overlay -pgo -exec -C")
+var goValued = lang.WordSet("-tags -ldflags -gcflags -asmflags -mod -modfile -o -p -pkgdir -toolexec -overlay -pgo -exec -C")
 
 // golang reads go install/run/get of a package at a version (pkg@version); without a
 // version the command builds the current module's own packages.
@@ -209,7 +211,7 @@ var nested = map[string]bool{
 	"google.golang.org/grpc/cmd/protoc-gen-go-grpc": true,
 }
 
-var cargoValued = set("--version --vers --git --branch --tag --rev --path --root --index --registry -F --features --target --target-dir --profile -j --jobs --bin --example --config -Z")
+var cargoValued = lang.WordSet("--version --vers --git --branch --tag --rev --path --root --index --registry -F --features --target --target-dir --profile -j --jobs --bin --example --config -Z")
 
 // cargo reads cargo install: crates from crates.io, name[@version] or --version.
 // Crates from --git or --path are not crates.io's.
@@ -238,7 +240,7 @@ func (x *extractor) cargo(words []*word, i, line int) {
 	})
 }
 
-var gemValued = set("-v --version -i --install-dir -n --bindir -s --source --platform -P --trust-policy")
+var gemValued = lang.WordSet("-v --version -i --install-dir -n --bindir -s --source --platform -P --trust-policy")
 
 // gem reads gem install: name[:version] or -v.
 func (x *extractor) gem(words []*word, i, line int) {
@@ -265,12 +267,4 @@ func (x *extractor) gem(words []*word, i, line int) {
 		}
 		x.packageName(prefix+" "+w.raw, ecosystemGems, g, v, line)
 	})
-}
-
-func set(s string) map[string]bool {
-	m := map[string]bool{}
-	for _, f := range strings.Fields(s) {
-		m[f] = true
-	}
-	return m
 }

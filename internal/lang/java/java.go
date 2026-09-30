@@ -14,11 +14,6 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
-const (
-	ecosystemMaven = "maven"
-	ecosystemJDK   = "jdk"
-)
-
 const query = `
 (import_declaration) @import
 
@@ -42,8 +37,8 @@ func (Plugin) Version() int             { return 3 }
 func (Plugin) Claims(f *scan.File) bool { return strings.HasSuffix(f.Path, ".java") && !f.Binary }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecosystemMaven, Name: "Maven"},
-		{ID: ecosystemJDK, Name: "Java standard library", Std: true},
+		{ID: lang.EcosystemMaven, Name: "Maven"},
+		{ID: lang.EcosystemJDK, Name: "Java standard library", Std: true},
 	}
 }
 

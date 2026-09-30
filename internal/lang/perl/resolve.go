@@ -4,6 +4,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -127,8 +128,8 @@ func newResolver(root string, all []*scan.File, p Plugin) *resolver {
 		}
 	}
 	sort.SliceStable(r.projects, func(i, j int) bool {
-		return depth(r.projects[i].directory) < depth(r.projects[j].directory) ||
-			depth(r.projects[i].directory) == depth(r.projects[j].directory) && r.projects[i].directory < r.projects[j].directory
+		return lang.Depth(r.projects[i].directory) < lang.Depth(r.projects[j].directory) ||
+			lang.Depth(r.projects[i].directory) == lang.Depth(r.projects[j].directory) && r.projects[i].directory < r.projects[j].directory
 	})
 	return r
 }
@@ -142,17 +143,6 @@ func declaredPackages(source []byte) []string {
 		}
 	}
 	return out
-}
-
-func depth(directory string) int {
-	if directory == "." {
-		return 0
-	}
-	return strings.Count(directory, "/") + 1
-}
-
-func within(file, directory string) bool {
-	return directory == "." || strings.HasPrefix(file, directory+"/")
 }
 
 // distOf is the distribution providing a module as this project knows it: by its
@@ -171,7 +161,7 @@ func (p *project) distOf(module string) string {
 func (r *resolver) governing(file string) []*project {
 	var out []*project
 	for i := len(r.projects) - 1; i >= 0; i-- {
-		if within(file, r.projects[i].directory) {
+		if lang.Within(file, r.projects[i].directory) {
 			out = append(out, r.projects[i])
 		}
 	}
@@ -184,7 +174,7 @@ func (r *resolver) governing(file string) []*project {
 // distRoot is the directory of the nearest project above the file, else the root.
 func (r *resolver) distRoot(file string) string {
 	for i := len(r.projects) - 1; i >= 0; i-- {
-		if within(file, r.projects[i].directory) {
+		if lang.Within(file, r.projects[i].directory) {
 			return r.projects[i].directory
 		}
 	}
@@ -268,7 +258,7 @@ func (r *resolver) local(p string) bool {
 func (r *resolver) module(file, m string, libraries []string, isa bool) lang.Target {
 	declaration := r.packages[m]
 	if isa {
-		if contains(declaration, file) {
+		if slices.Contains(declaration, file) {
 			return lang.Target{} // the same file declares it
 		}
 		if len(declaration) == 1 {
@@ -297,7 +287,7 @@ func (r *resolver) module(file, m string, libraries []string, isa bool) lang.Tar
 	if files := r.suffixes[relative]; len(files) == 1 && strings.Contains(m, "::") && files[0] != file {
 		return lang.Target{Local: files[0]}
 	}
-	if contains(declaration, file) {
+	if slices.Contains(declaration, file) {
 		return lang.Target{}
 	}
 	if len(declaration) == 1 {
@@ -314,15 +304,6 @@ func (r *resolver) module(file, m string, libraries []string, isa bool) lang.Tar
 		return t // declared by a project that does not govern the file
 	}
 	return lang.Target{Ecosystem: ecosystemCPAN, Package: distOf(m), Unresolved: true}
-}
-
-func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 // installed reports whether a core module is installed from CPAN instead: a
