@@ -80,23 +80,21 @@ func isRegularFile(path string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-// absolute reports whether p is absolute on this machine's platform rather than the
-// one running depphunter: /x on Unix, and on Windows a drive or UNC path or one rooted
-// on the current drive, none of which is taken from the working directory.
+// absolute reports whether p is absolute on this machine's platform or on the one
+// running depphunter: /x on Unix, and on Windows a drive or UNC path or one rooted on
+// the current drive, none of which is taken from the working directory.
 func (m Machine) absolute(p string) bool {
-	if m.GOOS == "windows" {
-		return windowsAbsolute(p) || strings.HasPrefix(p, `\`) || strings.HasPrefix(p, "/")
-	}
-	return strings.HasPrefix(p, "/")
+	return filepath.IsAbs(p) || strings.HasPrefix(p, "/") ||
+		m.GOOS == "windows" && (windowsAbsolute(p) || strings.HasPrefix(p, `\`))
 }
 
-// list splits a path-list variable with this machine's separator: ";" on Windows,
-// ":" elsewhere.
+// list splits a path-list variable with ";" on Windows, this machine or the one
+// running depphunter (where a ":" is a drive letter's), and with ":" elsewhere.
 func (m Machine) list(value string) []string {
 	if value == "" {
 		return nil
 	}
-	if m.GOOS == "windows" {
+	if m.GOOS == "windows" || runtime.GOOS == "windows" {
 		return strings.Split(value, ";")
 	}
 	return strings.Split(value, ":")
