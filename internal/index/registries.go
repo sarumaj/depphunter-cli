@@ -311,7 +311,7 @@ func (c *Client) composerPackage(ctx context.Context, index string, t lang.Targe
 			out = append(out, dependency{Name: name, Version: constraint})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 
@@ -437,7 +437,7 @@ func (c *Client) rubygemsPackage(ctx context.Context, index string, t lang.Targe
 		}
 		out = append(out, dependency{Name: name, Version: version})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 
@@ -486,7 +486,7 @@ func (c *Client) pubPackage(ctx context.Context, index string, t lang.Target) ([
 			out = append(out, dependency{Name: name, Version: v})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 
@@ -540,7 +540,7 @@ func (c *Client) hexPackage(ctx context.Context, index string, t lang.Target) ([
 		}
 		out = append(out, dependency{Name: name, Version: v})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 
@@ -608,7 +608,7 @@ func (c *Client) cranPackage(ctx context.Context, index string, t lang.Target) (
 			out = append(out, dependency{Name: name, Version: rRequirement(requirement)})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 
@@ -672,7 +672,7 @@ func (c *Client) cranRepository(ctx context.Context, index string) (map[string][
 				out = append(out, dependency{Name: n, Version: rRequirement(requirement)})
 			}
 		}
-		sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+		sortDependencies(out)
 		packages[name] = out
 	}
 	c.mu.Lock()
@@ -867,7 +867,7 @@ func cabalLibraryDepends(source []byte, self string) []dependency {
 			add(s, map[string]bool{})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out
 }
 
@@ -1498,7 +1498,7 @@ func (c *Client) luarocksRock(ctx context.Context, index string, t lang.Target) 
 		}
 		out = append(out, dependency{Name: d.Name, Version: v})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 
@@ -1654,7 +1654,7 @@ func (c *Client) cpanDependencies(ctx context.Context, base, dist string, relati
 		seen[dist] = true
 		out = append(out, dependency{Name: dist, Version: cpanMinimum(d.Version)})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 
@@ -1748,7 +1748,7 @@ func (c *Client) opamPackage(ctx context.Context, index string, t lang.Target) (
 		}
 		out = append(out, dependency{Name: d.Name, Version: v})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 
@@ -2006,12 +2006,7 @@ func (c *Client) elmPackage(ctx context.Context, index string, t lang.Target) ([
 	if err != nil {
 		return nil, err
 	}
-	out := make([]dependency, 0, len(doc.Dependencies))
-	for n, v := range doc.Dependencies {
-		out = append(out, dependency{Name: n, Version: v})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out, nil
+	return dependenciesFrom(doc.Dependencies), nil
 }
 
 // elmName is an Elm package name: author/name.
@@ -2110,12 +2105,7 @@ func (c *Client) purescriptPackage(ctx context.Context, index string, t lang.Tar
 		if json.Unmarshal([]byte(line), &m) != nil || m.Version != version {
 			continue
 		}
-		out := make([]dependency, 0, len(m.Dependencies))
-		for n, v := range m.Dependencies {
-			out = append(out, dependency{Name: n, Version: v})
-		}
-		sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-		return out, nil
+		return dependenciesFrom(m.Dependencies), nil
 	}
 	return nil, nil
 }
@@ -2266,7 +2256,7 @@ func (c *Client) dubPackage(ctx context.Context, index string, t lang.Target) ([
 		}
 	}
 	collect(info, 0)
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 
@@ -2409,7 +2399,7 @@ func (c *Client) alireCrate(ctx context.Context, index string, t lang.Target) ([
 		}
 		out = append(out, dependency{Name: n, Version: constraint})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 
@@ -2502,7 +2492,7 @@ func (c *Client) quicklispProject(ctx context.Context, index string, t lang.Targ
 			out = append(out, dependency{Name: p, Version: version})
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 

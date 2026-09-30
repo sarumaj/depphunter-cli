@@ -273,7 +273,7 @@ func (c *Client) juliaPackage(ctx context.Context, index string, t lang.Target) 
 		}
 		out = append(out, d)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sortDependencies(out)
 	return out, nil
 }
 
