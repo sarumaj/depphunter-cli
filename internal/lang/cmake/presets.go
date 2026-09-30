@@ -26,12 +26,7 @@ func readPresets(source []byte) *lang.Extraction {
 	if json.Unmarshal(source, &p) != nil {
 		return extraction
 	}
-	lineOf := func(needle string) int {
-		if i := bytes.Index(source, []byte(needle)); i >= 0 {
-			return bytes.Count(source[:i], []byte("\n")) + 1
-		}
-		return 1
-	}
+	lineOf := func(needle string) int { return max(lang.LineOf(source, needle, 0), 1) }
 	var includes []string
 	json.Unmarshal(p["include"], &includes)
 	for _, include := range includes {

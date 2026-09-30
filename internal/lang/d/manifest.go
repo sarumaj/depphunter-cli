@@ -64,19 +64,6 @@ type selection struct {
 	line                      int
 }
 
-// lineOf is the line of the first occurrence of needle in source at or after
-// from, else 1.
-func lineOf(source []byte, needle string, from int) (int, int) {
-	if from > len(source) {
-		from = len(source)
-	}
-	i := bytes.Index(source[from:], []byte(needle))
-	if i < 0 {
-		return 1, from
-	}
-	return bytes.Count(source[:from+i], []byte("\n")) + 1, from + i + len(needle)
-}
-
 // keyLine is the line of the first "key": in a JSON document, else 1.
 func keyLine(source []byte, key string) int {
 	if span := regexp.MustCompile(regexp.QuoteMeta(`"`+key+`"`) + `\s*:`).FindIndex(source); span != nil {
@@ -105,7 +92,7 @@ func jsonRecipe(doc map[string]json.RawMessage, source []byte) *recipe {
 	}
 	r.name = stringOf(doc["name"])
 	if r.name != "" {
-		r.nameLine, _ = lineOf(source, `"`+r.name+`"`, 0)
+		r.nameLine = max(lang.LineOf(source, `"`+r.name+`"`, 0), 1)
 	}
 	paths := func(key string) ([]string, bool) {
 		var out []string
@@ -175,8 +162,7 @@ func jsonRecipe(doc map[string]json.RawMessage, source []byte) *recipe {
 		for _, raw := range subs {
 			var p string
 			if json.Unmarshal(raw, &p) == nil {
-				line, _ := lineOf(source, `"`+p+`"`, 0)
-				r.subs = append(r.subs, subPackage{path: p, line: line})
+				r.subs = append(r.subs, subPackage{path: p, line: max(lang.LineOf(source, `"`+p+`"`, 0), 1)})
 				continue
 			}
 			var inlineRecipe map[string]json.RawMessage

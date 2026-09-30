@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
 // declaration is one pod a Podfile or a podspec declares, under its root name (the part
@@ -297,7 +299,8 @@ type jsonSpec struct {
 // Implements: REQ-OBJC-010
 func readPodspecJSON(source string) podspec {
 	var doc jsonSpec
-	if json.Unmarshal([]byte(source), &doc) != nil {
+	data := []byte(source)
+	if json.Unmarshal(data, &doc) != nil {
 		return podspec{}
 	}
 	out := podspec{name: doc.Name, module: doc.ModuleName}
@@ -315,7 +318,7 @@ func readPodspecJSON(source string) podspec {
 			}
 			seen[n] = true
 			out.dependencies = append(out.dependencies, &declaration{name: n, requirements: strings.Join(s.Dependencies[n], ", ")})
-			out.lines = append(out.lines, Dependency{Spec: "dependency '" + n + "'", Name: n, Line: lineOf(source, `"`+n+`"`)})
+			out.lines = append(out.lines, Dependency{Spec: "dependency '" + n + "'", Name: n, Line: max(lang.LineOf(data, `"`+n+`"`, 0), 1)})
 		}
 		for _, subspec := range s.Subspecs {
 			walk(subspec)
@@ -326,14 +329,6 @@ func readPodspecJSON(source string) podspec {
 	}
 	walk(doc)
 	return out
-}
-
-func lineOf(source, needle string) int {
-	i := strings.Index(source, needle)
-	if i < 0 {
-		return 1
-	}
-	return strings.Count(source[:i], "\n") + 1
 }
 
 // locked is one root pod in a Podfile.lock.

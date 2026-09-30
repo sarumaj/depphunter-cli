@@ -211,15 +211,12 @@ func readHaxelib(source []byte) (h haxelibJSON, dependencies []dependency, ok bo
 	if json.Unmarshal(source, &h) != nil {
 		return h, nil, false
 	}
-	text := string(source)
-	dependenciesAt := strings.Index(text, `"dependencies"`)
+	dependenciesAt := bytes.Index(source, []byte(`"dependencies"`))
 	for name, v := range h.Dependencies {
 		s, _ := v.(string)
 		line := 0
 		if dependenciesAt >= 0 {
-			if i := strings.Index(text[dependenciesAt:], `"`+name+`"`); i >= 0 {
-				line = 1 + strings.Count(text[:dependenciesAt+i], "\n")
-			}
+			line = lang.LineOf(source, `"`+name+`"`, dependenciesAt)
 		}
 		dependencies = append(dependencies, dependency{name, strings.TrimSpace(s), line})
 	}
@@ -246,8 +243,7 @@ func extractHaxelib(source []byte) *lang.Extraction {
 		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: d.name, Module: m, Name: kindLibrary, Line: d.line})
 	}
 	if classPath := strings.TrimSpace(h.ClassPath); classPath != "" {
-		line := 1 + strings.Count(string(source[:max(0, bytes.Index(source, []byte(`"classPath"`)))]), "\n")
-		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "classPath " + classPath, Module: classPath, Name: kindCP, Line: line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "classPath " + classPath, Module: classPath, Name: kindCP, Line: max(lang.LineOf(source, `"classPath"`, 0), 1)})
 	}
 	return extraction
 }
