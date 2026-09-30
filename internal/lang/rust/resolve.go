@@ -126,95 +126,126 @@ func caret(requirement, v string) bool {
 
 func normalize(name string) string { return strings.ReplaceAll(name, "-", "_") }
 
-// Implements: REQ-RS-004, REQ-RS-006, REQ-RS-007
 func newResolver(all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, members: map[string]string{}, locked: map[string][]string{},
 		tree: map[string][]locked{}, sources: map[string]string{}, gits: map[string]string{}}
-	workspaceDependencies := map[string]dependency{}
-	type manifest struct {
-		f   *scan.File
-		doc map[string]any
-	}
-	var manifests []manifest
 	for _, f := range all {
 		r.files[f.Path] = true
-		switch path.Base(f.Path) {
-		case "Cargo.toml":
-			var doc map[string]any
-			if _, err := toml.DecodeFile(f.AbsolutePath, &doc); err == nil {
-				manifests = append(manifests, manifest{f, doc})
-				if workspace, ok := doc["workspace"].(map[string]any); ok {
-					for k, v := range table(workspace["dependencies"]) {
-						workspaceDependencies[normalize(k)] = parseDependency(k, v, path.Dir(f.Path))
-					}
-				}
-			}
-		case "Cargo.lock":
-			var lock struct {
-				Package []struct {
-					Name, Version, Source string
-					// Each entry lists what that crate needs, as "name" or
-					// "name version": the transitive graph, already resolved.
-					Dependencies []string
-				}
-			}
-			if _, err := toml.DecodeFile(f.AbsolutePath, &lock); err == nil {
-				for _, p := range lock.Package {
-					r.locked[p.Name] = append(r.locked[p.Name], p.Version)
-					if registrySpec := lockRegistry(p.Source); registrySpec != "" {
-						r.sources[p.Name+" "+p.Version] = registrySpec
-					}
-					if g := lockGit(p.Source); g != "" {
-						r.gits[p.Name+" "+p.Version] = g
-					}
-					for _, d := range p.Dependencies {
-						// "name", or "name version" and possibly " (source)".
-						fields := strings.Fields(d)
-						if len(fields) == 0 || fields[0] == p.Name {
-							continue
-						}
-						dependency := locked{name: fields[0]}
-						if len(fields) > 1 {
-							dependency.version = fields[1]
-						}
-						key := p.Name + " " + p.Version
-						r.tree[key] = append(r.tree[key], dependency)
-					}
-				}
-			}
+		if path.Base(f.Path) == "Cargo.lock" {
+			r.readLock(f.AbsolutePath)
 		}
 	}
+	manifests, workspaceDependencies := readManifests(all)
 	for _, m := range manifests {
-		directory := path.Dir(m.f.Path)
-		c := &crate{directory: directory, dependencies: map[string]dependency{}}
-		if packageName, ok := m.doc["package"].(map[string]any); ok {
-			if name, ok := packageName["name"].(string); ok {
-				r.members[normalize(name)] = directory
-			}
-		}
-		add := func(t map[string]any) {
-			for k, v := range t {
-				d := parseDependency(k, v, directory)
-				if w, ok := v.(map[string]any); ok && w["workspace"] == true {
-					if wd, ok := workspaceDependencies[normalize(k)]; ok {
-						d = wd
-					}
-				}
-				c.dependencies[normalize(k)] = d
-			}
-		}
-		for _, key := range []string{"dependencies", "dev-dependencies", "build-dependencies"} {
-			add(table(m.doc[key]))
-		}
-		for _, t := range table(m.doc["target"]) { // [target.'cfg(...)'.dependencies]
-			for _, key := range []string{"dependencies", "dev-dependencies", "build-dependencies"} {
-				add(table(table(t)[key]))
-			}
-		}
-		r.crates = append(r.crates, c)
+		r.addCrate(m, workspaceDependencies)
 	}
 	sort.Slice(r.crates, func(i, j int) bool { return len(r.crates[i].directory) > len(r.crates[j].directory) })
 	return r
+}
+
+type manifest struct {
+	file string
+	doc  map[string]any
+}
+
+// readManifests decodes every Cargo.toml and collects the [workspace.dependencies]
+// of all of them, which a crate's `workspace = true` dependencies take.
+//
+// Implements: REQ-RS-006
+func readManifests(all []*scan.File) (manifests []manifest, workspaceDependencies map[string]dependency) {
+	workspaceDependencies = map[string]dependency{}
+	for _, f := range all {
+		if path.Base(f.Path) != "Cargo.toml" {
+			continue
+		}
+		var doc map[string]any
+		if _, err := toml.DecodeFile(f.AbsolutePath, &doc); err != nil {
+			continue
+		}
+		manifests = append(manifests, manifest{f.Path, doc})
+		workspace, _ := doc["workspace"].(map[string]any)
+		for k, v := range table(workspace["dependencies"]) {
+			workspaceDependencies[normalize(k)] = parseDependency(k, v, path.Dir(f.Path))
+		}
+	}
+	return manifests, workspaceDependencies
+}
+
+// Implements: REQ-RS-007
+func (r *resolver) readLock(file string) {
+	var lock struct {
+		Package []struct {
+			Name, Version, Source string
+			// Each entry lists what that crate needs, as "name" or
+			// "name version": the transitive graph, already resolved.
+			Dependencies []string
+		}
+	}
+	if _, err := toml.DecodeFile(file, &lock); err != nil {
+		return
+	}
+	for _, p := range lock.Package {
+		key := p.Name + " " + p.Version
+		r.locked[p.Name] = append(r.locked[p.Name], p.Version)
+		if registrySpec := lockRegistry(p.Source); registrySpec != "" {
+			r.sources[key] = registrySpec
+		}
+		if g := lockGit(p.Source); g != "" {
+			r.gits[key] = g
+		}
+		for _, d := range p.Dependencies {
+			if dependency, ok := lockedDependency(p.Name, d); ok {
+				r.tree[key] = append(r.tree[key], dependency)
+			}
+		}
+	}
+}
+
+// lockedDependency reads a Cargo.lock dependency: "name", or "name version" and
+// possibly " (source)". A crate depending on itself is dropped.
+func lockedDependency(packageName, entry string) (locked, bool) {
+	fields := strings.Fields(entry)
+	if len(fields) == 0 || fields[0] == packageName {
+		return locked{}, false
+	}
+	dependency := locked{name: fields[0]}
+	if len(fields) > 1 {
+		dependency.version = fields[1]
+	}
+	return dependency, true
+}
+
+var dependencySections = []string{"dependencies", "dev-dependencies", "build-dependencies"}
+
+// Implements: REQ-RS-004
+func (r *resolver) addCrate(m manifest, workspaceDependencies map[string]dependency) {
+	directory := path.Dir(m.file)
+	c := &crate{directory: directory, dependencies: map[string]dependency{}}
+	if name, ok := table(m.doc["package"])["name"].(string); ok {
+		r.members[normalize(name)] = directory
+	}
+	for _, key := range dependencySections {
+		c.add(table(m.doc[key]), workspaceDependencies)
+	}
+	for _, t := range table(m.doc["target"]) { // [target.'cfg(...)'.dependencies]
+		for _, key := range dependencySections {
+			c.add(table(table(t)[key]), workspaceDependencies)
+		}
+	}
+	r.crates = append(r.crates, c)
+}
+
+// Implements: REQ-RS-006
+func (c *crate) add(dependencies map[string]any, workspaceDependencies map[string]dependency) {
+	for k, v := range dependencies {
+		d := parseDependency(k, v, c.directory)
+		if w, ok := v.(map[string]any); ok && w["workspace"] == true {
+			if wd, ok := workspaceDependencies[normalize(k)]; ok {
+				d = wd
+			}
+		}
+		c.dependencies[normalize(k)] = d
+	}
 }
 
 func table(v any) map[string]any {

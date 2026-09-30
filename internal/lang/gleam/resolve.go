@@ -36,52 +36,36 @@ type resolver struct {
 // The notes a resolver keeps reach --explain only through lang.Noter.
 var _ lang.Noter = (*resolver)(nil)
 
-// Implements: REQ-GLEAM-004, REQ-GLEAM-005, REQ-GLEAM-006
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{Layout: lang.NewLayout(), packages: map[string]*gleamPackage{},
 		erlFiles: map[string]string{}, installed: map[string]string{}}
 	// manifest.toml is often ignored by git in libraries; read what is on disk.
 	repository := lang.NewSource(root)
+	manifests, sources := r.indexFiles(repository, all)
+	for _, file := range manifests {
+		r.readPackage(repository, file)
+	}
+	if root != "" {
+		for _, file := range manifests {
+			r.readInstalled(root, path.Dir(file))
+		}
+	}
+	r.readModules(sources)
+	return r
+}
+
+// indexFiles records every file before any is read, since a read asks whether the
+// scan listed the file.
+func (r *resolver) indexFiles(repository *lang.Source, all []*scan.File) (manifests, sources []string) {
 	for _, f := range all {
 		r.Add(f.Path)
 		repository.Add(f)
 	}
-	newPackage := func(directory string) *gleamPackage {
-		p := &gleamPackage{directory: directory, dependencies: map[string]*dependency{}, modules: map[string]string{}, npm: map[string]string{},
-			otpApps: map[string]string{}}
-		r.packages[directory] = p
-		return p
-	}
-	var sources []string
 	for _, f := range all {
 		switch {
 		case inBuild(f.Path):
 		case path.Base(f.Path) == "gleam.toml":
-			directory := path.Dir(f.Path)
-			p := newPackage(directory)
-			if source, ok := repository.Read(f.Path); ok {
-				c := readConfig(source)
-				p.name, p.dependencies = c.name, c.dependencies
-			}
-			if source, ok := repository.Read(path.Join(directory, "manifest.toml")); ok {
-				if p.manifest = readManifest(source); p.manifest != nil {
-					// Implements: REQ-TRC-017
-					if !repository.Listed(path.Join(directory, "manifest.toml")) {
-						r.NoteIgnored(path.Join(directory, "manifest.toml"))
-					}
-					for _, l := range p.manifest.packages {
-						if l.otpApp != "" {
-							p.otpApps[l.otpApp] = l.name
-						}
-					}
-				}
-			}
-			if source, ok := repository.Read(path.Join(directory, "package.json")); ok {
-				readNPM(source, p.npm)
-			}
-			if root != "" {
-				r.readInstalled(root, directory)
-			}
+			manifests = append(manifests, f.Path)
 		case path.Ext(f.Path) == ".gleam":
 			sources = append(sources, f.Path)
 		case path.Ext(f.Path) == ".erl":
@@ -91,6 +75,57 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		}
 	}
+	return manifests, sources
+}
+
+func (r *resolver) newPackage(directory string) *gleamPackage {
+	p := &gleamPackage{directory: directory, dependencies: map[string]*dependency{}, modules: map[string]string{}, npm: map[string]string{},
+		otpApps: map[string]string{}}
+	r.packages[directory] = p
+	return p
+}
+
+// Implements: REQ-GLEAM-005
+func (r *resolver) readPackage(repository *lang.Source, file string) {
+	directory := path.Dir(file)
+	p := r.newPackage(directory)
+	if source, ok := repository.Read(file); ok {
+		c := readConfig(source)
+		p.name, p.dependencies = c.name, c.dependencies
+	}
+	r.readLock(repository, p)
+	if source, ok := repository.Read(path.Join(directory, "package.json")); ok {
+		readNPM(source, p.npm)
+	}
+}
+
+// Implements: REQ-GLEAM-006
+func (r *resolver) readLock(repository *lang.Source, p *gleamPackage) {
+	lock := path.Join(p.directory, "manifest.toml")
+	source, ok := repository.Read(lock)
+	if !ok {
+		return
+	}
+	if p.manifest = readManifest(source); p.manifest == nil {
+		return
+	}
+	// Implements: REQ-TRC-017
+	if !repository.Listed(lock) {
+		r.NoteIgnored(lock)
+	}
+	for _, l := range p.manifest.packages {
+		if l.otpApp != "" {
+			p.otpApps[l.otpApp] = l.name
+		}
+	}
+}
+
+// readModules gives every module file to its package, made for a directory without
+// a gleam.toml. A module under src/ replaces one under test/ or dev/; otherwise the
+// first path wins.
+//
+// Implements: REQ-GLEAM-004
+func (r *resolver) readModules(sources []string) {
 	sort.Strings(sources)
 	for _, f := range sources {
 		directory, rootDirectory, module := r.locate(f)
@@ -99,13 +134,12 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 		p := r.packages[directory]
 		if p == nil {
-			p = newPackage(directory)
+			p = r.newPackage(directory)
 		}
 		if previous, duplicate := p.modules[module]; !duplicate || rootDirectory == "src" && !strings.HasPrefix(previous, path.Join(directory, "src")+"/") {
 			p.modules[module] = f
 		}
 	}
-	return r
 }
 
 // locate finds a module file's package directory, the root it is under (src,

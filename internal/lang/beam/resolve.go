@@ -105,9 +105,9 @@ func (r *resolver) projectAt(directory string) *project {
 	return p
 }
 
-// readSources reads the modules and manifests. The dispatch is by extension more than
-// by name (an .exs may be a mix.exs, an .app.src is named after its application), so
-// it stays a switch rather than a table of base names.
+// readSources dispatches by extension more than by name (an .exs may be a mix.exs,
+// an .app.src is named after its application), so it stays a switch rather than a
+// table of base names.
 //
 // Implements: REQ-BEAM-006
 func (r *resolver) readSources(repository *lang.Source, files []*scan.File) {

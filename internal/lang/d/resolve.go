@@ -42,11 +42,31 @@ type resolver struct {
 	recipes   map[string]*recipe // installed package -> its recipe
 }
 
-// Implements: REQ-DLANG-004, REQ-DLANG-005, REQ-DLANG-006, REQ-DLANG-008
+// Implements: REQ-DLANG-004, REQ-DLANG-008
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{Layout: lang.NewLayout(), projects: map[string]*project{},
 		single: map[string]*project{}, installed: map[string]string{}, recipes: map[string]*recipe{}}
 	repository := lang.NewSource(root)
+	r.indexFiles(repository, all)
+	r.readManifests(repository)
+	r.linkSubPackages()
+	r.readSingleFiles(repository)
+	projects := append(sortedProjects(r.projects), r.inlines...)
+	for _, relative := range sortedKeys(r.single) {
+		projects = append(projects, r.single[relative])
+	}
+	for _, p := range projects {
+		p.imports, p.strings = r.paths(p)
+	}
+	readLocks(repository, projects)
+	for _, p := range projects {
+		p.reach = r.reachOf(p)
+	}
+	r.readInstalled(root, projects)
+	return r
+}
+
+func (r *resolver) indexFiles(repository *lang.Source, all []*scan.File) {
 	for _, f := range all {
 		if dubDirectory(f.Path) {
 			continue
@@ -55,9 +75,15 @@ func newResolver(root string, all []*scan.File) *resolver {
 		repository.Add(f)
 	}
 	r.Directories["."] = true
+}
+
+var recipeReaders = map[string]func([]byte) *recipe{"dub.json": readJSONRecipe, "dub.sdl": readSDLRecipe}
+
+// Implements: REQ-DLANG-005
+func (r *resolver) readManifests(repository *lang.Source) {
 	var manifests []string
 	for relative := range r.Files {
-		if b := path.Base(relative); b == "dub.json" || b == "dub.sdl" {
+		if recipeReaders[path.Base(relative)] != nil {
 			manifests = append(manifests, relative)
 		}
 	}
@@ -71,15 +97,17 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if !ok {
 			continue
 		}
-		recipe := readJSONRecipe(data)
-		if path.Base(relative) == "dub.sdl" {
-			recipe = readSDLRecipe(data)
-		}
-		p := &project{directory: directory, recipe: recipe, manifest: relative, subs: map[string]*project{}}
+		p := &project{directory: directory, recipe: recipeReaders[path.Base(relative)](data), manifest: relative, subs: map[string]*project{}}
 		p.root = p
 		r.projects[directory] = p
 	}
-	// Sub-packages: a directory the root lists, or an inline recipe.
+}
+
+// linkSubPackages links every package to the sub-packages its recipe lists: a
+// directory, or an inline recipe.
+//
+// Implements: REQ-DLANG-005
+func (r *resolver) linkSubPackages() {
 	for _, directory := range sortedKeys(r.projects) {
 		p := r.projects[directory]
 		for _, s := range p.recipe.subs {
@@ -97,40 +125,43 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		}
 	}
+}
+
+// readSingleFiles reads the recipes embedded in D sources, each a single-file package.
+//
+// Implements: REQ-DLANG-005
+func (r *resolver) readSingleFiles(repository *lang.Source) {
 	for _, relative := range sortedKeys(r.Files) {
-		if extension := path.Ext(relative); extension == ".d" || extension == ".di" {
-			absolute, _ := repository.Absolute(relative)
-			if recipe := readSingle(absolute); recipe != nil {
-				p := &project{directory: path.Dir(relative), recipe: recipe, manifest: relative, subs: map[string]*project{}}
-				p.root = p
-				r.single[relative] = p
-			}
+		if extension := path.Ext(relative); extension != ".d" && extension != ".di" {
+			continue
+		}
+		absolute, _ := repository.Absolute(relative)
+		if recipe := readSingle(absolute); recipe != nil {
+			p := &project{directory: path.Dir(relative), recipe: recipe, manifest: relative, subs: map[string]*project{}}
+			p.root = p
+			r.single[relative] = p
 		}
 	}
-	all2 := append(sortedProjects(r.projects), r.inlines...)
-	for _, relative := range sortedKeys(r.single) {
-		all2 = append(all2, r.single[relative])
-	}
-	for _, p := range all2 {
-		p.imports, p.strings = r.paths(p)
-	}
-	for _, p := range all2 {
-		if p.root == p {
-			if data, ok := repository.Read(path.Join(p.directory, "dub.selections.json")); ok {
-				p.selections = readSelections(data)
-			}
+}
+
+// readLocks reads each root's dub.selections.json, then gives the other packages
+// their root's: every root is read before any package inherits.
+//
+// Implements: REQ-DLANG-006
+func readLocks(repository *lang.Source, projects []*project) {
+	for _, p := range projects {
+		if p.root != p {
+			continue
+		}
+		if data, ok := repository.Read(path.Join(p.directory, "dub.selections.json")); ok {
+			p.selections = readSelections(data)
 		}
 	}
-	for _, p := range all2 {
+	for _, p := range projects {
 		if p.selections == nil {
 			p.selections = p.root.selections
 		}
 	}
-	for _, p := range all2 {
-		p.reach = r.reachOf(p)
-	}
-	r.readInstalled(root, all2)
-	return r
 }
 
 func sortedProjects(m map[string]*project) []*project {
