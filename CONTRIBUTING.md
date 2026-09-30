@@ -86,6 +86,30 @@ long is left. Without a GPU a walk-mode frame takes seconds and the first frame
 minutes, so `--preview` is the practical way to check the scenes; `--headed`
 renders the full video much faster on a desktop that has one.
 
+`scripts/shots.mjs` proves that a change to the page which means to change
+nothing, such as a helper pulled out or a module split, changes nothing. It
+serves a small repository it writes itself, with a git history at fixed dates
+and scanner reports, and takes about forty scenes: the side panel for a file, a
+package and a finding, the backpack, the photographs, the findings list, the
+menus, the dark theme, walk mode with every tool in hand and a shot in flight.
+Each is kept as a screenshot and as the page's markup. The page's clock and its
+animation frames are frozen and stepped, `Math.random` is seeded and WebGL is
+drawn by SwiftShader, so two runs of the same tree agree to the pixel. Take a
+baseline before the change and compare after it:
+
+```sh
+node scripts/shots.mjs --baseline /tmp/before   # on the tree before the change
+node scripts/shots.mjs --compare /tmp/before    # after it: exits 1 if a scene differs
+```
+
+`--compare` writes the new scenes beside the baseline, in `/tmp/before.now`,
+with a `.diff.png` wherever a scene's pixels moved. Without `--bin` each run
+builds this checkout, since the binary embeds the page. `--list` names the
+scenes and `--scenes` takes some of them; a walk-mode scene takes a minute or
+two. The copy of `app.js` it serves reads the module-scope names `walker`,
+`stash`, `state` and `scene`, as `record.mjs` reads `walker`, `bugs`, `fires`,
+`stash` and `scene`: a change that renames one of them updates the scripts too.
+
 CI builds every target on each push, retains the archives as workflow artifacts
 for 14 days, and runs the tests in 32-bit mode (`GOARCH=386`). Renovate
 (`renovate.json`) opens grouped pull requests for non-major dependency updates;
