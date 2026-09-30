@@ -73,6 +73,35 @@ func isFile(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
+// isRegularFile is isFile without devices: a null device or a named pipe exists, but
+// is no file a tool reads its configuration from.
+func isRegularFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
+}
+
+// absolute reports whether p is absolute on this machine's platform rather than the
+// one running depphunter: /x on Unix, and on Windows a drive or UNC path or one rooted
+// on the current drive, none of which is taken from the working directory.
+func (m Machine) absolute(p string) bool {
+	if m.GOOS == "windows" {
+		return windowsAbsolute(p) || strings.HasPrefix(p, `\`) || strings.HasPrefix(p, "/")
+	}
+	return strings.HasPrefix(p, "/")
+}
+
+// list splits a path-list variable with this machine's separator: ";" on Windows,
+// ":" elsewhere.
+func (m Machine) list(value string) []string {
+	if value == "" {
+		return nil
+	}
+	if m.GOOS == "windows" {
+		return strings.Split(value, ";")
+	}
+	return strings.Split(value, ":")
+}
+
 // A location rule is a cmp.Or of its candidates in the tool's order - a variable, a
 // path under a variable (under gives "" when the variable is unset), a platform's
 // default, the default under the home directory - with the helpers below.
@@ -175,7 +204,7 @@ func (m Machine) ConfigDirectory() string {
 // absolute: the XDG Base Directory Specification has a relative path ignored, and
 // one would be taken from the working directory, often the repository analyzed.
 func (m Machine) xdg(variable string, element ...string) string {
-	if directory := m.Environment(variable); filepath.IsAbs(directory) {
+	if directory := m.Environment(variable); m.absolute(directory) {
 		return join(directory, element...)
 	}
 	return ""
@@ -189,8 +218,8 @@ func (m Machine) xdgConfigHome(element ...string) string {
 // xdgConfigDirectories are the absolute directories of $XDG_CONFIG_DIRS (see xdg).
 func (m Machine) xdgConfigDirectories() []string {
 	var out []string
-	for _, directory := range filepath.SplitList(m.Environment("XDG_CONFIG_DIRS")) {
-		if filepath.IsAbs(directory) {
+	for _, directory := range m.list(m.Environment("XDG_CONFIG_DIRS")) {
+		if m.absolute(directory) {
 			out = append(out, directory)
 		}
 	}
@@ -381,7 +410,7 @@ func (m Machine) PipConfigFiles() (files []string, ok bool) {
 		}
 		files = append(files, system("etc", base))
 	}
-	if environment == "" || !isFile(environment) {
+	if environment == "" || !isRegularFile(environment) {
 		legacy := ".pip"
 		if m.GOOS == "windows" {
 			legacy = "pip"
