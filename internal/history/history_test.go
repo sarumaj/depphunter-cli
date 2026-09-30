@@ -1,7 +1,10 @@
 package history
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -167,6 +170,44 @@ func TestCached(t *testing.T) {
 	}
 	if only := h1.Only(map[string]bool{"README.md": true}); len(only.Files) != 1 || len(h1.Files) != 4 { // a, b2, logo, README
 		t.Errorf("Only: %v (original %d files)", keys(only.Files), len(h1.Files))
+	}
+}
+
+// With caching disabled (an empty cache directory, as with --no-cache), Cached neither
+// reads nor writes a cache file relative to the working directory, which is usually the
+// analyzed project.
+//
+// Verifies: REQ-HIST-005
+func TestCachedWithoutCacheDirectory(t *testing.T) {
+	directory := repository(t)
+	working := t.TempDir()
+	t.Chdir(working)
+	head, err := Head(context.Background(), directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A planted file under the name the cache would have in the working directory must be ignored.
+	planted := cacheFile("", directory, head, 100)
+	var buffer bytes.Buffer
+	gzipWriter := gzip.NewWriter(&buffer)
+	json.NewEncoder(gzipWriter).Encode(History{Head: head, Commits: 999})
+	gzipWriter.Close()
+	if err := os.WriteFile(planted, buffer.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h, err := Cached(context.Background(), "", directory, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Commits == 999 {
+		t.Errorf("read the planted cache file %s from the working directory", planted)
+	}
+	os.Remove(planted)
+	if _, err := Cached(context.Background(), "", directory, 100); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(working); len(entries) != 0 {
+		t.Errorf("files written to the working directory: %v", entries)
 	}
 }
 
