@@ -2,7 +2,6 @@ package perl
 
 import (
 	"path"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -51,8 +50,9 @@ func ignored(p string) bool {
 // Implements: REQ-PERL-004, REQ-PERL-006, REQ-PERL-007
 func newResolver(root string, all []*scan.File, p Plugin) *resolver {
 	r := &resolver{files: map[string]bool{}, byDirectory: map[string]*project{}, packages: map[string][]string{}, suffixes: map[string][]string{}}
+	repository := lang.OpenRoot(root)
 	read := func(relative string) ([]byte, bool) {
-		return lang.ReadCapped(filepath.Join(root, filepath.FromSlash(relative)))
+		return repository.ReadBounded(repository.Join(relative))
 	}
 	projectOf := func(directory string) *project {
 		governing := r.byDirectory[directory]

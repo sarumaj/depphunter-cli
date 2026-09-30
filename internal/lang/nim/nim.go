@@ -126,7 +126,8 @@ func atlasDependencies(directory string) bool {
 		}
 	}
 	if !found {
-		_, err := os.Stat(filepath.Join(directory, "deps", "atlas.config"))
+		// Lstat: a marker committed as a symbolic link says nothing of its target.
+		_, err := os.Lstat(filepath.Join(directory, "deps", "atlas.config"))
 		found = err == nil
 	}
 	dependenciesMemo.Store(directory, found)

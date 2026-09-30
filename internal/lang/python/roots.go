@@ -171,8 +171,8 @@ func (finder *rootFinder) dotenv(file, source string) {
 		return
 	}
 	finder.environmentFiles[file] = true
-	data, err := os.ReadFile(filepath.Join(finder.absolute, filepath.FromSlash(file)))
-	if err != nil {
+	data, ok := lang.OpenRoot(finder.absolute).ReadBounded(filepath.Join(finder.absolute, filepath.FromSlash(file)))
+	if !ok {
 		return
 	}
 	value, ok := dotenvValue(string(data), "PYTHONPATH", map[string]string{"workspaceFolder": finder.absolute, "PWD": finder.absolute})
@@ -306,8 +306,8 @@ var vscodeReference = regexp.MustCompile(`\$\{(workspaceFolder|env:[^}]*)\}`)
 // terminal is given on each system. ${env:NAME} expands to nothing.
 func (finder *rootFinder) vscode(directory string) {
 	file := path.Join(directory, ".vscode", "settings.json")
-	data, err := os.ReadFile(filepath.Join(finder.absolute, filepath.FromSlash(file)))
-	if err != nil {
+	data, ok := lang.OpenRoot(finder.absolute).ReadBounded(filepath.Join(finder.absolute, filepath.FromSlash(file)))
+	if !ok {
 		return
 	}
 	var settings map[string]json.RawMessage

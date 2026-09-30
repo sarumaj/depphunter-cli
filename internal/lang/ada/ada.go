@@ -108,7 +108,8 @@ func hasFile(directory, pattern string) bool {
 				}
 			}
 		}
-	} else if _, err := os.Stat(filepath.Join(directory, pattern)); err == nil {
+	} else if _, err := os.Lstat(filepath.Join(directory, pattern)); err == nil {
+		// Lstat: a marker committed as a symbolic link says nothing of its target.
 		found = true
 	}
 	directoryFiles.Store(key, found)

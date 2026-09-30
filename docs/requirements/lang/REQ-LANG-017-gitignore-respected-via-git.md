@@ -31,4 +31,6 @@ diverging implementation.
 ## Notes
 
 Symbolic links and entries that are not regular files are not listed (a security
-measure; see the report).
+measure; see the report). The files the scan leaves out and a resolver reads
+all the same are read only inside the repository
+([REQ-LANG-031](REQ-LANG-031-reads-stay-inside-the-repository.md)).

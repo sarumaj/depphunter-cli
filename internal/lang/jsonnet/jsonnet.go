@@ -96,7 +96,8 @@ func jbRoot(directory string) bool {
 	if v, ok := rootMemo.Load(directory); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(filepath.Join(directory, "jsonnetfile.json"))
+	// Lstat: a marker committed as a symbolic link says nothing of its target.
+	_, err := os.Lstat(filepath.Join(directory, "jsonnetfile.json"))
 	rootMemo.Store(directory, err == nil)
 	return err == nil
 }

@@ -2,10 +2,11 @@ package findings
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"slices"
 	"sort"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
 // Options says where to look for findings.
@@ -43,7 +44,7 @@ func Collect(ctx context.Context, o Options) *Set {
 	}
 
 	for _, name := range expand(o.Root, o.Reports) {
-		f, err := os.Open(name)
+		f, err := reportFiles(o.Root, name).Open(name)
 		if err != nil {
 			logFormat("findings: %v", err)
 			set.Partial = true
@@ -124,7 +125,7 @@ func expand(root string, patterns []string) []string {
 			matches = []string{p}
 		}
 		for _, m := range matches {
-			if fileInfo, err := os.Stat(m); err == nil && fileInfo.IsDir() {
+			if fileInfo, err := reportFiles(root, m).Stat(m); err == nil && fileInfo.IsDir() {
 				continue
 			}
 			if !seen[m] {
@@ -135,6 +136,17 @@ func expand(root string, patterns []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// reportFiles reads a report: one in the repository, as every report a
+// repository's own configuration names is (config confines them), through the
+// repository's Root, which a link out of it does not pass; one elsewhere, which
+// only this machine's configuration or the command line can name, as it is.
+func reportFiles(root, name string) lang.Root {
+	if repository := lang.OpenRoot(root); repository.Contains(name) {
+		return repository
+	}
+	return lang.Machine
 }
 
 func relative(root, name string) string {

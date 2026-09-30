@@ -32,7 +32,7 @@ type railsApp struct {
 // Implements: REQ-RUBY-005, REQ-RUBY-007, REQ-RUBY-010
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, gemspecs: map[string][]string{}, own: map[string]string{}}
-	repository := lang.NewSource(root, lang.SourceOptions{Confined: true})
+	repository := lang.NewSource(root)
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
 	gemfiles := map[string]string{} // directory -> Gemfile name

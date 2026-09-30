@@ -175,6 +175,9 @@ type installed struct {
 	classPaths    []string // absolute class paths
 	dependencies  []dependency
 	local         bool // in the repository's own .haxelib/ repository
+	// files reads the library's files: the repository's Root for a local
+	// library, which a .dev path or class path cannot leave, else Machine.
+	files lang.Root
 }
 
 // repositories are haxelib's repositories: a local one (.haxelib/) at the
@@ -182,6 +185,7 @@ type installed struct {
 // else the path in ~/.haxelib, else ~/haxelib.
 func (r *resolver) repositories(root string, getenv func(string) string) (local []string, global string) {
 	if root != "" {
+		repository := lang.OpenRoot(root)
 		directories := []string{"."}
 		for _, m := range r.all {
 			directories = append(directories, path.Dir(m.file))
@@ -189,7 +193,7 @@ func (r *resolver) repositories(root string, getenv func(string) string) (local 
 		seen := map[string]bool{}
 		for _, d := range directories {
 			absolute := filepath.Join(root, filepath.FromSlash(d), ".haxelib")
-			if !seen[absolute] && lang.IsDirectory(absolute) {
+			if !seen[absolute] && repository.IsDirectory(absolute) {
 				seen[absolute] = true
 				local = append(local, absolute)
 			}
@@ -231,8 +235,9 @@ func (r *resolver) readInstalled(root string, getenv func(string) string) {
 			}
 		}
 	}
+	files := lang.OpenRoot(root)
 	for _, repository := range local {
-		entries, _ := os.ReadDir(repository)
+		entries, _ := files.ReadDir(repository)
 		for _, e := range entries {
 			if !e.IsDir() {
 				continue
@@ -242,7 +247,7 @@ func (r *resolver) readInstalled(root string, getenv func(string) string) {
 			if r.installed[k] != nil {
 				continue
 			}
-			if in := installedLibrary(filepath.Join(repository, e.Name()), name, wanted[k]); in != nil {
+			if in := installedLibrary(files, filepath.Join(repository, e.Name()), name, wanted[k]); in != nil {
 				in.local = true
 				r.installed[k] = in
 			}
@@ -276,7 +281,7 @@ func (r *resolver) readInstalled(root string, getenv func(string) string) {
 				continue
 			}
 		}
-		if in := installedLibrary(directory, name, wanted[k]); in != nil {
+		if in := installedLibrary(lang.Machine, directory, name, wanted[k]); in != nil {
 			r.installed[k] = in
 		}
 	}
@@ -284,27 +289,29 @@ func (r *resolver) readInstalled(root string, getenv func(string) string) {
 
 // installedLibrary reads a library's directory in a haxelib repository: the
 // development path in .dev, else the declared version when it is installed,
-// else the version .current names (1.2.3 in 1,2,3/, git in git/).
-func installedLibrary(libraryDirectory, name, want string) *installed {
+// else the version .current names (1.2.3 in 1,2,3/, git in git/). files reads
+// them: the repository's Root for its local repository, whose .dev may not
+// point out of it, else Machine.
+func installedLibrary(files lang.Root, libraryDirectory, name, want string) *installed {
 	directory, version := "", ""
-	if dev := readTrim(filepath.Join(libraryDirectory, ".dev")); dev != "" && lang.IsDirectory(dev) {
+	if dev := readTrim(files, filepath.Join(libraryDirectory, ".dev")); dev != "" && files.IsDirectory(dev) {
 		directory, version = dev, "dev"
 	} else {
-		if want != "" && lang.Pinned(want) && lang.IsDirectory(filepath.Join(libraryDirectory, strings.ReplaceAll(want, ".", ","))) {
+		if want != "" && lang.Pinned(want) && files.IsDirectory(filepath.Join(libraryDirectory, strings.ReplaceAll(want, ".", ","))) {
 			version = want
 		} else {
-			version = readTrim(filepath.Join(libraryDirectory, ".current"))
+			version = readTrim(files, filepath.Join(libraryDirectory, ".current"))
 		}
 		if version == "" || strings.ContainsAny(version, `/\`) || strings.Contains(version, "..") {
 			return nil
 		}
 		directory = filepath.Join(libraryDirectory, strings.ReplaceAll(version, ".", ","))
 	}
-	if !lang.IsDirectory(directory) {
+	if !files.IsDirectory(directory) {
 		return nil
 	}
-	in := &installed{name: name, version: version, classPaths: []string{directory}}
-	if data, err := os.ReadFile(filepath.Join(directory, "haxelib.json")); err == nil {
+	in := &installed{name: name, version: version, classPaths: []string{directory}, files: files}
+	if data, ok := files.ReadBounded(filepath.Join(directory, "haxelib.json")); ok {
 		if h, dependencies, ok := readHaxelib(data); ok {
 			if h.Name != "" {
 				in.name = h.Name
@@ -317,9 +324,9 @@ func installedLibrary(libraryDirectory, name, want string) *installed {
 	return in
 }
 
-func readTrim(p string) string {
-	data, err := os.ReadFile(p)
-	if err != nil || len(data) > 4096 {
+func readTrim(files lang.Root, p string) string {
+	data, ok := files.ReadLimited(p, 4096)
+	if !ok {
 		return ""
 	}
 	return strings.TrimSpace(string(data))

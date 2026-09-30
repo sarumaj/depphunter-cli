@@ -2,7 +2,6 @@ package swift
 
 import (
 	"cmp"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -50,7 +49,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		named: map[string][]string{}, types: map[string][]string{}}
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
-	repository := lang.NewSource(root, lang.SourceOptions{Confined: true, Bounded: true})
+	repository := lang.NewSource(root)
 	byDirectory := map[string]*project{}
 	get := func(directory string) *project {
 		p := byDirectory[directory]
@@ -205,7 +204,7 @@ func (r *resolver) noteResolved(file, directory string, pins int) {
 		return
 	}
 	if r.root != "" {
-		if fileInfo, err := os.Stat(filepath.Join(r.root, filepath.FromSlash(directory), ".build", "checkouts")); err == nil && fileInfo.IsDir() {
+		if lang.OpenRoot(r.root).IsDirectory(filepath.Join(r.root, filepath.FromSlash(directory), ".build", "checkouts")) {
 			return
 		}
 	}
@@ -591,7 +590,10 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			if packageName(q.location) != t.Package {
 				continue
 			}
-			source, ok := readFile(filepath.Join(r.root, filepath.FromSlash(p.directory), ".build", "checkouts", id, "Package.swift"))
+			// id comes from Package.resolved: the Root refuses one that climbs
+			// out of the repository, by ".." or through a link.
+			data, ok := lang.OpenRoot(r.root).ReadBounded(filepath.Join(r.root, filepath.FromSlash(p.directory), ".build", "checkouts", id, "Package.swift"))
+			source := string(data)
 			if !ok {
 				return nil
 			}

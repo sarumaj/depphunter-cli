@@ -57,7 +57,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		exRoots: map[string]bool{}, erlModules: map[string]string{}, appFiles: map[string]string{},
 		appDirectories: map[string]string{}, dependencyModules: map[string]string{}, injected: map[string]*injection{},
 		gleamModules: map[string]string{}}
-	repository := lang.NewSource(root, lang.SourceOptions{Confined: true})
+	repository := lang.NewSource(root)
 	var files []*scan.File
 	for _, f := range all {
 		r.files[f.Path] = true
@@ -226,6 +226,7 @@ var defmoduleLine = regexp.MustCompile(`(?m)^\s*defmodule\s+([A-Z][A-Za-z0-9_.]*
 //
 // Implements: REQ-BEAM-008
 func (r *resolver) readInstalled(root, directory string) {
+	repository := lang.OpenRoot(root)
 	base := filepath.Join(root, filepath.FromSlash(directory))
 	budget := 50_000
 	add := func(module, app string) {
@@ -233,13 +234,13 @@ func (r *resolver) readInstalled(root, directory string) {
 			r.dependencyModules[module] = app
 		}
 	}
-	apps, _ := os.ReadDir(filepath.Join(base, "deps"))
+	apps, _ := repository.ReadDir(filepath.Join(base, "deps"))
 	for _, a := range apps {
 		if !a.IsDir() {
 			continue
 		}
 		app := a.Name()
-		filepath.WalkDir(filepath.Join(base, "deps", app), func(p string, d os.DirEntry, err error) error {
+		repository.WalkDir(filepath.Join(base, "deps", app), func(p string, d os.DirEntry, err error) error {
 			if err != nil || budget <= 0 {
 				return filepath.SkipDir
 			}
@@ -254,7 +255,7 @@ func (r *resolver) readInstalled(root, directory string) {
 			case ".erl":
 				add(strings.TrimSuffix(d.Name(), ".erl"), app)
 			case ".ex":
-				if source, err := os.ReadFile(p); err == nil {
+				if source, ok := repository.ReadBounded(p); ok {
 					for _, m := range defmoduleLine.FindAllSubmatch(source, -1) {
 						add(string(m[1]), app)
 					}
@@ -263,10 +264,10 @@ func (r *resolver) readInstalled(root, directory string) {
 			return nil
 		})
 	}
-	builds, _ := filepath.Glob(filepath.Join(base, "_build", "*", "lib", "*", "ebin"))
+	builds, _ := repository.Glob(filepath.Join(base, "_build", "*", "lib", "*", "ebin"))
 	for _, ebin := range builds {
 		app := filepath.Base(filepath.Dir(ebin))
-		entries, _ := os.ReadDir(ebin)
+		entries, _ := repository.ReadDir(ebin)
 		for _, e := range entries {
 			if budget--; budget <= 0 {
 				return

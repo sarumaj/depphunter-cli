@@ -42,7 +42,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, packages: map[string]*gleamPackage{},
 		erlFiles: map[string]string{}, installed: map[string]string{}}
 	// manifest.toml is often ignored by git in libraries; read what is on disk.
-	repository := lang.NewSource(root, lang.SourceOptions{})
+	repository := lang.NewSource(root)
 	for _, f := range all {
 		r.files[f.Path] = true
 		repository.Add(f)
@@ -157,8 +157,9 @@ func (r *resolver) packageOf(file string) *gleamPackage {
 //
 // Implements: REQ-GLEAM-004
 func (r *resolver) readInstalled(root, directory string) {
+	repository := lang.OpenRoot(root)
 	base := filepath.Join(root, filepath.FromSlash(directory), "build", "packages")
-	entries, err := os.ReadDir(base)
+	entries, err := repository.ReadDir(base)
 	if err != nil {
 		return
 	}
@@ -169,7 +170,7 @@ func (r *resolver) readInstalled(root, directory string) {
 		}
 		name := e.Name()
 		source := filepath.Join(base, name, "src")
-		filepath.WalkDir(source, func(p string, d os.DirEntry, err error) error {
+		repository.WalkDir(source, func(p string, d os.DirEntry, err error) error {
 			if err != nil || budget <= 0 {
 				return filepath.SkipDir
 			}

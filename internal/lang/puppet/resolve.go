@@ -310,7 +310,9 @@ func (r *resolver) installedMetadata(directory, module string) *metadata {
 		return m
 	}
 	var m *metadata
-	if source, err := os.ReadFile(p); err == nil {
+	// The module directory comes from the Puppetfile: the Root refuses one
+	// that climbs out of the repository, by ".." or through a link.
+	if source, ok := lang.OpenRoot(r.root).ReadBounded(p); ok {
 		m = readMetadata(source)
 	}
 	r.installed[p] = m

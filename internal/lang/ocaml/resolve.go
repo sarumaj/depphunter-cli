@@ -235,8 +235,9 @@ func (r *resolver) readManifest(f *scan.File) {
 // dune-project: one <package>.pkg per locked package with its version and
 // dependencies. It is read from disk, as lock directories may be ignored by git.
 func (r *resolver) readDuneLock(root string, s *manifests) {
+	repository := lang.OpenRoot(root)
 	directory := filepath.Join(root, filepath.FromSlash(s.directory), "dune.lock")
-	entries, err := os.ReadDir(directory)
+	entries, err := repository.ReadDir(directory)
 	if err != nil {
 		return
 	}
@@ -247,7 +248,7 @@ func (r *resolver) readDuneLock(root string, s *manifests) {
 		}
 	}
 	for n := range names {
-		source, ok := lang.ReadCapped(filepath.Join(directory, n+".pkg"))
+		source, ok := repository.ReadBounded(filepath.Join(directory, n+".pkg"))
 		if !ok {
 			continue
 		}

@@ -12,10 +12,11 @@ verification:
 ## Statement
 
 The resolver **shall** read the shards installed in `lib/` (directories and
-the symlinks shards makes for path dependencies) and the `shard.yml` each
-ships; `--resolve-depth` **shall** follow those `dependencies` (not
-development dependencies), each pinned as the installing project's lock or
-manifest names it, and report them as installed. `lib/.shards.info` (the
+the symlinks shards makes for path dependencies, as long as they stay inside
+the repository: see REQ-LANG-031) and the `shard.yml` each ships;
+`--resolve-depth` **shall** follow those `dependencies` (not development
+dependencies), each pinned as the installing project's lock or manifest
+names it, and report them as installed. `lib/.shards.info` (the
 versions shards installed, in `shard.lock`'s format) **shall** pin any shard
 the project's `shard.lock` does not name. Without `lib/` nothing is known
 offline: `shard.lock` is flat.

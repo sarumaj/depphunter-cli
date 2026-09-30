@@ -1292,8 +1292,14 @@ func readBazelrc(name, workspace, within string, add func(ecosystem, url, scope 
 		return
 	}
 	seen[name] = true
-	data, err := os.ReadFile(name)
-	if err != nil {
+	// A repository's .bazelrc, and what it imports, is read through the
+	// repository's Root: an import by a link out of it is refused too.
+	files := lang.Machine
+	if within != "" {
+		files = lang.OpenRoot(within)
+	}
+	data, ok := files.ReadBounded(name)
+	if !ok {
 		return
 	}
 	parseBazelrc(data, add, helper, func(p string) {
@@ -1308,7 +1314,7 @@ func readBazelrc(name, workspace, within string, add func(ecosystem, url, scope 
 			relative := p
 			p = filepath.Join(filepath.Dir(name), relative)
 			if workspace != "" {
-				if _, err := os.Stat(filepath.Join(workspace, relative)); err == nil {
+				if _, err := files.Stat(filepath.Join(workspace, relative)); err == nil {
 					p = filepath.Join(workspace, relative)
 				}
 			}

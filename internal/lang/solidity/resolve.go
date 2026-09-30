@@ -48,7 +48,8 @@ func exists(absolute string) bool {
 	if v, ok := besideMemo.Load(absolute); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(absolute)
+	// Lstat: a marker committed as a symbolic link says nothing of its target.
+	_, err := os.Lstat(absolute)
 	besideMemo.Store(absolute, err == nil)
 	return err == nil
 }
@@ -187,17 +188,18 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	// soldeer.lock is read from disk: it sits beside foundry.toml.
+	repository := lang.OpenRoot(root)
 	for directory, p := range r.projects {
 		if !p.foundry {
 			continue
 		}
-		if data, ok := lang.ReadCapped(filepath.Join(root, filepath.FromSlash(join(directory, "soldeer.lock")))); ok {
+		if data, ok := repository.ReadBounded(filepath.Join(root, filepath.FromSlash(join(directory, "soldeer.lock")))); ok {
 			for _, e := range readSoldeerLock(data) {
 				p.locked[e.name] = e
 			}
 		}
 		if p.soldeer() {
-			p.installed = readInstalled(filepath.Join(root, filepath.FromSlash(join(directory, "dependencies"))))
+			p.installed = readInstalled(repository, filepath.Join(root, filepath.FromSlash(join(directory, "dependencies"))))
 		}
 	}
 	r.readSubmodules(gitmodules)
@@ -222,8 +224,9 @@ func (r *resolver) readSubmodules(gitmodules []*scan.File) {
 	for _, f := range gitmodules {
 		sources = append(sources, source{path.Dir(f.Path), readFile(f)})
 	}
+	repository := lang.OpenRoot(r.root)
 	if len(sources) == 0 {
-		if data, ok := lang.ReadCapped(filepath.Join(r.root, ".gitmodules")); ok {
+		if data, ok := repository.ReadBounded(filepath.Join(r.root, ".gitmodules")); ok {
 			sources = append(sources, source{".", data})
 		}
 	}
@@ -238,7 +241,9 @@ func (r *resolver) readSubmodules(gitmodules []*scan.File) {
 		for _, s := range subs {
 			reference := &subReference{submodule: s, commit: links[s.path]}
 			reference.path = join(directory, s.path)
-			if strings.HasPrefix(reference.path, "../") || r.byPath[reference.path] != nil {
+			// A path that climbs out, ".." itself included, is no submodule of
+			// the repository.
+			if !lang.Inside(reference.path) || r.byPath[reference.path] != nil {
 				continue
 			}
 			r.byPath[reference.path] = reference
@@ -248,7 +253,7 @@ func (r *resolver) readSubmodules(gitmodules []*scan.File) {
 			}
 			if depth < maxNesting {
 				nested := filepath.Join(r.root, filepath.FromSlash(reference.path), ".gitmodules")
-				if data, ok := lang.ReadCapped(nested); ok {
+				if data, ok := repository.ReadBounded(nested); ok {
 					add(reference.path, data, reference, depth+1)
 				}
 			}
@@ -330,7 +335,7 @@ func (r *resolver) remappings(p *project, txt []string) []remapping {
 		for _, dependency := range r.libraries(join(p.directory, library)) {
 			relative := library + "/" + dependency
 			absolute := r.absolute(join(p.directory, relative))
-			if lang.IsDirectory(filepath.Join(absolute, "src")) {
+			if lang.OpenRoot(r.root).IsDirectory(filepath.Join(absolute, "src")) {
 				infer(dependency+"/", relative+"/src/")
 			} else {
 				infer(dependency+"/", relative+"/")
@@ -341,7 +346,7 @@ func (r *resolver) remappings(p *project, txt []string) []remapping {
 		}
 	}
 	for _, n := range nested {
-		if lang.IsDirectory(filepath.Join(r.absolute(join(p.directory, n[1])), "src")) {
+		if lang.OpenRoot(r.root).IsDirectory(filepath.Join(r.absolute(join(p.directory, n[1])), "src")) {
 			infer(n[0]+"/", n[1]+"/src/")
 		} else {
 			infer(n[0]+"/", n[1]+"/")
@@ -363,7 +368,7 @@ func (r *resolver) libraries(directory string) []string {
 			set[rest] = true
 		}
 	}
-	if entries, err := os.ReadDir(r.absolute(directory)); err == nil {
+	if entries, err := lang.OpenRoot(r.root).ReadDir(r.absolute(directory)); err == nil {
 		for _, e := range entries {
 			if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
 				set[e.Name()] = true
@@ -714,8 +719,8 @@ func (r *resolver) Installed(t lang.Target) bool {
 // directory ships.
 //
 // Implements: REQ-SOLIDITY-007
-func readInstalled(directory string) map[string]*project {
-	entries, _ := os.ReadDir(directory)
+func readInstalled(repository lang.Root, directory string) map[string]*project {
+	entries, _ := repository.ReadDir(directory)
 	out := map[string]*project{}
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -723,7 +728,7 @@ func readInstalled(directory string) map[string]*project {
 		}
 		subproject := &project{directory: e.Name(), dependencies: map[string]soldeerDependency{}, locked: map[string]lockEntry{}}
 		read := func(name string) []byte {
-			data, _ := lang.ReadCapped(filepath.Join(directory, e.Name(), name))
+			data, _ := repository.ReadBounded(filepath.Join(directory, e.Name(), name))
 			return data
 		}
 		if c, ok := readFoundry(read("foundry.toml")); ok {

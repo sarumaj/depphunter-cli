@@ -46,10 +46,11 @@ func projectNuGet(files []*scan.File) []nuget.ConfigFile {
 // Implements: REQ-SUP-065, REQ-SUP-079
 func (c *Config) nugetAbove() []nuget.ConfigFile {
 	repository, _ := c.m.DirectoriesAbove()
+	checkout := checkoutRoot(repository)
 	var out []nuget.ConfigFile
 	for _, directory := range repository {
 		if name := c.m.NuGetConfigIn(directory); name != "" {
-			if data, err := os.ReadFile(name); err == nil {
+			if data, ok := checkout.ReadBounded(name); ok {
 				if config, ok := nuget.ParseConfig(data); ok {
 					out = append(out, config)
 				}

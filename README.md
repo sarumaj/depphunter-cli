@@ -4040,6 +4040,18 @@ are served only under a known image, video or audio type or as
 `application/octet-stream`, and always with `default-src 'none'; sandbox`, so
 nothing in a repository can run as the map.
 
+A repository is read only inside itself. The scan lists no symbolic link, and
+what the analysis reads besides the files it lists - a lock file git ignores,
+the dependencies a package manager installed into the project, a report or a
+`.depphunter.yaml` the repository names - is opened through the repository's
+root: a symbolic link that stays inside the repository is followed, as pnpm's
+`node_modules/.pnpm` links are, but one that leads out of it, or a path that
+climbs out with `..`, is not, so a committed link cannot get a file elsewhere
+on this machine parsed into the map or sent to a package index. Each such file
+is measured once it is open, so a link cannot pass off a large file as a small
+one. This machine's own configuration, caches and installed packages outside
+the repository are read where the package managers keep them.
+
 The side panel shows a file's source; a binary file's content stays hidden
 behind a button that shows its first 64 KB as a hex dump, since its bytes are
 rarely worth reading and there can be a great many of them. For such a file the

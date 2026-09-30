@@ -20,6 +20,9 @@ type installed struct {
 	root         string // absolute directory its modules are found under
 	dependencies []dependency
 	modules      map[string]bool // module paths under root: "chronos", "chronos/asyncloop"
+	// files reads the package's files: the repository's Root for nimbledeps/
+	// and Atlas's checkouts, Machine for the nimble directory of this machine.
+	files lang.Root
 }
 
 // maxModules bounds the files indexed per installed package.
@@ -49,12 +52,12 @@ func packageDirectory(base string, pkgs2 bool) (name, version string, ok bool) {
 // install has srcDir's contents at its root.
 //
 // Implements: REQ-NIM-007
-func readInstalled(directory, name, version string, local bool) *installed {
-	p := &installed{name: name, version: version, root: directory, modules: map[string]bool{}}
-	if entries, err := os.ReadDir(directory); err == nil {
+func readInstalled(files lang.Root, directory, name, version string, local bool) *installed {
+	p := &installed{name: name, version: version, root: directory, modules: map[string]bool{}, files: files}
+	if entries, err := files.ReadDir(directory); err == nil {
 		for _, e := range entries {
 			if n := e.Name(); strings.HasSuffix(n, ".nimble") && !e.IsDir() {
-				if data, ok := lang.ReadCapped(filepath.Join(directory, n)); ok {
+				if data, ok := files.ReadBounded(filepath.Join(directory, n)); ok {
 					nf := readNimble(data, strings.TrimSuffix(n, ".nimble"))
 					if p.name == "" {
 						p.name = nf.name
@@ -64,7 +67,7 @@ func readInstalled(directory, name, version string, local bool) *installed {
 					}
 					p.dependencies = nf.dependencies
 					if local && nf.sourceDirectory != "" {
-						if fileInfo, err := os.Stat(filepath.Join(directory, filepath.FromSlash(nf.sourceDirectory))); err == nil && fileInfo.IsDir() {
+						if files.IsDirectory(filepath.Join(directory, filepath.FromSlash(nf.sourceDirectory))) {
 							p.root = filepath.Join(directory, filepath.FromSlash(nf.sourceDirectory))
 						}
 					}
@@ -83,7 +86,7 @@ func readInstalled(directory, name, version string, local bool) *installed {
 // index lists the modules under the package's root.
 func (p *installed) index() {
 	count := 0
-	filepath.WalkDir(p.root, func(f string, d os.DirEntry, err error) error {
+	p.files.WalkDir(p.root, func(f string, d os.DirEntry, err error) error {
 		if err != nil || count >= maxModules {
 			if d != nil && d.IsDir() && f != p.root {
 				return filepath.SkipDir
@@ -110,14 +113,14 @@ func (p *installed) index() {
 // pkgs/ (nimbledeps/, or ~/.nimble). want, when not nil, limits them to the
 // names it holds (folded); of several versions of one package the newest is
 // read, unless prefer names one.
-func readPackages(nimbleDirectory string, local bool, want map[string]bool, prefer map[string]string) []*installed {
+func readPackages(files lang.Root, nimbleDirectory string, local bool, want map[string]bool, prefer map[string]string) []*installed {
 	type candidate struct {
 		directory, name, version string
 	}
 	best := map[string]candidate{}
 	var order []string
 	for _, packagesDirectory := range []string{"pkgs2", "pkgs"} {
-		entries, err := os.ReadDir(filepath.Join(nimbleDirectory, packagesDirectory))
+		entries, err := files.ReadDir(filepath.Join(nimbleDirectory, packagesDirectory))
 		if err != nil {
 			continue
 		}
@@ -147,7 +150,7 @@ func readPackages(nimbleDirectory string, local bool, want map[string]bool, pref
 	var out []*installed
 	for _, k := range order {
 		c := best[k]
-		if p := readInstalled(c.directory, c.name, c.version, local); p != nil {
+		if p := readInstalled(files, c.directory, c.name, c.version, local); p != nil {
 			out = append(out, p)
 		}
 	}
@@ -182,9 +185,10 @@ func newer(a, b string) bool {
 var originURL = regexp.MustCompile(`(?m)^\s*url\s*=\s*(\S+)\s*$`)
 
 // readAtlas reads the checkouts of an Atlas dependencies directory: each directory with
-// a .nimble file is a package, its origin from .git/config.
-func readAtlas(dependencies string) []*installed {
-	entries, err := os.ReadDir(dependencies)
+// a .nimble file is a package, its origin from .git/config. It is under the
+// repository, and read through its Root.
+func readAtlas(repository lang.Root, dependencies string) []*installed {
+	entries, err := repository.ReadDir(dependencies)
 	if err != nil {
 		return nil
 	}
@@ -194,11 +198,11 @@ func readAtlas(dependencies string) []*installed {
 			continue
 		}
 		directory := filepath.Join(dependencies, e.Name())
-		p := readInstalled(directory, "", "", true)
+		p := readInstalled(repository, directory, "", "", true)
 		if p == nil {
 			continue
 		}
-		if config, err := os.ReadFile(filepath.Join(directory, ".git", "config")); err == nil {
+		if config, ok := repository.ReadBounded(filepath.Join(directory, ".git", "config")); ok {
 			if m := originURL.FindSubmatch(config); m != nil {
 				p.url = string(m[1])
 			}
@@ -212,11 +216,12 @@ func readAtlas(dependencies string) []*installed {
 }
 
 // atlasDependenciesDirectory is the dependencies directory of an Atlas project in directory: atlas.config's
-// "deps" (in directory, else deps/atlas.config), else deps/ when it exists.
-func atlasDependenciesDirectory(directory string) string {
+// "deps" (in directory, else deps/atlas.config), else deps/ when it exists. The
+// configuration is the repository's: a "deps" outside it is refused when read.
+func atlasDependenciesDirectory(repository lang.Root, directory string) string {
 	for _, config := range []string{filepath.Join(directory, "atlas.config"), filepath.Join(directory, "deps", "atlas.config")} {
-		data, err := os.ReadFile(config)
-		if err != nil {
+		data, ok := repository.ReadBounded(config)
+		if !ok {
 			continue
 		}
 		if m := regexp.MustCompile(`"deps"\s*:\s*"([^"]*)"`).FindSubmatch(data); m != nil && len(m[1]) > 0 {
@@ -228,7 +233,7 @@ func atlasDependenciesDirectory(directory string) string {
 		}
 		return filepath.Join(directory, "deps")
 	}
-	if fileInfo, err := os.Stat(filepath.Join(directory, "deps")); err == nil && fileInfo.IsDir() {
+	if repository.IsDirectory(filepath.Join(directory, "deps")) {
 		return filepath.Join(directory, "deps")
 	}
 	return ""
@@ -253,7 +258,8 @@ func fromPaths(paths []pathSwitch) []*installed {
 			if !ok {
 				break
 			}
-			installedPackage := readInstalled(filepath.FromSlash(strings.Join(segments[:i+2], "/")), name, version, false)
+			// nimble.paths names the nimble directory of this machine.
+			installedPackage := readInstalled(lang.Machine, filepath.FromSlash(strings.Join(segments[:i+2], "/")), name, version, false)
 			if installedPackage != nil {
 				installedPackage.root = v
 				installedPackage.modules = map[string]bool{}

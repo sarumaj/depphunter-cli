@@ -132,7 +132,7 @@ func readProject(root, relative, absolute string) (*project, []mapping) {
 	}
 	local := append(mappings(directory, doc.Autoload), mappings(directory, doc.AutoloadDev)...)
 
-	packages, installed := readLock(filepath.Join(filepath.Dir(absolute), "composer.lock"))
+	packages, installed := readLock(lang.OpenRoot(root), filepath.Join(filepath.Dir(absolute), "composer.lock"))
 	if packages == nil {
 		packages, installed = readInstalled(root, directory), true
 	}
@@ -203,9 +203,9 @@ func mappings(directory string, a autoload) []mapping {
 // readLock reads composer.lock's packages and packages-dev; nil when there is none.
 //
 // Implements: REQ-PHP-008
-func readLock(absolute string) ([]lockedPackage, bool) {
-	data, err := os.ReadFile(absolute)
-	if err != nil {
+func readLock(repository lang.Root, absolute string) ([]lockedPackage, bool) {
+	data, ok := repository.ReadBounded(absolute)
+	if !ok {
 		return nil, false
 	}
 	var lock struct {
@@ -227,8 +227,8 @@ func readInstalled(root, directory string) []lockedPackage {
 	if root == "" || directory == ".." || strings.HasPrefix(directory, "../") {
 		return nil
 	}
-	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(directory), "vendor", "composer", "installed.json"))
-	if err != nil {
+	data, ok := lang.OpenRoot(root).ReadBounded(filepath.Join(root, filepath.FromSlash(directory), "vendor", "composer", "installed.json"))
+	if !ok {
 		return nil
 	}
 	var v2 struct {

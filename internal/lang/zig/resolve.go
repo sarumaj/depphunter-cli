@@ -535,23 +535,30 @@ func (r *resolver) fetchedZon(f fetched) []byte {
 	if strings.ContainsAny(f.hash, `/\`) || f.hash == "" || f.hash == "." || f.hash == ".." {
 		return nil
 	}
-	var candidates []string
+	// The project's own zig-pkg/ is read through the repository's Root, the
+	// global caches of this machine through Machine.
+	type candidate struct {
+		files     lang.Root
+		directory string
+	}
+	var candidates []candidate
+	repository := lang.OpenRoot(r.root)
 	for d := range lang.DirectoryAndAncestors(f.directory) {
-		candidates = append(candidates, filepath.Join(r.root, filepath.FromSlash(d), "zig-pkg", f.hash))
+		candidates = append(candidates, candidate{repository, filepath.Join(r.root, filepath.FromSlash(d), "zig-pkg", f.hash)})
 	}
 	if c := os.Getenv("ZIG_GLOBAL_CACHE_DIR"); c != "" {
-		candidates = append(candidates, filepath.Join(c, "p", f.hash))
+		candidates = append(candidates, candidate{lang.Machine, filepath.Join(c, "p", f.hash)})
 	}
 	for _, environment := range []string{"XDG_CACHE_HOME", "LOCALAPPDATA"} { // LOCALAPPDATA: Windows
 		if c := os.Getenv(environment); c != "" {
-			candidates = append(candidates, filepath.Join(c, "zig", "p", f.hash))
+			candidates = append(candidates, candidate{lang.Machine, filepath.Join(c, "zig", "p", f.hash)})
 		}
 	}
 	if h, err := os.UserHomeDir(); err == nil {
-		candidates = append(candidates, filepath.Join(h, ".cache", "zig", "p", f.hash))
+		candidates = append(candidates, candidate{lang.Machine, filepath.Join(h, ".cache", "zig", "p", f.hash)})
 	}
 	for _, c := range candidates {
-		if source, ok := lang.ReadCapped(filepath.Join(c, "build.zig.zon")); ok {
+		if source, ok := c.files.ReadBounded(filepath.Join(c.directory, "build.zig.zon")); ok {
 			return source
 		}
 	}

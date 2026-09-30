@@ -235,3 +235,30 @@ func TestALinkIsNotSentAnotherPathsRegistryToken(t *testing.T) {
 		}
 	}
 }
+
+// A linked-to document committed as a symbolic link out of the repository is
+// not read, not even for its headings: the link check stays inside the
+// repository, and says the target is not there. One linked from inside it is
+// read as any other.
+//
+// Verifies: REQ-LANG-031, REQ-MD-008
+func TestALinkedDocumentOutOfTheRepositoryIsNotRead(t *testing.T) {
+	root := docs(t, map[string]string{
+		"README.md": "# Home\n\nSee [the notes](notes.md#secret) and [the spec](spec.md#secret).\n",
+		"real.md":   "# Secret\n",
+	})
+	outside := filepath.Join(t.TempDir(), "notes.md")
+	if err := os.WriteFile(outside, []byte("# Secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "notes.md")); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
+	if err := os.Symlink("real.md", filepath.Join(root, "spec.md")); err != nil {
+		t.Fatal(err)
+	}
+	found, _ := checkLinks(context.Background(), root, []string{"README.md"}, nil, func(string, ...any) {})
+	if len(found) != 1 || found[0].Reference != referenceMissingFile || !strings.Contains(found[0].Title, "notes.md") {
+		t.Errorf("findings %v, want notes.md alone, as not there", reasons(found))
+	}
+}

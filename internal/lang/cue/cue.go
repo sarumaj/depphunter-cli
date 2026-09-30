@@ -122,8 +122,10 @@ var std = map[string]bool{
 	"tool/file": true, "tool/http": true, "tool/os": true, "uuid": true,
 }
 
-func readFile(absolute string, limit int64) []byte {
-	f, err := os.Open(absolute)
+// readFile reads at most limit bytes of a file through files: the
+// repository's Root for its own files, Machine for the module cache.
+func readFile(files lang.Root, absolute string, limit int64) []byte {
+	f, err := files.Open(absolute)
 	if err != nil {
 		return nil
 	}

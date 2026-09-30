@@ -80,7 +80,8 @@ func hasShard(directory string) bool {
 	if v, ok := shardDirectories.Load(directory); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(filepath.Join(directory, "shard.yml"))
+	// Lstat: a marker committed as a symbolic link says nothing of its target.
+	_, err := os.Lstat(filepath.Join(directory, "shard.yml"))
 	shardDirectories.Store(directory, err == nil)
 	return err == nil
 }

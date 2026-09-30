@@ -47,7 +47,7 @@ type resolver struct {
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, projects: map[string]*project{},
 		single: map[string]*project{}, installed: map[string]string{}, recipes: map[string]*recipe{}}
-	repository := lang.NewSource(root, lang.SourceOptions{})
+	repository := lang.NewSource(root)
 	for _, f := range all {
 		if dubDirectory(f.Path) {
 			continue

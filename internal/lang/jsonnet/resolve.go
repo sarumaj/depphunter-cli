@@ -1,7 +1,6 @@
 package jsonnet
 
 import (
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -40,6 +39,13 @@ func readFile(absolute string) []byte {
 	return data
 }
 
+// readRepositoryFile reads a file of the repository at root that the scan did
+// not list, through its Root, nil when it cannot.
+func readRepositoryFile(root, absolute string) []byte {
+	data, _ := lang.OpenRoot(root).ReadBounded(absolute)
+	return data
+}
+
 // Implements: REQ-JSONNET-004, REQ-JSONNET-005, REQ-JSONNET-010
 func newResolver(root string, all []*scan.File, getenv func(string) string) *resolver {
 	r := &resolver{root: root, files: map[string]bool{}, projects: map[string]*project{}}
@@ -67,7 +73,7 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 	for directory, p := range r.projects {
 		// A lock git ignores is still what jb installed.
 		if p.lock == nil && !r.files[path.Join(directory, "jsonnetfile.lock.json")] {
-			p.lock, _ = readJsonnetfile(readFile(filepath.Join(root, filepath.FromSlash(directory), "jsonnetfile.lock.json")))
+			p.lock, _ = readJsonnetfile(readRepositoryFile(root, filepath.Join(root, filepath.FromSlash(directory), "jsonnetfile.lock.json")))
 		}
 		r.order = append(r.order, p)
 	}
@@ -125,7 +131,7 @@ func (r *resolver) present(p string) bool {
 	if v, ok := r.exists.Load(p); ok {
 		return v.(bool)
 	}
-	fileInfo, err := os.Stat(filepath.Join(r.root, filepath.FromSlash(p)))
+	fileInfo, err := lang.OpenRoot(r.root).Stat(filepath.Join(r.root, filepath.FromSlash(p)))
 	ok := err == nil && !fileInfo.IsDir()
 	r.exists.Store(p, ok)
 	return ok
@@ -367,7 +373,7 @@ func (r *resolver) installed(t lang.Target) (*project, []*dependency) {
 		return nil, nil
 	}
 	for _, p := range r.order {
-		source := readFile(filepath.Join(r.root, filepath.FromSlash(p.directory), "vendor", filepath.FromSlash(t.Package), "jsonnetfile.json"))
+		source := readRepositoryFile(r.root, filepath.Join(r.root, filepath.FromSlash(p.directory), "vendor", filepath.FromSlash(t.Package), "jsonnetfile.json"))
 		if source != nil {
 			dependencies, _ := readJsonnetfile(source)
 			return p, dependencies

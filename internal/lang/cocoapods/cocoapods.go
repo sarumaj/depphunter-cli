@@ -124,7 +124,7 @@ func Read(root string, all []*scan.File) *Index {
 	}
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
-	repository := lang.NewSource(root, lang.SourceOptions{Bounded: true})
+	repository := lang.NewSource(root)
 	for _, f := range sorted {
 		repository.Add(f)
 		x.files[f.Path] = true
@@ -439,6 +439,7 @@ func (x *Index) checkedOut(t lang.Target) []lang.Target {
 	if x.root == "" {
 		return nil
 	}
+	repository := lang.OpenRoot(x.root)
 	for _, p := range x.projects {
 		c := p.carts[t.Package]
 		if c == nil {
@@ -447,11 +448,16 @@ func (x *Index) checkedOut(t lang.Target) []lang.Target {
 		if c == nil {
 			continue
 		}
-		directory := filepath.Join(x.root, filepath.FromSlash(p.directory), "Carthage", "Checkouts",
-			strings.TrimSuffix(path.Base(strings.TrimSuffix(c.source, "/")), ".git"))
+		// The checkout is named after the source's last element, which a
+		// Cartfile may make "..": that is no checkout.
+		name := strings.TrimSuffix(path.Base(strings.TrimSuffix(c.source, "/")), ".git")
+		if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+			continue
+		}
+		directory := filepath.Join(x.root, filepath.FromSlash(p.directory), "Carthage", "Checkouts", name)
 		own := &project{carts: map[string]*cart{}, pins: map[string]*cart{}}
 		read := func(name string, into map[string]*cart) bool {
-			source, ok := lang.ReadCapped(filepath.Join(directory, name))
+			source, ok := repository.ReadBounded(filepath.Join(directory, name))
 			if !ok {
 				return false
 			}

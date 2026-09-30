@@ -98,7 +98,7 @@ func Scan(ctx context.Context, root string, options Options) ([]*File, error) {
 // here rather than with --deduplicate, which needs git 2.31; an older git refuses
 // the option, and the walk it would fall back to knows none of the ignore files.
 //
-// Implements: REQ-LANG-017
+// Implements: REQ-LANG-017, REQ-LANG-031
 func gitFiles(ctx context.Context, root string) ([]string, error) {
 	command := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	out, err := command.Output()
@@ -123,7 +123,7 @@ func gitFiles(ctx context.Context, root string) ([]string, error) {
 	return paths, nil
 }
 
-// Implements: REQ-LANG-018
+// Implements: REQ-LANG-018, REQ-LANG-031
 func walkFiles(ctx context.Context, root string) ([]string, error) {
 	var paths []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {

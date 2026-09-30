@@ -56,7 +56,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}}
 	// pubspec.lock and pubspec_overrides.yaml are git-ignored as often as not; what is
 	// on disk beside a pubspec is what pub resolved with.
-	repository := lang.NewSource(root, lang.SourceOptions{Confined: true})
+	repository := lang.NewSource(root)
 	var pubspecs, melos []string
 	for _, f := range all {
 		r.files[f.Path] = true
