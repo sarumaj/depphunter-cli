@@ -875,7 +875,7 @@ function plain(then) {
  * Implements: REQ-EXP-011, REQ-HUNT-033, REQ-HUNT-039, REQ-HUNT-041
  */
 function frame(then, hands = true) {
-  const map = scene.renderNow(hands);
+  const map = scene.renderNow(hands, true);
   const dpr = map.width / map.clientWidth;
   const out = document.createElement('canvas');
   out.width = map.width;
