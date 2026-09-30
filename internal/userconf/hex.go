@@ -16,15 +16,7 @@ import (
 //
 // Implements: REQ-SUP-064, REQ-AUTH-027
 func (m Machine) DartConfigDirectory() string {
-	switch m.GOOS {
-	case "windows":
-		if directory := m.Environment("APPDATA"); directory != "" {
-			return filepath.Join(directory, "dart")
-		}
-	case "darwin", "ios":
-		return join(m.Home, "Library", "Application Support", "dart")
-	}
-	return join(m.xdgConfigHome(), "dart")
+	return m.byPlatform(m.under("APPDATA", "dart"), m.applicationSupport("dart"), m.xdgConfigHome("dart"))
 }
 
 // PubTokens is the file `dart pub token add` writes its tokens to.
@@ -39,13 +31,11 @@ func (m Machine) PubTokens() string { return join(m.DartConfigDirectory(), "pub-
 //
 // Implements: REQ-SUP-064, REQ-AUTH-028
 func (m Machine) HexHome() string {
-	if directory := m.Environment("HEX_HOME"); directory != "" {
-		return directory
-	}
+	directory := m.home(".hex")
 	if v := m.Environment("MIX_XDG"); v == "1" || v == "true" {
-		return join(m.xdgConfigHome(), "hex")
+		directory = m.xdgConfigHome("hex")
 	}
-	return join(m.Home, ".hex")
+	return cmp.Or(m.Environment("HEX_HOME"), directory)
 }
 
 // HexConfig is what depphunter takes from Hex's hex.config: the API it talks to, and

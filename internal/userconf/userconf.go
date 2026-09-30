@@ -8,6 +8,7 @@
 package userconf
 
 import (
+	"cmp"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -72,6 +73,84 @@ func isFile(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
+// A location rule is a cmp.Or of its candidates in the tool's order - a variable, a
+// path under a variable (under gives "" when the variable is unset), a platform's
+// default, the default under the home directory - with the helpers below.
+
+// firstFile is the first of paths that is a file, "" when none is.
+func firstFile(paths ...string) string {
+	for _, path := range paths {
+		if path != "" && isFile(path) {
+			return path
+		}
+	}
+	return ""
+}
+
+// firstDirectory is the first of paths that is a directory, "" when none is.
+func firstDirectory(paths ...string) string {
+	for _, path := range paths {
+		if path != "" && isDirectory(path) {
+			return path
+		}
+	}
+	return ""
+}
+
+// on is path on the platforms named, "" on the others.
+func (m Machine) on(path string, platforms ...string) string {
+	if slices.Contains(platforms, m.GOOS) {
+		return path
+	}
+	return ""
+}
+
+// byPlatform is windows on Windows, falling back to other when it is "" (a
+// known folder that is unset), macOS on macOS, even when it is "", and other
+// elsewhere.
+func (m Machine) byPlatform(windows, macOS, other string) string {
+	switch m.GOOS {
+	case "windows":
+		return cmp.Or(windows, other)
+	case "darwin", "ios":
+		return macOS
+	}
+	return other
+}
+
+// home is a path under the home directory.
+func (m Machine) home(element ...string) string { return join(m.Home, element...) }
+
+// under is a path under the directory a variable names.
+func (m Machine) under(variable string, element ...string) string {
+	return join(m.Environment(variable), element...)
+}
+
+// applicationSupport is a path under macOS's ~/Library/Application Support.
+func (m Machine) applicationSupport(element ...string) string {
+	return m.home(append([]string{"Library", "Application Support"}, element...)...)
+}
+
+// absolute is path when it is absolute, else "": the XDG specification has a
+// relative XDG_* value ignored.
+func absolute(path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return ""
+}
+
+// present is paths without the "" ones, nil when none is left.
+func present(paths ...string) []string {
+	var out []string
+	for _, path := range paths {
+		if path != "" {
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
 // names lists the environment's variable names with the given prefix, sorted.
 func (m Machine) names(match func(string) bool) []string {
 	if m.Environ == nil {
@@ -97,21 +176,21 @@ func (m Machine) ConfigDirectory() string {
 	case "windows":
 		return m.Environment("APPDATA")
 	case "darwin", "ios":
-		return join(m.Home, "Library", "Application Support")
+		return m.applicationSupport()
 	}
-	if xdg := m.Environment("XDG_CONFIG_HOME"); filepath.IsAbs(xdg) {
-		return xdg
-	}
-	return join(m.Home, ".config")
+	return m.absoluteXDGConfigHome()
+}
+
+// absoluteXDGConfigHome is a path under $XDG_CONFIG_HOME when it is absolute, else
+// under ~/.config.
+func (m Machine) absoluteXDGConfigHome(element ...string) string {
+	return join(cmp.Or(absolute(m.Environment("XDG_CONFIG_HOME")), m.home(".config")), element...)
 }
 
 // xdgConfigHome is $XDG_CONFIG_HOME, else ~/.config, as the tools that follow the
 // XDG layout on every platform (Composer, Podman, pip on Linux) take it.
-func (m Machine) xdgConfigHome() string {
-	if xdg := m.Environment("XDG_CONFIG_HOME"); xdg != "" {
-		return xdg
-	}
-	return join(m.Home, ".config")
+func (m Machine) xdgConfigHome(element ...string) string {
+	return join(cmp.Or(m.Environment("XDG_CONFIG_HOME"), m.home(".config")), element...)
 }
 
 // ---------------------------------------------------------------- Cargo
@@ -120,10 +199,7 @@ func (m Machine) xdgConfigHome() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) CargoHome() string {
-	if directory := m.Environment("CARGO_HOME"); directory != "" {
-		return directory
-	}
-	return join(m.Home, ".cargo")
+	return cmp.Or(m.Environment("CARGO_HOME"), m.home(".cargo"))
 }
 
 // CargoFile is the file Cargo reads for name ("config", "credentials") in its home:
@@ -133,13 +209,7 @@ func (m Machine) CargoHome() string {
 // Implements: REQ-SUP-064
 func (m Machine) CargoFile(name string) string {
 	directory := m.CargoHome()
-	if directory == "" {
-		return ""
-	}
-	if legacy := filepath.Join(directory, name); isFile(legacy) {
-		return legacy
-	}
-	return filepath.Join(directory, name+".toml")
+	return cmp.Or(firstFile(join(directory, name)), join(directory, name+".toml"))
 }
 
 // CargoRegistryName is the form a registry name takes in Cargo's variables, and in
@@ -207,10 +277,7 @@ func (m Machine) NpmEnvironment() map[string]string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) NpmUserConfig() string {
-	if f := m.NpmEnvironment()["userconfig"]; f != "" {
-		return f
-	}
-	return join(m.Home, ".npmrc")
+	return cmp.Or(m.NpmEnvironment()["userconfig"], m.home(".npmrc"))
 }
 
 // NpmGlobalConfig is npm's global npmrc: the globalconfig setting of the environment,
@@ -220,10 +287,7 @@ func (m Machine) NpmUserConfig() string {
 // Implements: REQ-SUP-064
 func (m Machine) NpmGlobalConfig() string {
 	environment := m.NpmEnvironment()
-	if f := environment["globalconfig"]; f != "" {
-		return f
-	}
-	return join(environment["prefix"], "etc", "npmrc")
+	return cmp.Or(environment["globalconfig"], join(environment["prefix"], "etc", "npmrc"))
 }
 
 // YarnRCFilename is the name Yarn Berry gives its configuration files, in the
@@ -242,7 +306,7 @@ func (m Machine) YarnRCFilename() string {
 // directories above a project.
 //
 // Implements: REQ-SUP-064
-func (m Machine) YarnUserConfig() string { return join(m.Home, ".yarnrc.yml") }
+func (m Machine) YarnUserConfig() string { return m.home(".yarnrc.yml") }
 
 // YarnConfigs are this machine's Yarn Berry configuration files, closest first, as
 // Yarn finds them for a project in Directory: the file YARN_RC_FILENAME names (else
@@ -269,17 +333,14 @@ func (m Machine) YarnConfigs() []string {
 // YarnClassicConfig is Yarn 1's ~/.yarnrc.
 //
 // Implements: REQ-SUP-064
-func (m Machine) YarnClassicConfig() string { return join(m.Home, ".yarnrc") }
+func (m Machine) YarnClassicConfig() string { return m.home(".yarnrc") }
 
 // BunConfig is Bun's global bunfig: $XDG_CONFIG_HOME/.bunfig.toml when that
 // exists, else ~/.bunfig.toml.
 //
 // Implements: REQ-SUP-064
 func (m Machine) BunConfig() string {
-	if xdg := m.Environment("XDG_CONFIG_HOME"); xdg != "" && isFile(filepath.Join(xdg, ".bunfig.toml")) {
-		return filepath.Join(xdg, ".bunfig.toml")
-	}
-	return join(m.Home, ".bunfig.toml")
+	return cmp.Or(firstFile(m.under("XDG_CONFIG_HOME", ".bunfig.toml")), m.home(".bunfig.toml"))
 }
 
 // ---------------------------------------------------------------- pip
@@ -303,7 +364,7 @@ func (m Machine) PipConfigFiles() (files []string, ok bool) {
 	}
 	switch m.GOOS {
 	case "windows":
-		files = append(files, join(m.Environment("ProgramData"), "pip", base))
+		files = append(files, m.under("ProgramData", "pip", base))
 	case "darwin", "ios":
 		files = append(files, system("Library", "Application Support", "pip", base))
 	default:
@@ -321,18 +382,16 @@ func (m Machine) PipConfigFiles() (files []string, ok bool) {
 		if m.GOOS == "windows" {
 			legacy = "pip"
 		}
-		files = append(files, join(m.Home, legacy, base))
+		files = append(files, m.home(legacy, base))
 		var user string
 		switch m.GOOS {
 		case "windows":
-			user = join(m.Environment("APPDATA"), "pip")
+			user = m.under("APPDATA", "pip")
 		case "darwin", "ios":
 			// pip keeps to ~/.config/pip on macOS until Application Support/pip exists.
-			if user = join(m.Home, "Library", "Application Support", "pip"); !isDirectory(user) {
-				user = join(m.Home, ".config", "pip")
-			}
+			user = cmp.Or(firstDirectory(m.applicationSupport("pip")), m.home(".config", "pip"))
 		default:
-			user = join(m.xdgConfigHome(), "pip")
+			user = m.xdgConfigHome("pip")
 		}
 		files = append(files, join(user, base))
 	}
@@ -358,31 +417,18 @@ func (m Machine) ContainerAuthFiles() []string {
 	}
 	var files []string
 	add := func(f string) {
-		if f != "" && !contains(files, f) {
+		if f != "" && !slices.Contains(files, f) {
 			files = append(files, f)
 		}
 	}
 	if m.GOOS == "linux" {
-		add(join(m.Environment("XDG_RUNTIME_DIR"), "containers", "auth.json"))
+		add(m.under("XDG_RUNTIME_DIR", "containers", "auth.json"))
 	} else {
-		add(join(m.Home, ".config", "containers", "auth.json"))
+		add(m.home(".config", "containers", "auth.json"))
 	}
-	add(join(m.xdgConfigHome(), "containers", "auth.json"))
-	if directory := m.Environment("DOCKER_CONFIG"); directory != "" {
-		add(filepath.Join(directory, "config.json"))
-	} else {
-		add(join(m.Home, ".docker", "config.json"))
-	}
+	add(m.xdgConfigHome("containers", "auth.json"))
+	add(cmp.Or(m.under("DOCKER_CONFIG", "config.json"), m.home(".docker", "config.json")))
 	return files
-}
-
-func contains(list []string, s string) bool {
-	for _, have := range list {
-		if have == s {
-			return true
-		}
-	}
-	return false
 }
 
 // ---------------------------------------------------------------- netrc
@@ -392,15 +438,7 @@ func contains(list []string, s string) bool {
 //
 // Implements: REQ-AUTH-002
 func (m Machine) Netrc() string {
-	if f := m.Environment("NETRC"); f != "" {
-		return f
-	}
-	if m.GOOS == "windows" {
-		if legacy := join(m.Home, "_netrc"); legacy != "" && isFile(legacy) {
-			return legacy
-		}
-	}
-	return join(m.Home, ".netrc")
+	return cmp.Or(m.Environment("NETRC"), m.on(firstFile(m.home("_netrc")), "windows"), m.home(".netrc"))
 }
 
 // ---------------------------------------------------------------- Go
@@ -461,7 +499,7 @@ func (m Machine) GoEnvironment(key string) string {
 // Implements: REQ-SUP-064
 func (m Machine) NuGetConfigs() []string {
 	var out []string
-	directory := join(m.Environment("APPDATA"), "NuGet")
+	directory := m.under("APPDATA", "NuGet")
 	switch {
 	case directory != "" && m.GOOS == "windows":
 		out = []string{filepath.Join(directory, "NuGet.Config")}
@@ -511,16 +549,11 @@ func (m Machine) nugetAdditionalConfigs(directory string) []string {
 //
 // Implements: REQ-SUP-079
 func (m Machine) NuGetConfigIn(directory string) string {
-	names := []string{"nuget.config", "NuGet.config", "NuGet.Config"}
 	if m.GOOS == "windows" {
-		names = []string{"NuGet.Config"}
+		return firstFile(filepath.Join(directory, "NuGet.Config"))
 	}
-	for _, name := range names {
-		if path := filepath.Join(directory, name); isFile(path) {
-			return path
-		}
-	}
-	return ""
+	return firstFile(filepath.Join(directory, "nuget.config"), filepath.Join(directory, "NuGet.config"),
+		filepath.Join(directory, "NuGet.Config"))
 }
 
 // NuGetConfigsAbove are the nuget.config files of the directories above Directory
@@ -547,16 +580,13 @@ func (m Machine) NuGetConfigsAbove() []string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) NuGetMachineConfigs() []string {
-	programFiles := m.Environment("ProgramFiles(x86)")
-	if programFiles == "" {
-		programFiles = m.Environment("ProgramFiles")
-	}
+	programFiles := cmp.Or(m.Environment("ProgramFiles(x86)"), m.Environment("ProgramFiles"))
 	var directory string
 	switch {
 	case m.GOOS == "windows" && programFiles != "":
 		directory = join(programFiles, "NuGet", "Config")
 	case m.Environment("NUGET_COMMON_APPLICATION_DATA") != "":
-		directory = join(m.Environment("NUGET_COMMON_APPLICATION_DATA"), "NuGet", "Config")
+		directory = m.under("NUGET_COMMON_APPLICATION_DATA", "NuGet", "Config")
 	case m.GOOS == "darwin":
 		directory = system("Library", "Application Support", "NuGet", "Config")
 	default:
@@ -609,18 +639,8 @@ func (m Machine) NuGetCredentialVariables() map[string]string {
 //
 // Implements: REQ-SUP-064, REQ-AUTH-016
 func (m Machine) ComposerHome() string {
-	if directory := m.Environment("COMPOSER_HOME"); directory != "" {
-		return directory
-	}
-	if directory := m.Environment("APPDATA"); directory != "" && m.GOOS == "windows" {
-		return filepath.Join(directory, "Composer")
-	}
-	for _, directory := range []string{join(m.xdgConfigHome(), "composer"), join(m.Home, ".composer")} {
-		if directory != "" && isDirectory(directory) {
-			return directory
-		}
-	}
-	return ""
+	return cmp.Or(m.Environment("COMPOSER_HOME"), m.on(m.under("APPDATA", "Composer"), "windows"),
+		firstDirectory(m.xdgConfigHome("composer"), m.home(".composer")))
 }
 
 // ---------------------------------------------------------------- Bundler
@@ -630,11 +650,6 @@ func (m Machine) ComposerHome() string {
 //
 // Implements: REQ-AUTH-018, REQ-SUP-015
 func (m Machine) BundlerConfig() string {
-	if f := m.Environment("BUNDLE_USER_CONFIG"); f != "" {
-		return f
-	}
-	if directory := m.Environment("BUNDLE_USER_HOME"); directory != "" {
-		return filepath.Join(directory, "config")
-	}
-	return join(m.Home, ".bundle", "config")
+	return cmp.Or(m.Environment("BUNDLE_USER_CONFIG"), m.under("BUNDLE_USER_HOME", "config"),
+		m.home(".bundle", "config"))
 }
