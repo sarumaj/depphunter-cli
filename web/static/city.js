@@ -166,35 +166,54 @@ float band(float t, float lo, float hi, float w) {
 }
 float dark(float night) { return mix(1.0, night, uNight); }
 
-vec3 paving(vec3 base, vec2 p) {
-  vec2 t = p / 0.18, w = fwidth(t) + 1e-4;
+// The pixel footprints the ground's textures are antialiased by, taken together:
+// streets() paints only the layers a pixel shows, and a derivative asked for inside a
+// branch its neighbors do not all take is undefined.
+struct Footprint {
+  vec2 paving;  // of p / 0.18
+  vec2 grass;   // of p * 60
+  vec2 asphalt; // of p * 40
+  vec2 mowing;  // of p / 0.35
+  vec2 paths;   // of p / 2.2
+};
+Footprint footprint(vec2 p) {
+  return Footprint(fwidth(p / 0.18), fwidth(p * 60.0), fwidth(p * 40.0), fwidth(p / 0.35), fwidth(p / 2.2));
+}
+
+vec3 paving(vec3 base, vec2 p, vec2 footprint) {
+  vec2 t = p / 0.18, w = footprint + 1e-4;
   float far = smoothstep(0.2, 0.5, max(w.x, w.y));
   float joint = (1.0 - band(fract(t.x), 0.07, 0.93, w.x) * band(fract(t.y), 0.07, 0.93, w.y)) * (1.0 - far);
   vec3 c = mix(vec3(0.46, 0.45, 0.42), base, 0.3) * (0.92 + 0.16 * mix(hash12(floor(t)), 0.5, far));
   return mix(c, c * 0.72, joint) * dark(0.42);
 }
+vec3 paving(vec3 base, vec2 p) { return paving(base, p, fwidth(p / 0.18)); }
 
 // A lawn: one green with gentle, large variation and a few drier patches, and blades
 // up close. Bushes and trees are real geometry (makeProps), not painted on.
 // Implements: REQ-CITY-003, REQ-CITY-023
-vec3 grass(vec3 base, vec2 p) {
-  vec2 w = fwidth(p * 60.0);
+vec3 grass(vec3 base, vec2 p, vec2 footprint) {
+  vec2 w = footprint;
   float far = smoothstep(0.3, 1.0, max(w.x, w.y));
   vec3 g = vec3(0.12, 0.24, 0.05) * (0.9 + 0.12 * vnoise(p * 0.6) + 0.06 * vnoise(p * 3.1));
   g = mix(g, vec3(0.2, 0.28, 0.08), 0.3 * smoothstep(0.6, 0.85, vnoise(p * 1.7 + 4.0)));
-  g *= 0.85 + 0.3 * mix(vnoise(p * 60.0), 0.5, far);
+  g *= 0.85 + 0.3 * (far < 1.0 ? mix(vnoise(p * 60.0), 0.5, far) : 0.5); // no blades to look up from afar
   return mix(g, base, 0.08) * dark(0.35);
 }
+vec3 grass(vec3 base, vec2 p) { return grass(base, p, fwidth(p * 60.0)); }
 
 // Implements: REQ-CITY-003, REQ-CITY-015
-vec3 asphalt(vec2 p) {
-  vec2 w = fwidth(p * 40.0);
+vec3 asphalt(vec2 p, vec2 footprint) {
+  vec2 w = footprint;
   float far = smoothstep(0.3, 1.0, max(w.x, w.y));
-  float grain = mix(0.55 * vnoise(p * 40.0) + 0.45 * vnoise(p * 9.0), 0.5, far);
+  // Grain and cracks fade out with distance, and are not looked up once they have.
+  float grain = far < 1.0 ? mix(0.55 * vnoise(p * 40.0) + 0.45 * vnoise(p * 9.0), 0.5, far) : 0.5;
   vec3 c = vec3(0.034, 0.036, 0.041) * (0.75 + 0.5 * grain);
   c *= 1.0 - 0.2 * smoothstep(0.6, 0.64, fbm(p * 0.8 + 3.7));                 // repaired patches
-  float crack = 1.0 - smoothstep(0.0, 0.012, abs(fbm(p * 2.6) - 0.5));
-  c *= 1.0 - 0.4 * crack * (1.0 - far) * smoothstep(0.45, 0.6, vnoise(p * 1.3)); // cracks, here and there
+  if (far < 1.0) {
+    float crack = 1.0 - smoothstep(0.0, 0.012, abs(fbm(p * 2.6) - 0.5));
+    c *= 1.0 - 0.4 * crack * (1.0 - far) * smoothstep(0.45, 0.6, vnoise(p * 1.3)); // cracks, here and there
+  }
   return c;
 }
 
@@ -217,11 +236,11 @@ const float CARRIAGE = 0.42; // farther from every obstacle than this is a park,
 // A pocket park where the packing left a hole: a mown lawn crossed by gravel paths
 // (PARK_PATHS apart; makeProps keeps its bushes and trees off them).
 // Implements: REQ-CITY-010, REQ-CITY-023
-vec3 park(vec3 base, vec2 p) {
-  vec3 c = grass(base, p);
-  vec2 m = p / 0.35, mw = fwidth(m) + 1e-4;
+vec3 park(vec3 base, vec2 p, Footprint f) {
+  vec3 c = grass(base, p, f.grass);
+  vec2 m = p / 0.35, mw = f.mowing + 1e-4;
   c *= 1.0 + 0.05 * (band(fract(m.x), 0.0, 0.5, mw.x) * 2.0 - 1.0) * (1.0 - smoothstep(0.3, 0.6, mw.x)); // mowing stripes
-  vec2 t = p / 2.2, w = fwidth(t) + 1e-4;
+  vec2 t = p / 2.2, w = f.paths + 1e-4;
   float path = max(band(fract(t.x), 0.47, 0.53, w.x), band(fract(t.y), 0.47, 0.53, w.y));
   vec3 gravel = vec3(0.42, 0.38, 0.3) * (0.85 + 0.3 * vnoise(p * 50.0)) * dark(0.4);
   c = mix(c, c * 0.8, max(band(fract(t.x), 0.455, 0.545, w.x), band(fract(t.y), 0.455, 0.545, w.y))); // worn edges
@@ -271,24 +290,28 @@ Road roadField(vec3 lp, vec3 sz) {
       }
     }
   }
-  int a = 0;
-  for (int j = 1; j < 12; j++) if (d[j] < d[a]) a = j;
+  // The nearest, and the nearest facing it across the street, carried along rather
+  // than looked up by index: an array indexed by a value known only at run time is
+  // kept in memory rather than registers on most GPUs.
+  float dA = d[0]; vec2 nA = n[0], extA = ext[0];
+  for (int j = 1; j < 12; j++) if (d[j] < dA) { dA = d[j]; nA = n[j]; extA = ext[j]; }
   // The nearest obstacle facing it across the street, if the street is straight here.
-  int b = -1;
+  bool facing = false;
   float d2 = 1e9;
-  for (int j = 0; j < 12; j++) if (dot(n[j], n[a]) < -0.95 && d[j] < d2) { d2 = d[j]; b = j; }
+  vec2 extB = vec2(0.0);
+  for (int j = 0; j < 12; j++) if (dot(n[j], nA) < -0.95 && d[j] < d2) { d2 = d[j]; extB = ext[j]; facing = true; }
 
   Road r;
   r.p = p;
-  r.d1 = d[a];
-  r.n1 = n[a];
-  r.xRoad = abs(n[a].x) < 0.5;
+  r.d1 = dA;
+  r.n1 = nA;
+  r.xRoad = abs(nA.x) < 0.5;
   r.d2 = 1e9;
   r.ends = vec2(0.0);
   // A park between two obstacles is two streets, not one.
-  if (b >= 0 && d[a] + d2 <= 2.0 * CARRIAGE) {
+  if (facing && dA + d2 <= 2.0 * CARRIAGE) {
     r.d2 = d2;
-    r.ends = vec2(max(ext[a].x, ext[b].x), min(ext[a].y, ext[b].y));
+    r.ends = vec2(max(extA.x, extB.x), min(extA.y, extB.y));
   }
   return r;
 }
@@ -300,53 +323,59 @@ vec3 streets(vec3 base, vec3 lp, vec3 sz) {
   Road r = roadField(lp, sz);
   vec2 p = r.p;
   float d1 = r.d1, d2 = r.d2;
-  vec2 n1 = r.n1;
   bool facing = d2 < 1e8;
+  float width = d1 + d2, s = (d2 - d1) * 0.5; // s: distance from the center line
+  float along = r.xRoad ? p.x : p.y, across = r.xRoad ? p.y : p.x;
+  float w = fwidth(d1) + 1e-4, wa = fwidth(along) + 1e-4, ws = fwidth(s) + 1e-4, wx = fwidth(across);
+  Footprint f = footprint(p);
 
-  float w = fwidth(d1) + 1e-4;
-  vec3 c = asphalt(p);
-  if (!facing && d1 < CARRIAGE) {
-    // A street along a park: the dashed line on its middle.
-    float along = abs(n1.x) < 0.5 ? p.x : p.y, wa = fwidth(along) + 1e-4;
-    float mid = (SIDEWALK + CARRIAGE) * 0.5;
-    float dash = band(fract(along / 0.3), 0.0, 0.5, wa / 0.3) * band(d1, mid - 0.008, mid + 0.008, w);
-    c = mix(c, vec3(0.78, 0.6, 0.12), dash * (1.0 - smoothstep(0.02, 0.06, wa)));
-  }
-  if (facing) {
-    float width = d1 + d2, s = (d2 - d1) * 0.5; // s: distance from the center line
-    bool xRoad = r.xRoad;                       // the street runs along x
-    float along = xRoad ? p.x : p.y, across = xRoad ? p.y : p.x;
-    vec2 e = r.ends; // where both sides face each other
-    float fromEnd = min(along - e.x, e.y - along);
-    float wa = fwidth(along) + 1e-4, ws = fwidth(s) + 1e-4;
-    float near = 1.0 - smoothstep(0.02, 0.06, wa);
-    // Wheel tracks, one pair per lane.
-    c *= 1.0 - 0.14 * band(abs(s), width * 0.22 - 0.025, width * 0.22 + 0.025, ws) * step(0.3, width);
-    float zebra = 0.0;
-    if (e.y - e.x > 1.6 && fromEnd > 0.03 && fromEnd < 0.15 && d1 > SIDEWALK + 0.01) {
-      zebra = band(fract(across / 0.05), 0.0, 0.5, fwidth(across) / 0.05) * near;
-      c = mix(c, vec3(0.62, 0.62, 0.6), zebra);
+  // How much of each layer the pixel shows, from the sidewalk out: each is painted
+  // only where it shows, since each costs a handful of noise lookups.
+  float edge = CARRIAGE + SIDEWALK;
+  float kRoad = smoothstep(SIDEWALK - w, SIDEWALK + w, d1);
+  float kPaving = band(d1, CARRIAGE, edge, w);
+  float kPark = smoothstep(edge - w, edge + w, d1);
+
+  vec3 c = vec3(0.0);
+  if (kRoad > 0.0 && kPaving < 1.0 && kPark < 1.0) {
+    c = asphalt(p, f.asphalt);
+    if (!facing && d1 < CARRIAGE) {
+      // A street along a park: the dashed line on its middle.
+      float mid = (SIDEWALK + CARRIAGE) * 0.5;
+      float dash = band(fract(along / 0.3), 0.0, 0.5, wa / 0.3) * band(d1, mid - 0.008, mid + 0.008, w);
+      c = mix(c, vec3(0.78, 0.6, 0.12), dash * (1.0 - smoothstep(0.02, 0.06, wa)));
     }
-    if (width > 0.28 && fromEnd > 0.2) {
-      // A manhole every few meters on the center line, the dashed line between them.
-      float m = length(vec2(s, (fract(along / 2.7 + 0.5) - 0.5) * 2.7));
-      float lid = 1.0 - smoothstep(0.042 - w, 0.042 + w, m);
-      c = mix(c, vec3(0.05, 0.05, 0.055) * (0.8 + 0.4 * band(fract(p.x * 40.0), 0.0, 0.5, 0.2)), lid * near);
-      c = mix(c, vec3(0.1), band(m, 0.036, 0.042, w) * near);
-      float dash = band(fract(along / 0.3), 0.0, 0.5, wa / 0.3) * (1.0 - smoothstep(0.008 - ws, 0.008 + ws, s));
-      c = mix(c, vec3(0.78, 0.6, 0.12), dash * (1.0 - lid) * near);
+    if (facing) {
+      vec2 e = r.ends; // where both sides face each other
+      float fromEnd = min(along - e.x, e.y - along);
+      float near = 1.0 - smoothstep(0.02, 0.06, wa);
+      // Wheel tracks, one pair per lane.
+      c *= 1.0 - 0.14 * band(abs(s), width * 0.22 - 0.025, width * 0.22 + 0.025, ws) * step(0.3, width);
+      float zebra = 0.0;
+      if (e.y - e.x > 1.6 && fromEnd > 0.03 && fromEnd < 0.15 && d1 > SIDEWALK + 0.01) {
+        zebra = band(fract(across / 0.05), 0.0, 0.5, wx / 0.05) * near;
+        c = mix(c, vec3(0.62, 0.62, 0.6), zebra);
+      }
+      if (width > 0.28 && fromEnd > 0.2) {
+        // A manhole every few meters on the center line, the dashed line between them.
+        float m = length(vec2(s, (fract(along / 2.7 + 0.5) - 0.5) * 2.7));
+        float lid = 1.0 - smoothstep(0.042 - w, 0.042 + w, m);
+        c = mix(c, vec3(0.05, 0.05, 0.055) * (0.8 + 0.4 * band(fract(p.x * 40.0), 0.0, 0.5, 0.2)), lid * near);
+        c = mix(c, vec3(0.1), band(m, 0.036, 0.042, w) * near);
+        float dash = band(fract(along / 0.3), 0.0, 0.5, wa / 0.3) * (1.0 - smoothstep(0.008 - ws, 0.008 + ws, s));
+        c = mix(c, vec3(0.78, 0.6, 0.12), dash * (1.0 - lid) * near);
+      }
     }
+    c *= dark(0.5);
   }
-  c *= dark(0.5);
   // Sidewalk along every obstacle and edge, and around parks, behind pale curb stones.
   vec3 curb = vec3(0.5, 0.5, 0.48) * dark(0.45);
-  vec3 walk = paving(base, p);
-  walk = mix(walk, curb, band(d1, SIDEWALK - 0.014, SIDEWALK, w));
-  c = mix(walk, c, smoothstep(SIDEWALK - w, SIDEWALK + w, d1));
-  float edge = CARRIAGE + SIDEWALK;
-  c = mix(c, paving(base, p), band(d1, CARRIAGE, edge, w));
+  vec3 paved = kRoad < 1.0 || kPaving > 0.0 ? paving(base, p, f.paving) : vec3(0.0);
+  vec3 walk = mix(paved, curb, band(d1, SIDEWALK - 0.014, SIDEWALK, w));
+  c = mix(walk, c, kRoad);
+  c = mix(c, paved, kPaving);
   c = mix(c, curb, band(d1, CARRIAGE, CARRIAGE + 0.014, w));
-  c = mix(c, park(base, p), smoothstep(edge - w, edge + w, d1));
+  if (kPark > 0.0) c = mix(c, park(base, p, f), kPark);
   return c * tint(base, uGroundRef); // nesting levels alternate, hover shows
 }
 
