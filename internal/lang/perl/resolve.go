@@ -127,10 +127,7 @@ func newResolver(root string, all []*scan.File, p Plugin) *resolver {
 			}
 		}
 	}
-	sort.SliceStable(r.projects, func(i, j int) bool {
-		return lang.Depth(r.projects[i].directory) < lang.Depth(r.projects[j].directory) ||
-			lang.Depth(r.projects[i].directory) == lang.Depth(r.projects[j].directory) && r.projects[i].directory < r.projects[j].directory
-	})
+	sort.SliceStable(r.projects, func(i, j int) bool { return lang.ShallowestFirst(r.projects[i].directory, r.projects[j].directory) })
 	return r
 }
 

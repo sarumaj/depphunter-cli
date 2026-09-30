@@ -58,3 +58,19 @@ func TestNearestFindsTheInnermostEntry(t *testing.T) {
 		t.Errorf("Chain = %q, want %q", got, want)
 	}
 }
+
+func TestShallowestFirstPutsTheRootFirst(t *testing.T) {
+	directories := []string{"b/c", "-a", "b", ".", "a"}
+	slices.SortFunc(directories, func(a, b string) int {
+		if ShallowestFirst(a, b) {
+			return -1
+		}
+		if ShallowestFirst(b, a) {
+			return 1
+		}
+		return 0
+	})
+	if want := []string{".", "-a", "a", "b", "b/c"}; !reflect.DeepEqual(directories, want) {
+		t.Errorf("sorted %q, want %q", directories, want)
+	}
+}

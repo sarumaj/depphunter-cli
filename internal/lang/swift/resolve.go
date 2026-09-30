@@ -147,24 +147,12 @@ func newResolver(root string, all []*scan.File) *resolver {
 	for _, p := range byDirectory {
 		r.projects = append(r.projects, p)
 	}
-	sort.Slice(r.projects, func(i, j int) bool {
-		a, b := r.projects[i].directory, r.projects[j].directory
-		if lang.Depth(a) != lang.Depth(b) {
-			return lang.Depth(a) < lang.Depth(b)
-		}
-		return a < b
-	})
+	sort.Slice(r.projects, func(i, j int) bool { return lang.ShallowestFirst(r.projects[i].directory, r.projects[j].directory) })
 	for name, directories := range r.modules {
 		sortShallow(directories)
 		r.modules[name] = directories
 	}
-	sort.Slice(r.targets, func(i, j int) bool {
-		a, b := r.targets[i], r.targets[j]
-		if lang.Depth(a) != lang.Depth(b) {
-			return lang.Depth(a) > lang.Depth(b)
-		}
-		return a < b
-	})
+	sort.Slice(r.targets, func(i, j int) bool { return lang.DeepestFirst(r.targets[i], r.targets[j]) })
 	// Directories that may be modules of an Xcode project: every directory holding
 	// Swift, or holding directories that do, by its name - except dependency
 	// checkouts (CocoaPods, Carthage).
@@ -264,12 +252,7 @@ func (r *resolver) targetDirectory(directory string, t target) string {
 }
 
 func sortShallow(directories []string) {
-	sort.SliceStable(directories, func(i, j int) bool {
-		if lang.Depth(directories[i]) != lang.Depth(directories[j]) {
-			return lang.Depth(directories[i]) < lang.Depth(directories[j])
-		}
-		return directories[i] < directories[j]
-	})
+	sort.SliceStable(directories, func(i, j int) bool { return lang.ShallowestFirst(directories[i], directories[j]) })
 }
 
 // vendored reports whether a directory holds checkouts of dependencies.

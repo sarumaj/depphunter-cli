@@ -361,10 +361,7 @@ var (
 //
 // Implements: REQ-SCALA-004
 func (r *resolver) readSBTs(files []*scan.File) {
-	sort.Slice(files, func(i, j int) bool {
-		depthI, depthJ := strings.Count(files[i].Path, "/"), strings.Count(files[j].Path, "/")
-		return depthI < depthJ || depthI == depthJ && files[i].Path < files[j].Path
-	})
+	sort.Slice(files, func(i, j int) bool { return lang.ShallowestFirst(files[i].Path, files[j].Path) })
 	type build struct {
 		data   []byte
 		values map[string]string

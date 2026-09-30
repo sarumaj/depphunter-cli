@@ -83,9 +83,7 @@ func newResolver(root string, all []*scan.File, cache string) *resolver {
 			m.gomod = goModFile
 		}
 	}
-	sort.SliceStable(r.order, func(i, j int) bool {
-		return lang.Depth(r.order[i].root) < lang.Depth(r.order[j].root)
-	})
+	sort.SliceStable(r.order, func(i, j int) bool { return lang.ShallowestFirst(r.order[i].root, r.order[j].root) })
 	return r
 }
 
