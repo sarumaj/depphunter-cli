@@ -209,7 +209,8 @@ func cacheFile(directory, root, head string, maxCommits int) string {
 }
 
 // Cached returns the history of root at HEAD, collecting and caching it in directory when
-// needed. Histories of older HEADs of the same project are removed.
+// needed. Histories of older HEADs of the same project are removed. An empty directory
+// disables the cache: the history is always collected, and nothing is read or written.
 //
 // Implements: REQ-HIST-005
 func Cached(ctx context.Context, directory, root string, maxCommits int) (*History, error) {
@@ -218,12 +219,14 @@ func Cached(ctx context.Context, directory, root string, maxCommits int) (*Histo
 		return nil, err
 	}
 	file := cacheFile(directory, root, head, maxCommits)
-	if f, err := os.Open(file); err == nil {
-		defer f.Close()
-		if gzipReader, err := gzip.NewReader(f); err == nil {
-			var h History
-			if json.NewDecoder(gzipReader).Decode(&h) == nil && h.Head == head {
-				return &h, nil
+	if directory != "" {
+		if f, err := os.Open(file); err == nil {
+			defer f.Close()
+			if gzipReader, err := gzip.NewReader(f); err == nil {
+				var h History
+				if json.NewDecoder(gzipReader).Decode(&h) == nil && h.Head == head {
+					return &h, nil
+				}
 			}
 		}
 	}

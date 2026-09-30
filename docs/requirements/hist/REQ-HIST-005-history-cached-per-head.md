@@ -26,3 +26,5 @@ A repeated run on an unchanged repository then costs no git call beyond
    `git log`.
 2. After a new commit the history is read again and the older cache file is
    removed.
+3. With caching disabled (`--no-cache`), no cache file is read or written, in
+   the working directory or anywhere else.
