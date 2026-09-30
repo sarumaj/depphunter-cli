@@ -467,7 +467,7 @@ func (c *Store) apply(request *http.Request, netrc bool) {
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if request.URL.Scheme != "https" && !c.plain[request.URL.Host] && !c.plain[request.URL.Hostname()] && !loopback(request.URL.Hostname()) {
+	if !MaySend(request.URL) && !c.plain[request.URL.Host] && !c.plain[request.URL.Hostname()] {
 		return
 	}
 	for _, host := range [...]string{request.URL.Host, request.URL.Hostname()} {
@@ -517,8 +517,25 @@ func scopedSecret(prefixes map[string]secret, path string) (s secret, ok bool) {
 	return s, ok
 }
 
+// MaySend reports whether a credential may go to u whatever this machine's
+// configuration says: over https, or over plain http to this machine itself
+// (loopback). Apply sends one over plain http to a host this machine's own
+// configuration names with http:// as well; a credential sent outside Apply - a
+// Buf token, a Conan login - goes only where MaySend allows, so that no path
+// has a looser idea of "this machine" than Apply.
+//
+// Implements: REQ-AUTH-011, REQ-AUTH-031, REQ-AUTH-035
+func MaySend(u *url.URL) bool {
+	return u.Scheme == "https" || loopback(u.Hostname())
+}
+
 // loopback reports whether host is this machine, where plain http leaves nothing on
 // the network: a registry run locally for development is usually reached that way.
+// It is "localhost" or a loopback IP address (127.0.0.0/8, ::1, and 127.x as an
+// IPv4-mapped IPv6 address), which net/http also sends past an HTTP_PROXY. Other
+// spellings - "LOCALHOST", "localhost.", "127.1" - are not this machine here: a
+// request to them goes through the proxy, and a credential with it. Neither is an
+// IPv6 address with a zone.
 func loopback(host string) bool {
 	if host == "localhost" {
 		return true

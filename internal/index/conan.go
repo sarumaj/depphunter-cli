@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/cpp"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -395,7 +396,7 @@ func (c *Client) conanGet(ctx context.Context, remote, address, media string) ([
 		return nil, err
 	}
 	u, parseErr := url.Parse(remote)
-	if parseErr != nil || u.Scheme != "https" && !loopbackHost(u.Hostname()) {
+	if parseErr != nil || !auth.MaySend(u) {
 		return nil, err
 	}
 	token, err := c.conanTokens.get(remote, func() (string, error) {

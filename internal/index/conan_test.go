@@ -318,6 +318,35 @@ func TestConanLoginIsSentOnlyToTheAuthenticateEndpoint(t *testing.T) {
 	}
 }
 
+// A Conan login goes over plain http to exactly the hosts Apply sends a
+// credential to: this machine as auth defines it, and nowhere else.
+//
+// Verifies: REQ-AUTH-035, REQ-AUTH-011
+func TestConanLoginGoesWhereApplySendsACredential(t *testing.T) {
+	want := sendsCredential(t)
+	login := "Basic " + base64.StdEncoding.EncodeToString([]byte("mona:secret"))
+	for _, host := range plainHosts {
+		remote := "http://" + host
+		home := conanHome(t, remote)
+		transport := &authorizations{sent: map[string]string{}, answer: func(r *http.Request) (int, string) {
+			if r.URL.Path == "/v2/users/authenticate" {
+				return http.StatusOK, "conan-token"
+			}
+			return http.StatusUnauthorized, ""
+		}}
+		c := NewClient(NewDiscoverer(environment(nil), home).Discover(nil), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+		c.http = &http.Client{Transport: transport}
+		if _, _, ok := c.auth.ConanLogin(remote); !ok {
+			t.Fatalf("no login for %s", remote)
+		}
+		_, _ = c.conanGet(t.Context(), remote, remote+"/v2/conans/zlib/1.3.1/_/_/latest", "application/json")
+		sent := transport.sent["/v2/users/authenticate"] == login
+		if sent != want[host] {
+			t.Errorf("login sent to %s: %v, Apply sends a credential: %v", remote, sent, want[host])
+		}
+	}
+}
+
 // unauthorized is a transport that answers 401 to everything and records what was
 // asked.
 type unauthorized struct{ asked []string }

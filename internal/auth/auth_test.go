@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -156,6 +157,57 @@ func TestNoCredentialsInTheClear(t *testing.T) {
 	c.Apply(legacy)
 	if legacy.Header.Get("Authorization") == "" {
 		t.Error("a feed configured over http got nothing")
+	}
+}
+
+// MaySend is the one definition of where a credential may go whatever this
+// machine's configuration says: https anywhere, plain http only to this machine.
+// "This machine" is localhost and every loopback address, which net/http also
+// sends past an HTTP_PROXY, and no other spelling of it: that one would travel
+// through the proxy. Apply sends a credential to exactly the hosts MaySend allows when
+// this machine configures none of them with http://.
+//
+// Verifies: REQ-AUTH-011
+func TestMaySend(t *testing.T) {
+	for _, test := range []struct {
+		address string
+		want    bool
+	}{
+		{"https://registry.example/x", true},
+		{"https://10.0.0.1/x", true},
+		{"http://registry.example/x", false},
+		{"http://localhost/x", true},
+		{"http://localhost:4873/x", true},
+		{"http://127.0.0.1/x", true},
+		{"http://127.0.0.2:8080/x", true},
+		{"http://127.255.255.254/x", true},
+		{"http://[::1]:5000/x", true},
+		{"http://[0:0:0:0:0:0:0:1]/x", true},
+		{"http://[::ffff:127.0.0.1]/x", true},
+		{"http://LOCALHOST/x", false},
+		{"http://localhost./x", false},
+		{"http://127.1/x", false},
+		{"http://127.0.0.01/x", false},
+		{"http://[::1%25lo]/x", false},
+		{"http://[fe80::1%25lo0]/x", false},
+		{"http://0.0.0.0/x", false},
+		{"http://[::]/x", false},
+		{"http://10.0.0.1/x", false},
+		{"http://[::ffff:10.0.0.1]/x", false},
+		{"http://localhost.example/x", false},
+		{"http://127.0.0.1.nip.io/x", false},
+	} {
+		u, err := url.Parse(test.address)
+		if err != nil {
+			t.Fatalf("%s: %v", test.address, err)
+		}
+		if got := MaySend(u); got != test.want {
+			t.Errorf("MaySend(%s) = %v, want %v", test.address, got, test.want)
+		}
+		c := &Store{bearer: map[string]string{}, basic: map[string]string{u.Hostname(): "user:password"}}
+		if got := c.Authorizes(test.address); got != test.want {
+			t.Errorf("Apply sends to %s: %v, want %v", test.address, got, test.want)
+		}
 	}
 }
 
