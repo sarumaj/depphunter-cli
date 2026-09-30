@@ -98,10 +98,12 @@ attribute float aFade;     // 1: dimmed, drawn plain (MapScene.setColors)
 attribute vec3 aBoxCenter; // base center, for non-instanced boxes
 attribute vec3 aBoxSize;
 attribute vec4 aBuild;     // the building's type, variant, lift and full height (buildings.js)
+attribute float aDetail;   // 1 where details.js has built the box's balconies and gear
 varying vec3 vLP;          // position relative to the box's base center, world units
 varying vec3 vObjN;
 varying vec3 vWorld;       // where the fragment is drawn, for the angle it is seen at
 flat varying vec4 vBuild;
+flat varying float vDetail;
 // Per box. Flat: interpolation noise in a seed, run through a hash, speckles windows.
 flat varying vec3 vSize;
 flat varying float vKind;
@@ -123,6 +125,7 @@ export const CITY_VERT_BODY = `
   vWorld = bendWorld((modelMatrix * vec4(transformed, 1.0)).xyz);
 #endif
   vBuild = aBuild;
+  vDetail = aDetail;
   vObjN = normal;
   vKind = aKind;
   vFade = aFade;
@@ -146,6 +149,7 @@ varying vec3 vLP;
 varying vec3 vObjN;
 varying vec3 vWorld;
 flat varying vec4 vBuild;
+flat varying float vDetail;
 flat varying vec3 vSize;
 flat varying float vKind;
 flat varying float vFade;
@@ -673,7 +677,8 @@ vec3 facadeShade(vec3 c, float u, float v, float edge, vec2 seed) {
  * building's type.
  *
  * - residential: framed windows, and on every bay or every other one a French
- *   window onto a balcony with a painted railing;
+ *   window onto a balcony, whose railing is painted where details.js has built
+ *   none;
  * - office: a curtain wall of tinted glass between dark mullions, a spandrel of the
  *   building's color at each floor, a glass lobby;
  * - brick: English bond, sash windows with stone lintels and sills, a string course
@@ -804,7 +809,7 @@ vec3 facade(vec3 base, float u, float faceW, float v, float H, float roofAt, vec
   c = mix(c, frame, inFrame);
   if (inWin > 0.0) c = mix(c, mix(pane(base, pf, pfw, id, tint, lamp, lit, sky, glancing), frame, bars), inWin);
   // A painted balcony on the French windows: its slab edge and a railing of bars.
-  if (balcony > 0.5 && upper > 0.5) {
+  if (balcony > 0.5 && upper > 0.5 && vDetail < 0.5) {
     float rail = band(f.x, 0.08, 0.92, w.x) * band(f.y, 0.0, 0.33, w.y);
     float bar = band(fract(f.x * bays * faceW / 0.035), 0.0, 0.3, w.x * bays * faceW / 0.035);
     vec3 railing = mix(c * 0.55, vec3(0.1, 0.1, 0.11) * dark(0.6), 0.6 * bar * (1.0 - smoothstep(0.1, 0.3, w.x * 20.0)));
@@ -814,7 +819,9 @@ vec3 facade(vec3 base, float u, float faceW, float v, float H, float roofAt, vec
   }
 
   // The ground floor: a lobby, loading doors, or shops under awnings with a door.
-  float doorBay = floor(hash12(seed + 2.0) * bays);
+  // The door's bay, by a sum details.js can do too: it keeps its awnings off it.
+  float faceId = n.x > 0.5 ? 0.0 : n.x < -0.5 ? 1.0 : n.z > 0.5 ? 2.0 : 3.0;
+  float doorBay = floor(fract(variant * 7.31 + faceId * 0.23) * bays);
   float isDoor = 1.0 - step(0.5, abs(bay.x - doorBay));
   if (ground && type != WAREHOUSE) {
     vec3 shopLamp = vec3(1.0, 0.8, 0.55) * mix(0.2, 0.9, uNight);
@@ -834,7 +841,9 @@ vec3 facade(vec3 base, float u, float faceW, float v, float H, float roofAt, vec
       if (shop > 0.0) c = mix(c, pane(base, sf, w / vec2(0.86, 0.54), id * 0.3 + 0.7, tint, shopLamp, mix(0.5, 1.0, uNight), sky, glancing), shop);
       // The awning over it, and the fascia board over that.
       float awn = band(f.y, 0.62, 0.8, w.y) * band(f.x, 0.04, 0.96, w.x) * (1.0 - isDoor) * step(0.35, fract(variant * 3.3 + bay.x * 0.37));
-      c = mix(c, awning(base, u, (f.y - 0.62) / 0.18, step(0.5, fract(variant * 5.1))), awn * (1.0 - far));
+      // Where details.js has built the awning, only its shadow is left to paint.
+      vec3 canvas = vDetail > 0.5 ? c * 0.55 : awning(base, u, (f.y - 0.62) / 0.18, step(0.5, fract(variant * 5.1)));
+      c = mix(c, canvas, awn * (1.0 - far));
       c = mix(c, wall * 0.45, band(f.y, 0.82, 0.95, w.y) * band(f.x, 0.02, 0.98, w.x) * (1.0 - isDoor) * (1.0 - far));
     }
     // The entrance: a door in a stone surround, lit from inside at night.
@@ -959,7 +968,7 @@ vec3 roof(vec3 base, vec3 lp, vec3 sz, float e) {
       vec2 d = abs(q - chimney);
       c = mix(c, base * 0.42, 1.0 - smoothstep(0.04 - w, 0.04 + w, max(d.x, d.y * 1.6)));
     }
-    {
+    if (vDetail < 0.5) {
       vec2 tank = (vec2(hash12(vSeed + 6.1), hash12(vSeed + 1.3)) - 0.5) * sz.xz * 0.4;
       float r = length(q - tank);
       c = mix(c, vec3(0.3, 0.25, 0.2) * (0.9 + 0.1 * band(fract(atan(q.y - tank.y, q.x - tank.x) * 5.0), 0.0, 0.5, 0.2)), 1.0 - smoothstep(0.09 - w, 0.09 + w, r));
@@ -974,14 +983,14 @@ vec3 roof(vec3 base, vec3 lp, vec3 sz, float e) {
     vec3 sedum = mix(base * 0.62, vec3(0.16, 0.24, 0.09), 0.4) * (0.75 + 0.5 * vnoise(q * 40.0 + vSeed));
     c = mix(c, sedum, bed * inside);
   } else {
-    float solar = hash12(vSeed * 0.37 + 11.0);
+    float solar = fract(variant * 13.7); // as details.js solarRoof has it
     if (solar > 0.6 && small > 0.6) {
       vec2 t = q / vec2(0.1, 0.16);
       vec2 tw = fwidth(t) + 1e-4;
       float panel = band(fract(t.x), 0.08, 0.92, tw.x) * band(fract(t.y), 0.1, 0.75, tw.y) * smoothstep(0.08 - w, 0.08 + w, e);
       vec3 cell = mix(vec3(0.05, 0.08, 0.16), vec3(0.12, 0.18, 0.3), band(fract(t.x * 3.0), 0.45, 0.55, tw.x * 3.0));
       c = mix(c, cell * dark(0.4), panel * (1.0 - 0.5 * smoothstep(0.3, 0.6, max(tw.x, tw.y))));
-    } else {
+    } else if (vDetail < 0.5) {
       vec2 at = (vec2(hash12(vSeed), hash12(vSeed + 5.3)) - 0.5) * sz.xz * 0.35;
       vec2 d = abs(q - at);
       float s = small * 0.15;
