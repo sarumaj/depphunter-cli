@@ -1179,4 +1179,3 @@ dialog form { margin-top: 12px; text-align: right; }
   background: rgb(0 0 0 / 0.85); color: #e8e8e8; font: 11px/1.4 ui-monospace, monospace;
 }
 .render-stats pre { margin: 0; font: inherit; }
-.render-stats label { display: flex; gap: 4px; align-items: center; cursor: pointer; }

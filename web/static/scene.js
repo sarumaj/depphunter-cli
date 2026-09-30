@@ -38,7 +38,6 @@ export class MapScene {
     this.renderer.setPixelRatio(this.pixelRatio);
     this.resolution = new Resolution();
     this.drawn = -Infinity; // when the last frame asked for was drawn
-    this.depthFirstOn = true;
     this.stats = null;      // the readout (stats.js), when the address asks for one
     container.appendChild(this.renderer.domElement);
 
@@ -793,7 +792,6 @@ export class MapScene {
    * Implements: REQ-PERF-013
    */
   depthFirst(camera) {
-    if (!this.depthFirstOn) return;
     const r = this.renderer, mask = camera.layers.mask;
     this.depthMaterial ||= this.bendable(new THREE.MeshBasicMaterial({
       colorWrite: false, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
