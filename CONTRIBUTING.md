@@ -115,8 +115,7 @@ shades before it tests depth, so a change that saves a GPU work can measure
 slower in it. To see what a change of rendering is worth on a real GPU, add
 `&stats` to the page's address: a corner of the map then reads out the frame
 rate, the CPU time of a frame, the resolution it is drawn at (which drops while
-frames fall behind), and the draw calls and triangles, with a switch for the
-depth pre-pass.
+frames fall behind), and the draw calls and triangles.
 
 CI builds every target on each push, retains the archives as workflow artifacts
 for 14 days, and runs the tests in 32-bit mode (`GOARCH=386`). Renovate

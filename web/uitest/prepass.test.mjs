@@ -15,7 +15,7 @@ const THREE = await import('../static/vendor/three.module.min.js');
 function fake() {
   const scene = new THREE.Scene();
   const self = {
-    scene, depthFirstOn: true, passes: [],
+    scene, passes: [],
     bendable: m => m,
     renderer: {
       autoClear: true,
@@ -40,14 +40,5 @@ describe('depth pre-pass', () => {
     assert.equal(camera.layers.mask, mask);
     assert.equal(self.scene.overrideMaterial, null);
     assert.equal(self.renderer.autoClear, false, 'the frame would clear the depth it was given');
-  });
-
-  // Verifies: REQ-PERF-013
-  it('draws nothing when switched off', () => {
-    const self = fake();
-    self.depthFirstOn = false;
-    MapScene.prototype.depthFirst.call(self, new THREE.PerspectiveCamera());
-    assert.equal(self.passes.length, 0);
-    assert.equal(self.renderer.autoClear, true);
   });
 });

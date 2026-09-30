@@ -2,8 +2,7 @@
 // (or &stats), for telling what a change of rendering does on a given machine.
 //
 // frames a second, the time a frame takes on the CPU, the resolution it is drawn at
-// (resolution.js), draw calls and triangles; and a switch for the depth pre-pass
-// (MapScene.depthFirst), to see what it is worth on this GPU.
+// (resolution.js), draw calls and triangles.
 //
 // Implements: REQ-PERF-014
 
@@ -21,13 +20,7 @@ export class Stats {
     this.el = document.createElement('div');
     this.el.className = 'render-stats';
     this.text = document.createElement('pre');
-    const label = document.createElement('label');
-    const box = document.createElement('input');
-    box.type = 'checkbox';
-    box.checked = scene.depthFirstOn;
-    box.addEventListener('change', () => { scene.depthFirstOn = box.checked; scene.requestRender(); });
-    label.append(box, ' depth pre-pass');
-    this.el.append(this.text, label);
+    this.el.append(this.text);
     parent.appendChild(this.el);
   }
 

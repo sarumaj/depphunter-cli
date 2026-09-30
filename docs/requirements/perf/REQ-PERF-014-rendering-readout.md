@@ -15,13 +15,12 @@ verification:
 When the page's address carries `stats`, the system **shall** show in a corner
 of the map the frames drawn a second, the CPU time a frame takes, the
 resolution it is drawn at, and the draw calls and triangles of the last
-frame, and a switch for the depth pre-pass (REQ-PERF-013).
+frame.
 
 ## Rationale
 
 What a change of rendering is worth depends on the GPU; the readout lets it be
-seen on the machine in question, and the switch compares the pre-pass with
-its absence there.
+seen on the machine in question.
 
 ## Acceptance criteria
 
