@@ -232,7 +232,7 @@ func run(ctx context.Context, settings config.Config) error {
 		if cacheDirectory != "" {
 			store = filepath.Join(cacheDirectory, "index")
 		}
-		options.Registry = index.NewClient(indexes.Config(), store, indexCacheTTL, indexTimeout, credentials, private)
+		options.Registry = index.NewClient(indexes.Config(), store, indexCacheTTL, indexTimeout, credentials)
 	}
 	// One report per analysis: --watch analyzes again on every change, and a report
 	// that accumulated over a morning's editing describes no run in particular.

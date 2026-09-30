@@ -76,7 +76,7 @@ func TestBazelCredentialHelperIsNoted(t *testing.T) {
 	directory := t.TempDir()
 	target := lang.Target{Ecosystem: Bazel, Package: "rules_go", Version: "0.50.1", Pinned: true}
 	for i := range 2 { // the second client answers from the first one's cache
-		c := NewClient(Discover(nil, environment(nil), home), directory, time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+		c := NewClient(Discover(nil, environment(nil), home), directory, time.Hour, 5*time.Second, auth.Read(home, nil))
 		got := notesOf(t, c, target)
 		if len(got) != 1 || !strings.HasPrefix(got[0], trace.NoteHelperNotRun+": a .bazelrc names a credential helper for 127.0.0.1") ||
 			!strings.Contains(got[0], server.URL) {
@@ -87,7 +87,7 @@ func TestBazelCredentialHelperIsNoted(t *testing.T) {
 		t.Errorf("registry asked %d times", asked)
 	}
 	put(t, filepath.Join(home, ".bazelrc"), "common --registry="+server.URL+"\ncommon --credential_helper=*.corp.test=/opt/helper\n")
-	c := NewClient(Discover(nil, environment(nil), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+	c := NewClient(Discover(nil, environment(nil), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil))
 	if got := notesOf(t, c, target); len(got) != 0 {
 		t.Errorf("a helper for another host is noted: %q", got)
 	}

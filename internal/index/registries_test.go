@@ -130,7 +130,7 @@ token = "Bearer jfrog-token"
 		}
 	}
 	discovered := Discover(nil, environment(nil), home)
-	c := NewClient(discovered, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(nil)), nil)
+	c := NewClient(discovered, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(nil)))
 	for _, registrySpec := range []string{"raw", "jfrog"} {
 		if got := names(c.Dependencies(lang.Target{Ecosystem: Cargo, Package: "billing", Version: "1.0.0", Registry: registrySpec})); !slices.Equal(got, []string{"ledger"}) {
 			t.Errorf("%s: billing answered %v", registrySpec, got)
@@ -474,7 +474,7 @@ func TestPackagistIsAskedDirectly(t *testing.T) {
 	defer server.Close()
 	public[Composer] = server.URL
 	t.Cleanup(func() { public[Composer] = "https://repo.packagist.org" })
-	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil))
 	got := c.Dependencies(lang.Target{Ecosystem: Composer, Package: "Log/Log", Version: "3.0.1"})
 	if len(got) != 0 || !reflect.DeepEqual(asked, []string{"/p2/log/log.json"}) {
 		t.Errorf("asked %v, got %+v; want one request for the lower-case name and no packages", asked, got)
@@ -556,7 +556,7 @@ func TestRubyGemsServerWithBundlerCredentials(t *testing.T) {
 	}
 	configured := New()
 	configured.Add(RubyGems, Source{URL: server.URL + "/private/", Trusted: true})
-	c := NewClient(configured, t.TempDir(), time.Hour, 5*time.Second, auth.Read(t.TempDir(), bundleEnvironment), nil)
+	c := NewClient(configured, t.TempDir(), time.Hour, 5*time.Second, auth.Read(t.TempDir(), bundleEnvironment))
 	if got := names(c.Dependencies(target)); !reflect.DeepEqual(got, []string{"sidekiq"}) {
 		t.Errorf("environment: got %v, want sidekiq", got)
 	}
@@ -575,7 +575,7 @@ func TestRubyGemsServerWithBundlerCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := NewDiscoverer(environment(nil), home)
-	c = NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(nil)), nil)
+	c = NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(nil)))
 	d.Discover(nil)
 	if got := names(c.Dependencies(target)); !reflect.DeepEqual(got, []string{"sidekiq"}) || refused != 0 {
 		t.Errorf("config mirror: got %v (%d refused), want sidekiq", got, refused)
@@ -1313,7 +1313,7 @@ func TestMavenArtifactDependencies(t *testing.T) {
 
 	config := New()
 	config.clojure = true
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil))
 	got := c.Dependencies(lang.Target{Ecosystem: Maven, Package: "org.clojure:clojure", Version: "1.11.1", Pinned: true})
 	want := []lang.Target{
 		{Ecosystem: Maven, Package: "org.clojure:spec.alpha", Version: "0.3.218", Pinned: true},
@@ -1335,7 +1335,7 @@ func TestMavenArtifactDependencies(t *testing.T) {
 	// never asked.
 	asked = nil
 	config.clojure = false
-	c = NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	c = NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil))
 	c.Dependencies(lang.Target{Ecosystem: Maven, Package: "cheshire:cheshire", Version: "5.12.0", Pinned: true})
 	c.Dependencies(lang.Target{Ecosystem: Maven, Package: "org.slf4j", Version: "2.0.9", Pinned: true})
 	for _, a := range asked {
@@ -1367,7 +1367,7 @@ func TestJavaArtifactIsAskedOfCentral(t *testing.T) {
 	t.Cleanup(central.Close)
 	defer func(central string) { public[Maven] = central }(public[Maven])
 	public[Maven] = central.URL
-	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil))
 	got := c.Dependencies(lang.Target{Ecosystem: Maven, Package: "com.google.guava:guava", Version: "33.0.0-jre", Pinned: true})
 	want := []lang.Target{
 		{Ecosystem: Maven, Package: "com.google.guava:failureaccess", Version: "1.0.2", Pinned: true},
@@ -1878,7 +1878,7 @@ func TestBioconductorDependencies(t *testing.T) {
 	if !config.Public(Bioconductor, server.URL+"/3.18/bioc") {
 		t.Error("the release's repository is Bioconductor's public index")
 	}
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil))
 	want := []lang.Target{
 		{Ecosystem: Bioconductor, Package: "BiocGenerics", Version: ">= 0.7.5"},
 		{Ecosystem: CRAN, Package: "Rcpp", Version: ">= 0.11.0"},
@@ -1899,7 +1899,7 @@ func TestBioconductorDependencies(t *testing.T) {
 	// Without a recorded release the current one is asked.
 	asked = nil
 	config = Discover(write(t, map[string]string{"renv.lock": `{"Bioconductor": {"Version": "../x"}, "Packages": {}}`}), environment(nil), "")
-	c = NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	c = NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil))
 	if got := c.Dependencies(lang.Target{Ecosystem: Bioconductor, Package: "S4Vectors"}); len(got) != 1 {
 		t.Errorf("current release: got %+v", got)
 	}

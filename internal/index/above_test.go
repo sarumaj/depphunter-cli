@@ -74,7 +74,7 @@ func TestYarnFilesAboveTheCheckout(t *testing.T) {
 		t.Errorf("without a scanned file: %v, want %v", got, want)
 	}
 	c = d.Discover(files)
-	client := NewClient(c, t.TempDir(), time.Hour, 5*time.Second, store, nil)
+	client := NewClient(c, t.TempDir(), time.Hour, 5*time.Second, store)
 	if got := names(client.Dependencies(lang.Target{Ecosystem: NPM, Package: "@corp/ui", Version: "1.0.0"})); len(got) != 1 {
 		t.Errorf("@corp/ui: %v, asked %v", got, corp.asked)
 	}
@@ -97,7 +97,7 @@ func TestYarnAlwaysAuthEndToEnd(t *testing.T) {
 		store := auth.Read(home, environment(nil))
 		d := NewDiscoverer(environment(nil), home)
 		d.Config().Credentials(store)
-		c := NewClient(d.Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store, nil)
+		c := NewClient(d.Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store)
 		if got := names(c.Dependencies(lang.Target{Ecosystem: NPM, Package: "@s/x", Version: "1.0.0"})); len(got) != 1 {
 			t.Errorf("always %v, scoped: %v, asked %v", always, got, registry.asked)
 		}

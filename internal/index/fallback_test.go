@@ -89,7 +89,10 @@ func ask(t *testing.T, c *Client, target lang.Target) ([]string, trace.Lookup) {
 }
 
 func newClient(t *testing.T, config *Config, private ...string) *Client {
-	return NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New(private))
+	if len(private) > 0 {
+		config.Private(scope.New(private).Match)
+	}
+	return NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
 }
 
 func pypiJSON(dependencies ...string) string {

@@ -162,7 +162,7 @@ func TestJuliaDepotRegistries(t *testing.T) {
 		}
 	}
 
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)), nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)))
 	net := &offline{}
 	c.http = &http.Client{Transport: net}
 	std := func(name string) lang.Target { return lang.Target{Ecosystem: "julia-std", Package: name} }
@@ -230,7 +230,7 @@ func TestJuliaDepotWithoutGeneral(t *testing.T) {
 func TestJuliaRegistryWithoutCopyIsNoted(t *testing.T) {
 	config := New()
 	config.Add(Julia, Source{URL: "ssh://git.corp.example/julia/Registry.git", Scope: "CorpBilling", Trusted: true})
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(t.TempDir(), nil), nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(t.TempDir(), nil))
 	got := notesOf(t, c, lang.Target{Ecosystem: Julia, Package: "CorpBilling", Version: "1.0.0", Pinned: true})
 	if len(got) != 1 || !strings.HasPrefix(got[0], trace.NoteNoCopy+": Julia registry ssh://git.corp.example/julia/Registry.git") {
 		t.Errorf("notes: %q", got)
@@ -256,7 +256,7 @@ func TestJuliaGeneralArchive(t *testing.T) {
 	if got := order(config, Julia, "JSON", uuidGeneralJSON); !reflect.DeepEqual(got, []string{public[Julia]}) {
 		t.Errorf("asked of %v", got)
 	}
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil))
 	net := &offline{}
 	c.http = &http.Client{Transport: net}
 	got := c.Dependencies(lang.Target{Ecosystem: Julia, Package: "JSON", Registry: uuidGeneralJSON})

@@ -122,7 +122,7 @@ func TestActionDependenciesFromGitHub(t *testing.T) {
 	withRaw(t, raw.URL)
 	api := newGitHubStub(t, nil)
 	withGitHub(t, api.URL)
-	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, auth.Read(t.TempDir(), environment(nil)), nil)
+	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, auth.Read(t.TempDir(), environment(nil)))
 	for _, test := range []struct {
 		target lang.Target
 		want   []string
@@ -183,7 +183,8 @@ func TestActionDependenciesThroughTheContentsAPI(t *testing.T) {
 	variables := map[string]string{"GITHUB_API_URL": enterprise.URL + "/api/v3", "GITHUB_TOKEN": "runner"}
 	credentials := auth.Read(home, environment(variables))
 	config := NewDiscoverer(environment(variables), home).Discover(nil)
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, credentials, scope.New([]string{"actions:corp/*"}))
+	config.Private(scope.New([]string{"actions:corp/*"}).Match)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, credentials)
 
 	if got := actionNames(c.Dependencies(lang.Target{Ecosystem: Actions, Package: "acme/setup", Version: "v1"})); !reflect.DeepEqual(got, []string{"actions:acme/lint@v2"}) {
 		t.Errorf("acme/setup: %v", got)
@@ -217,7 +218,7 @@ func TestAGitHubLimitIsNoted(t *testing.T) {
 	t.Cleanup(limited.Close)
 	withGitHub(t, limited.URL)
 	credentials := auth.Read(t.TempDir(), environment(map[string]string{"GITHUB_TOKEN": "t"}))
-	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, credentials, nil)
+	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, credentials)
 	got := notesOf(t, c, lang.Target{Ecosystem: Actions, Package: "acme/a", Version: "v1"},
 		lang.Target{Ecosystem: Actions, Package: "acme/b", Version: "v1"})
 	if len(got) != 1 || !strings.Contains(got[0], "forbidden") {

@@ -97,7 +97,7 @@ func TestYarnScopeRegistryAndToken(t *testing.T) {
 	d := NewDiscoverer(e, home)
 	d.Config().Credentials(store)
 	config := d.Discover(nil)
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, store, nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, store)
 	if got := names(c.Dependencies(lang.Target{Ecosystem: NPM, Package: "@acme/ui", Version: "1.0.0"})); len(got) != 1 {
 		t.Errorf("got %v, asked %v", got, registry.asked)
 	}
@@ -231,7 +231,7 @@ func TestPathScopedNpmTokensEndToEnd(t *testing.T) {
 	store := auth.Read(home, nil)
 	d := NewDiscoverer(nil, home)
 	d.Config().Credentials(store)
-	c := NewClient(d.Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store, nil)
+	c := NewClient(d.Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store)
 	for _, packageName := range []string{"@one/a", "@two/b"} {
 		if got := names(c.Dependencies(lang.Target{Ecosystem: NPM, Package: packageName, Version: "1.0.0"})); len(got) != 1 {
 			t.Errorf("%s: got %v, seen %v", packageName, got, seen)

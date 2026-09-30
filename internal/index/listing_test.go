@@ -28,7 +28,7 @@ func publicClient(t *testing.T, ecosystem, url string, config *Config) *Client {
 	if config == nil {
 		config = New()
 	}
-	return NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	return NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
 }
 
 // withPublic makes url the public index of ecosystem for the rest of the test.
@@ -237,7 +237,8 @@ Secret::Thing        0.1  C/CO/CORP/Secret-Thing-0.1.tar.gz
 	defer metadata.Close()
 	withPublic(t, CPAN, metadata.URL)
 	config := discoverOn(t.TempDir(), "linux", map[string]string{"PERL_CPANM_OPT": "--mirror " + mirror.URL + " --mirror-only"})
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New([]string{"cpan:Secret-*"}))
+	config.Private(scope.New([]string{"cpan:Secret-*"}).Match)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
 
 	want := []string{"HTTP-Message >= 5.814"}
 	if got := dependencyNames(c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack"})); !reflect.DeepEqual(got, want) {
@@ -270,7 +271,7 @@ Secret::Thing        0.1  C/CO/CORP/Secret-Thing-0.1.tar.gz
 	if got := order(config, CPAN, "Plack", ""); len(got) != 2 || !strings.HasPrefix(got[0], "file://") {
 		t.Fatalf("carton mirror %v", got)
 	}
-	c = NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	c = NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
 	if got := dependencyNames(c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack"})); !reflect.DeepEqual(got, want) {
 		t.Errorf("file mirror Plack: %v", got)
 	}
@@ -436,7 +437,7 @@ func TestOpamListingFromCopies(t *testing.T) {
 		"default/packages/corpkg/corpkg.9.0/opam":  description("shadowed"),
 		"default/packages/lwt/lwt.5.10.0/opam.bak": "",
 	})
-	c := NewClient(discoverOn(home, "linux", nil), t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	c := NewClient(discoverOn(home, "linux", nil), t.TempDir(), time.Hour, 5*time.Second, nil)
 	for _, test := range []struct {
 		packageName, version string
 		want                 []string
@@ -482,7 +483,7 @@ func TestOpamListingFromGitHub(t *testing.T) {
 		"repo/repos-config": `repositories: ["corp" {"git+https://git.corp/opam-repo.git"} "web" {"https://opam.corp"} "default" {"https://opam.ocaml.org"}]`,
 	})
 	config := discoverOn(home, "linux", nil)
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
 	if got := dependencyNames(c.Dependencies(lang.Target{Ecosystem: Opam, Package: "fmt", Version: ">= 0.9"})); len(got) != 0 {
 		t.Errorf("the HTTP repository without a listing answered %v", got)
 	}
@@ -546,7 +547,7 @@ func TestAlireIndexes(t *testing.T) {
 	if got := order(config, Alire, "aws", ""); !reflect.DeepEqual(got, []string{corp, server.URL, mine}) {
 		t.Errorf("order %v", got)
 	}
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
 	for _, test := range []struct {
 		crate, version string
 		want           []string

@@ -55,7 +55,7 @@ func clientFor(t *testing.T, ecosystem, url, home string) *Client {
 	t.Helper()
 	config := New()
 	config.Add(ecosystem, Source{URL: url, Trusted: true})
-	return NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+	return NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil))
 }
 
 func names(dependencies []lang.Target) []string {
@@ -103,7 +103,7 @@ func TestPyPIDependencies(t *testing.T) {
 	server, _ := stubIndex(t)
 	config := New()
 	config.Add(PyPI, Source{URL: server.URL + "/simple", Trusted: true})
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
 	got := names(c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "requests", Version: "2.31.0"}))
 	// An extra's dependency is installed only when that extra is asked for.
 	if len(got) != 2 || got[0] != "certifi" || got[1] != "urllib3" {
@@ -116,7 +116,7 @@ func TestAnIndexOnlyTheRepositoryNamesIsNotAsked(t *testing.T) {
 	server, asked := stubIndex(t)
 	config := New()
 	config.Add(NPM, Source{URL: server.URL}) // as a repository's .npmrc would
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
 	if dependencies := c.Dependencies(lang.Target{Ecosystem: NPM, Package: "react", Version: "18.3.1"}); len(dependencies) != 0 {
 		t.Errorf("got %v from an index nothing here vouches for", names(dependencies))
 	}
@@ -154,10 +154,10 @@ func TestAnswersAreCached(t *testing.T) {
 	config.Add(Go, Source{URL: server.URL, Trusted: true})
 	target := lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}
 
-	first := NewClient(config, directory, time.Hour, 5*time.Second, nil, nil)
+	first := NewClient(config, directory, time.Hour, 5*time.Second, nil)
 	first.Dependencies(target)
 	// A second client, a second run: the answer is on disk.
-	second := NewClient(config, directory, time.Hour, 5*time.Second, nil, nil)
+	second := NewClient(config, directory, time.Hour, 5*time.Second, nil)
 	if got := names(second.Dependencies(target)); len(got) != 1 {
 		t.Errorf("got %v from the cache", got)
 	}
@@ -169,7 +169,7 @@ func TestAnswersAreCached(t *testing.T) {
 	// milliseconds, so an answer written and read inside one test is the same
 	// instant there, and no time to live short of zero expires it.
 	age(t, directory, 2*time.Hour)
-	third := NewClient(config, directory, time.Hour, 5*time.Second, nil, nil)
+	third := NewClient(config, directory, time.Hour, 5*time.Second, nil)
 	third.Dependencies(target)
 	if len(*asked) != 2 {
 		t.Errorf("a stale answer was reused: %v", *asked)
@@ -220,8 +220,8 @@ func TestAPrivatePackageIsNotNamedToAPublicIndex(t *testing.T) {
 
 	config := New()
 	config.Add(Go, Source{URL: server.URL, Trusted: true})
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil,
-		scope.New([]string{"go:example.com/*"}))
+	config.Private(scope.New([]string{"go:example.com/*"}).Match)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
 
 	if dependencies := c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}); len(dependencies) != 0 {
 		t.Errorf("answered %v for a private module", names(dependencies))
@@ -230,6 +230,54 @@ func TestAPrivatePackageIsNotNamedToAPublicIndex(t *testing.T) {
 	// exists, and to whom.
 	for _, path := range *asked {
 		t.Errorf("asked the public index for %s", path)
+	}
+}
+
+// The private scope is given to the configuration alone (Config.Private), and
+// every entry point that picks an index for a package reads it from there: the
+// map's attribution (For, ForTarget), the client's questions (Dependencies) and
+// where the client says a package was found (Located). With only the public index
+// configured, none of them sends a private package's name to it; the map still
+// attributes the package to the index it would come from, which asks nothing.
+//
+// Verifies: REQ-SUP-038
+func TestNoEntryPointNamesAPrivatePackageToThePublicIndex(t *testing.T) {
+	server, asked := stubIndex(t)
+	for _, testCase := range []struct {
+		ecosystem, private, public, version string
+	}{
+		{Go, "example.com/mod", "github.com/public/mod", "v1.2.3"},
+		{NPM, "private", "react", "18.3.1"},
+	} {
+		was := public[testCase.ecosystem]
+		public[testCase.ecosystem] = server.URL
+		t.Cleanup(func() { public[testCase.ecosystem] = was })
+		config := New()
+		config.Private(scope.New([]string{testCase.ecosystem + ":" + testCase.private}).Match)
+		c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
+		target := lang.Target{Ecosystem: testCase.ecosystem, Package: testCase.private, Version: testCase.version}
+
+		if index, known := config.For(target.Ecosystem, target.Package); index != server.URL || !known {
+			t.Errorf("%s For: %q %v", target.Ecosystem, index, known)
+		}
+		if index, known := config.ForTarget(target); index != server.URL || !known {
+			t.Errorf("%s ForTarget: %q %v", target.Ecosystem, index, known)
+		}
+		if got, lookup := ask(t, c, target); len(got) != 0 || lookup.Reason != trace.ReasonPrivate || lookup.Index != server.URL {
+			t.Errorf("%s Dependencies: %v %+v", target.Ecosystem, got, lookup)
+		}
+		if index, _, ok := c.Located(target.Ecosystem, target.Package); ok {
+			t.Errorf("%s Located: %q", target.Ecosystem, index)
+		}
+		if len(*asked) != 0 {
+			t.Errorf("%s: the public index was asked %v", target.Ecosystem, *asked)
+		}
+		// The same client does ask the public index about a public package.
+		ask(t, c, lang.Target{Ecosystem: testCase.ecosystem, Package: testCase.public, Version: testCase.version})
+		if len(*asked) == 0 {
+			t.Errorf("%s: the public index was never asked about %s", target.Ecosystem, testCase.public)
+		}
+		*asked = nil
 	}
 }
 
@@ -242,7 +290,7 @@ func TestAPrivatePackageIsStillAskedOfTheCompanysOwnIndex(t *testing.T) {
 	// the ecosystem's public one: asking it discloses nothing that is not already
 	// inside the organization.
 	c := clientFor(t, Go, server.URL, "")
-	c.private = scope.New([]string{"go:example.com/*"})
+	c.config.Private(scope.New([]string{"go:example.com/*"}).Match)
 
 	got := names(c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}))
 	if len(got) != 1 || got[0] != "github.com/direct/dep" {
@@ -268,7 +316,8 @@ func TestTheReportSaysWhoAnswered(t *testing.T) {
 	config := New()
 	config.Add(Go, Source{URL: server.URL, Trusted: true, Origin: OriginMachine})
 	config.Add(NPM, Source{URL: server.URL, Origin: OriginProject}) // as a repository's .npmrc would
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New([]string{"go:private.example/*"}))
+	config.Private(scope.New([]string{"go:private.example/*"}).Match)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
 	report := trace.New(1, true, nil, nil)
 	c.Trace(report)
 
@@ -377,7 +426,7 @@ func TestAPackageInstalledFromElsewhereIsNotAsked(t *testing.T) {
 	server, asked := stubIndex(t)
 	config := New()
 	config.Add(PyPI, Source{URL: server.URL, Trusted: true})
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New(nil))
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil)
 	report := trace.New(1, true, nil, nil)
 	c.Trace(report)
 
@@ -440,7 +489,7 @@ func TestGOAUTHDecidesWhetherTheNetrcReachesTheProxy(t *testing.T) {
 		headers = nil
 		mu.Unlock()
 		store := auth.Read(home, environment(test.variables))
-		c := NewClient(NewDiscoverer(environment(test.variables), "").Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store, nil)
+		c := NewClient(NewDiscoverer(environment(test.variables), "").Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store)
 		got := c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.0.0"})
 		if test.sent != (len(got) == 1) {
 			t.Errorf("%v: got %v, want the credential sent: %v", test.variables, names(got), test.sent)

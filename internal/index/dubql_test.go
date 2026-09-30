@@ -101,7 +101,7 @@ func TestDubMachineRegistryIsAsked(t *testing.T) {
 	defer server.Close()
 	home := t.TempDir()
 	put(t, filepath.Join(home, ".dub", "settings.json"), `{"registryUrls": ["`+server.URL+`/dub/"]}`)
-	c := NewClient(discoverOn(home, "linux", nil), t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	c := NewClient(discoverOn(home, "linux", nil), t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil))
 	want := []lang.Target{{Ecosystem: Dub, Package: "acme-core", Version: "~>2.0"}}
 	if got := c.Dependencies(lang.Target{Ecosystem: Dub, Package: "acme-log", Version: "1.0.0", Pinned: true}); !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
@@ -179,7 +179,7 @@ func TestQuicklispDistFallbackAndFailureMemo(t *testing.T) {
 	config := New()
 	config.Add(Quicklisp, Source{URL: server.URL + "/corp.txt", Kind: Additive, Trusted: true})
 	config.Add(Quicklisp, Source{URL: server.URL + "/quicklisp.txt", Trusted: true})
-	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil))
 	if got := c.Dependencies(lang.Target{Ecosystem: Quicklisp, Package: "acme-log"}); !reflect.DeepEqual(got, []lang.Target{{Ecosystem: Quicklisp, Package: "alexandria"}}) {
 		t.Errorf("acme-log: %+v", got)
 	}
@@ -196,7 +196,7 @@ func TestQuicklispDistFallbackAndFailureMemo(t *testing.T) {
 
 	config = New()
 	config.Add(Quicklisp, Source{URL: server.URL + "/broken.txt", Trusted: true})
-	c = NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	c = NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil))
 	for _, p := range []string{"a", "b", "c"} {
 		if got := c.Dependencies(lang.Target{Ecosystem: Quicklisp, Package: p}); got != nil {
 			t.Errorf("%s: %+v, want no answer", p, got)
