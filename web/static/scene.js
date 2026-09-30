@@ -13,6 +13,7 @@ import * as THREE from './vendor/three.module.min.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { buildParameters } from './buildings.js';
 import { Details, tiersOf } from './details.js';
+import { cull } from './lod.js';
 import { kindCode, CITY_VERT_HEAD, CITY_VERT_BODY, CITY_FRAG_HEAD, CITY_FRAG_BODY, makeSky, waterMaterial, makeProps, setNight, roadUniforms, setRoads } from './city.js';
 
 const ISO_POLAR = Math.acos(1 / Math.sqrt(3)); // true isometric elevation (35.26°)
@@ -691,6 +692,7 @@ export class MapScene {
     // so it has to be set per frame and not only where the walker is placed.
     this.curve.uTime.value = performance.now() / 1000;
     this.updateDetails();
+    this.cullProps(this.view);
     r.render(this.scene, this.view);
     // The held tool, second and on top of everything: the depth buffer is cleared
     // between the two, so nothing in the world can occlude a hand that is, in truth,
@@ -702,6 +704,21 @@ export class MapScene {
       r.autoClear = true;
     }
     return r.domElement;
+  }
+
+  /**
+   * Draws only the props `camera` can see, the far ones coarse (lod.js); `height`: the
+   * pixels its picture is tall.
+   *
+   * Implements: REQ-PERF-010
+   */
+  cullProps(camera, height = this.container.clientHeight) {
+    if (!this.props) return;
+    const walk = this.walking ? {
+      bend: v => this.bend(v), center: this.planet.position, radius: this.curve.uRadius.value,
+      at: this.curve.uCenter.value, far: this.scene.fog?.far ?? Infinity,
+    } : null;
+    cull(this.props, camera, height, walk);
   }
 
   /**
@@ -749,9 +766,11 @@ export class MapScene {
       this.filmTarget.texture.colorSpace = this.renderer.outputColorSpace;
     }
     const r = this.renderer;
+    this.cullProps(camera, FILM_H);
     r.setRenderTarget(this.filmTarget);
     r.render(this.scene, camera);
     r.setRenderTarget(null);
+    this.cullProps(this.view);
     return this.filmTarget.texture;
   }
 
