@@ -171,7 +171,7 @@ func (r *resolver) source(file, module string) lang.Target {
 		candidates = append(candidates, path.Join(j, module))
 	}
 	for _, c := range candidates {
-		if c == ".." || strings.HasPrefix(c, "../") {
+		if lang.ClimbsOut(c) {
 			continue
 		}
 		if p, rest, ok := r.inVendor(c); ok {

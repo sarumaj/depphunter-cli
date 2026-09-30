@@ -10,19 +10,11 @@ import (
 )
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
+	lang.Layout
 }
 
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}}
-	for _, f := range all {
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && d != "/"; d = path.Dir(d) {
-			r.directories[d] = true
-		}
-	}
-	return r
+	return &resolver{Layout: lang.LayoutOf(all)}
 }
 
 // Implements: REQ-CI-005, REQ-CI-011, REQ-CI-013
@@ -71,17 +63,17 @@ func (r *resolver) local(p string) lang.Target {
 	if p == "" || strings.HasPrefix(p, "..") {
 		return lang.Target{}
 	}
-	if r.files[p] {
+	if r.Files[p] {
 		return lang.Target{Local: p}
 	}
 	// A composite action is named by its directory, but what it depends on is written
 	// in the action.yml inside it: point at the file, so its own uses: chain on.
 	for _, candidate := range []string{path.Join(p, "action.yml"), path.Join(p, "action.yaml")} {
-		if r.files[candidate] {
+		if r.Files[candidate] {
 			return lang.Target{Local: candidate}
 		}
 	}
-	if r.directories[p] {
+	if r.Directories[p] {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}

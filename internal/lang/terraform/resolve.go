@@ -29,11 +29,10 @@ type required struct {
 }
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
-	modules     map[string]*moduleDirectory
-	callers     map[string][]string  // module directory -> directories calling it
-	terragrunt  map[string]*tgConfig // Terragrunt configuration -> its locals and includes
+	lang.Layout
+	modules    map[string]*moduleDirectory
+	callers    map[string][]string  // module directory -> directories calling it
+	terragrunt map[string]*tgConfig // Terragrunt configuration -> its locals and includes
 }
 
 func directoryOf(p string) string { return path.Dir(p) }
@@ -45,17 +44,11 @@ func directoryOf(p string) string { return path.Dir(p) }
 //
 // Implements: REQ-TERRAFORM-005, REQ-TERRAFORM-007, REQ-TERRAFORM-008
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, modules: map[string]*moduleDirectory{}, callers: map[string][]string{},
+	r := &resolver{Layout: lang.NewLayout(), modules: map[string]*moduleDirectory{}, callers: map[string][]string{},
 		terragrunt: map[string]*tgConfig{}}
 	var configs []*scan.File
 	for _, f := range all {
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-			if d == "." {
-				break
-			}
-		}
+		r.Add(f.Path)
 		if f.Binary || f.TooLarge || f.Size > lang.MaxParseSize || ignored(f.Path) {
 			continue
 		}
@@ -63,6 +56,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 		case classConfig, classJSON, classLock, classTerragrunt:
 			configs = append(configs, f)
 		}
+	}
+	if len(r.Files) > 0 {
+		r.Directories["."] = true // the top level is a directory here, as soon as it holds a file
 	}
 	sort.Slice(configs, func(i, j int) bool { return configs[i].Path < configs[j].Path })
 	for _, f := range configs {
@@ -167,7 +163,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		return r.local(path.Join(directory, rawImport.Module))
 	case kindTGDependency:
 		p := path.Clean(path.Join(directory, rawImport.Module))
-		if r.files[path.Join(p, "terragrunt.hcl")] {
+		if r.Files[path.Join(p, "terragrunt.hcl")] {
 			return lang.Target{Local: path.Join(p, "terragrunt.hcl")}
 		}
 		return r.local(p)
@@ -186,7 +182,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 // the nearest file of that name in a directory above it.
 func (r *resolver) parentFile(directory, name string) string {
 	for d := range lang.Ancestors(directory) {
-		if f := path.Join(d, name); r.files[f] {
+		if f := path.Join(d, name); r.Files[f] {
 			return f
 		}
 	}
@@ -235,10 +231,10 @@ func (r *resolver) expandIncludes(file, s string) string {
 // local is a file or directory of the repository, else nothing.
 func (r *resolver) local(p string) lang.Target {
 	p = path.Clean(p)
-	if p == ".." || strings.HasPrefix(p, "../") || strings.HasPrefix(p, "/") {
+	if !lang.Inside(p) {
 		return lang.Target{}
 	}
-	if r.files[p] || r.directories[p] {
+	if r.Has(p) {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}

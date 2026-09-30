@@ -104,13 +104,12 @@ type subReference struct {
 }
 
 type resolver struct {
-	root        string
-	files       map[string]bool
-	directories map[string]bool
-	projects    map[string]*project
-	subs        []*subReference // longest path first
-	byPath      map[string]*subReference
-	npm         *javascript.Packages
+	root string
+	lang.Layout
+	projects map[string]*project
+	subs     []*subReference // longest path first
+	byPath   map[string]*subReference
+	npm      *javascript.Packages
 }
 
 func join(directory, p string) string {
@@ -133,7 +132,7 @@ func readFile(f *scan.File) []byte {
 // Implements: REQ-SOLIDITY-004, REQ-SOLIDITY-005, REQ-SOLIDITY-006, REQ-SOLIDITY-007, REQ-SOLIDITY-011
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{
-		root: root, files: map[string]bool{}, directories: map[string]bool{},
+		root: root, Layout: lang.NewLayout(),
 		projects: map[string]*project{}, byPath: map[string]*subReference{},
 	}
 	projectAt := func(directory string) *project {
@@ -148,10 +147,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 	var gitmodules []*scan.File
 	txt := map[string][]string{}
 	for _, f := range all {
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
+		r.Add(f.Path)
 	}
 	for _, f := range all {
 		directory, base := path.Dir(f.Path), path.Base(f.Path)
@@ -462,7 +458,7 @@ func (r *resolver) resolveImport(file, spec string) lang.Target {
 		bases = []string{p.directory, "."}
 	}
 	for _, b := range bases {
-		if q := join(b, spec); r.files[q] {
+		if q := join(b, spec); r.Files[q] {
 			return lang.Target{Local: q}
 		}
 	}
@@ -472,7 +468,7 @@ func (r *resolver) resolveImport(file, spec string) lang.Target {
 		return lang.Target{}
 	}
 	for _, b := range bases {
-		if r.directories[join(b, first)] {
+		if r.Directories[join(b, first)] {
 			return lang.Target{} // a missing file of the project's own directories
 		}
 	}
@@ -489,7 +485,7 @@ func (r *resolver) resolveImport(file, spec string) lang.Target {
 // disk: they are not the project's own code. ok is false when the path is
 // none of these; outside the repository it is dropped.
 func (r *resolver) located(q string, p *project, file string) (lang.Target, bool) {
-	if q == ".." || strings.HasPrefix(q, "../") {
+	if lang.ClimbsOut(q) {
 		return lang.Target{}, true
 	}
 	for _, s := range r.subs {
@@ -528,7 +524,7 @@ func (r *resolver) located(q string, p *project, file string) (lang.Target, bool
 			}
 		}
 	}
-	if r.files[q] || r.directories[q] {
+	if r.Has(q) {
 		return lang.Target{Local: q}, true
 	}
 	return lang.Target{}, false

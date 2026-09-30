@@ -93,7 +93,7 @@ func (r *resolver) readLix(root string, all []*scan.File, getenv func(string) st
 		for _, classPath := range h.classPaths {
 			switch {
 			case strings.HasPrefix(classPath, "${SCOPE_DIR}"):
-				if relative := path.Join(scope, strings.TrimPrefix(classPath, "${SCOPE_DIR}")); lang.Inside(relative) && r.directories[relative] && l.local == "" {
+				if relative := path.Join(scope, strings.TrimPrefix(classPath, "${SCOPE_DIR}")); lang.Inside(relative) && r.Directories[relative] && l.local == "" {
 					l.local = relative
 				}
 			case strings.HasPrefix(classPath, "${HAXE_LIBCACHE}"), strings.HasPrefix(classPath, "${HAXESHIM_LIBCACHE}"):
@@ -108,7 +108,7 @@ func (r *resolver) readLix(root string, all []*scan.File, getenv func(string) st
 			case filepath.IsAbs(classPath):
 				l.absolute = append(l.absolute, classPath)
 			default:
-				if relative := path.Join(scope, classPath); lang.Inside(relative) && r.directories[relative] && l.local == "" {
+				if relative := path.Join(scope, classPath); lang.Inside(relative) && r.Directories[relative] && l.local == "" {
 					l.local = relative
 				}
 			}

@@ -42,9 +42,8 @@ type melosRepository struct {
 }
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
-	packages    []*pubPackage // deepest first
+	lang.Layout
+	packages []*pubPackage // deepest first
 	lang.NoteList
 }
 
@@ -53,17 +52,14 @@ var _ lang.Noter = (*resolver)(nil)
 
 // Implements: REQ-DART-004, REQ-DART-006, REQ-DART-007, REQ-DART-009
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}}
+	r := &resolver{Layout: lang.NewLayout()}
 	// pubspec.lock and pubspec_overrides.yaml are git-ignored as often as not; what is
 	// on disk beside a pubspec is what pub resolved with.
 	repository := lang.NewSource(root)
 	var pubspecs, melos []string
 	for _, f := range all {
-		r.files[f.Path] = true
+		r.Add(f.Path)
 		repository.Add(f)
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
 		if (Plugin{}).Claims(f) && path.Base(f.Path) == "pubspec.yaml" {
 			pubspecs = append(pubspecs, f.Path)
 		}
@@ -193,7 +189,7 @@ func matchSegments(p, n []string) bool {
 // packageOf is the package a file belongs to: the nearest pubspec.yaml above it.
 func (r *resolver) packageOf(file string) *pubPackage {
 	for _, p := range r.packages {
-		if p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
+		if lang.Within(file, p.directory) {
 			return p
 		}
 	}
@@ -205,14 +201,14 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	kind, _, _ := strings.Cut(rawImport.Name, ":")
 	switch kind {
 	case kindMember:
-		if f := path.Join(path.Dir(file), rawImport.Module, "pubspec.yaml"); r.files[f] {
+		if f := path.Join(path.Dir(file), rawImport.Module, "pubspec.yaml"); r.Files[f] {
 			return lang.Target{Local: f}
 		}
 		return lang.Target{}
 	case kindDependency:
 		p := r.packageOf(file)
 		if directory, ok := r.localPackage(p, rawImport.Module); ok {
-			if f := path.Join(directory, "pubspec.yaml"); r.files[f] {
+			if f := path.Join(directory, "pubspec.yaml"); r.Files[f] {
 				return lang.Target{Local: f}
 			}
 			return r.localDirectory(directory)
@@ -237,7 +233,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	if strings.Contains(u, ":") || strings.HasPrefix(u, "/") {
 		return lang.Target{} // file:, http: - nothing the repository holds
 	}
-	if f := path.Join(path.Dir(file), u); lang.Inside(f) && r.files[f] {
+	if f := path.Join(path.Dir(file), u); lang.Inside(f) && r.Files[f] {
 		return lang.Target{Local: f}
 	}
 	return lang.Target{} // a generated part (x.g.dart) that is not committed
@@ -246,20 +242,20 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 // library is the file a package: URI names in a local package's lib/ directory, or when
 // it is missing (generated, not committed), the directory itself.
 func (r *resolver) library(directory, subpath string) lang.Target {
-	if f := path.Join(directory, "lib", subpath); r.files[f] {
+	if f := path.Join(directory, "lib", subpath); r.Files[f] {
 		return lang.Target{Local: f}
 	}
 	if t := r.localDirectory(path.Join(directory, "lib")); t.Local != "" {
 		return t
 	}
-	if f := path.Join(directory, "pubspec.yaml"); r.files[f] {
+	if f := path.Join(directory, "pubspec.yaml"); r.Files[f] {
 		return lang.Target{Local: f}
 	}
 	return r.localDirectory(directory)
 }
 
 func (r *resolver) localDirectory(directory string) lang.Target {
-	if r.directories[directory] {
+	if r.Directories[directory] {
 		return lang.Target{Local: directory}
 	}
 	return lang.Target{}

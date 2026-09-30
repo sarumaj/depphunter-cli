@@ -75,10 +75,9 @@ type dist struct {
 
 type resolver struct {
 	lang.NoteList
-	files         map[string]bool
-	pyDirectories map[string]bool // directories containing Python files at any depth
-	roots         []importRoot    // import roots, most specific first, "." last
-	distMap       map[string]*dist
+	lang.Layout              // the Python files, and the directories holding them at any depth
+	roots       []importRoot // import roots, most specific first, "." last
+	distMap     map[string]*dist
 	// tree maps a normalized distribution name to what a lock file says it needs.
 	tree map[string][]string
 	// environment is the interpreter's installed distributions, or nil (findEnvironment).
@@ -91,12 +90,9 @@ type resolver struct {
 //
 // Implements: REQ-PY-003, REQ-PY-006, REQ-PY-009, REQ-PY-016
 func newResolver(root string, all, claimed []*scan.File, getenv func(string) string) *resolver {
-	r := &resolver{files: map[string]bool{}, pyDirectories: map[string]bool{}, distMap: map[string]*dist{}, tree: map[string][]string{}}
+	r := &resolver{Layout: lang.NewLayout(), distMap: map[string]*dist{}, tree: map[string][]string{}}
 	for _, f := range claimed {
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.pyDirectories[d]; d = path.Dir(d) {
-			r.pyDirectories[d] = true
-		}
+		r.Add(f.Path)
 	}
 	absolute, err := filepath.Abs(root)
 	if err != nil {
@@ -160,7 +156,7 @@ func newResolver(root string, all, claimed []*scan.File, getenv func(string) str
 		if d != "." {
 			own = append(own, d)
 		}
-		if source := path.Join(d, "src"); r.pyDirectories[source] {
+		if source := path.Join(d, "src"); r.Directories[source] {
 			own = append(own, source)
 		}
 	}
@@ -269,11 +265,11 @@ func (r *resolver) longest(root string, parts []string) (lang.Target, bool) {
 func (r *resolver) probe(root string, parts []string) (lang.Target, bool) {
 	p := path.Join(append([]string{root}, parts...)...)
 	for _, candidate := range []string{p + ".py", p + ".pyi"} {
-		if r.files[candidate] {
+		if r.Files[candidate] {
 			return lang.Target{Local: candidate}, true
 		}
 	}
-	if r.pyDirectories[p] {
+	if r.Directories[p] {
 		return lang.Target{Local: p}, true
 	}
 	return lang.Target{}, false

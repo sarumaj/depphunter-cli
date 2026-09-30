@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"path"
 	"slices"
-	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -60,7 +59,7 @@ func (p *packages) fetchedFor(file string, names []string) *Fetched {
 		if first == nil {
 			first = f
 		}
-		above := f.Directory == "." || strings.HasPrefix(path.Dir(file)+"/", f.Directory+"/")
+		above := lang.WithinOrEqual(path.Dir(file), f.Directory)
 		if above && (near == nil || lang.Depth(f.Directory) > lang.Depth(near.Directory)) {
 			near = f
 		}

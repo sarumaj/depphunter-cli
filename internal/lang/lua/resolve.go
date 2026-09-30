@@ -30,15 +30,14 @@ type wally struct {
 }
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
-	suffixes    map[string][]string // module path suffix (a/b) -> files providing it
-	rockspecs   []*rockspec
-	wallies     []*wally
-	forward     map[string]string // Rojo instance path (game/A/B) -> project path
-	rev         map[string]string // project path -> Rojo instance path
-	luarc       []string          // extra module roots
-	luaurc      map[string]map[string]string
+	lang.Layout
+	suffixes  map[string][]string // module path suffix (a/b) -> files providing it
+	rockspecs []*rockspec
+	wallies   []*wally
+	forward   map[string]string // Rojo instance path (game/A/B) -> project path
+	rev       map[string]string // project path -> Rojo instance path
+	luarc     []string          // extra module roots
+	luaurc    map[string]map[string]string
 	// models are the model projects (default.project.json whose tree is not a
 	// DataModel) by directory: a $path naming that directory builds its tree.
 	models map[string]*rojoNode
@@ -76,7 +75,7 @@ func ignored(p string) bool {
 
 // Implements: REQ-LUA-004, REQ-LUA-007, REQ-LUA-009, REQ-LUA-010
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, suffixes: map[string][]string{},
+	r := &resolver{Layout: lang.NewLayout(), suffixes: map[string][]string{},
 		forward: map[string]string{}, rev: map[string]string{}, luaurc: map[string]map[string]string{},
 		models: map[string]*rojoNode{}}
 	repository := lang.OpenRoot(root)
@@ -86,16 +85,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 	var rockspecs, wallies, rojos []string
 	for _, f := range all {
 		p := f.Path
-		r.files[p] = true
-		for d := path.Dir(p); ; d = path.Dir(d) {
-			if r.directories[d] {
-				break
-			}
-			r.directories[d] = true
-			if d == "." {
-				break
-			}
-		}
+		r.Add(p)
 		if f.Binary || f.TooLarge || ignored(p) {
 			continue
 		}
@@ -128,6 +118,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		}
 	}
+	if len(r.Files) > 0 {
+		r.Directories["."] = true // the top level is a directory here, as soon as it holds a file
+	}
 	locks := map[string]map[string]string{}
 	lockOf := func(directory string) map[string]string {
 		if l, ok := locks[directory]; ok {
@@ -138,7 +131,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			l = luarocks.ReadLock(b)
 			// Implements: REQ-LUA-007, REQ-TRC-017
 			if lock := path.Join(directory, "luarocks.lock"); len(l) > 0 {
-				if !r.files[lock] {
+				if !r.Files[lock] {
 					r.NoteIgnored(lock)
 				}
 				r.Note(lock, trace.NoteFlat, "luarocks.lock pins versions but records no edges: offline, "+
@@ -285,7 +278,7 @@ func readTree(repository lang.Root, tree string) map[string]*installedRock {
 // files of the source tree).
 func (r *resolver) moduleFile(directory, file string) string {
 	for _, p := range []string{path.Join(directory, file), path.Clean(file)} {
-		if r.files[p] {
+		if r.Files[p] {
 			return p
 		}
 	}
@@ -321,7 +314,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		return r.roblox(file, strings.Split(rawImport.Module, "/"))
 	case kindFile:
 		for _, p := range []string{path.Join(path.Dir(file), rawImport.Module), path.Clean(rawImport.Module)} {
-			if r.files[p] {
+			if r.Files[p] {
 				return lang.Target{Local: p}
 			}
 		}
@@ -346,7 +339,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		return wallyTarget(rawImport.Module, argument, nil)
 	case kindRojo:
 		p := path.Clean(path.Join(path.Dir(file), rawImport.Module))
-		if r.files[p] || r.directories[p] {
+		if r.Has(p) {
 			return lang.Target{Local: p}
 		}
 	}
@@ -479,12 +472,12 @@ func (r *resolver) probe(p string) string {
 		return ""
 	}
 	for _, extension := range sourceExtensions {
-		if r.files[p+extension] {
+		if r.Files[p+extension] {
 			return p + extension
 		}
 	}
 	for _, extension := range sourceExtensions {
-		if r.files[p+"/init"+extension] {
+		if r.Files[p+"/init"+extension] {
 			return p + "/init" + extension
 		}
 	}
@@ -570,7 +563,7 @@ func (r *resolver) luauPath(file, spec string) lang.Target {
 		}
 	}
 	p := path.Clean(path.Join(base, rest))
-	if r.files[p] {
+	if r.Files[p] {
 		return lang.Target{Local: p}
 	}
 	if f := r.probe(p); f != "" {
@@ -653,7 +646,7 @@ func (r *resolver) roblox(file string, elements []string) lang.Target {
 	default:
 		return lang.Target{}
 	}
-	onDisk := func(p string) bool { return r.files[p] || r.directories[p] }
+	onDisk := r.Has
 	mapped := func(i string) string {
 		if p, ok := r.forward[i]; ok && onDisk(p) {
 			return p
@@ -664,7 +657,7 @@ func (r *resolver) roblox(file string, elements []string) lang.Target {
 		filePath = mapped(instance)
 	}
 	for _, e := range elements[1:] {
-		isDirectory := filePath != "" && r.directories[filePath] && !r.files[filePath]
+		isDirectory := filePath != "" && r.Directories[filePath] && !r.Files[filePath]
 		if e == ".." {
 			_, root := r.rev[filePath]
 			switch {
@@ -704,11 +697,11 @@ func (r *resolver) roblox(file string, elements []string) lang.Target {
 			}
 			child := path.Join(filePath, e)
 			switch {
-			case r.directories[child] && !r.files[child]:
+			case r.Directories[child] && !r.Files[child]:
 				next = child
-			case r.files[child+".lua"]:
+			case r.Files[child+".lua"]:
 				next = child + ".lua"
-			case r.files[child+".luau"]:
+			case r.Files[child+".luau"]:
 				next = child + ".luau"
 			}
 		}
@@ -719,11 +712,11 @@ func (r *resolver) roblox(file string, elements []string) lang.Target {
 	}
 	switch {
 	case filePath == "":
-	case r.files[filePath]:
+	case r.Files[filePath]:
 		return lang.Target{Local: filePath}
 	default:
 		for _, extension := range sourceExtensions {
-			if r.files[path.Join(filePath, "init"+extension)] {
+			if r.Files[path.Join(filePath, "init"+extension)] {
 				return lang.Target{Local: path.Join(filePath, "init"+extension)}
 			}
 		}
@@ -737,17 +730,17 @@ func (r *resolver) model(directory string, root *rojoNode, e string) (string, bo
 	for _, c := range root.children {
 		if c.name == e && c.path != "" {
 			p := path.Clean(path.Join(directory, c.path))
-			return p, r.directories[p] && !r.files[p]
+			return p, r.Directories[p] && !r.Files[p]
 		}
 	}
 	if root.path != "" {
 		p := path.Clean(path.Join(directory, root.path, e))
 		switch {
-		case r.directories[p] && !r.files[p]:
+		case r.Directories[p] && !r.Files[p]:
 			return p, true
-		case r.files[p+".lua"]:
+		case r.Files[p+".lua"]:
 			return p + ".lua", false
-		case r.files[p+".luau"]:
+		case r.Files[p+".luau"]:
 			return p + ".luau", false
 		}
 	}
@@ -777,7 +770,7 @@ func (r *resolver) instanceOf(filePath string) string {
 			return ""
 		}
 		name := path.Base(p)
-		if r.files[p] {
+		if r.Files[p] {
 			name = strings.TrimSuffix(strings.TrimSuffix(stem(p), ".server"), ".client")
 		}
 		tail = append(tail, name)

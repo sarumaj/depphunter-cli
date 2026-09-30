@@ -19,8 +19,7 @@ type rpkg struct {
 }
 
 type resolver struct {
-	files        map[string]bool
-	directories  map[string]bool
+	lang.Layout
 	descriptions []*rpkg          // deepest first
 	named        map[string]*rpkg // R packages of the repository by name
 	locks        []*lockfile      // deepest first
@@ -33,7 +32,7 @@ type resolver struct {
 
 // Implements: REQ-R-006, REQ-R-007, REQ-R-008, REQ-R-009, REQ-R-010
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, named: map[string]*rpkg{},
+	r := &resolver{Layout: lang.NewLayout(), named: map[string]*rpkg{},
 		definitions: map[string]map[string][]string{}}
 	repository := lang.NewSource(root)
 	var sources []*scan.File
@@ -42,11 +41,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 	// activate.R, and the root - read from disk when it is not in the file list.
 	lockDirectories := map[string]bool{".": true}
 	for _, f := range all {
-		r.files[f.Path] = true
+		r.Add(f.Path)
 		repository.Add(f)
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
 		base := path.Base(f.Path)
 		switch {
 		case strings.HasSuffix(base, ".Rproj") || base == "renv.lock" || base == "_targets.R" || base == ".here":
@@ -188,7 +184,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	case kindCall:
 		return r.call(file, rawImport.Module)
 	case kindInclude:
-		if f := path.Join(directory, rawImport.Module); r.files[f] {
+		if f := path.Join(directory, rawImport.Module); r.Files[f] {
 			return lang.Target{Local: f}
 		}
 	case kindBoxLocal:
@@ -205,7 +201,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 				continue
 			}
 			for _, candidate := range []string{p + ".R", p + ".r", p + "/__init__.R", p + "/__init__.r"} {
-				if r.files[candidate] {
+				if r.Files[candidate] {
 					return lang.Target{Local: candidate}
 				}
 			}
@@ -217,13 +213,13 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 			return lang.Target{}
 		}
 		for b := range lang.DirectoryAndAncestors(directory) {
-			if p := path.Join(b, rawImport.Module); lang.Inside(p) && r.files[p] {
+			if p := path.Join(b, rawImport.Module); lang.Inside(p) && r.Files[p] {
 				return lang.Target{Local: p}
 			}
 		}
 	case kindSourceDirectory:
 		for b := range lang.DirectoryAndAncestors(directory) {
-			if p := path.Join(b, rawImport.Module); lang.Inside(p) && (r.directories[p] || r.files[p]) {
+			if p := path.Join(b, rawImport.Module); lang.Inside(p) && (r.Has(p)) {
 				return lang.Target{Local: p}
 			}
 		}
@@ -365,7 +361,7 @@ func lockedTarget(ecosystem string, l *locked, declared *dependency) lang.Target
 // local is a package of the repository: its R/ directory for code, its DESCRIPTION
 // for a DESCRIPTION.
 func (r *resolver) local(p *rpkg, manifest bool) lang.Target {
-	if rDirectory := path.Join(p.directory, "R"); !manifest && r.directories[rDirectory] {
+	if rDirectory := path.Join(p.directory, "R"); !manifest && r.Directories[rDirectory] {
 		return lang.Target{Local: rDirectory}
 	}
 	return lang.Target{Local: p.file}

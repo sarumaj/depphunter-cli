@@ -15,8 +15,7 @@ type flakeDirectory struct {
 }
 
 type resolver struct {
-	files        map[string]bool
-	directories  map[string]bool
+	lang.Layout
 	flakes       map[string]*flakeDirectory
 	pins         map[string]pinsFile      // directory of a sources.json -> its pins
 	nixpkgs      map[string]lang.Target   // project directory -> the nixpkgs it builds with
@@ -27,7 +26,7 @@ type resolver struct {
 }
 
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, flakes: map[string]*flakeDirectory{},
+	r := &resolver{Layout: lang.NewLayout(), flakes: map[string]*flakeDirectory{},
 		pins: map[string]pinsFile{}, nixpkgs: map[string]lang.Target{}, dependencies: map[string][]lang.Target{}}
 	flake := func(d string) *flakeDirectory {
 		if r.flakes[d] == nil {
@@ -36,10 +35,7 @@ func newResolver(all []*scan.File) *resolver {
 		return r.flakes[d]
 	}
 	for _, f := range all {
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
+		r.Add(f.Path)
 		c := class(f.Path)
 		if c == "" {
 			continue
@@ -64,7 +60,7 @@ func newResolver(all []*scan.File) *resolver {
 			r.pins[d] = readPins(c, source)
 		}
 	}
-	r.inNixpkgs = r.files["pkgs/top-level/all-packages.nix"]
+	r.inNixpkgs = r.Files["pkgs/top-level/all-packages.nix"]
 	for _, d := range lang.SortedKeys(r.flakes) {
 		flake := r.flakes[d]
 		if flake.lock != nil {
@@ -187,9 +183,9 @@ func (r *resolver) localFlake(d string) lang.Target {
 	switch {
 	case d == "" || d == ".":
 		return lang.Target{}
-	case r.files[d+"/flake.nix"]:
+	case r.Files[d+"/flake.nix"]:
 		return lang.Target{Local: d + "/flake.nix"}
-	case r.directories[d]:
+	case r.Directories[d]:
 		return lang.Target{Local: d}
 	}
 	return lang.Target{}
@@ -214,11 +210,11 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		p := localDirectory(directory, rawImport.Module)
 		switch {
 		case p == "":
-		case r.files[p]:
+		case r.Files[p]:
 			return lang.Target{Local: p}
-		case rawImport.Name == kImport && r.files[p+"/default.nix"]:
+		case rawImport.Name == kImport && r.Files[p+"/default.nix"]:
 			return lang.Target{Local: p + "/default.nix"}
-		case r.directories[p] && p != directory:
+		case r.Directories[p] && p != directory:
 			return lang.Target{Local: p}
 		}
 		return lang.Target{}
@@ -283,7 +279,7 @@ func (r *resolver) byName(attribute string) lang.Target {
 		return lang.Target{}
 	}
 	p := "pkgs/by-name/" + strings.ToLower(attribute[:2]) + "/" + attribute + "/package.nix"
-	if r.files[p] {
+	if r.Files[p] {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}

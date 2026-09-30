@@ -264,7 +264,7 @@ func (r *resolver) paths(file, s string) []string {
 }
 
 func inside(p string) []string {
-	if p == ".." || strings.HasPrefix(p, "../") {
+	if lang.ClimbsOut(p) {
 		return nil
 	}
 	return []string{p}
@@ -449,7 +449,7 @@ func (r *resolver) use(file, name string) lang.Target {
 	}
 	if best.file != file {
 		for _, reference := range references {
-			if d := path.Dir(reference.file); d == "." || strings.HasPrefix(file, d+"/") {
+			if d := path.Dir(reference.file); lang.Within(file, d) {
 				best = reference
 				break
 			}

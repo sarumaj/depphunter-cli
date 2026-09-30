@@ -10,19 +10,11 @@ import (
 )
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
+	lang.Layout
 }
 
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}}
-	for _, f := range all {
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && d != "/"; d = path.Dir(d) {
-			r.directories[d] = true
-		}
-	}
-	return r
+	return &resolver{Layout: lang.LayoutOf(all)}
 }
 
 // Resolve points a link at what it names in this repository. Anything else - a URL, a
@@ -35,10 +27,10 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	if !ok {
 		return lang.Target{}
 	}
-	if r.files[p] {
+	if r.Files[p] {
 		return lang.Target{Local: p}
 	}
-	if r.directories[p] {
+	if r.Directories[p] {
 		return lang.Target{Local: p}
 	}
 	// It may be there and simply not scanned - ignored, excluded, generated at build

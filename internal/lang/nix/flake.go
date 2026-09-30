@@ -318,7 +318,7 @@ func localDirectory(fromDirectory, p string) string {
 		return ""
 	}
 	d := path.Clean(path.Join(fromDirectory, p))
-	if d == ".." || strings.HasPrefix(d, "../") {
+	if lang.ClimbsOut(d) {
 		return ""
 	}
 	return d

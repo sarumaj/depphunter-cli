@@ -303,7 +303,7 @@ func (r *resolver) target(d dependency) lang.Target {
 
 func (r *resolver) crateOf(file string) *crate {
 	for _, c := range r.crates {
-		if c.directory == "." || strings.HasPrefix(file, c.directory+"/") {
+		if lang.Within(file, c.directory) {
 			return c
 		}
 	}

@@ -5,6 +5,8 @@ import (
 	"os"
 	"path"
 	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
 // The helpers below work on the slash-separated paths relative to the
@@ -115,7 +117,14 @@ func WithinOrEqual(p, directory string) bool {
 // path that a manifest or an import names can climb out with ".." or be
 // absolute, and a resolver must not read or link anything outside the root.
 func Inside(p string) bool {
-	return p != ".." && !strings.HasPrefix(p, "../") && !path.IsAbs(p)
+	return !ClimbsOut(p) && !path.IsAbs(p)
+}
+
+// ClimbsOut reports whether a cleaned path starts with "..": joined to the
+// directory it is relative to, it leaves that directory. See Inside, which
+// also refuses an absolute path.
+func ClimbsOut(p string) bool {
+	return p == ".." || strings.HasPrefix(p, "../")
 }
 
 // CommonSegments counts the leading slash-separated segments two paths share.
@@ -150,4 +159,55 @@ func CommonSubdirectories(a, b string) int {
 func IsDirectory(absolute string) bool {
 	info, err := os.Stat(absolute)
 	return err == nil && info.IsDir()
+}
+
+// Layout indexes the files a resolver was given by path, so that an import or
+// a manifest naming a file or a directory can be checked against the
+// repository without touching the disk.
+//
+// Directories holds every directory above a file added, at any depth, except
+// the top level ".": the root holds everything, and resolvers test for it
+// apart (d == "."). A resolver that wants "." in the set adds it itself.
+type Layout struct {
+	Files       map[string]bool
+	Directories map[string]bool
+}
+
+// NewLayout returns an empty Layout, for a resolver that adds the files it
+// keeps one at a time.
+func NewLayout() Layout {
+	return Layout{Files: map[string]bool{}, Directories: map[string]bool{}}
+}
+
+// LayoutOf is the Layout of every file given.
+func LayoutOf(all []*scan.File) Layout {
+	l := NewLayout()
+	for _, f := range all {
+		l.Add(f.Path)
+	}
+	return l
+}
+
+// Add records a file and the directories above it.
+func (l Layout) Add(file string) {
+	l.Files[file] = true
+	// A directory already present has its own directories present too.
+	for d := path.Dir(file); d != "." && d != "/" && !l.Directories[d]; d = path.Dir(d) {
+		l.Directories[d] = true
+	}
+}
+
+// Has reports whether p is a file added or a directory above one.
+func (l Layout) Has(p string) bool {
+	return l.Files[p] || l.Directories[p]
+}
+
+// PathSet is the set of the paths of the files given, for a resolver that
+// needs no directories.
+func PathSet(all []*scan.File) map[string]bool {
+	out := make(map[string]bool, len(all))
+	for _, f := range all {
+		out[f.Path] = true
+	}
+	return out
 }

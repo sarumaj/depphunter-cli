@@ -33,8 +33,7 @@ type project struct {
 }
 
 type resolver struct {
-	files             map[string]bool
-	directories       map[string]bool
+	lang.Layout
 	exModules         map[string]string // Elixir module -> defining file
 	exRoots           map[string]bool   // first segments of the project's Elixir modules
 	erlModules        map[string]string // Erlang module -> file
@@ -53,18 +52,15 @@ var _ lang.Noter = (*resolver)(nil)
 
 // Implements: REQ-BEAM-006, REQ-BEAM-008, REQ-BEAM-010, REQ-BEAM-012
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, exModules: map[string]string{},
+	r := &resolver{Layout: lang.NewLayout(), exModules: map[string]string{},
 		exRoots: map[string]bool{}, erlModules: map[string]string{}, appFiles: map[string]string{},
 		appDirectories: map[string]string{}, dependencyModules: map[string]string{}, injected: map[string]*injection{},
 		gleamModules: map[string]string{}}
 	repository := lang.NewSource(root)
 	var files []*scan.File
 	for _, f := range all {
-		r.files[f.Path] = true
+		r.Add(f.Path)
 		repository.Add(f)
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
 		if m, ok := gleamModule(f.Path); ok {
 			if previous, duplicate := r.gleamModules[m]; !duplicate || f.Path < previous {
 				r.gleamModules[m] = f.Path
@@ -581,7 +577,7 @@ func (r *resolver) include(file, name string) lang.Target {
 		}
 	}
 	for _, c := range candidates {
-		if lang.Inside(c) && r.files[c] {
+		if lang.Inside(c) && r.Files[c] {
 			return lang.Target{Local: c}
 		}
 	}
@@ -595,10 +591,10 @@ func (r *resolver) include(file, name string) lang.Target {
 func (r *resolver) includeLibrary(file, name string) lang.Target {
 	app, rest, _ := strings.Cut(name, "/")
 	if d, ok := r.appDirectories[app]; ok {
-		if f := path.Join(d, rest); r.files[f] {
+		if f := path.Join(d, rest); r.Files[f] {
 			return lang.Target{Local: f}
 		}
-		if r.directories[d] || d == "." {
+		if r.Directories[d] || d == "." {
 			return lang.Target{Local: d}
 		}
 	}
@@ -631,11 +627,11 @@ func (r *resolver) dependency(file, app string) lang.Target {
 		directory := path.Join(p.directory, d.path)
 		if lang.Inside(directory) {
 			for _, m := range []string{"mix.exs", "rebar.config"} {
-				if f := path.Join(directory, m); r.files[f] {
+				if f := path.Join(directory, m); r.Files[f] {
 					return lang.Target{Local: f}
 				}
 			}
-			if r.directories[directory] {
+			if r.Directories[directory] {
 				return lang.Target{Local: directory}
 			}
 		}

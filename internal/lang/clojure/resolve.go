@@ -140,7 +140,7 @@ func (r *resolver) addManifest(p *project, file string, m *manifest) {
 	}
 	for _, root := range m.paths {
 		root = path.Join(p.directory, root)
-		if !strings.HasPrefix(root, "../") && root != ".." && !slices.Contains(p.roots, root) {
+		if !lang.ClimbsOut(root) && !slices.Contains(p.roots, root) {
 			p.roots = append(p.roots, root)
 		}
 	}
@@ -357,7 +357,7 @@ func (r *resolver) localNS(file, namespace string, governing []*project) string 
 
 func under(file string, governing []*project) bool {
 	for _, p := range governing {
-		if p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
+		if lang.Within(file, p.directory) {
 			return true
 		}
 	}

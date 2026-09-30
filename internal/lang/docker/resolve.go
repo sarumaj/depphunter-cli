@@ -25,11 +25,7 @@ type resolver struct {
 var _ lang.Expander = (*resolver)(nil)
 
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{root: root, files: map[string]bool{}, environments: map[string]map[string]string{}}
-	for _, f := range all {
-		r.files[f.Path] = true
-	}
-	return r
+	return &resolver{root: root, files: lang.PathSet(all), environments: map[string]map[string]string{}}
 }
 
 // Implements: REQ-DOCKER-003, REQ-DOCKER-004, REQ-DOCKER-007, REQ-DOCKER-009
@@ -74,7 +70,7 @@ func imageTarget(reference, written string) lang.Target {
 
 // local is the project file p, when the repository has it.
 func (r *resolver) local(p string) lang.Target {
-	if strings.HasPrefix(p, "../") || p == ".." || !r.files[p] {
+	if lang.ClimbsOut(p) || !r.files[p] {
 		return lang.Target{}
 	}
 	return lang.Target{Local: p}

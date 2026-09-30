@@ -26,11 +26,10 @@ type gleamPackage struct {
 }
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
-	packages    map[string]*gleamPackage // by directory
-	erlFiles    map[string]string        // Erlang module -> the .erl file defining it
-	installed   map[string]string        // package dir + "\x00" + module -> Hex package, from build/packages
+	lang.Layout
+	packages  map[string]*gleamPackage // by directory
+	erlFiles  map[string]string        // Erlang module -> the .erl file defining it
+	installed map[string]string        // package dir + "\x00" + module -> Hex package, from build/packages
 	lang.NoteList
 }
 
@@ -39,16 +38,13 @@ var _ lang.Noter = (*resolver)(nil)
 
 // Implements: REQ-GLEAM-004, REQ-GLEAM-005, REQ-GLEAM-006
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, packages: map[string]*gleamPackage{},
+	r := &resolver{Layout: lang.NewLayout(), packages: map[string]*gleamPackage{},
 		erlFiles: map[string]string{}, installed: map[string]string{}}
 	// manifest.toml is often ignored by git in libraries; read what is on disk.
 	repository := lang.NewSource(root)
 	for _, f := range all {
-		r.files[f.Path] = true
+		r.Add(f.Path)
 		repository.Add(f)
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
 	}
 	newPackage := func(directory string) *gleamPackage {
 		p := &gleamPackage{directory: directory, dependencies: map[string]*dependency{}, modules: map[string]string{}, npm: map[string]string{},
@@ -353,7 +349,7 @@ func (r *resolver) javascript(file, spec string) lang.Target {
 		}
 		return lang.Target{Ecosystem: ecosystemNPM, Package: name, Unresolved: true}
 	}
-	if f := path.Join(path.Dir(file), spec); r.files[f] {
+	if f := path.Join(path.Dir(file), spec); r.Files[f] {
 		return lang.Target{Local: f}
 	}
 	directory, _, module := r.locate(file)
@@ -365,7 +361,7 @@ func (r *resolver) javascript(file, spec string) lang.Target {
 	v := path.Join(self, path.Dir(module), spec)
 	if rest, ok := strings.CutPrefix(v, self+"/"); ok {
 		for _, root := range []string{"src", "test", "dev"} {
-			if f := path.Join(p.directory, root, rest); r.files[f] {
+			if f := path.Join(p.directory, root, rest); r.Files[f] {
 				return lang.Target{Local: f}
 			}
 		}
@@ -376,7 +372,7 @@ func (r *resolver) javascript(file, spec string) lang.Target {
 		return lang.Target{}
 	}
 	if q := r.pathPackage(p, name); q != nil {
-		if f := path.Join(q.directory, "src", rest); r.files[f] {
+		if f := path.Join(q.directory, "src", rest); r.Files[f] {
 			return lang.Target{Local: f}
 		}
 	}
@@ -446,10 +442,10 @@ func (r *resolver) localTarget(p *gleamPackage, relative string) lang.Target {
 	if !lang.Inside(directory) {
 		return lang.Target{}
 	}
-	if f := path.Join(directory, "gleam.toml"); r.files[f] {
+	if f := path.Join(directory, "gleam.toml"); r.Files[f] {
 		return lang.Target{Local: f}
 	}
-	if r.directories[directory] {
+	if r.Directories[directory] {
 		return lang.Target{Local: directory}
 	}
 	return lang.Target{}

@@ -156,7 +156,7 @@ func (r *resolver) inPod(t lang.Target, include string) lang.Target {
 	}
 	var found []string
 	for _, p := range r.byBase[path.Base(include)] {
-		if directory == "." || strings.HasPrefix(p, directory+"/") {
+		if lang.Within(p, directory) {
 			found = append(found, p)
 		}
 	}

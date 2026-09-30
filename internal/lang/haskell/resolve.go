@@ -32,8 +32,7 @@ type projectInfo struct {
 }
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
+	lang.Layout
 	packages    []*packageInfo // deepest first
 	byName      map[string]*packageInfo
 	byDirectory map[string]*packageInfo
@@ -54,7 +53,7 @@ func ignored(p string) bool {
 
 // Implements: REQ-HASKELL-004, REQ-HASKELL-006, REQ-HASKELL-007, REQ-HASKELL-008
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, byName: map[string]*packageInfo{},
+	r := &resolver{Layout: lang.NewLayout(), byName: map[string]*packageInfo{},
 		byDirectory: map[string]*packageInfo{}, modules: map[string][]string{}, boots: map[string][]string{}}
 	repository := lang.NewSource(root)
 	projectDirectories := map[string]bool{}
@@ -64,11 +63,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if ignored(f.Path) {
 			continue
 		}
-		r.files[f.Path] = true
+		r.Add(f.Path)
 		repository.Add(f)
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
 		base := path.Base(f.Path)
 		switch {
 		case base == "cabal.project" || base == "stack.yaml" || base == "cabal.project.freeze":
@@ -412,13 +408,13 @@ func (r *resolver) member(file, entry string) lang.Target {
 		return lang.Target{}
 	}
 	p := path.Join(path.Dir(file), strings.TrimSuffix(entry, "/"))
-	if strings.HasSuffix(p, ".cabal") && r.files[p] {
+	if strings.HasSuffix(p, ".cabal") && r.Files[p] {
 		return lang.Target{Local: p}
 	}
 	if localPackage := r.byDirectory[p]; localPackage != nil {
 		return lang.Target{Local: localPackage.file}
 	}
-	if r.directories[p] {
+	if r.Directories[p] {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}
@@ -565,7 +561,7 @@ func (r *resolver) probe(file string, own *packageInfo, module string, boot bool
 	for _, c := range own.components(file) {
 		for _, d := range c.directories {
 			for _, extension := range extensions {
-				if p := path.Join(own.directory, d, relative+extension); r.files[p] {
+				if p := path.Join(own.directory, d, relative+extension); r.Files[p] {
 					return p
 				}
 			}

@@ -14,9 +14,8 @@ import (
 )
 
 type resolver struct {
-	root         string
-	files        map[string]bool
-	directories  map[string]bool
+	root string
+	lang.Layout
 	build        map[string]string // package directory -> its BUILD file
 	workspaces   map[string]*workspace
 	packageFiles map[string][]string // package directory -> its files, relative to it
@@ -27,13 +26,11 @@ var workspaceFiles = []string{"MODULE.bazel", "REPO.bazel", "WORKSPACE.bazel", "
 // newResolver reads every workspace's MODULE.bazel (with its lock file and
 // includes), WORKSPACE files and .bzl files, and indexes the packages.
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{root: root, files: map[string]bool{}, directories: map[string]bool{".": true},
+	r := &resolver{root: root, Layout: lang.NewLayout(),
 		build: map[string]string{}, workspaces: map[string]*workspace{}, packageFiles: map[string][]string{}}
+	r.Directories["."] = true
 	for _, f := range all {
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
+		r.Add(f.Path)
 		directory, base := path.Dir(f.Path), path.Base(f.Path)
 		switch base {
 		case "BUILD.bazel":
@@ -114,7 +111,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 // read reads a project file from disk (lock files are not always scanned: they
 // may be ignored or generated).
 func (r *resolver) read(p string) ([]byte, bool) {
-	if p == "" || strings.HasPrefix(p, "../") || p == ".." {
+	if p == "" || lang.ClimbsOut(p) {
 		return nil, false
 	}
 	return lang.OpenRoot(r.root).ReadLimited(filepath.Join(r.root, filepath.FromSlash(p)), 8*lang.MaxParseSize)
@@ -249,14 +246,14 @@ func (r *resolver) local(file, directory, packageName, target string) lang.Targe
 	switch {
 	case p == file:
 		return lang.Target{}
-	case r.files[p]:
+	case r.Files[p]:
 		return lang.Target{Local: p}
 	case r.build[packageDirectory] != "":
 		if r.build[packageDirectory] == file {
 			return lang.Target{} // a target of the file's own package
 		}
 		return lang.Target{Local: r.build[packageDirectory]}
-	case r.directories[p] && p != ".":
+	case r.Directories[p] && p != ".":
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}
@@ -364,7 +361,7 @@ func (r *resolver) localPath(w *workspace, p string) string {
 		return ""
 	}
 	d := path.Join(w.directory, p)
-	if d == ".." || strings.HasPrefix(d, "../") || !r.directories[d] {
+	if lang.ClimbsOut(d) || !r.Directories[d] {
 		return ""
 	}
 	return d
@@ -374,7 +371,7 @@ func (r *resolver) localPath(w *workspace, p string) string {
 // WORKSPACE file, else its top BUILD file, else the directory.
 func (r *resolver) localRoot(directory string) lang.Target {
 	for _, name := range append(append([]string{}, workspaceFiles...), "BUILD.bazel", "BUILD") {
-		if p := path.Join(directory, name); r.files[p] {
+		if p := path.Join(directory, name); r.Files[p] {
 			return lang.Target{Local: p}
 		}
 	}

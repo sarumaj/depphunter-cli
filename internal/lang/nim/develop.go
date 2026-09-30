@@ -5,6 +5,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
 // developFile is nimble's nimble.develop: the packages a project builds from
@@ -73,7 +75,7 @@ func (r *resolver) inRepository(base, p string) string {
 		p, base = relative, "."
 	}
 	p = path.Join(base, filepath.ToSlash(p))
-	if p == ".." || strings.HasPrefix(p, "../") || path.IsAbs(p) {
+	if !lang.Inside(p) {
 		return ""
 	}
 	return p

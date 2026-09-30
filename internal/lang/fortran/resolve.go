@@ -39,19 +39,18 @@ type installed struct {
 }
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool
-	modules     map[string][]string // module (lower case) -> defining files, sorted
-	submods     map[string][]string // "ancestor:submodule" -> defining files
-	projects    map[string]*project
-	order       []*project // shallowest first
-	packages    cpp.Packages
+	lang.Layout
+	modules  map[string][]string // module (lower case) -> defining files, sorted
+	submods  map[string][]string // "ancestor:submodule" -> defining files
+	projects map[string]*project
+	order    []*project // shallowest first
+	packages cpp.Packages
 }
 
 // Implements: REQ-FORTRAN-004, REQ-FORTRAN-005, REQ-FORTRAN-006, REQ-FORTRAN-008
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{
-		files: map[string]bool{}, directories: map[string]bool{}, modules: map[string][]string{},
+		Layout: lang.NewLayout(), modules: map[string][]string{},
 		submods: map[string][]string{}, projects: map[string]*project{}, packages: cpp.ReadPackages(all),
 	}
 	var sources []*scan.File
@@ -59,10 +58,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if generated(f) {
 			continue
 		}
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
-			r.directories[d] = true
-		}
+		r.Add(f.Path)
 		switch {
 		case path.Base(f.Path) == "fpm.toml":
 			if source, err := os.ReadFile(f.AbsolutePath); err == nil {
@@ -298,7 +294,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 			return r.dependency(p, rawImport.Module)
 		}
 	case kindDirectory, kindMain:
-		if t := path.Join(path.Dir(file), rawImport.Module); r.files[t] || r.directories[t] {
+		if t := path.Join(path.Dir(file), rawImport.Module); r.Has(t) {
 			return lang.Target{Local: t}
 		}
 	case kindExternal:
@@ -417,20 +413,20 @@ func (r *resolver) include(file, spec, kind string) lang.Target {
 	directory := path.Dir(file)
 	if !path.IsAbs(spec) {
 		if kind != kindCppSys {
-			if t := path.Join(directory, spec); r.files[t] {
+			if t := path.Join(directory, spec); r.Files[t] {
 				return lang.Target{Local: t}
 			}
 		}
 		for _, p := range r.scope(file) {
 			for _, include := range p.m.includeDirectories {
-				if t := path.Join(p.directory, include, spec); r.files[t] {
+				if t := path.Join(p.directory, include, spec); r.Files[t] {
 					return lang.Target{Local: t}
 				}
 			}
 		}
 		for d := range lang.DirectoryAndAncestors(directory) {
 			for _, t := range []string{path.Join(d, "include", spec), path.Join(d, spec)} {
-				if t != file && r.files[t] && !strings.HasPrefix(t, "../") {
+				if t != file && r.Files[t] && !strings.HasPrefix(t, "../") {
 					return lang.Target{Local: t}
 				}
 			}
@@ -472,9 +468,9 @@ func (r *resolver) dependency(p *project, name string) lang.Target {
 	if d.path != "" {
 		directory := path.Join(p.directory, d.path)
 		switch {
-		case r.files[path.Join(directory, "fpm.toml")]:
+		case r.Files[path.Join(directory, "fpm.toml")]:
 			return lang.Target{Local: path.Join(directory, "fpm.toml")}
-		case r.directories[directory]:
+		case r.Directories[directory]:
 			return lang.Target{Local: directory}
 		}
 		return lang.Target{}

@@ -104,7 +104,7 @@ func (r *resolver) candidates(directory, module string) []string {
 	}
 	var out []string
 	for _, b := range bases {
-		if p := path.Join(b, relative); p != ".." && !strings.HasPrefix(p, "../") {
+		if p := path.Join(b, relative); !lang.ClimbsOut(p) {
 			out = append(out, p)
 		}
 	}

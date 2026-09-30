@@ -14,9 +14,8 @@ import (
 )
 
 type resolver struct {
-	files       map[string]bool
-	directories map[string]bool // directories holding files
-	projects    []*project      // shallowest first
+	lang.Layout
+	projects    []*project // shallowest first
 	byDirectory map[string]*project
 	byName      map[string][]*project
 	byUUID      map[string][]*project
@@ -34,22 +33,13 @@ type resolver struct {
 //
 // Implements: REQ-JULIA-004, REQ-JULIA-005, REQ-JULIA-008
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, byDirectory: map[string]*project{},
+	r := &resolver{Layout: lang.NewLayout(), byDirectory: map[string]*project{},
 		byName: map[string][]*project{}, byUUID: map[string][]*project{}, byFile: map[string]*project{},
 		manifests: map[string]*manifest{}, modules: map[string][]string{}, ctx: map[string]string{}}
 	var sources []*scan.File
 	directoryManifest := map[string]*manifest{}
 	for _, f := range all {
-		r.files[f.Path] = true
-		for d := path.Dir(f.Path); ; d = path.Dir(d) {
-			if r.directories[d] {
-				break
-			}
-			r.directories[d] = true
-			if d == "." {
-				break
-			}
-		}
+		r.Add(f.Path)
 		if !lang.Readable(f) {
 			continue
 		}
@@ -72,6 +62,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 			r.byDirectory[p.directory] = p
 		}
+	}
+	if len(r.Files) > 0 {
+		r.Directories["."] = true // the top level is a directory here, as soon as it holds a file
 	}
 	// Manifests are often not committed; they are looked for on disk beside every
 	// project too.
@@ -184,7 +177,7 @@ func (r *resolver) readSources(files []*scan.File) {
 	for _, p := range list {
 		for _, include := range p.source.includes {
 			child := path.Join(path.Dir(p.file), include.path)
-			if _, ok := includedBy[child]; !ok && r.files[child] && child != p.file {
+			if _, ok := includedBy[child]; !ok && r.Files[child] && child != p.file {
 				includedBy[child] = parent{p.file, include.module}
 			}
 		}
@@ -260,7 +253,7 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 			return lang.Target{}
 		}
 		p := path.Join(path.Dir(file), rawImport.Module)
-		if !r.files[p] {
+		if !r.Files[p] {
 			return lang.Target{}
 		}
 		return local(p, file)
@@ -277,14 +270,14 @@ func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 		if p := r.byDirectory[d]; p != nil {
 			return local(p.file, file)
 		}
-		if r.directories[d] {
+		if r.Directories[d] {
 			return lang.Target{Local: d}
 		}
 		return lang.Target{}
 	case kindExtension:
 		directory := path.Dir(file)
 		for _, c := range []string{"ext/" + rawImport.Module + ".jl", "ext/" + rawImport.Module + "/" + rawImport.Module + ".jl"} {
-			if p := path.Join(directory, c); r.files[p] {
+			if p := path.Join(directory, c); r.Files[p] {
 				return lang.Target{Local: p}
 			}
 		}
@@ -434,13 +427,13 @@ func (r *resolver) local(p *project, segments []string, file string) lang.Target
 			return local(f, file)
 		}
 	}
-	if r.files[entry] {
+	if r.Files[entry] {
 		return local(entry, file)
 	}
 	if f := r.moduleFile(name, entry); f != "" && strings.HasPrefix(f, prefixOf(p.directory)) {
 		return local(f, file)
 	}
-	if p.directory != "." && r.directories[p.directory] {
+	if p.directory != "." && r.Directories[p.directory] {
 		return lang.Target{Local: p.directory}
 	}
 	return local(p.file, file)
@@ -463,7 +456,7 @@ func (r *resolver) declared(p *project, name, uuid string, segments []string, fi
 			if localProject := r.byDirectory[d]; localProject != nil {
 				return r.local(localProject, segments, file)
 			}
-			if r.directories[d] {
+			if r.Directories[d] {
 				return lang.Target{Local: d}
 			}
 		}
@@ -518,7 +511,7 @@ func (r *resolver) entry(m *manifest, e *entry, segments []string, file string) 
 		if localProject := r.byDirectory[d]; localProject != nil {
 			return r.local(localProject, segments, file)
 		}
-		if r.directories[d] {
+		if r.Directories[d] {
 			return lang.Target{Local: d}
 		}
 		return lang.Target{Ecosystem: ecosystemJulia, Package: e.name, Version: e.version, Origin: "path:" + e.path}
