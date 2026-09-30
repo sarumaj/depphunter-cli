@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/yamlnode"
 )
 
 // dependency is a module a Puppetfile, a metadata.json or a .fixtures.yml names.
@@ -321,24 +322,20 @@ func lineOf(source []byte, s string, from int) int {
 //
 // Implements: REQ-PUPPET-005
 func readFixtures(source []byte) []*dependency {
-	var doc yaml.Node
-	if yaml.Unmarshal(source, &doc) != nil || len(doc.Content) == 0 {
-		return nil
-	}
-	fixtures := mapValue(doc.Content[0], "fixtures")
+	fixtures := yamlnode.Get(yamlnode.Parse(source), "fixtures")
 	var out []*dependency
 	for _, section := range []string{"forge_modules", "repositories"} {
-		m := mapValue(fixtures, section)
-		if m == nil || m.Kind != yaml.MappingNode {
-			continue
-		}
-		for i := 0; i+1 < len(m.Content); i += 2 {
-			k, v := m.Content[i], m.Content[i+1]
+		for _, entry := range yamlnode.Pairs(yamlnode.Get(fixtures, section)) {
+			k, v := entry.Key, entry.Value
 			repository, reference, branch := v.Value, "", ""
 			if v.Kind == yaml.MappingNode {
-				repository = mapValue(v, "repo").Value
-				reference = mapValue(v, "ref").Value
-				branch = mapValue(v, "branch").Value
+				value := func(key string) string {
+					if n := yamlnode.Get(v, key); n != nil {
+						return n.Value
+					}
+					return ""
+				}
+				repository, reference, branch = value("repo"), value("ref"), value("branch")
 			}
 			if repository == "" {
 				continue
@@ -360,18 +357,4 @@ func readFixtures(source []byte) []*dependency {
 		}
 	}
 	return out
-}
-
-var empty = &yaml.Node{}
-
-// mapValue is the value of key in a YAML mapping, or an empty node.
-func mapValue(n *yaml.Node, key string) *yaml.Node {
-	if n != nil && n.Kind == yaml.MappingNode {
-		for i := 0; i+1 < len(n.Content); i += 2 {
-			if n.Content[i].Value == key {
-				return n.Content[i+1]
-			}
-		}
-	}
-	return empty
 }

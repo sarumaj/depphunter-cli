@@ -7,6 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/yamlnode"
 )
 
 // dependency is one entry of shard.yml's dependencies or development_dependencies,
@@ -52,25 +53,18 @@ type locked struct {
 // Implements: REQ-CRYSTAL-005
 func readShard(source []byte) *shard {
 	sh := &shard{dependencies: map[string]*dependency{}, targets: map[string]string{}, lines: map[string]int{}}
-	root := document(source)
-	if root == nil {
-		return sh
-	}
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		key, value := root.Content[i].Value, root.Content[i+1]
+	for _, entry := range yamlnode.Pairs(yamlnode.Parse(source)) {
+		key, value := entry.Key.Value, entry.Value
 		switch key {
 		case "name":
 			sh.name = value.Value
 		case "dependencies", "development_dependencies":
 			readDependencies(value, key != "dependencies", sh.dependencies)
 		case "targets":
-			if value.Kind != yaml.MappingNode {
-				continue
-			}
-			for j := 0; j+1 < len(value.Content); j += 2 {
-				if main := lookup(value.Content[j+1], "main"); main != nil && main.Value != "" {
-					sh.targets[value.Content[j].Value] = main.Value
-					sh.lines[value.Content[j].Value] = main.Line
+			for _, target := range yamlnode.Pairs(value) {
+				if main := yamlnode.Get(target.Value, "main"); main != nil && main.Value != "" {
+					sh.targets[target.Key.Value] = main.Value
+					sh.lines[target.Key.Value] = main.Line
 				}
 			}
 		}
@@ -84,29 +78,19 @@ func readShard(source []byte) *shard {
 // Implements: REQ-CRYSTAL-005
 func readOverride(source []byte) map[string]*dependency {
 	out := map[string]*dependency{}
-	if root := document(source); root != nil {
-		readDependencies(lookup(root, "dependencies"), false, out)
-	}
+	readDependencies(yamlnode.Get(yamlnode.Parse(source), "dependencies"), false, out)
 	return out
 }
 
 func readDependencies(n *yaml.Node, dev bool, into map[string]*dependency) {
-	if n == nil || n.Kind != yaml.MappingNode {
-		return
-	}
-	for j := 0; j+1 < len(n.Content); j += 2 {
-		name := n.Content[j].Value
+	for _, entry := range yamlnode.Pairs(n) {
+		name := entry.Key.Value
 		if name == "" || into[name] != nil {
 			continue
 		}
-		d := &dependency{name: name, dev: dev, line: n.Content[j].Line}
-		if m := n.Content[j+1]; m.Kind == yaml.MappingNode {
-			stringField := func(k string) string {
-				if v := lookup(m, k); v != nil && v.Kind == yaml.ScalarNode {
-					return strings.TrimSpace(v.Value)
-				}
-				return ""
-			}
+		d := &dependency{name: name, dev: dev, line: entry.Key.Line}
+		if m := entry.Value; m.Kind == yaml.MappingNode {
+			stringField := func(k string) string { return yamlnode.Text(m, k) }
 			d.url = sourceURL(stringField)
 			d.path = stringField("path")
 			d.version, d.branch, d.tag, d.commit = stringField("version"), stringField("branch"), stringField("tag"), stringField("commit")
@@ -139,52 +123,19 @@ func sourceURL(stringField func(string) string) string {
 // Implements: REQ-CRYSTAL-006
 func readLock(source []byte) map[string]*locked {
 	out := map[string]*locked{}
-	root := document(source)
-	shards := lookup(root, "shards")
-	if shards == nil || shards.Kind != yaml.MappingNode {
-		return out
-	}
-	for j := 0; j+1 < len(shards.Content); j += 2 {
-		name, m := shards.Content[j].Value, shards.Content[j+1]
+	for _, shard := range yamlnode.Pairs(yamlnode.Get(yamlnode.Parse(source), "shards")) {
+		name, m := shard.Key.Value, shard.Value
 		if name == "" || m.Kind != yaml.MappingNode {
 			continue
 		}
-		stringField := func(k string) string {
-			if v := lookup(m, k); v != nil && v.Kind == yaml.ScalarNode {
-				return strings.TrimSpace(v.Value)
-			}
-			return ""
-		}
-		l := &locked{name: name, url: sourceURL(stringField), path: stringField("path"), version: stringField("version"), line: shards.Content[j].Line}
+		stringField := func(k string) string { return yamlnode.Text(m, k) }
+		l := &locked{name: name, url: sourceURL(stringField), path: stringField("path"), version: stringField("version"), line: shard.Key.Line}
 		if c := stringField("commit"); c != "" {
 			l.version = c
 		}
 		out[name] = l
 	}
 	return out
-}
-
-func document(source []byte) *yaml.Node {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(source, &doc); err != nil || len(doc.Content) == 0 {
-		return nil
-	}
-	if root := doc.Content[0]; root.Kind == yaml.MappingNode {
-		return root
-	}
-	return nil
-}
-
-func lookup(m *yaml.Node, key string) *yaml.Node {
-	if m == nil || m.Kind != yaml.MappingNode {
-		return nil
-	}
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		if m.Content[i].Value == key {
-			return m.Content[i+1]
-		}
-	}
-	return nil
 }
 
 // extractShard makes each dependency of shard.yml an import of the shard it

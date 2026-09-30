@@ -9,10 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/dhall"
+	"github.com/sarumaj/depphunter-cli/internal/lang/yamlnode"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -863,9 +862,9 @@ func manifestDependencies(repository lang.Root, directory string) (dependencies 
 			return dependencies, true
 		}
 	}
-	if m := yamlGet(yamlDoc(read("purs.json")), "dependencies"); m != nil && m.Kind == yaml.MappingNode {
-		for i := 0; i+1 < len(m.Content); i += 2 {
-			dependencies = append(dependencies, m.Content[i].Value)
+	if m := yamlnode.Mapping(yamlnode.Get(yamlnode.Parse(read("purs.json")), "dependencies")); m != nil {
+		for _, entry := range yamlnode.Pairs(m) {
+			dependencies = append(dependencies, entry.Key.Value)
 		}
 		return dependencies, true
 	}

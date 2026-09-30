@@ -306,7 +306,7 @@ directions when the walk has a new question to ask.
 | `scan` | Lists files (`git ls-files`, or a walk with built-in ignores), maps names to languages (`lang.go`), reads `#!` lines, counts lines, flags binary and oversized files. | `File`, `Options`, `Scan`, `Language` |
 | `lang` | The plugin contract (`lang.go`) and the helpers every plugin shares; see below. | `Plugin`, `Resolver`, `Target`, `Extraction`, `Analyze` |
 | `lang/all` | The one list of plugins, in the order they run; the command and the benchmark both take it. | `Plugins`, `Options` |
-| `lang/<language>` | One plugin per ecosystem family (`golang`, `javascript`, `python`, …); shared readers beside them (`treesitter`, `oci`, `nuget`, `edn`, `starlark`, `cocoapods`, `juliapkg`, `luarocks`, `opam`), test helpers in `langtest`. | `Plugin{}` |
+| `lang/<language>` | One plugin per ecosystem family (`golang`, `javascript`, `python`, …); shared readers beside them (`treesitter`, `oci`, `nuget`, `edn`, `starlark`, `cocoapods`, `juliapkg`, `luarocks`, `opam`, `yamlnode`), test helpers in `langtest`. | `Plugin{}` |
 | `cache` | Plugin extractions keyed by plugin, version, class and content hash; one gob file per project. A nil cache caches nothing. | `Cache`, `Open`, `Key` |
 | `analyze` | Turns files and plugin results into the graph, then walks dependencies of dependencies level by level. | `Run`, `Options`, `Stats` |
 | `graph` | The document shared by analysis, UI, exports and the extension; node IDs are built and parsed here only. | `Graph`, `Node`, `Edge`, `*ID`, `EcosystemOf`, `FileOf`, `(*Graph).Of` |

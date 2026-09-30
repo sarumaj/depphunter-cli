@@ -14,19 +14,19 @@ import (
 // Implements: REQ-CI-002, REQ-CI-003, REQ-CI-010
 func extractWorkflow(root *yaml.Node) *lang.Extraction {
 	extraction := &lang.Extraction{}
-	for _, job := range pairs(field(root, "jobs")) {
-		name := text(job.key)
+	for _, job := range yamlReader.Pairs(yamlReader.Get(root, "jobs")) {
+		name := yamlReader.Text(job.Key)
 		if name == "" {
 			continue
 		}
-		extraction.Symbols = append(extraction.Symbols, lang.Symbol{Name: name, Kind: "job", Line: job.key.Line})
+		extraction.Symbols = append(extraction.Symbols, lang.Symbol{Name: name, Kind: "job", Line: job.Key.Line})
 		// A job that calls a reusable workflow has no steps of its own.
-		if u := field(job.value, "uses"); u != nil {
+		if u := yamlReader.Get(job.Value, "uses"); u != nil {
 			addUses(extraction, u, kindWorkflow)
 		}
-		addContainers(extraction, job.value)
-		for _, step := range items(field(job.value, "steps")) {
-			if u := field(step, "uses"); u != nil {
+		addContainers(extraction, job.Value)
+		for _, step := range yamlReader.List(yamlReader.Get(job.Value, "steps")) {
+			if u := yamlReader.Get(step, "uses"); u != nil {
 				addUses(extraction, u, kindAction)
 			}
 		}
@@ -40,17 +40,17 @@ func extractWorkflow(root *yaml.Node) *lang.Extraction {
 // Implements: REQ-CI-002, REQ-CI-004
 func extractAction(root *yaml.Node) *lang.Extraction {
 	extraction := &lang.Extraction{}
-	runs := field(root, "runs")
-	for _, step := range items(field(runs, "steps")) {
-		if u := field(step, "uses"); u != nil {
+	runs := yamlReader.Get(root, "runs")
+	for _, step := range yamlReader.List(yamlReader.Get(runs, "steps")) {
+		if u := yamlReader.Get(step, "uses"); u != nil {
 			addUses(extraction, u, kindAction)
 		}
 	}
 	// A Docker action names its image here, with the same docker:// prefix as a step.
-	if image := field(runs, "image"); image != nil {
-		if reference := strings.TrimPrefix(text(image), "docker://"); reference != "" && !strings.HasSuffix(reference, "Dockerfile") {
+	if image := yamlReader.Get(runs, "image"); image != nil {
+		if reference := strings.TrimPrefix(yamlReader.Text(image), "docker://"); reference != "" && !strings.HasSuffix(reference, "Dockerfile") {
 			extraction.Imports = append(extraction.Imports, lang.RawImport{
-				Spec: "image: " + text(image), Module: reference, Name: kindImage, Line: image.Line,
+				Spec: "image: " + yamlReader.Text(image), Module: reference, Name: kindImage, Line: image.Line,
 			})
 		}
 	}
@@ -62,7 +62,7 @@ func extractAction(root *yaml.Node) *lang.Extraction {
 //
 // Implements: REQ-CI-002, REQ-CI-003, REQ-CI-004, REQ-CI-014
 func addUses(extraction *lang.Extraction, n *yaml.Node, kind string) {
-	reference := text(n)
+	reference := yamlReader.Text(n)
 	if reference == "" {
 		return
 	}
@@ -90,10 +90,10 @@ func addContainers(extraction *lang.Extraction, job *yaml.Node) {
 		if n == nil {
 			return
 		}
-		reference := text(n)
+		reference := yamlReader.Text(n)
 		if reference == "" { // container: { image: … }
-			if image := field(n, "image"); image != nil {
-				reference, n = text(image), image
+			if image := yamlReader.Get(n, "image"); image != nil {
+				reference, n = yamlReader.Text(image), image
 			}
 		}
 		if reference != "" {
@@ -102,8 +102,8 @@ func addContainers(extraction *lang.Extraction, job *yaml.Node) {
 			})
 		}
 	}
-	add(field(job, "container"), "container")
-	for _, service := range pairs(field(job, "services")) {
-		add(service.value, "service "+text(service.key))
+	add(yamlReader.Get(job, "container"), "container")
+	for _, service := range yamlReader.Pairs(yamlReader.Get(job, "services")) {
+		add(service.Value, "service "+yamlReader.Text(service.Key))
 	}
 }

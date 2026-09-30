@@ -24,21 +24,21 @@ var reserved = map[string]bool{
 // Implements: REQ-CI-005, REQ-CI-006, REQ-CI-007, REQ-CI-010
 func extractGitLab(root *yaml.Node) *lang.Extraction {
 	extraction := &lang.Extraction{}
-	for _, include := range items(field(root, "include")) {
+	for _, include := range yamlReader.List(yamlReader.Get(root, "include")) {
 		addInclude(extraction, include)
 	}
 	addImages(extraction, root, "")
-	addImages(extraction, field(root, "default"), "default")
+	addImages(extraction, yamlReader.Get(root, "default"), "default")
 
-	for _, job := range pairs(root) {
-		name := text(job.key)
-		if name == "" || reserved[name] || mapping(job.value) == nil {
+	for _, job := range yamlReader.Pairs(root) {
+		name := yamlReader.Text(job.Key)
+		if name == "" || reserved[name] || yamlReader.Mapping(job.Value) == nil {
 			continue
 		}
-		extraction.Symbols = append(extraction.Symbols, lang.Symbol{Name: name, Kind: "job", Line: job.key.Line})
-		addImages(extraction, job.value, name)
+		extraction.Symbols = append(extraction.Symbols, lang.Symbol{Name: name, Kind: "job", Line: job.Key.Line})
+		addImages(extraction, job.Value, name)
 		// A bridge job runs another pipeline, which is a dependency like any include.
-		for _, include := range items(field(field(job.value, "trigger"), "include")) {
+		for _, include := range yamlReader.List(yamlReader.Get(job.Value, "trigger", "include")) {
 			addInclude(extraction, include)
 		}
 	}
@@ -57,7 +57,7 @@ func addInclude(extraction *lang.Extraction, n *yaml.Node) {
 			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 		}
 	}
-	if s := text(n); s != "" { // include: "path" or a bare URL
+	if s := yamlReader.Text(n); s != "" { // include: "path" or a bare URL
 		kind := kindLocal
 		if isURL(s) {
 			kind = kindRemote
@@ -66,15 +66,15 @@ func addInclude(extraction *lang.Extraction, n *yaml.Node) {
 		return
 	}
 	switch {
-	case field(n, "local") != nil:
-		v := field(n, "local")
-		add("include local: "+text(v), text(v), kindLocal, v.Line)
-	case field(n, "project") != nil:
-		v := field(n, "project")
-		project, reference := text(v), text(field(n, "ref"))
+	case yamlReader.Get(n, "local") != nil:
+		v := yamlReader.Get(n, "local")
+		add("include local: "+yamlReader.Text(v), yamlReader.Text(v), kindLocal, v.Line)
+	case yamlReader.Get(n, "project") != nil:
+		v := yamlReader.Get(n, "project")
+		project, reference := yamlReader.Text(v), yamlReader.Text(yamlReader.Get(n, "ref"))
 		files := []string{}
-		for _, f := range items(field(n, "file")) {
-			files = append(files, text(f))
+		for _, f := range yamlReader.List(yamlReader.Get(n, "file")) {
+			files = append(files, yamlReader.Text(f))
 		}
 		spec := "include project: " + project
 		if reference != "" {
@@ -84,15 +84,15 @@ func addInclude(extraction *lang.Extraction, n *yaml.Node) {
 			spec += " " + strings.Join(files, ", ")
 		}
 		add(spec, project+"@"+reference, kindProject, v.Line)
-	case field(n, "template") != nil:
-		v := field(n, "template")
-		add("include template: "+text(v), text(v), kindTemplate, v.Line)
-	case field(n, "remote") != nil:
-		v := field(n, "remote")
-		add("include remote: "+text(v), text(v), kindRemote, v.Line)
-	case field(n, "component") != nil:
-		v := field(n, "component")
-		add("include component: "+text(v), text(v), kindComponent, v.Line)
+	case yamlReader.Get(n, "template") != nil:
+		v := yamlReader.Get(n, "template")
+		add("include template: "+yamlReader.Text(v), yamlReader.Text(v), kindTemplate, v.Line)
+	case yamlReader.Get(n, "remote") != nil:
+		v := yamlReader.Get(n, "remote")
+		add("include remote: "+yamlReader.Text(v), yamlReader.Text(v), kindRemote, v.Line)
+	case yamlReader.Get(n, "component") != nil:
+		v := yamlReader.Get(n, "component")
+		add("include component: "+yamlReader.Text(v), yamlReader.Text(v), kindComponent, v.Line)
 	}
 }
 
@@ -114,10 +114,10 @@ func addImages(extraction *lang.Extraction, n *yaml.Node, owner string) {
 		if v == nil {
 			return
 		}
-		reference := text(v)
+		reference := yamlReader.Text(v)
 		if reference == "" { // image: { name: …, entrypoint: … }
-			if name := field(v, "name"); name != nil {
-				reference, v = text(name), name
+			if name := yamlReader.Get(v, "name"); name != nil {
+				reference, v = yamlReader.Text(name), name
 			}
 		}
 		if reference != "" && !strings.Contains(reference, "$") { // a variable we cannot expand
@@ -126,8 +126,8 @@ func addImages(extraction *lang.Extraction, n *yaml.Node, owner string) {
 			})
 		}
 	}
-	add(field(n, "image"), "image")
-	for _, service := range items(field(n, "services")) {
+	add(yamlReader.Get(n, "image"), "image")
+	for _, service := range yamlReader.List(yamlReader.Get(n, "services")) {
 		add(service, "service")
 	}
 }

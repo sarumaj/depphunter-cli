@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/yamlnode"
 )
 
 // moduleRequirement is one requirement a manifest declares. Requirements name modules; the
@@ -421,47 +422,26 @@ func lineOf(lines []string, s string) int {
 // readMetaYAML reads META.yml or MYMETA.yml (version 1.4, or version 2 written as
 // YAML), keeping versions as written: 1.10 is not 1.1.
 func readMetaYAML(source []byte) *manifest {
-	var doc yaml.Node
-	if yaml.Unmarshal(source, &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+	root := yamlnode.Mapping(yamlnode.Parse(source))
+	if root == nil {
 		return &manifest{}
 	}
-	root := doc.Content[0]
 	m := &manifest{}
-	get := func(n *yaml.Node, key string) *yaml.Node {
-		if n == nil || n.Kind != yaml.MappingNode {
-			return nil
-		}
-		for k := 0; k+1 < len(n.Content); k += 2 {
-			if n.Content[k].Value == key {
-				return n.Content[k+1]
-			}
-		}
-		return nil
-	}
-	if n := get(root, "name"); n != nil {
+	if n := yamlnode.Get(root, "name"); n != nil {
 		m.name = n.Value
 	}
 	add := func(n *yaml.Node, phase, relation string) {
-		if n == nil || n.Kind != yaml.MappingNode {
-			return
-		}
-		for k := 0; k+1 < len(n.Content); k += 2 {
-			m.requirements = append(m.requirements, moduleRequirement{module: n.Content[k].Value, version: n.Content[k+1].Value, phase: phase, relation: relation, line: n.Content[k].Line})
+		for _, entry := range yamlnode.Pairs(n) {
+			m.requirements = append(m.requirements, moduleRequirement{module: entry.Key.Value, version: entry.Value.Value, phase: phase, relation: relation, line: entry.Key.Line})
 		}
 	}
-	if p := get(root, "prereqs"); p != nil && p.Kind == yaml.MappingNode {
-		for k := 0; k+1 < len(p.Content); k += 2 {
-			releases := p.Content[k+1]
-			if releases.Kind != yaml.MappingNode {
-				continue
-			}
-			for r := 0; r+1 < len(releases.Content); r += 2 {
-				add(releases.Content[r+1], p.Content[k].Value, releases.Content[r].Value)
-			}
+	for _, phase := range yamlnode.Pairs(yamlnode.Get(root, "prereqs")) {
+		for _, relation := range yamlnode.Pairs(phase.Value) {
+			add(relation.Value, phase.Key.Value, relation.Key.Value)
 		}
 	}
 	for key, keyword := range metaV1 {
-		add(get(root, key), keyword[0], keyword[1])
+		add(yamlnode.Get(root, key), keyword[0], keyword[1])
 	}
 	sort.SliceStable(m.requirements, func(i, j int) bool { return m.requirements[i].line < m.requirements[j].line })
 	return m

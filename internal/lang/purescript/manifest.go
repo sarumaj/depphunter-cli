@@ -9,6 +9,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/dhall"
+	"github.com/sarumaj/depphunter-cli/internal/lang/yamlnode"
 )
 
 // dependency is one package a manifest lists: its name, the range it asks for
@@ -44,41 +45,6 @@ type spagoYAML struct {
 	extra        []*extraPackage
 }
 
-// yamlGet is a mapping node's value for key, or nil.
-func yamlGet(n *yaml.Node, key string) *yaml.Node {
-	if n == nil || n.Kind != yaml.MappingNode {
-		return nil
-	}
-	for i := 0; i+1 < len(n.Content); i += 2 {
-		if n.Content[i].Value == key {
-			return n.Content[i+1]
-		}
-	}
-	return nil
-}
-
-// yamlDoc is a YAML (or JSON) document's top node, or nil.
-func yamlDoc(source []byte) *yaml.Node {
-	var doc yaml.Node
-	if yaml.Unmarshal(source, &doc) != nil || doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
-		return nil
-	}
-	return doc.Content[0]
-}
-
-// strings of a sequence node's scalars.
-func yamlStrings(n *yaml.Node) []string {
-	var out []string
-	if n != nil && n.Kind == yaml.SequenceNode {
-		for _, e := range n.Content {
-			if e.Kind == yaml.ScalarNode {
-				out = append(out, e.Value)
-			}
-		}
-	}
-	return out
-}
-
 // readSpagoYAML reads spago.yaml (spago 0.93 and later): package.name,
 // package.dependencies and package.test.dependencies (a name, or name: range),
 // workspace.packageSet (registry: 60.0.0 or url:) and workspace.extraPackages
@@ -87,72 +53,63 @@ func yamlStrings(n *yaml.Node) []string {
 //
 // Implements: REQ-PURESCRIPT-005
 func readSpagoYAML(source []byte) *spagoYAML {
-	top := yamlDoc(source)
-	packageNode, workspaceNode := yamlGet(top, "package"), yamlGet(top, "workspace")
+	top := yamlnode.Parse(source)
+	packageNode, workspaceNode := yamlnode.Get(top, "package"), yamlnode.Get(top, "workspace")
 	if packageNode == nil && workspaceNode == nil {
 		return nil
 	}
 	out := &spagoYAML{isPackage: packageNode != nil, workspace: workspaceNode != nil}
-	if n := yamlGet(packageNode, "name"); n != nil && n.Kind == yaml.ScalarNode {
+	if n := yamlnode.Get(packageNode, "name"); n != nil && n.Kind == yaml.ScalarNode {
 		out.name, out.nameLine = n.Value, n.Line
 	}
 	readDependencies := func(n *yaml.Node, test bool) {
-		if n == nil || n.Kind != yaml.SequenceNode {
-			return
-		}
-		for _, e := range n.Content {
-			switch e.Kind {
-			case yaml.ScalarNode:
+		for _, e := range yamlnode.Items(n) {
+			if e.Kind == yaml.ScalarNode {
 				out.dependencies = append(out.dependencies, dependency{name: e.Value, line: e.Line, test: test})
-			case yaml.MappingNode:
-				for i := 0; i+1 < len(e.Content); i += 2 {
-					versionRange := ""
-					if v := e.Content[i+1]; v.Kind == yaml.ScalarNode && v.Value != "*" {
-						versionRange = v.Value
-					}
-					out.dependencies = append(out.dependencies, dependency{name: e.Content[i].Value, versionRange: versionRange, line: e.Content[i].Line, test: test})
+			}
+			for _, entry := range yamlnode.Pairs(e) {
+				versionRange := ""
+				if v := entry.Value; v.Kind == yaml.ScalarNode && v.Value != "*" {
+					versionRange = v.Value
 				}
+				out.dependencies = append(out.dependencies, dependency{name: entry.Key.Value, versionRange: versionRange, line: entry.Key.Line, test: test})
 			}
 		}
 	}
-	readDependencies(yamlGet(packageNode, "dependencies"), false)
-	readDependencies(yamlGet(yamlGet(packageNode, "test"), "dependencies"), true)
-	if set := yamlGet(workspaceNode, "packageSet"); set != nil {
-		if v := yamlGet(set, "registry"); v != nil && v.Value != "" {
+	readDependencies(yamlnode.Get(packageNode, "dependencies"), false)
+	readDependencies(yamlnode.Get(packageNode, "test", "dependencies"), true)
+	if set := yamlnode.Get(workspaceNode, "packageSet"); set != nil {
+		if v := yamlnode.Get(set, "registry"); v != nil && v.Value != "" {
 			out.set = "registry " + v.Value
-		} else if v := yamlGet(set, "url"); v != nil && v.Value != "" {
+		} else if v := yamlnode.Get(set, "url"); v != nil && v.Value != "" {
 			out.set = setName(&dhall.Value{Kind: dhall.KindImport, Location: v.Value})
 		}
 	}
-	if extra := yamlGet(workspaceNode, "extraPackages"); extra != nil && extra.Kind == yaml.MappingNode {
-		for i := 0; i+1 < len(extra.Content); i += 2 {
-			k, v := extra.Content[i], extra.Content[i+1]
-			e := &extraPackage{name: k.Value, line: k.Line}
-			switch v.Kind {
-			case yaml.ScalarNode:
-				e.version = v.Value
-			case yaml.MappingNode:
-				for _, f := range []struct {
-					key string
-					to  *string
-				}{{"git", &e.git}, {"ref", &e.reference}, {"subdir", &e.subdirectory}, {"path", &e.path}, {"version", &e.version}} {
-					if n := yamlGet(v, f.key); n != nil && n.Kind == yaml.ScalarNode {
-						*f.to = n.Value
-					}
-				}
-				if d := yamlGet(v, "dependencies"); d != nil {
-					e.hasDependencies = true
-					for _, n := range d.Content {
-						if n.Kind == yaml.ScalarNode {
-							e.dependencies = append(e.dependencies, n.Value)
-						} else if n.Kind == yaml.MappingNode && len(n.Content) > 0 {
-							e.dependencies = append(e.dependencies, n.Content[0].Value)
-						}
+	for _, entry := range yamlnode.Pairs(yamlnode.Get(workspaceNode, "extraPackages")) {
+		v := entry.Value
+		e := &extraPackage{name: entry.Key.Value, line: entry.Key.Line}
+		switch v.Kind {
+		case yaml.ScalarNode:
+			e.version = v.Value
+		case yaml.MappingNode:
+			for _, f := range []struct {
+				key string
+				to  *string
+			}{{"git", &e.git}, {"ref", &e.reference}, {"subdir", &e.subdirectory}, {"path", &e.path}, {"version", &e.version}} {
+				*f.to = yamlnode.Scalar(v, f.key)
+			}
+			if d := yamlnode.Get(v, "dependencies"); d != nil {
+				e.hasDependencies = true
+				for _, n := range d.Content {
+					if n.Kind == yaml.ScalarNode {
+						e.dependencies = append(e.dependencies, n.Value)
+					} else if n.Kind == yaml.MappingNode && len(n.Content) > 0 {
+						e.dependencies = append(e.dependencies, n.Content[0].Value)
 					}
 				}
 			}
-			out.extra = append(out.extra, e)
 		}
+		out.extra = append(out.extra, e)
 	}
 	return out
 }
@@ -182,37 +139,37 @@ type spagoLock struct {
 //
 // Implements: REQ-PURESCRIPT-005
 func readLock(source []byte) *spagoLock {
-	top := yamlDoc(source)
-	packages := yamlGet(top, "packages")
-	if packages == nil || packages.Kind != yaml.MappingNode {
+	top := yamlnode.Parse(source)
+	packages := yamlnode.Mapping(yamlnode.Get(top, "packages"))
+	if packages == nil {
 		return nil
 	}
 	out := &spagoLock{packages: map[string]*lockPackage{}, locals: map[string]string{}}
-	for i := 0; i+1 < len(packages.Content); i += 2 {
-		k, v := packages.Content[i], packages.Content[i+1]
-		p := &lockPackage{name: k.Value, line: k.Line}
+	for _, entry := range yamlnode.Pairs(packages) {
+		v := entry.Value
+		p := &lockPackage{name: entry.Key.Value, line: entry.Key.Line}
 		for _, f := range []struct {
 			key string
 			to  *string
 		}{{"type", &p.typeName}, {"version", &p.version}, {"url", &p.url}, {"rev", &p.rev}, {"subdir", &p.subdirectory}, {"path", &p.path}} {
-			if n := yamlGet(v, f.key); n != nil && n.Kind == yaml.ScalarNode {
-				*f.to = n.Value
+			*f.to = yamlnode.Scalar(v, f.key)
+		}
+		for _, dependency := range yamlnode.Items(yamlnode.Get(v, "dependencies")) {
+			if dependency.Kind == yaml.ScalarNode {
+				p.dependencies = append(p.dependencies, dependency.Value)
 			}
 		}
-		p.dependencies = yamlStrings(yamlGet(v, "dependencies"))
 		if p.name != "" {
 			out.packages[p.name] = p
 		}
 	}
-	workspaceNode := yamlGet(top, "workspace")
-	if locals := yamlGet(workspaceNode, "packages"); locals != nil && locals.Kind == yaml.MappingNode {
-		for i := 0; i+1 < len(locals.Content); i += 2 {
-			if p := yamlGet(locals.Content[i+1], "path"); p != nil {
-				out.locals[locals.Content[i].Value] = p.Value
-			}
+	workspaceNode := yamlnode.Get(top, "workspace")
+	for _, local := range yamlnode.Pairs(yamlnode.Get(workspaceNode, "packages")) {
+		if p := yamlnode.Get(local.Value, "path"); p != nil {
+			out.locals[local.Key.Value] = p.Value
 		}
 	}
-	if a := yamlGet(yamlGet(yamlGet(workspaceNode, "package_set"), "address"), "registry"); a != nil && a.Value != "" {
+	if a := yamlnode.Get(workspaceNode, "package_set", "address", "registry"); a != nil && a.Value != "" {
 		out.set = "registry " + a.Value
 	}
 	return out
