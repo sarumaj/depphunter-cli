@@ -99,14 +99,14 @@ var Servers = []Server{
 	// initialize fails, is logged, and the server is passed over.
 	{Name: "perl", Open: true, Extensions: map[string]string{".pl": "perl", ".pm": "perl", ".t": "perl", ".psgi": "perl"},
 		Commands: [][]string{{"perlnavigator", "--stdio"}, {"pls"}, {"perl", "-MPerl::LanguageServer", "-e", "Perl::LanguageServer::run"}}},
-	// ocaml-lsp-server answers for implementations, interfaces and the ocamllex and
-	// Menhir sources merlin reads; it needs the project built once for dune's
-	// metadata.
 	// LanguageServer.jl runs inside julia; julia on PATH without the package
 	// installed fails initialize, which is logged, and the server is passed over.
 	// It indexes the environment's packages first, which takes a while.
 	{Name: "julia", Open: true, Extensions: map[string]string{".jl": "julia"},
 		Commands: [][]string{{"julia", "--startup-file=no", "--history-file=no", "-e", "using LanguageServer; runserver()"}}},
+	// ocaml-lsp-server answers for implementations, interfaces and the ocamllex and
+	// Menhir sources merlin reads; it needs the project built once for dune's
+	// metadata.
 	{Name: "ocaml", Open: true, Extensions: map[string]string{".ml": "ocaml", ".mli": "ocaml.interface", ".mll": "ocaml.ocamllex", ".mly": "ocaml.menhir"},
 		Commands: [][]string{{"ocamllsp"}}},
 	// clojure-lsp serves Clojure, ClojureScript and babashka alike (it analyzes the
@@ -134,8 +134,6 @@ var Servers = []Server{
 	// serve-d answers references for D modules from the dub package around them,
 	// over stdio.
 	{Name: "d", Open: true, Extensions: map[string]string{".d": "d", ".di": "d"}, Commands: [][]string{{"serve-d"}}},
-	// fortls answers references for Fortran modules and procedures across the
-	// project's sources (free and fixed form), over stdio.
 	// The Haxe language server (vshaxe's, run as haxe-language-server) answers
 	// references for Haxe modules; it compiles with the first .hxml it finds
 	// (build.hxml), so a project with none may get no answers.
@@ -149,14 +147,14 @@ var Servers = []Server{
 	// started as a module of an installed Racket; it expands each opened
 	// file, so a first answer may take a while.
 	{Name: "racket", Open: true, Extensions: map[string]string{".rkt": "racket", ".rktl": "racket", ".scrbl": "racket"}, Commands: [][]string{{"racket", "-l", "racket-langserver"}}},
-	// cl-lsp answers references for Common Lisp over stdio; it loads each
-	// opened file's system in its own Lisp image, so a first answer may take a
-	// while.
 	// Nomic Foundation's server (Hardhat's) reads Foundry and Hardhat projects
 	// alike; solidity-ls is Juan Blanco's server of the VS Code extension. Both
 	// compile the project before answering, so a first answer may take a while.
 	{Name: "solidity", Open: true, Extensions: map[string]string{".sol": "solidity"},
 		Commands: [][]string{{"nomicfoundation-solidity-language-server", "--stdio"}, {"solidity-ls", "--stdio"}}},
+	// cl-lsp answers references for Common Lisp over stdio; it loads each
+	// opened file's system in its own Lisp image, so a first answer may take a
+	// while.
 	{Name: "commonlisp", Open: true, Extensions: map[string]string{".lisp": "lisp", ".lsp": "lisp", ".cl": "lisp", ".asd": "lisp"}, Commands: [][]string{{"cl-lsp"}}},
 	// nimlangserver (the Nim team's) and nimlsp both answer references for Nim
 	// modules over stdio; nimlangserver starts nimsuggest per project, so a
@@ -174,6 +172,8 @@ var Servers = []Server{
 	{Name: "dhall", Open: true, Extensions: map[string]string{".dhall": "dhall"}, Commands: [][]string{{"dhall-lsp-server"}}},
 	{Name: "puppet", Open: true, Extensions: map[string]string{".pp": "puppet"}, Commands: [][]string{{"puppet-languageserver", "--stdio"}}},
 	{Name: "rego", Open: true, Extensions: map[string]string{".rego": "rego"}, Commands: [][]string{{"regal", "language-server"}}},
+	// fortls answers references for Fortran modules and procedures across the
+	// project's sources (free and fixed form), over stdio.
 	{Name: "fortran", Open: true, Extensions: map[string]string{".f90": "fortran", ".f95": "fortran", ".f03": "fortran", ".f08": "fortran", ".f18": "fortran", ".f": "fortran", ".for": "fortran", ".ftn": "fortran", ".f77": "fortran", ".fpp": "fortran"}, Commands: [][]string{{"fortls"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.
@@ -360,6 +360,10 @@ func goBin(name string) string {
 	return ""
 }
 
+// runServer starts one language server over the project, asks it where the symbols of
+// its files are referenced, and hands each reference to add; it returns how many
+// definitions it asked about.
+//
 // Implements: REQ-LSP-003
 func runServer(ctx context.Context, server Server, argv []string, options Options, paths []string,
 	files map[string]*fileInfo, add func(from, to string)) (int, error) {
@@ -372,14 +376,30 @@ func runServer(ctx context.Context, server Server, argv []string, options Option
 		defer cancel()
 		c.shutdown(stop)
 	}()
+	if err := initialize(ctx, c, options.Root); err != nil {
+		return 0, err
+	}
+	queries := prepareQueries(ctx, c, server, options.Root, paths, files)
+	sent, failed := queryReferences(ctx, c, options, queries, files, add)
+	if ctx.Err() != nil {
+		return sent, ctx.Err()
+	}
+	if sent > 0 && failed != nil {
+		options.Logf("references: %s: some requests failed, first: %v", server.Name, failed)
+	}
+	return sent, nil
+}
 
-	rootURI := fileURI(options.Root)
-	var init struct{}
+// initialize opens the session with the capabilities depphunter uses: references,
+// document symbols and synchronization, over one workspace folder, root.
+func initialize(ctx context.Context, c *client, root string) error {
+	rootURI := fileURI(root)
+	var reply struct{}
 	if err := c.call(ctx, "initialize", map[string]any{
 		"processId":        os.Getpid(),
 		"rootUri":          rootURI,
-		"rootPath":         options.Root,
-		"workspaceFolders": []map[string]string{{"uri": rootURI, "name": filepath.Base(options.Root)}},
+		"rootPath":         root,
+		"workspaceFolders": []map[string]string{{"uri": rootURI, "name": filepath.Base(root)}},
 		"capabilities": map[string]any{
 			"textDocument": map[string]any{
 				"references":      map[string]any{},
@@ -388,33 +408,39 @@ func runServer(ctx context.Context, server Server, argv []string, options Option
 			},
 			"workspace": map[string]any{"configuration": true, "workspaceFolders": true},
 		},
-	}, &init); err != nil {
-		return 0, fmt.Errorf("initialize: %w", err)
+	}, &reply); err != nil {
+		return fmt.Errorf("initialize: %w", err)
 	}
-	if err := c.notify("initialized", map[string]any{}); err != nil {
-		return 0, err
-	}
+	return c.notify("initialized", map[string]any{})
+}
 
-	type query struct {
-		file   string
-		symbol symbol
-		column int
-	}
+// A query is a symbol's definition to ask references of: its file and the column
+// its name starts at on its line.
+type query struct {
+	file   string
+	symbol symbol
+	column int
+}
+
+// prepareQueries opens each file with a server that wants them opened, records the
+// extents of its symbols (documentSpans), and finds where on its line each symbol's
+// name is.
+func prepareQueries(ctx context.Context, c *client, server Server, root string, paths []string, files map[string]*fileInfo) []query {
 	var queries []query
 	for _, p := range paths {
-		data, err := os.ReadFile(filepath.Join(options.Root, filepath.FromSlash(p)))
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(p)))
 		if err != nil {
 			continue
 		}
+		uri := fileURI(filepath.Join(root, p))
 		if server.Open {
 			id, _ := server.languageID(p)
 			c.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{
-				"uri": fileURI(filepath.Join(options.Root, p)), "languageId": id,
-				"version": 1, "text": string(data),
+				"uri": uri, "languageId": id, "version": 1, "text": string(data),
 			}})
 		}
 		lines := strings.Split(string(data), "\n")
-		files[p].spans = documentSpans(ctx, c, fileURI(filepath.Join(options.Root, p)), files[p].symbols)
+		files[p].spans = documentSpans(ctx, c, uri, files[p].symbols)
 		for _, s := range files[p].symbols {
 			if s.line < 1 || s.line > len(lines) {
 				continue
@@ -424,12 +450,19 @@ func runServer(ctx context.Context, server Server, argv []string, options Option
 			}
 		}
 	}
+	return queries
+}
 
-	// The first request also waits for the server to load the workspace.
+// queryReferences asks for the references of each query, options.Parallel at a time,
+// and hands add each reference from the symbol (or file) that encloses it; it returns
+// how many it sent and the first that failed while ctx was live. The first request
+// also waits for the server to load the workspace.
+func queryReferences(ctx context.Context, c *client, options Options, queries []query, files map[string]*fileInfo,
+	add func(from, to string)) (int, error) {
 	var g errgroup.Group
 	g.SetLimit(options.Parallel)
-	var firstErr error
-	var errOnce sync.Once
+	var failed error
+	var once sync.Once
 	sent := 0
 	for _, q := range queries {
 		if ctx.Err() != nil {
@@ -450,7 +483,7 @@ func runServer(ctx context.Context, server Server, argv []string, options Option
 			}, &locations)
 			if err != nil {
 				if ctx.Err() == nil {
-					errOnce.Do(func() { firstErr = err })
+					once.Do(func() { failed = err })
 				}
 				return nil
 			}
@@ -465,13 +498,7 @@ func runServer(ctx context.Context, server Server, argv []string, options Option
 		})
 	}
 	g.Wait()
-	if ctx.Err() != nil {
-		return sent, ctx.Err()
-	}
-	if sent > 0 && firstErr != nil && len(queries) > 0 {
-		options.Logf("references: %s: some requests failed, first: %v", server.Name, firstErr)
-	}
-	return sent, nil
+	return sent, failed
 }
 
 // enclosing returns the innermost symbol whose definition contains line, or the file
@@ -555,10 +582,6 @@ func documentSpans(ctx context.Context, c *client, uri string, symbols []symbol)
 
 var wordCache sync.Map // name -> *regexp.Regexp
 
-// nameColumn finds name as a whole word on the definition line and returns its
-// column in UTF-16 code units, the unit LSP positions use by default.
-//
-// Implements: REQ-LSP-008
 // symbolWord is the word a symbol's name is written as on its line:
 // Type.method -> method, init@12 -> init, an Elixir or Erlang function's
 // Mod.fun/2 -> fun, and an Objective-C method's Class.a:b: -> a.
@@ -604,6 +627,10 @@ func allDigits(s string) bool {
 	return s != ""
 }
 
+// nameColumn finds name as a whole word on the definition line and returns its
+// column in UTF-16 code units, the unit LSP positions use by default.
+//
+// Implements: REQ-LSP-008
 func nameColumn(line, name string) (int, bool) {
 	re, ok := wordCache.Load(name)
 	if !ok {
