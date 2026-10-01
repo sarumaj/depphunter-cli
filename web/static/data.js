@@ -18,7 +18,7 @@ export const STATIC = embedded ? JSON.parse(embedded.textContent) : null;
 const token = new URLSearchParams(location.search).get('token') || '';
 
 /** The headers every call carries: the token, when the page was given one. */
-export const auth = (more = {}) => (token ? { ...more, 'X-Depphunter-Token': token } : more);
+const auth = (more = {}) => (token ? { ...more, 'X-Depphunter-Token': token } : more);
 
 /** The same token on a URL, for the requests that cannot carry a header. */
 export const authed = url => (token ? url + (url.includes('?') ? '&' : '?') + `token=${encodeURIComponent(token)}` : url);
@@ -92,13 +92,16 @@ export async function fetchBytes(path, limit) {
   return new Uint8Array(await response.arrayBuffer()).subarray(0, limit);
 }
 
+/** A change sent to the server: JSON, marked as the page's own request. */
+export const send = (url, method, body) => fetch(url, {
+  method,
+  headers: auth({ 'Content-Type': 'application/json', 'X-Depphunter-Request': '1' }),
+  body: JSON.stringify(body),
+});
+
 // Implements: REQ-CFG-012
 export async function saveSettings(ui) {
-  const response = await fetch('api/settings', {
-    method: 'POST',
-    headers: auth({ 'Content-Type': 'application/json', 'X-Depphunter-Request': '1' }),
-    body: JSON.stringify(ui),
-  });
+  const response = await send('api/settings', 'POST', ui);
   if (!response.ok) throw new Error((await response.text()).trim());
 }
 
@@ -146,11 +149,7 @@ export async function fetchSession() {
 
 const write = (url, method, body) => {
   if (STATIC) return Promise.resolve();
-  return fetch(url, {
-    method,
-    headers: auth({ 'Content-Type': 'application/json', 'X-Depphunter-Request': '1' }),
-    body: JSON.stringify({ ...body, origin: CLIENT }),
-  }).catch(() => {});
+  return send(url, method, { ...body, origin: CLIENT }).catch(() => {});
 };
 
 /** Says what is selected now; '' for nothing. */
