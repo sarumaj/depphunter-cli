@@ -12,7 +12,7 @@ import { describe, it } from 'node:test';
 import { box } from './stub.mjs';
 
 const B = await import('../static/buildings.js');
-const { CITY_FRAG_HEAD } = await import('../static/city.js');
+const { CITY_FRAG_HEAD } = await import('../static/cityglsl.js');
 const THREE = await import('../static/vendor/three.module.min.js');
 
 // A synthetic district: every kind of box at every height the layout makes, in the

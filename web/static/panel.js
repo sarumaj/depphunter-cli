@@ -6,9 +6,6 @@ import { ago, formatDate } from './history.js';
 import { fmt, h, catchToggle, sevDot } from './dom.js';
 import { sourceView, mediaKind, clearFound } from './source.js';
 
-// The source viewer lives in source.js; these are what the tests reach through here.
-export { findMatches, findBar, mediaKind, hexDump } from './source.js';
-
 // indexHost keeps the part of an index URL that identifies it on a stat tile.
 const indexHost = url => url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
 // originPlace keeps the part of where a package was installed from that says which:

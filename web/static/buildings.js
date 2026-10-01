@@ -63,7 +63,7 @@ export const LOOKS = {
 /**
  * A number in [0, 1) for a string, the same on every run (FNV-1a, 32 bits).
  */
-export function hashString(text) {
+function hashString(text) {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     h ^= text.charCodeAt(i);

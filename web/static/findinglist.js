@@ -16,7 +16,7 @@ import { rankOf, whereOf } from './findings.js';
 import { h, catchToggle, findingItem } from './dom.js';
 
 /** What a row is sorted and labeled by: the package a finding is against, or its file. */
-export const nameOf = f => f.package || f.path || '';
+const nameOf = f => f.package || f.path || '';
 
 /**
  * The rows of the list: every finding whose building the map draws under the current

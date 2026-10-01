@@ -15,7 +15,8 @@ import { buildParameters, isGround } from './buildings.js';
 import { Details, tiersOf } from './details.js';
 import { cull } from './lod.js';
 import { Resolution } from './resolution.js';
-import { kindCode, CITY_VERT_HEAD, CITY_VERT_BODY, CITY_FRAG_HEAD, CITY_FRAG_BODY, makeSky, waterMaterial, makeProps, setNight, roadUniforms, setRoads } from './city.js';
+import { kindCode, makeSky, waterMaterial, makeProps, setNight, roadUniforms, setRoads } from './city.js';
+import { CITY_VERT_HEAD, CITY_VERT_BODY, CITY_FRAG_HEAD, CITY_FRAG_BODY } from './cityglsl.js';
 
 const ISO_POLAR = Math.acos(1 / Math.sqrt(3)); // true isometric elevation (35.26°)
 

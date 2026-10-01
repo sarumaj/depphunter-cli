@@ -161,7 +161,7 @@ const PROP_H = 1, CELL_R = CELL * Math.SQRT1_2 + 0.5;
  * drawn (MapScene.bend), `center` the planet's middle and `radius` its size, and a
  * cell is also hidden past the walker's horizon or the fog's end (`far`).
  */
-export function judge(cells, camera, height, walk = null) {
+function judge(cells, camera, height, walk = null) {
   camera.updateMatrixWorld();
   _frustum.setFromProjectionMatrix(_matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
   const focal = camera.isPerspectiveCamera ? height / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) : 0;
