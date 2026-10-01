@@ -79,6 +79,9 @@ const PORT = number('port', 0); // 0: whatever port is free
 // the dialog does not have to grow around it.
 const SHOT_W = 720;
 const QUALITY = 0.82;
+// A screenshot waits for the next frame, and a frame of this repository's streets
+// drawn by SwiftShader can take longer than Playwright's thirty seconds.
+const SHOT_TIMEOUT = 180000;
 // The window the map is driven in. Larger than the picture, so a crop can be taken
 // from the middle of a scene rather than the whole of a cramped one.
 const VIEW = { width: 1280, height: 800 };
@@ -247,7 +250,7 @@ function report(directory) {
  * card shows a roof alight rather than a flame filling the frame.
  */
 async function findFire(page, view) {
-  const png = (await page.screenshot()).toString('base64');
+  const png = (await page.screenshot({ timeout: SHOT_TIMEOUT })).toString('base64');
   return page.evaluate(async ({ data, view }) => {
     const image = new Image();
     await new Promise(r => { image.onload = r; image.src = 'data:image/png;base64,' + data; });
@@ -281,7 +284,7 @@ async function findFire(page, view) {
 
 /** Crops a region out of the page's last frame, scales it, and writes it as WebP. */
 async function shot(page, name, clip) {
-  const png = await page.screenshot({ clip });
+  const png = await page.screenshot({ clip, timeout: SHOT_TIMEOUT });
   const webp = await page.evaluate(async ({ data, w, q }) => {
     const image = new Image();
     await new Promise(r => { image.onload = r; image.src = 'data:image/png;base64,' + data; });
@@ -296,6 +299,32 @@ async function shot(page, name, clip) {
   console.log(`  ${name}.webp  ${(fs.statSync(file).size / 1024).toFixed(1)} kB`);
 }
 
+/**
+ * Puts the walker where the hottest roof is in plain view: out from the side of it
+ * teleport would pick, back far enough that the roof sits well inside the frame, and
+ * turned to face it. Runs in the page.
+ */
+function standBackFromFire() {
+  const w = window.__tour.walker;
+  const fire = w.burning().sort((a, b) => b.heat - a.heat)[0];
+  if (!fire) return;
+  const box = w.boxes.find(b => b.node === fire.node);
+  w.teleport(box);
+  const p = w.p, eye = 0.45; // walk.js EYE
+  const out = Math.hypot(p.x - box.x, p.z - box.z) || 1;
+  const [ux, uz] = [(p.x - box.x) / out, (p.z - box.z) / out];
+  const back = Math.max(6, (fire.y - p.feet - eye) * 1.4);
+  for (let step = back; step > 0; step -= 1) {
+    const x = p.x + ux * step, z = p.z + uz * step;
+    if (Math.abs(w.height(x, z) - p.feet) > 0.5) continue;
+    Object.assign(p, { x, z, feet: w.height(x, z), vy: 0 });
+    break;
+  }
+  const dx = box.x - p.x, dz = box.z - p.z;
+  p.yaw = Math.atan2(-dx, -dz);
+  p.pitch = Math.atan2(fire.y - (p.feet + eye), Math.hypot(dx, dz)) * 0.8;
+}
+
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
   const url = await serve(binary(), SERVED, [report(temporaryDirectory())]);
@@ -305,6 +334,11 @@ async function main() {
   // is there to be photographed as soon as the tour is out of the way.
   const ctx = await browser.newContext({ viewport: VIEW, reducedMotion: 'reduce' });
   await routeModels(ctx);
+  // app.js keeps the walker in module scope; the copy served here hands it out.
+  await ctx.route('**/app.js*', async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, body: `${await response.text()}\nwindow.__tour = { get walker() { return walker; } };` });
+  });
   const page = await ctx.newPage();
   page.on('pageerror', e => console.error('page error:', e.message));
   await page.goto(url, { waitUntil: 'domcontentloaded' });
@@ -343,13 +377,11 @@ async function main() {
   // leaves the walker changed is a scene the one after it has to know about.
   await emptyOffHand(page);
 
-  // 4. A roof alight, which is what a reachable vulnerability looks like. Backed away
-  // from and looked up at, so the roof is in frame at all, and then found rather than
-  // aimed at - see findFire.
-  await page.keyboard.down('s');
-  await page.waitForTimeout(1600);
-  await page.keyboard.up('s');
-  for (let i = 0; i < 7; i++) { await page.mouse.move(VIEW.width / 2, VIEW.height / 2 - i * 45); await page.waitForTimeout(250); }
+  // 4. A roof alight, which is what a reachable vulnerability looks like: the walker
+  // stood back from the hottest one with their hands down, and the flames then found
+  // in the frame rather than assumed to be in the middle of it - see findFire.
+  await page.keyboard.press('h');
+  await page.evaluate(standBackFromFire);
   await page.waitForTimeout(3000);
   const blaze = await findFire(page, VIEW);
   if (blaze) console.log(`  (found the fire: ${blaze.found} pixels)`);
