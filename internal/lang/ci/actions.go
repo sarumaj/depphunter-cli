@@ -21,13 +21,15 @@ func extractWorkflow(root *yaml.Node) *lang.Extraction {
 			continue
 		}
 		extraction.Symbols = append(extraction.Symbols, lang.Symbol{Name: name, Kind: "job", Line: job.Key.Line})
+		// What a job or a step takes through a merge key ("<<: *defaults") is its own.
+		body := yamlnode.Merged(job.Value)
 		// A job that calls a reusable workflow has no steps of its own.
-		if u := yamlnode.Get(job.Value, "uses"); u != nil {
+		if u := yamlnode.Get(body, "uses"); u != nil {
 			addUses(extraction, u, kindWorkflow)
 		}
-		addContainers(extraction, job.Value)
-		for _, step := range yamlnode.List(yamlnode.Get(job.Value, "steps")) {
-			if u := yamlnode.Get(step, "uses"); u != nil {
+		addContainers(extraction, body)
+		for _, step := range yamlnode.List(yamlnode.Get(body, "steps")) {
+			if u := yamlnode.Get(yamlnode.Merged(step), "uses"); u != nil {
 				addUses(extraction, u, kindAction)
 			}
 		}

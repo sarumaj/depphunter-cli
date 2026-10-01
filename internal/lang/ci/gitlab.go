@@ -29,7 +29,9 @@ func extractGitLab(root *yaml.Node) *lang.Extraction {
 		addInclude(extraction, include)
 	}
 	addImages(extraction, root, "")
-	addImages(extraction, yamlnode.Get(root, "default"), "default")
+	// What default or a job takes through a merge key ("<<: *defaults", GitLab's way
+	// of sharing settings besides extends:) is its own.
+	addImages(extraction, yamlnode.Merged(yamlnode.Get(root, "default")), "default")
 
 	for _, job := range yamlnode.Pairs(root) {
 		name := yamlnode.Text(job.Key)
@@ -37,9 +39,10 @@ func extractGitLab(root *yaml.Node) *lang.Extraction {
 			continue
 		}
 		extraction.Symbols = append(extraction.Symbols, lang.Symbol{Name: name, Kind: "job", Line: job.Key.Line})
-		addImages(extraction, job.Value, name)
+		body := yamlnode.Merged(job.Value)
+		addImages(extraction, body, name)
 		// A bridge job runs another pipeline, which is a dependency like any include.
-		for _, include := range yamlnode.List(yamlnode.Get(job.Value, "trigger", "include")) {
+		for _, include := range yamlnode.List(yamlnode.Get(body, "trigger", "include")) {
 			addInclude(extraction, include)
 		}
 	}

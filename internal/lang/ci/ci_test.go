@@ -223,3 +223,58 @@ func TestGitHubAndEnterpriseActionsShareOneEcosystem(t *testing.T) {
 		t.Error("an actions pattern matched outside the actions ecosystem")
 	}
 }
+
+// What a job takes through a merge key is its own: its image, its services and the
+// pipeline it triggers in GitLab; its container and its steps in GitHub Actions.
+//
+// Verifies: REQ-CI-003, REQ-CI-007, REQ-CI-010
+func TestMergeKeys(t *testing.T) {
+	gitlab, err := Plugin{}.Extract(&scan.File{Path: ".gitlab-ci.yml"}, []byte(`.ruby: &ruby
+  image: ruby:3.3
+  services: [postgres:16]
+.child: &child
+  trigger:
+    include: child.yml
+test:
+  <<: *ruby
+  script: [rspec]
+deploy:
+  <<: *child
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	specs := map[string]bool{}
+	for _, i := range gitlab.Imports {
+		specs[i.Spec] = true
+	}
+	for _, want := range []string{"test image: ruby:3.3", "test service: postgres:16", "include: child.yml"} {
+		if !specs[want] {
+			t.Errorf("GitLab: no %q in %v", want, specs)
+		}
+	}
+
+	actions, err := Plugin{}.Extract(&scan.File{Path: ".github/workflows/ci.yml"}, []byte(`x-defaults: &defaults
+  runs-on: ubuntu-latest
+  container: node:20
+x-checkout: &checkout
+  uses: actions/checkout@v4
+jobs:
+  build:
+    <<: *defaults
+    steps:
+      - <<: *checkout
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	modules := map[string]bool{}
+	for _, i := range actions.Imports {
+		modules[i.Module] = true
+	}
+	for _, want := range []string{"node:20", "actions/checkout@v4"} {
+		if !modules[want] {
+			t.Errorf("GitHub Actions: no %q in %v", want, modules)
+		}
+	}
+}
