@@ -3,6 +3,8 @@ package swift
 import (
 	"strings"
 	"sync"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // stdModules are the modules every Swift toolchain ships on every platform: the
@@ -255,7 +257,7 @@ func set(names ...string) map[string]bool {
 func c99name(name string) string {
 	b := []byte(name)
 	for i, c := range b {
-		if !identifierCharacter(c) {
+		if !chars.IsWord(c) {
 			b[i] = '_'
 		}
 	}

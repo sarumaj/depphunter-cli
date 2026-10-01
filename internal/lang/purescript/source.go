@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // Import kinds, carried in RawImport.Name.
@@ -65,13 +66,13 @@ func lex(source []byte) []token {
 			i++
 		case c == ' ' || c == '\t' || c == '\r' || c == '\f':
 			i++
-		case c == '-' && at(s, i+1) == '-' && lineComment(s, i):
+		case c == '-' && chars.At(s, i+1) == '-' && lineComment(s, i):
 			for i < len(s) && s[i] != '\n' {
 				i++
 			}
-		case c == '{' && at(s, i+1) == '-':
+		case c == '{' && chars.At(s, i+1) == '-':
 			// Block comments do not nest: the first -} ends one.
-			for i += 2; i < len(s) && !(s[i] == '-' && at(s, i+1) == '}'); i++ {
+			for i += 2; i < len(s) && !(s[i] == '-' && chars.At(s, i+1) == '}'); i++ {
 				if s[i] == '\n' {
 					line, lineStart = line+1, i+1
 				}
@@ -80,9 +81,9 @@ func lex(source []byte) []token {
 		case c == '"':
 			start, startLine := i, line
 			startColumn := i - lineStart
-			if at(s, i+1) == '"' && at(s, i+2) == '"' {
+			if chars.At(s, i+1) == '"' && chars.At(s, i+2) == '"' {
 				// A raw string: no escapes, it ends at the next """.
-				for i += 3; i < len(s) && !(s[i] == '"' && at(s, i+1) == '"' && at(s, i+2) == '"'); i++ {
+				for i += 3; i < len(s) && !(s[i] == '"' && chars.At(s, i+1) == '"' && chars.At(s, i+2) == '"'); i++ {
 					if s[i] == '\n' {
 						line, lineStart = line+1, i+1
 					}
@@ -117,7 +118,7 @@ func lex(source []byte) []token {
 			// 'x', '\n', '\'', '\x41'. Without a closing quote soon on the line it is
 			// just punctuation.
 			j := i + 1
-			if at(s, j) == '\\' {
+			if chars.At(s, j) == '\\' {
 				j += 2
 			} else if j < len(s) {
 				_, n := utf8.DecodeRuneInString(s[j:])
@@ -126,7 +127,7 @@ func lex(source []byte) []token {
 			for k := 0; j < len(s) && s[j] != '\'' && s[j] != '\n' && k < 8; k++ {
 				j++
 			}
-			if at(s, j) == '\'' {
+			if chars.At(s, j) == '\'' {
 				emit(tCharacter, s[i:j+1], i, line)
 				i = j + 1
 			} else {
@@ -146,7 +147,7 @@ func lex(source []byte) []token {
 				}
 				// Only an upper-case segment qualifies what follows: Map.lookup, not
 				// record.field.
-				if upper && at(s, i) == '.' && i+1 < len(s) && isIdentifierStart(s, i+1) {
+				if upper && chars.At(s, i) == '.' && i+1 < len(s) && isIdentifierStart(s, i+1) {
 					i++
 					continue
 				}
@@ -155,7 +156,7 @@ func lex(source []byte) []token {
 			emit(kind, s[start:i], start, line)
 		case c >= '0' && c <= '9':
 			start := i
-			for i < len(s) && (isWord(s[i]) || s[i] == '.' && at(s, i+1) >= '0' && at(s, i+1) <= '9' ||
+			for i < len(s) && (chars.IsWord(s[i]) || s[i] == '.' && chars.At(s, i+1) >= '0' && chars.At(s, i+1) <= '9' ||
 				(s[i] == '-' || s[i] == '+') && (s[i-1] == 'e' || s[i-1] == 'E') && !strings.HasPrefix(s[start:], "0x")) {
 				i++
 			}
@@ -196,17 +197,6 @@ func lineComment(s string, i int) bool {
 	return j >= len(s) || !isSymbol(s[j])
 }
 
-func at(s string, i int) byte {
-	if i < len(s) {
-		return s[i]
-	}
-	return 0
-}
-
-func isWord(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'
-}
-
 // isIdentifierStart reports whether an identifier starts at i: a letter or `_`.
 func isIdentifierStart(s string, i int) bool {
 	c := s[i]
@@ -222,7 +212,7 @@ func isIdentifierStart(s string, i int) bool {
 func identifierEnd(s string, i int) int {
 	for i < len(s) {
 		c := s[i]
-		if isWord(c) || c == '\'' {
+		if chars.IsWord(c) || c == '\'' {
 			i++
 			continue
 		}

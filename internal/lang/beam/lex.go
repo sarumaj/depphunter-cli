@@ -2,6 +2,8 @@ package beam
 
 import (
 	"unicode/utf8"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // The two languages are read by lexers of their own rather than the tree-sitter
@@ -30,13 +32,7 @@ type token struct {
 	line  int
 }
 
-func isIdentifierByte(c byte) bool {
-	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c >= 0x80
-}
-
 func isLower(c byte) bool { return c == '_' || c >= 'a' && c <= 'z' || c >= 0x80 }
-func isUpper(c byte) bool { return c >= 'A' && c <= 'Z' }
-func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 func isSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v'
 }
@@ -152,11 +148,11 @@ func lexElixir(source []byte) []token {
 				l.advance(n)
 			}
 			l.emit(tCharacter, "", line)
-		case c == '~' && (isLower(l.at(1)) && l.at(1) != '_' && l.at(1) < 0x80 || isUpper(l.at(1))):
+		case c == '~' && (isLower(l.at(1)) && l.at(1) != '_' && l.at(1) < 0x80 || chars.IsUpper(l.at(1))):
 			l.exSigil()
 		case c == ':':
 			l.exColon()
-		case isDigit(c):
+		case chars.IsDigit(c):
 			l.number()
 		case c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80:
 			l.exIdentifier()
@@ -169,12 +165,12 @@ func lexElixir(source []byte) []token {
 
 func (l *lexer) exIdentifier() {
 	start, line := l.i, l.line
-	for l.i < len(l.source) && isIdentifierByte(l.source[l.i]) {
+	for l.i < len(l.source) && chars.IsIdentUTF8(l.source[l.i]) {
 		l.i++
 	}
 	name := string(l.source[start:l.i])
 	keyword := l.at(0) == ':' && l.at(1) != ':' && (isSpace(l.at(1)) || l.at(1) == 0)
-	if isUpper(name[0]) {
+	if chars.IsUpper(name[0]) {
 		if keyword { // [Plugs: [...]]: a keyword key, not a module
 			l.i++
 			l.emit(tKey, name, line)
@@ -206,10 +202,10 @@ func (l *lexer) exColon() {
 		l.i += 2
 		s := l.exQuoted(c, true)
 		l.emit(tAtom, s, line)
-	case isIdentifierByte(c) && !isDigit(c):
+	case chars.IsIdentUTF8(c) && !chars.IsDigit(c):
 		l.i++
 		start := l.i
-		for l.i < len(l.source) && (isIdentifierByte(l.source[l.i]) || l.source[l.i] == '@') {
+		for l.i < len(l.source) && (chars.IsIdentUTF8(l.source[l.i]) || l.source[l.i] == '@') {
 			l.i++
 		}
 		if c := l.at(0); c == '?' || c == '!' {
@@ -336,7 +332,7 @@ func (l *lexer) exSigil() {
 	if lower {
 		l.i++
 	} else {
-		for l.i < len(l.source) && (isUpper(l.source[l.i]) || isDigit(l.source[l.i])) {
+		for l.i < len(l.source) && (chars.IsUpper(l.source[l.i]) || chars.IsDigit(l.source[l.i])) {
 			l.i++
 		}
 	}
@@ -375,8 +371,8 @@ func (l *lexer) number() {
 	for l.i < len(l.source) {
 		c := l.source[l.i]
 		switch {
-		case isIdentifierByte(c) && c < 0x80, c == '#':
-		case c == '.' && isDigit(l.at(1)):
+		case chars.IsIdentUTF8(c) && c < 0x80, c == '#':
+		case c == '.' && chars.IsDigit(l.at(1)):
 		case (c == '+' || c == '-') && (l.source[l.i-1] == 'e' || l.source[l.i-1] == 'E') && !hexNumber(l.source[start:l.i]):
 		default:
 			l.emit(tNumber, string(l.source[start:l.i]), line)
@@ -453,17 +449,17 @@ func lexErlang(source []byte) []token {
 		case c == '.' && (l.i+1 >= len(l.source) || isSpace(l.at(1)) || l.at(1) == '%'):
 			l.emit(tPunctuation, "end", l.line)
 			l.i++
-		case isDigit(c):
+		case chars.IsDigit(c):
 			l.number()
 		case c >= 'a' && c <= 'z' || c >= 0x80:
 			start, line := l.i, l.line
-			for l.i < len(l.source) && (isIdentifierByte(l.source[l.i]) || l.source[l.i] == '@') {
+			for l.i < len(l.source) && (chars.IsIdentUTF8(l.source[l.i]) || l.source[l.i] == '@') {
 				l.i++
 			}
 			l.emit(tAtom, string(l.source[start:l.i]), line)
-		case c == '_' || isUpper(c):
+		case c == '_' || chars.IsUpper(c):
 			start, line := l.i, l.line
-			for l.i < len(l.source) && (isIdentifierByte(l.source[l.i]) || l.source[l.i] == '@') {
+			for l.i < len(l.source) && (chars.IsIdentUTF8(l.source[l.i]) || l.source[l.i] == '@') {
 				l.i++
 			}
 			l.emit(tVariable, string(l.source[start:l.i]), line)

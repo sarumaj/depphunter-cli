@@ -1,6 +1,10 @@
 package crystal
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
+)
 
 // The lexer reads what the extraction needs from Crystal: identifiers and
 // constants, punctuation, and literals as single tokens so nothing inside a
@@ -138,11 +142,11 @@ func (l *lexer) run() {
 			for l.i < len(s) && s[l.i] != '\n' {
 				l.i++
 			}
-		case isIdentifierStart(c):
+		case chars.IsIdentStartUTF8(c):
 			l.identifier()
 		case c >= '0' && c <= '9':
 			start := l.i
-			for l.i < len(s) && (isIdentifierCharacter(s[l.i]) || s[l.i] == '.' && l.i+1 < len(s) && s[l.i+1] >= '0' && s[l.i+1] <= '9') {
+			for l.i < len(s) && (chars.IsIdentUTF8(s[l.i]) || s[l.i] == '.' && l.i+1 < len(s) && s[l.i+1] >= '0' && s[l.i+1] <= '9') {
 				l.i++
 			}
 			l.emit(kNumber, s[start:l.i])
@@ -160,8 +164,8 @@ func (l *lexer) run() {
 			if l.i < len(s) && s[l.i] == '@' {
 				l.i++
 			}
-			if l.i < len(s) && isIdentifierStart(s[l.i]) {
-				for l.i < len(s) && isIdentifierCharacter(s[l.i]) {
+			if l.i < len(s) && chars.IsIdentStartUTF8(s[l.i]) {
+				for l.i < len(s) && chars.IsIdentUTF8(s[l.i]) {
 					l.i++
 				}
 				l.emit(kVariable, s[start:l.i])
@@ -172,8 +176,8 @@ func (l *lexer) run() {
 		case c == '$':
 			start := l.i
 			l.i++
-			if l.i < len(s) && isIdentifierStart(s[l.i]) {
-				for l.i < len(s) && isIdentifierCharacter(s[l.i]) {
+			if l.i < len(s) && chars.IsIdentStartUTF8(s[l.i]) {
+				for l.i < len(s) && chars.IsIdentUTF8(s[l.i]) {
 					l.i++
 				}
 			} else if l.i < len(s) && s[l.i] != '\n' {
@@ -185,7 +189,7 @@ func (l *lexer) run() {
 			l.emit(kVariable, s[start:l.i])
 		case c == '{' && l.i+1 < len(s) && (s[l.i+1] == '%' || s[l.i+1] == '{'):
 			l.macro()
-		case c == '<' && strings.HasPrefix(s[l.i:], "<<-") && l.i+3 < len(s) && (isIdentifierStart(s[l.i+3]) || s[l.i+3] == '\''):
+		case c == '<' && strings.HasPrefix(s[l.i:], "<<-") && l.i+3 < len(s) && (chars.IsIdentStartUTF8(s[l.i+3]) || s[l.i+3] == '\''):
 			l.heredocStart()
 		case c == '/' && (!l.operand() || l.callArgument()):
 			if !l.regex() {
@@ -208,18 +212,10 @@ func (l *lexer) afterDefinition() bool {
 	return t.kind == kIdentifier && t.text == "def" || t.kind == kPunctuation && t.text == "."
 }
 
-func isIdentifierStart(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_' || c >= 0x80
-}
-
-func isIdentifierCharacter(c byte) bool {
-	return isIdentifierStart(c) || c >= '0' && c <= '9'
-}
-
 func (l *lexer) identifier() {
 	s := l.s
 	start := l.i
-	for l.i < len(s) && isIdentifierCharacter(s[l.i]) {
+	for l.i < len(s) && chars.IsIdentUTF8(s[l.i]) {
 		l.i++
 	}
 	// foo? and foo! are method names; foo!= is foo followed by !=.
@@ -263,9 +259,9 @@ func (l *lexer) colon() {
 	}
 	if l.i+1 < len(s) {
 		switch c := s[l.i+1]; {
-		case isIdentifierStart(c):
+		case chars.IsIdentStartUTF8(c):
 			l.i++
-			for l.i < len(s) && isIdentifierCharacter(s[l.i]) {
+			for l.i < len(s) && chars.IsIdentUTF8(s[l.i]) {
 				l.i++
 			}
 			if l.i < len(s) && (s[l.i] == '?' || s[l.i] == '!' || s[l.i] == '=') && (l.i+1 >= len(s) || s[l.i+1] != '=' && s[l.i+1] != '>') {
@@ -526,7 +522,7 @@ func (l *lexer) heredocStart() {
 		j++
 	}
 	idStart := j
-	for j < len(s) && isIdentifierCharacter(s[j]) {
+	for j < len(s) && chars.IsIdentUTF8(s[j]) {
 		j++
 	}
 	id := s[idStart:j]

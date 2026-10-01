@@ -1,5 +1,7 @@
 package haxe
 
+import "github.com/sarumaj/depphunter-cli/internal/lang/chars"
+
 // The lexer reads Haxe well enough to tell code from comments, strings and
 // regular expressions, which is all the declaration scanner needs. It is an
 // iterator, so the resolver can read a file's package line without lexing the
@@ -41,8 +43,6 @@ func isIdentifierStart(c byte) bool {
 }
 
 func isIdentifierCharacter(c byte) bool { return isIdentifierStart(c) || (c >= '0' && c <= '9') }
-
-func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 // next returns the next token outside strings, comments and interpolations,
 // and false at the end of the input.
@@ -105,12 +105,12 @@ func (l *lexer) scan() (token, bool) {
 			l.i++
 		}
 		return makeToken(tIdentifier, string(source[start:l.i]))
-	case isDigit(c):
+	case chars.IsDigit(c):
 		for l.i < len(source) {
 			d := source[l.i]
 			if isIdentifierCharacter(d) {
 				l.i++
-			} else if d == '.' && l.i+1 < len(source) && isDigit(source[l.i+1]) {
+			} else if d == '.' && l.i+1 < len(source) && chars.IsDigit(source[l.i+1]) {
 				l.i++
 			} else if (d == '+' || d == '-') && (source[l.i-1] == 'e' || source[l.i-1] == 'E') && !hexNumber(source[start:l.i]) {
 				l.i++

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // Import kinds, the first line of RawImport.Name. The lines after it are the
@@ -143,11 +144,11 @@ func moduleName(s string) bool {
 		return false
 	}
 	for k, segment := range strings.Split(s, "::") {
-		if segment == "" || k == 0 && !identifierStart(segment[0]) {
+		if segment == "" || k == 0 && !chars.IsIdentStartUTF8(segment[0]) {
 			return false
 		}
 		for k := 0; k < len(segment); k++ {
-			if !identifierByte(segment[k]) {
+			if !chars.IsIdentUTF8(segment[k]) {
 				return false
 			}
 		}

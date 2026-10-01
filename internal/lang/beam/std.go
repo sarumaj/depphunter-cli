@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // elixirStd are the top-level modules Elixir ships (the elixir, logger, ex_unit,
@@ -129,9 +130,9 @@ func underscore(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		if isUpper(c) {
-			previousLower := i > 0 && (s[i-1] >= 'a' && s[i-1] <= 'z' || isDigit(s[i-1]))
-			nextLower := i > 0 && isUpper(s[i-1]) && i+1 < len(s) && s[i+1] >= 'a' && s[i+1] <= 'z'
+		if chars.IsUpper(c) {
+			previousLower := i > 0 && (s[i-1] >= 'a' && s[i-1] <= 'z' || chars.IsDigit(s[i-1]))
+			nextLower := i > 0 && chars.IsUpper(s[i-1]) && i+1 < len(s) && s[i+1] >= 'a' && s[i+1] <= 'z'
 			if previousLower || nextLower {
 				b.WriteByte('_')
 			}

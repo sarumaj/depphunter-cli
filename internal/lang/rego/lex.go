@@ -1,6 +1,10 @@
 package rego
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
+)
 
 type tokenKind uint8
 
@@ -64,16 +68,16 @@ func lex(source []byte) []token {
 			}
 			emit(tString, s[i+1:min(j, len(s))], start)
 			i = min(j+1, len(s))
-		case isWord(c) && (c < '0' || c > '9'):
+		case chars.IsWord(c) && (c < '0' || c > '9'):
 			j := i
-			for j < len(s) && isWord(s[j]) {
+			for j < len(s) && chars.IsWord(s[j]) {
 				j++
 			}
 			emit(tIdentifier, s[i:j], line)
 			i = j
 		case c >= '0' && c <= '9':
 			j := i
-			for j < len(s) && (isWord(s[j]) || s[j] == '.' && at(s, j+1) >= '0' && at(s, j+1) <= '9') {
+			for j < len(s) && (chars.IsWord(s[j]) || s[j] == '.' && chars.At(s, j+1) >= '0' && chars.At(s, j+1) <= '9') {
 				j++
 			}
 			emit(tNumber, s[i:j], line)
@@ -91,15 +95,4 @@ func lex(source []byte) []token {
 		}
 	}
 	return out
-}
-
-func at(s string, i int) byte {
-	if i < len(s) {
-		return s[i]
-	}
-	return 0
-}
-
-func isWord(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'
 }

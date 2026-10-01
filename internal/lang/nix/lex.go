@@ -1,5 +1,7 @@
 package nix
 
+import "github.com/sarumaj/depphunter-cli/internal/lang/chars"
+
 // The Nix lexer. Nix's grammar is small, but three things make a plain tokenizer
 // wrong: strings ("..." and ''...'') hold ${...} code, which holds strings again; a
 // path is a token of its own (./x.nix, a/b, ~/x, <nixpkgs>, and ./x/${y}.nix with
@@ -111,10 +113,8 @@ func (l *lexer) peek(k int) byte {
 	return 0
 }
 
-func isIdentifierStart(c byte) bool { return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
-
 func isIdentifierCharacter(c byte) bool {
-	return isIdentifierStart(c) || c >= '0' && c <= '9' || c == '\'' || c == '-'
+	return chars.IsIdentStart(c) || c >= '0' && c <= '9' || c == '\'' || c == '-'
 }
 
 func isPathCharacter(c byte) bool {
@@ -205,7 +205,7 @@ func (l *lexer) code() {
 	if (isPathCharacter(c) || c == '/' || c == '~') && l.i >= l.noPath && l.path() {
 		return
 	}
-	if isIdentifierStart(c) {
+	if chars.IsIdentStart(c) {
 		if l.i >= l.noURI && l.uri() {
 			return
 		}

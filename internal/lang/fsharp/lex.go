@@ -4,6 +4,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // Token kinds.
@@ -129,7 +131,7 @@ func (l *lexer) run() {
 			}
 			l.i += 2 + end + 2
 			l.emit(tIdentifier, l.s[start+2:start+2+end], start)
-		case isIdentifierStart(c):
+		case chars.IsIdentStart(c):
 			start := l.i
 			l.identifier()
 			l.emit(tIdentifier, l.s[start:l.i], start)
@@ -159,7 +161,7 @@ func (l *lexer) run() {
 			start := l.i
 			l.i += 2
 			l.emit(tPunctuation, "..", start)
-		case c == '^' && isIdentifierStart(l.peek(1)) && l.i > 0 && !isIdentifierByte(l.s[l.i-1]) && l.s[l.i-1] != ')':
+		case c == '^' && chars.IsIdentStart(l.peek(1)) && l.i > 0 && !isIdentifierByte(l.s[l.i-1]) && l.s[l.i-1] != ')':
 			// ^T, a statically resolved type parameter.
 			start := l.i
 			l.i++
@@ -173,12 +175,8 @@ func (l *lexer) run() {
 	}
 }
 
-func isIdentifierStart(c byte) bool {
-	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
-}
-
 func isIdentifierByte(c byte) bool {
-	return isIdentifierStart(c) || c >= '0' && c <= '9' || c == '\''
+	return chars.IsIdentStart(c) || c >= '0' && c <= '9' || c == '\''
 }
 
 func (l *lexer) identifier() {
@@ -480,7 +478,7 @@ func (l *lexer) quote() {
 	for l.i < len(l.s) && l.s[l.i] == '\'' { // ''a
 		l.i++
 	}
-	if l.i < len(l.s) && isIdentifierStart(l.s[l.i]) {
+	if l.i < len(l.s) && chars.IsIdentStart(l.s[l.i]) {
 		l.identifier()
 		l.emit(tTyVariable, l.s[start:l.i], start)
 		return

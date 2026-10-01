@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 	"github.com/sarumaj/depphunter-cli/internal/lang/yamlnode"
 )
 
@@ -216,26 +217,26 @@ func rubyStatements(source []byte) [][]rToken {
 			}
 			current = append(current, rToken{rString, b.String(), line})
 			i = min(j+1, len(s))
-		case c == ':' && isWord(at(s, i+1)):
+		case c == ':' && chars.IsWord(chars.At(s, i+1)):
 			j := i + 1
-			for j < len(s) && isWord(s[j]) {
+			for j < len(s) && chars.IsWord(s[j]) {
 				j++
 			}
 			current = append(current, rToken{rSymbol, s[i+1 : j], line})
 			i = j
-		case isWord(c):
+		case chars.IsWord(c):
 			j := i
-			for j < len(s) && (isWord(s[j]) || s[j] == '?' || s[j] == '!') {
+			for j < len(s) && (chars.IsWord(s[j]) || s[j] == '?' || s[j] == '!') {
 				j++
 			}
-			if at(s, j) == ':' && at(s, j+1) != ':' {
+			if chars.At(s, j) == ':' && chars.At(s, j+1) != ':' {
 				current = append(current, rToken{rLabel, s[i:j], line})
 				i = j + 1
 				continue
 			}
 			current = append(current, rToken{rIdentifier, s[i:j], line})
 			i = j
-		case c == '=' && at(s, i+1) == '>':
+		case c == '=' && chars.At(s, i+1) == '>':
 			current = append(current, rToken{rArrow, "=>", line})
 			i += 2
 		case c == ' ' || c == '\t' || c == '\r':

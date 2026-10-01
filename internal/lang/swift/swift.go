@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 	"github.com/sarumaj/depphunter-cli/internal/lang/cocoapods"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
@@ -163,7 +164,7 @@ func parseImport(text string) (lang.RawImport, bool) {
 		switch {
 		case strings.HasPrefix(rest, "@"):
 			i := 1
-			for i < len(rest) && identifierCharacter(rest[i]) {
+			for i < len(rest) && chars.IsWord(rest[i]) {
 				i++
 			}
 			if i < len(rest) && rest[i] == '(' {
@@ -219,7 +220,7 @@ func isIdentifier(s string) bool {
 		return false
 	}
 	for i := 0; i < len(s); i++ {
-		if !identifierCharacter(s[i]) {
+		if !chars.IsWord(s[i]) {
 			return false
 		}
 	}

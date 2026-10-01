@@ -1,6 +1,10 @@
 package jsonnet
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
+)
 
 type kind uint8
 
@@ -69,14 +73,14 @@ func lex(source []byte) []token {
 			i = j
 		case c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z':
 			j := i + 1
-			for j < len(s) && identifierByte(s[j]) {
+			for j < len(s) && chars.IsWord(s[j]) {
 				j++
 			}
 			tokens = append(tokens, token{tIdentifier, s[i:j], line})
 			i = j
 		case c >= '0' && c <= '9':
 			j := i + 1
-			for j < len(s) && (identifierByte(s[j]) || s[j] == '.' || (s[j] == '-' || s[j] == '+') && (s[j-1] == 'e' || s[j-1] == 'E')) {
+			for j < len(s) && (chars.IsWord(s[j]) || s[j] == '.' || (s[j] == '-' || s[j] == '+') && (s[j-1] == 'e' || s[j-1] == 'E')) {
 				j++
 			}
 			tokens = append(tokens, token{tNumber, s[i:j], line})
@@ -87,10 +91,6 @@ func lex(source []byte) []token {
 		}
 	}
 	return tokens
-}
-
-func identifierByte(c byte) bool {
-	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
 // quoted reads a string from i (after its opening quote q) and returns its

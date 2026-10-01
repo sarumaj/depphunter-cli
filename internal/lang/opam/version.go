@@ -1,6 +1,10 @@
 package opam
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
+)
 
 // CompareVersions orders two opam versions as opam does (Debian's rules without
 // the epoch): runs of non-digits compared character by character, where `~`
@@ -26,12 +30,10 @@ func CompareVersions(a, b string) int {
 	return 0
 }
 
-func isDigit(c byte) bool { return c >= '0' && c <= '9' }
-
 // split cuts the leading run of digits (or of non-digits) off v.
 func split(v string, digits bool) (string, string) {
 	i := 0
-	for i < len(v) && isDigit(v[i]) == digits {
+	for i < len(v) && chars.IsDigit(v[i]) == digits {
 		i++
 	}
 	return v[:i], v[i:]

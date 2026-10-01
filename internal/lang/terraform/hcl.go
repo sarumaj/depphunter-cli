@@ -2,6 +2,8 @@ package terraform
 
 import (
 	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // This is a reader of HCL's native syntax that goes only as deep as the plugin
@@ -48,11 +50,9 @@ func lex(source []byte) []token {
 	return l.tokens(false)
 }
 
-func identifierStart(c byte) bool {
-	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
+func identifierPart(c byte) bool {
+	return chars.IsIdentStartUTF8(c) || c == '-' || c >= '0' && c <= '9'
 }
-
-func identifierPart(c byte) bool { return identifierStart(c) || c == '-' || c >= '0' && c <= '9' }
 
 // tokens lexes until the end of the input or, inside an interpolation, the brace
 // that closes it (consumed).
@@ -86,7 +86,7 @@ func (l *lexer) tokens(interpolate bool) []token {
 			out = append(out, l.template(true))
 		case c == '<' && l.peek(1) == '<' && l.heredocStart():
 			out = append(out, l.heredoc())
-		case identifierStart(c):
+		case chars.IsIdentStartUTF8(c):
 			start := l.i
 			for l.i < len(l.source) && identifierPart(l.source[l.i]) {
 				l.i++
@@ -196,7 +196,7 @@ func (l *lexer) heredocStart() bool {
 	if j < len(l.source) && l.source[j] == '-' {
 		j++
 	}
-	if j >= len(l.source) || !identifierStart(l.source[j]) {
+	if j >= len(l.source) || !chars.IsIdentStartUTF8(l.source[j]) {
 		return false
 	}
 	for j < len(l.source) && identifierPart(l.source[j]) {

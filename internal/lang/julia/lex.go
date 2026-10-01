@@ -5,6 +5,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // Token kinds of the Julia lexer. Keywords are identifiers; the reader tells them
@@ -283,7 +285,7 @@ func (l *lexer) interpolate(depth int) {
 			}
 		case '\'':
 			save := l.i
-			if l.i > 0 && isIdentifierByte(l.source[l.i-1]) || !l.character() {
+			if l.i > 0 && chars.IsIdentUTF8(l.source[l.i-1]) || !l.character() {
 				l.i = save + 1
 			}
 			continue
@@ -317,10 +319,6 @@ func (l *lexer) character() bool {
 		return true
 	}
 	return false
-}
-
-func isIdentifierByte(c byte) bool {
-	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c >= 0x80
 }
 
 // operatorRunes are the non-ASCII operators common in Julia code; every other
@@ -384,7 +382,7 @@ func (l *lexer) number() {
 			// 1.5 but not 1..2, 1.+x or x[1].y
 			if l.i+1 < len(l.source) && (l.source[l.i+1] >= '0' && l.source[l.i+1] <= '9' || l.source[l.i+1] == 'e') {
 				l.i++
-			} else if l.i+1 >= len(l.source) || !strings.ContainsRune(".+-*/^=<>!&|%\\:)", rune(l.source[l.i+1])) && !isIdentifierByte(l.source[l.i+1]) {
+			} else if l.i+1 >= len(l.source) || !strings.ContainsRune(".+-*/^=<>!&|%\\:)", rune(l.source[l.i+1])) && !chars.IsIdentUTF8(l.source[l.i+1]) {
 				l.i++
 			} else {
 				return

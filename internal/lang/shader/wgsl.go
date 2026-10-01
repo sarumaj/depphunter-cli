@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // Import kinds, kept in RawImport.Name.
@@ -290,7 +291,7 @@ func lexTokens(source []byte, directives bool) ([]token, []lang.RawImport) {
 		lineStart = false
 		start, at := i, line
 		switch {
-		case identifierStart(c) || c >= 0x80:
+		case chars.IsIdentStart(c) || c >= 0x80:
 			for i < len(source) && (identifierByte(source[i]) || source[i] >= 0x80) {
 				i++
 			}

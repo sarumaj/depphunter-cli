@@ -1,6 +1,10 @@
 package zig
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
+)
 
 // Token kinds of the Zig lexer. Keywords are identifiers; the reader tells them
 // apart.
@@ -75,16 +79,16 @@ func lex(source []byte) []token {
 			s, j := quoted(source, i+2, '"')
 			tokens = append(tokens, token{tIdentifier, s, line})
 			i = j
-		case c == '@' && i+1 < n && identifierStart(source[i+1]):
+		case c == '@' && i+1 < n && chars.IsIdentStart(source[i+1]):
 			j := i + 1
-			for j < n && identifierPart(source[j]) {
+			for j < n && chars.IsWord(source[j]) {
 				j++
 			}
 			tokens = append(tokens, token{tBuiltin, text[i:j], line})
 			i = j
-		case identifierStart(c):
+		case chars.IsIdentStart(c):
 			j := i
-			for j < n && identifierPart(source[j]) {
+			for j < n && chars.IsWord(source[j]) {
 				j++
 			}
 			tokens = append(tokens, token{tIdentifier, text[i:j], line})
@@ -167,7 +171,7 @@ func number(source []byte, i int) int {
 	for i < len(source) {
 		c := source[i]
 		switch {
-		case identifierPart(c):
+		case chars.IsWord(c):
 			i++
 		case c == '.' && i+1 < len(source) && source[i+1] >= '0' && source[i+1] <= '9':
 			i++
@@ -184,12 +188,6 @@ func number(source []byte, i int) int {
 	}
 	return i
 }
-
-func identifierStart(c byte) bool {
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-}
-
-func identifierPart(c byte) bool { return identifierStart(c) || (c >= '0' && c <= '9') }
 
 // match links each opening bracket to its closing one and back (-1 when
 // unbalanced). A closer that does not fit the innermost opener closes the nearest

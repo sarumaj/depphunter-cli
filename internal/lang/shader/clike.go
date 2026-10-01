@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 	"github.com/sarumaj/depphunter-cli/internal/lang/cpp"
 )
 
@@ -87,7 +88,7 @@ func lexC(source []byte, dead []bool) []token {
 		lineStart = false
 		start, at := i, line
 		switch {
-		case identifierStart(c):
+		case chars.IsIdentStart(c):
 			for i < len(source) && identifierByte(source[i]) {
 				i++
 			}
@@ -118,8 +119,7 @@ func lexC(source []byte, dead []bool) []token {
 	return tokens
 }
 
-func identifierStart(c byte) bool { return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
-func identifierByte(c byte) bool  { return identifierStart(c) || c >= '0' && c <= '9' }
+func identifierByte(c byte) bool { return chars.IsIdentStart(c) || c >= '0' && c <= '9' }
 
 // blockQualifiers open a GLSL interface block (`uniform Camera { ... } cam;`),
 // ray tracing and mesh shading ones included.

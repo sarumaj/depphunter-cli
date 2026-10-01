@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // A Dockerfile is read by a small line parser rather than the tree-sitter grammar.
@@ -297,7 +298,7 @@ func expand(s string, variables map[string]string, compose bool) (string, bool) 
 			continue
 		}
 		j := i + 1
-		for j < len(s) && (s[j] == '_' || isAlnum(s[j])) {
+		for j < len(s) && (s[j] == '_' || chars.IsAlnum(s[j])) {
 			j++
 		}
 		if j == i+1 {
@@ -318,7 +319,7 @@ func expand(s string, variables map[string]string, compose bool) (string, bool) 
 // substitute evaluates the inside of a ${…}.
 func substitute(body string, variables map[string]string, compose bool) (string, bool) {
 	k := 0
-	for k < len(body) && (body[k] == '_' || isAlnum(body[k])) {
+	for k < len(body) && (body[k] == '_' || chars.IsAlnum(body[k])) {
 		k++
 	}
 	name, rest := body[:k], body[k:]
@@ -370,10 +371,6 @@ func closing(s string, from int) int {
 		}
 	}
 	return -1
-}
-
-func isAlnum(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
 // DockerfileImages resolves the images a Dockerfile builds on - its FROM, COPY

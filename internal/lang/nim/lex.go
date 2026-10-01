@@ -1,5 +1,7 @@
 package nim
 
+import "github.com/sarumaj/depphunter-cli/internal/lang/chars"
+
 // Token kinds.
 const (
 	tIdentifier = iota // an identifier or keyword; a backquoted name without its quotes
@@ -39,12 +41,6 @@ func (l *lexer) is(i int, kind int, text string) bool {
 	t := l.tokens[i]
 	return t.kind == kind && t.end-t.start == len(text) && string(l.source[t.start:t.end]) == text
 }
-
-func isIdentifierStart(c byte) bool {
-	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
-}
-
-func isIdentifierCharacter(c byte) bool { return isIdentifierStart(c) || c >= '0' && c <= '9' }
 
 func isOpCharacter(c byte) bool {
 	switch c {
@@ -118,7 +114,7 @@ func lex(source []byte) *lexer {
 			if k := len(l.tokens) - 1; k >= 0 && l.tokens[k].kind == tNumber && l.tokens[k].end == i {
 				// A type suffix: 1'i32, 1.0'f32.
 				j := i + 1
-				for j < n && isIdentifierCharacter(source[j]) {
+				for j < n && chars.IsIdentUTF8(source[j]) {
 					j++
 				}
 				l.tokens[k].end = j
@@ -146,14 +142,14 @@ func lex(source []byte) *lexer {
 			i++
 		case c >= '0' && c <= '9':
 			j := i + 1
-			for j < n && (isIdentifierCharacter(source[j]) || source[j] == '.' && j+1 < n && source[j+1] >= '0' && source[j+1] <= '9') {
+			for j < n && (chars.IsIdentUTF8(source[j]) || source[j] == '.' && j+1 < n && source[j+1] >= '0' && source[j+1] <= '9') {
 				j++
 			}
 			emit(tNumber, i, j, i)
 			i = j
-		case isIdentifierStart(c):
+		case chars.IsIdentStartUTF8(c):
 			j := i + 1
-			for j < n && isIdentifierCharacter(source[j]) {
+			for j < n && chars.IsIdentUTF8(source[j]) {
 				j++
 			}
 			if j < n && source[j] == '"' {

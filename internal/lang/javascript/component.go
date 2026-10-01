@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 	"github.com/sarumaj/depphunter-cli/internal/lang/treesitter"
 )
 
@@ -122,7 +123,7 @@ func componentScripts(extension string, source []byte) []script {
 				depth--
 			}
 			i = skipPast(source, j, ">")
-		case c == '<' && i+1 < len(source) && isLetter(source[i+1]):
+		case c == '<' && i+1 < len(source) && chars.IsLetter(source[i+1]):
 			name, j := tagName(source, i+1)
 			name = strings.ToLower(name)
 			attributeList, j, selfClosing := attributes(source, j, extension)
@@ -301,7 +302,7 @@ func rawTextEnd(source []byte, i int, name string) (end, after int) {
 		}
 		end = at + n
 		if after := end + len(closing); after <= len(source) && bytes.EqualFold(source[end:after], closing) &&
-			(after == len(source) || !isLetter(source[after])) {
+			(after == len(source) || !chars.IsLetter(source[after])) {
 			return end, skipPast(source, after, ">")
 		}
 		at = end + 2
@@ -389,12 +390,10 @@ func skipPast(source []byte, i int, separator string) int {
 // of svelte:head, custom elements and Astro's namespaced components.
 func tagName(source []byte, i int) (string, int) {
 	start := i
-	for i < len(source) && (isLetter(source[i]) || source[i] >= '0' && source[i] <= '9' || strings.IndexByte(":-._", source[i]) >= 0) {
+	for i < len(source) && (chars.IsLetter(source[i]) || source[i] >= '0' && source[i] <= '9' || strings.IndexByte(":-._", source[i]) >= 0) {
 		i++
 	}
 	return string(source[start:i]), i
 }
-
-func isLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
 
 func isSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' }

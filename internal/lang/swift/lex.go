@@ -1,6 +1,10 @@
 package swift
 
-import "bytes"
+import (
+	"bytes"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
+)
 
 // Swift is read with a small scanner rather than the tree-sitter grammar. Measured on
 // real projects (apple/swift-argument-parser, vapor/vapor, CodeEditApp/CodeEdit,
@@ -66,12 +70,6 @@ func tokenize(source []byte) []token {
 	}
 	return l.out
 }
-
-func isIdentifierStart(c byte) bool {
-	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
-}
-
-func isIdentifierPart(c byte) bool { return isIdentifierStart(c) || c >= '0' && c <= '9' }
 
 // opCharacter reports the bytes operators are made of.
 func opCharacter(c byte) bool {
@@ -143,9 +141,9 @@ func (l *lexer) next(depth int) int {
 		} else {
 			l.position++
 		}
-	case isIdentifierStart(c) || c == '$':
+	case chars.IsIdentStartUTF8(c) || c == '$':
 		j := i + 1
-		for j < len(source) && isIdentifierPart(source[j]) {
+		for j < len(source) && chars.IsIdentUTF8(source[j]) {
 			j++
 		}
 		l.position = j
@@ -203,7 +201,7 @@ func directiveAt(b []byte) string {
 		return ""
 	}
 	j := 1
-	for j < end && isIdentifierPart(b[j]) {
+	for j < end && chars.IsIdentUTF8(b[j]) {
 		j++
 	}
 	return string(b[1:j])
@@ -345,7 +343,7 @@ func (l *lexer) number() {
 	j := i
 	for j < len(source) {
 		switch c := source[j]; {
-		case isIdentifierPart(c):
+		case chars.IsIdentUTF8(c):
 		case (c == '+' || c == '-') && exponent(source[j-1], hex):
 		case c == '.' && j+1 < len(source) && (source[j+1] >= '0' && source[j+1] <= '9' || hex && isHexDigit(source[j+1])) && !bytes.Contains(source[i:j], []byte(".")):
 		default:
@@ -397,7 +395,7 @@ func (l *lexer) regexStart() bool {
 		case c == ']':
 			class = false
 		case c == '/' && !class:
-			return l.source[i-1] != ' ' && (i+1 >= len(l.source) || !isIdentifierPart(l.source[i+1]))
+			return l.source[i-1] != ' ' && (i+1 >= len(l.source) || !chars.IsIdentUTF8(l.source[i+1]))
 		}
 	}
 	return false
