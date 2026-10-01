@@ -239,16 +239,31 @@ main { position: relative; flex: 1; min-height: 0; }
 #map { position: absolute; inset: 0; outline: none; }
 /* Keep the map visible beside the panel on wide screens. */
 @media (min-width: 900px) {
-  main.panel-open #map, main.panel-open #labels, main.panel-open #walk-hud { right: 584px; }
+  main.panel-open #map, main.panel-open #labels, main.panel-open #blink, main.panel-open #walk-hud { right: 584px; }
 }
 #map canvas { display: block; width: 100%; height: 100%; }
 #map.grabbing { cursor: grabbing; }
 #map.laying-out { cursor: progress; }
-/* A change of depth: out quickly, back in a little slower (app.js relayoutSoon). */
-#map canvas, #labels { transition: opacity 0.22s ease-out; }
-#map.fading canvas, #labels.fading { opacity: 0; transition: opacity 0.14s ease-in; }
+/* A change of depth is a blink (app.js relayoutSoon): two lids close over the city
+   and its labels, quickly, and open a little slower on the new layout. They are
+   black whatever the theme - the dark behind closed eyes - and their edges are
+   curved and soft, so they meet as lids rather than as a shutter. */
+#blink { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+#blink::before, #blink::after {
+  content: ''; position: absolute; left: -8%; right: -8%; height: 56%;
+  background: #000; transition: transform 0.22s ease-out;
+}
+#blink::before {
+  top: 0; transform: translateY(calc(-100% - 32px));
+  border-radius: 0 0 50% 50% / 0 0 22% 22%; box-shadow: 0 6px 14px 4px rgb(0 0 0 / 0.6);
+}
+#blink::after {
+  bottom: 0; transform: translateY(calc(100% + 32px));
+  border-radius: 50% 50% 0 0 / 22% 22% 0 0; box-shadow: 0 -6px 14px 4px rgb(0 0 0 / 0.6);
+}
+#blink.shut::before, #blink.shut::after { transform: none; transition: transform 0.14s ease-in; }
 @media (prefers-reduced-motion: reduce) {
-  #map canvas, #labels { transition: none; }
+  #blink::before, #blink::after { transition: none; }
 }
 #map.hovering { cursor: pointer; }
 

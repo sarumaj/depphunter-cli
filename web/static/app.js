@@ -1066,17 +1066,18 @@ function relayoutSoon() {
   if (layoutDue) return;
   layoutDue = true;
   $('map').classList.add('laying-out');
-  // The city fades out, is laid out again while it cannot be seen, and fades back
-  // in: one depth turning into another, rather than every building jumping at once.
+  // The view blinks: the lids close over the city, it is laid out again while they
+  // are shut, and they open on the new one - one depth turning into another, rather
+  // than every building jumping at once.
   // Implements: REQ-MAP-064
-  const fade = !reducedMotion();
-  for (const id of ['map', 'labels']) $(id).classList.toggle('fading', fade);
-  setTimeout(() => requestAnimationFrame(() => setTimeout(() => layoutDue && relayout())), fade ? FADE_OUT : 0);
+  const blink = !reducedMotion();
+  $('blink').classList.toggle('shut', blink);
+  setTimeout(() => requestAnimationFrame(() => setTimeout(() => layoutDue && relayout())), blink ? BLINK_SHUT : 0);
 }
 
-// How long the city takes to fade out before a change of depth lays it out again, in
-// milliseconds; the fade back in is style.css's.
-const FADE_OUT = 140;
+// How long the lids take to close before a change of depth lays the city out again,
+// in milliseconds; their opening is style.css's.
+const BLINK_SHUT = 140;
 
 // Deepest level at which the map shows at most AUTO_ITEMS buildings and districts.
 function autoLevel() {
@@ -1250,7 +1251,7 @@ function setWalking(on) {
 function relayout() {
   layoutDue = false;
   $('map').classList.remove('laying-out');
-  for (const id of ['map', 'labels']) $(id).classList.remove('fading');
+  $('blink').classList.remove('shut');
   const anchor = walker.active ? walker.anchorFor() : null;
   // Box indexes change: whatever was hovered or described is gone.
   state.hovered = -1;
