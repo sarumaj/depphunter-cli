@@ -26,7 +26,7 @@ import * as THREE from './vendor/three.module.min.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './city.js';
 import { Health } from './health.js';
 import { Wind } from './wind.js';
-import { severityColors } from './findings.js';
+import { severityColors, rankOf } from './findings.js';
 import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee, litPart } from './tools.js';
 import { packedChute, deployChute, stepChute, aloft, cutAway, lookOf, poseRig, canopyRig, LooseCanopy, MIN_DEPLOY, DRAPE_AHEAD, dropFor } from './parachute.js';
 import { ToolWheel, EMPTY, carriedRing, cycle, keyFor, keysFor, rowOrder, toolForKey } from './switcher.js';
@@ -3176,7 +3176,7 @@ export class Walker {
     }
 
     // The bugs, worst drawn last so a critical one is never hidden under a nit.
-    live.sort((a, b) => severityRank(a.f.severity) - severityRank(b.f.severity));
+    live.sort((a, b) => rankOf(a.f.severity) - rankOf(b.f.severity));
     let nearest = null;
     for (const bug of live) {
       const m = bug.position;
@@ -3808,10 +3808,6 @@ const ease = (current, want, tau, deltaTime) =>
 // The walker's footprint, sampled at its center and four corners (height). Flat
 // pairs, so walking it allocates nothing.
 const PROBES = [0, 0, BODY, BODY, BODY, -BODY, -BODY, BODY, -BODY, -BODY];
-
-// The tracker draws the worst bugs last, so a critical one is never hidden under a nit.
-const SEVERITY_ORDER = ['unknown', 'info', 'low', 'medium', 'high', 'critical'];
-const severityRank = s => SEVERITY_ORDER.indexOf(s);
 
 const FORWARD = new THREE.Vector3(0, 0, 1); // the dart geometry's nose
 // Scratch for hanging the canopy (hangCanopy, rigWorld), and what hang() hands back.
