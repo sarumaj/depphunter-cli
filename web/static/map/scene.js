@@ -277,6 +277,7 @@ export class MapScene {
     this.planet.visible = this.sky.visible = on;
     this.sea.visible = !on;
     if (on && this.groundColors) this.setColors(...this.groundColors); // deferred while off
+    if (on) this.undressed?.();
     this.setBackground(this.colors);
     this.showGround();
     if (this.outlined) this.setOutline(...this.outlined);
@@ -383,27 +384,52 @@ export class MapScene {
     this.ground = new THREE.Mesh(tessellate(boxes.filter(isGround)), this.material);
     this.ground.frustumCulled = false; // bent vertices leave the flat bounding sphere
     this.scene.add(this.ground);
-    if (this.props) {
-      this.scene.remove(this.props);
-      // Each layout gets its own prop materials and ramp geometry; the instanced
-      // plants and lamps share their geometry across layouts (city.js), so only their
-      // instance buffers go.
-      for (const m of this.props.children) {
-        m.material.dispose();
-        if (m.isInstancedMesh) m.dispose();
-        else m.geometry.dispose();
-      }
-    }
-    this.props = makeProps(boxes, m => this.bendable(m), this.style);
+    this.dropProps();
     // Implements: REQ-CITY-016
     setRoads(this.roads, boxes); // both views draw the streets
-    if (this.colors) setNight(this.props, this.curve.uNight.value > 0);
-    this.scene.add(this.props);
+    this.dressLater(boxes);
     this.setColors(colors);
     this.scene.add(mesh);
     this.showGround();
     this.setLimits(boxes);
     this.warmUp();
+  }
+
+  /**
+   * The trees, lamps and ramps of a layout, which cost more than the rest of it put
+   * together. Out of the street they wait until the layout has been drawn once, so a
+   * change of depth shows its city first and dresses it a moment later; a later
+   * layout drops a dressing still waiting. In the street they are built at once, and
+   * on stepping into it: the walker runs into them.
+   *
+   * Implements: REQ-PERF-015
+   */
+  dressLater(boxes) {
+    clearTimeout(this.dressing);
+    const dress = this.undressed = () => {
+      if (this.undressed !== dress) return;
+      this.undressed = null;
+      this.props = makeProps(boxes, m => this.bendable(m), this.style);
+      if (this.colors) setNight(this.props, this.curve.uNight.value > 0);
+      this.scene.add(this.props);
+      this.requestRender();
+    };
+    if (this.walking) dress();
+    else requestAnimationFrame(() => { this.dressing = setTimeout(dress); });
+  }
+
+  // Each layout gets its own prop materials and ramp geometry; the instanced plants
+  // and lamps share their geometry across layouts (city.js), so only their instance
+  // buffers go.
+  dropProps() {
+    if (!this.props) return;
+    this.scene.remove(this.props);
+    for (const m of this.props.children) {
+      m.material.dispose();
+      if (m.isInstancedMesh) m.dispose();
+      else m.geometry.dispose();
+    }
+    this.props = null;
   }
 
   /**
@@ -1057,54 +1083,74 @@ const SHADE = { top: 1, px: 0.62, nx: 0.62, pz: 0.78, nz: 0.78 };
 function tessellate(boxes) {
   const area = boxes.reduce((a, b) => a + b.w * b.d, 0);
   const cell = Math.max(0.75, Math.sqrt(area / 150000)); // bounds the vertex count
-  const positions = [], shade = [], box = [], index = [], normal = [], kind = [], center = [], size = [], build = [];
-  let current, parameters;
-  const quadGrid = (i, s, n, nu, nv, at) => {
-    const base = positions.length / 3;
-    for (let v = 0; v <= nv; v++) for (let u = 0; u <= nu; u++) {
-      positions.push(...at(u / nu, v / nv));
-      shade.push(s);
-      box.push(i);
-      normal.push(...n);
-      kind.push(kindCode(current));
-      center.push(current.x, current.y, current.z);
-      size.push(current.w, Math.max(current.h, 0.01), current.d);
-      build.push(...parameters);
+  // Counted first and written straight into typed arrays: a large map has hundreds
+  // of thousands of vertices, and pushing them one at a time is most of what a
+  // change of depth costs before the city can be drawn.
+  // Implements: REQ-PERF-015
+  const grids = boxes.map(b => [Math.max(1, Math.ceil(b.w / cell)), Math.max(1, Math.ceil(b.d / cell))]);
+  let vertices = 0, indices = 0;
+  for (const [nx, nz] of grids) {
+    vertices += (nx + 1) * (nz + 1) + 4 * (nx + 1) + 4 * (nz + 1);
+    indices += 6 * (nx * nz + 2 * nx + 2 * nz);
+  }
+  const positions = new Float32Array(vertices * 3), normal = new Float32Array(vertices * 3);
+  const shade = new Float32Array(vertices), box = new Float32Array(vertices), kind = new Float32Array(vertices);
+  const center = new Float32Array(vertices * 3), size = new Float32Array(vertices * 3), build = new Float32Array(vertices * 4);
+  const index = vertices > 65535 ? new Uint32Array(indices) : new Uint16Array(indices);
+  let vertex = 0, at = 0;
+  // A face from origin o, u running along U and v along V, both from 0 to 1.
+  const quadGrid = (b, k, parameters, s, n, nu, nv, o, U, V) => {
+    const base = vertex;
+    for (let v = 0; v <= nv; v++) {
+      for (let u = 0; u <= nu; u++, vertex++) {
+        const tu = u / nu, tv = v / nv;
+        positions[vertex * 3] = o[0] + tu * U[0] + tv * V[0];
+        positions[vertex * 3 + 1] = o[1] + tu * U[1] + tv * V[1];
+        positions[vertex * 3 + 2] = o[2] + tu * U[2] + tv * V[2];
+        normal.set(n, vertex * 3);
+        shade[vertex] = s;
+        box[vertex] = b.i;
+        kind[vertex] = k;
+        center[vertex * 3] = b.x; center[vertex * 3 + 1] = b.y; center[vertex * 3 + 2] = b.z;
+        size[vertex * 3] = b.w; size[vertex * 3 + 1] = Math.max(b.h, 0.01); size[vertex * 3 + 2] = b.d;
+        build.set(parameters, vertex * 4);
+      }
     }
-    for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) {
-      const a = base + v * (nu + 1) + u, b = a + 1, c = a + nu + 1, d = c + 1;
-      index.push(a, c, b, b, c, d);
+    for (let v = 0; v < nv; v++) {
+      for (let u = 0; u < nu; u++) {
+        const a = base + v * (nu + 1) + u, c = a + nu + 1;
+        index[at++] = a; index[at++] = c; index[at++] = a + 1;
+        index[at++] = a + 1; index[at++] = c; index[at++] = c + 1;
+      }
     }
   };
   const ranges = new Map();
-  for (const b of boxes) {
-    const start = positions.length / 3;
+  boxes.forEach((b, j) => {
+    const start = vertex;
     const x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, z0 = b.z - b.d / 2, z1 = b.z + b.d / 2;
-    const y0 = b.y, y1 = b.y + Math.max(b.h, 0.01);
-    const nx = Math.max(1, Math.ceil(b.w / cell)), nz = Math.max(1, Math.ceil(b.d / cell));
-    const i = b.i;
-    current = b;
-    parameters = buildParameters(b);
-    quadGrid(i, SHADE.top, [0, 1, 0], nx, nz, (u, v) => [x0 + u * b.w, y1, z0 + v * b.d]);
-    quadGrid(i, SHADE.pz, [0, 0, 1], nx, 1, (u, v) => [x0 + u * b.w, y1 - v * (y1 - y0), z1]);
-    quadGrid(i, SHADE.nz, [0, 0, -1], nx, 1, (u, v) => [x1 - u * b.w, y1 - v * (y1 - y0), z0]);
-    quadGrid(i, SHADE.px, [1, 0, 0], nz, 1, (u, v) => [x1, y1 - v * (y1 - y0), z1 - u * b.d]);
-    quadGrid(i, SHADE.nx, [-1, 0, 0], nz, 1, (u, v) => [x0, y1 - v * (y1 - y0), z0 + u * b.d]);
-    ranges.set(i, [start, positions.length / 3]);
-  }
+    const y1 = b.y + Math.max(b.h, 0.01), down = -(y1 - b.y);
+    const [nx, nz] = grids[j];
+    const k = kindCode(b), parameters = buildParameters(b);
+    quadGrid(b, k, parameters, SHADE.top, [0, 1, 0], nx, nz, [x0, y1, z0], [b.w, 0, 0], [0, 0, b.d]);
+    quadGrid(b, k, parameters, SHADE.pz, [0, 0, 1], nx, 1, [x0, y1, z1], [b.w, 0, 0], [0, down, 0]);
+    quadGrid(b, k, parameters, SHADE.nz, [0, 0, -1], nx, 1, [x1, y1, z0], [-b.w, 0, 0], [0, down, 0]);
+    quadGrid(b, k, parameters, SHADE.px, [1, 0, 0], nz, 1, [x1, y1, z1], [0, 0, -b.d], [0, down, 0]);
+    quadGrid(b, k, parameters, SHADE.nx, [-1, 0, 0], nz, 1, [x0, y1, z0], [0, 0, b.d], [0, down, 0]);
+    ranges.set(b.i, [start, vertex]);
+  });
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(positions.length), 3));
-  geo.setAttribute('shade', new THREE.Float32BufferAttribute(shade, 1));
-  geo.setAttribute('box', new THREE.Float32BufferAttribute(box, 1));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normal, 3));
-  geo.setAttribute('aKind', new THREE.Float32BufferAttribute(kind, 1));
-  geo.setAttribute('aBoxCenter', new THREE.Float32BufferAttribute(center, 3));
-  geo.setAttribute('aBoxSize', new THREE.Float32BufferAttribute(size, 3));
-  geo.setAttribute('aBuild', new THREE.Float32BufferAttribute(build, 4));
-  geo.setAttribute('aDetail', new THREE.Float32BufferAttribute(new Float32Array(positions.length / 3), 1));
-  geo.setAttribute('aFade', new THREE.Float32BufferAttribute(new Float32Array(positions.length / 3), 1));
-  geo.setIndex(index);
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(vertices * 3), 3));
+  geo.setAttribute('shade', new THREE.BufferAttribute(shade, 1));
+  geo.setAttribute('box', new THREE.BufferAttribute(box, 1));
+  geo.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
+  geo.setAttribute('aKind', new THREE.BufferAttribute(kind, 1));
+  geo.setAttribute('aBoxCenter', new THREE.BufferAttribute(center, 3));
+  geo.setAttribute('aBoxSize', new THREE.BufferAttribute(size, 3));
+  geo.setAttribute('aBuild', new THREE.BufferAttribute(build, 4));
+  geo.setAttribute('aDetail', new THREE.BufferAttribute(new Float32Array(vertices), 1));
+  geo.setAttribute('aFade', new THREE.BufferAttribute(new Float32Array(vertices), 1));
+  geo.setIndex(new THREE.BufferAttribute(index, 1));
   geo.userData.ranges = ranges;
   return geo;
 }

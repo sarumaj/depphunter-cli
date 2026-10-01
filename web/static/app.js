@@ -1041,7 +1041,25 @@ function drawFilters() {
 function setLevel(level, redraw = true) {
   ({ level: state.level, expanded: state.expanded } = expandToLevel(model, level));
   $('depth-label').textContent = `depth ${state.level}/${Math.max(1, maxDepth)}`;
-  if (redraw) relayout();
+  if (redraw) relayoutSoon();
+}
+
+// Whether a layout has been asked for and not yet made (relayoutSoon).
+let layoutDue = false;
+
+/**
+ * Lays the map out once the depth just shown on the toolbar has been painted. On a
+ * large repository a layout takes a moment, and pressing + three times would
+ * otherwise freeze the page for three of them, each of a depth nobody wanted to
+ * stop at: the presses made meanwhile end in one layout, of the depth they reach.
+ *
+ * Implements: REQ-PERF-015
+ */
+function relayoutSoon() {
+  if (layoutDue) return;
+  layoutDue = true;
+  $('map').classList.add('laying-out');
+  requestAnimationFrame(() => setTimeout(() => layoutDue && relayout()));
 }
 
 // Deepest level at which the map shows at most AUTO_ITEMS buildings and districts.
@@ -1216,6 +1234,8 @@ function setWalking(on) {
 // stand on, so a depth change or a live update does not teleport them.
 // Implements: REQ-WALK-025
 function relayout() {
+  layoutDue = false;
+  $('map').classList.remove('laying-out');
   const anchor = walker.active ? walker.anchorFor() : null;
   // Box indexes change: whatever was hovered or described is gone.
   state.hovered = -1;

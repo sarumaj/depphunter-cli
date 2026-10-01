@@ -243,6 +243,7 @@ main { position: relative; flex: 1; min-height: 0; }
 }
 #map canvas { display: block; width: 100%; height: 100%; }
 #map.grabbing { cursor: grabbing; }
+#map.laying-out { cursor: progress; }
 #map.hovering { cursor: pointer; }
 
 /* Walk mode: a crosshair and a status bar over the map. */
