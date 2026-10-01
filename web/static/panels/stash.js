@@ -13,7 +13,7 @@
 // panel says as much - anything worth keeping is saved to a file, which is the whole
 // point of having the button.
 
-const MAX = 24; // beyond this the oldest is let go of, so a long session cannot grow
+export const MAX = 24; // beyond this the oldest is let go of, so a long session cannot grow
 
 // Implements: REQ-HUNT-034, REQ-HUNT-036
 export class Stash {

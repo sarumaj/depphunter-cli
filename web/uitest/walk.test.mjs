@@ -1300,3 +1300,16 @@ describe('going under, in each style', () => {
     assert.equal(kind(undefined).cause, 'The water');
   });
 });
+
+describe('the toolbar in the street', () => {
+  // Verifies: REQ-WALK-023
+  it('keeps the depth buttons and takes away what moves the map\'s own camera', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const page = await readFile(new URL('../static/index.html', import.meta.url), 'utf8');
+    const tag = id => page.match(new RegExp(`<[^>]*id="${id}"[^>]*>`))?.[0] ?? '';
+    const group = page.match(/<div[^>]*aria-label="Expansion"[^>]*>/)?.[0] ?? '';
+    assert.ok(group && !group.includes('data-map-only'), 'the depth buttons are hidden while walking');
+    for (const id of ['expand-level', 'collapse-level']) assert.ok(tag(id) && !tag(id).includes('data-map-only'));
+    for (const id of ['rotate-left', 'rotate-right', 'fit', 'reset-view']) assert.ok(tag(id).includes('data-map-only'), `${id} is offered in the street`);
+  });
+});

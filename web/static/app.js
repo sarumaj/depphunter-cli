@@ -19,7 +19,7 @@ import { Avatar } from './walk/avatar.js';
 import { startTour, startWalkTour, walkTourPending } from './panels/tour.js';
 import { Backpack, catchFinding } from './panels/backpack.js';
 import { FindingList, findingRows } from './panels/findinglist.js';
-import { Stash } from './panels/stash.js';
+import { Stash, MAX as STASH_MAX } from './panels/stash.js';
 import { indexFindings } from './core/findings.js';
 import { $, h, fmt, escapeHTML, badge, drawer, findingItem } from './core/dom.js';
 import { Stats, wanted as statsWanted } from './map/stats.js';
@@ -809,7 +809,7 @@ function drawStash() {
   $('stash-btn').hidden = !stash.count;
   badge($('stash-count'), stash.count);
   $('stash-summary').textContent = stash.count
-    ? `${stash.count} this session - save the ones you want`
+    ? `${stash.count} this session - save the ones you want; only the last ${STASH_MAX} are kept`
     : '';
   $('stash-empty-note').hidden = !!stash.count;
   // Only worth saying where there is both something to show and somewhere to show it.
@@ -1156,18 +1156,16 @@ function walkTarget() {
   return same ? null : state.selected && representativeOf(state.selected);
 }
 
-// What the toolbar cannot do from the street: rotating and fitting move the map's own
-// camera, which nobody is looking through while walking, so both did nothing silently.
 /**
  * The controls that only mean anything on the map, marked `data-map-only` where they
  * are written rather than listed by id here, so adding one is a word in the markup.
  *
  * They are taken away in walk mode rather than grayed out. Graying says "not now",
  * which is a thing worth saying about something a walker might reasonably reach for;
- * none of these are. Rotating, fitting and stepping the depth all move or rebuild the
- * map's own camera and layout, and the walker is standing in that layout - fitting the
- * map to the screen while somebody is in the street is not a disabled action, it is a
- * question nobody asked. A toolbar that shrinks to what is usable is also shorter to
+ * none of these are. Rotating and fitting move the map's own camera, which nobody is
+ * looking through while walking - fitting the map to the screen while somebody is in
+ * the street is not a disabled action, it is a question nobody asked. The depth stays:
+ * it changes the city the walker stands in, as + and - do there (REQ-WALK-023). A toolbar that shrinks to what is usable is also shorter to
  * read, which matters more in the street than on the map, because reading it there
  * costs the mouse.
  */

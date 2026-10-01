@@ -12,7 +12,8 @@ verification:
 ## Statement
 
 The stash **shall** hold photographs in memory for the session only and **shall
-not** persist them in browser storage.
+not** persist them in browser storage. It **shall** keep at most 24, letting go
+of the oldest, and its panel **shall** say so beside the count.
 
 ## Rationale
 
@@ -23,7 +24,4 @@ not.
 
 1. After a reload the stash is empty.
 2. No photograph is written to local storage.
-
-## Notes
-
-The stash keeps at most 24 photographs and lets go of the oldest.
+3. The panel says how many it keeps; a 25th photograph drops the first.

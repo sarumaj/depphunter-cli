@@ -10,7 +10,7 @@ import { describe, it, beforeEach } from 'node:test';
 
 import './stub.mjs';
 
-const { Stash } = await import('../static/panels/stash.js');
+const { Stash, MAX } = await import('../static/panels/stash.js');
 
 /** Counts the object URLs handed out and given back. */
 function urls() {
@@ -41,10 +41,11 @@ describe('the photograph stash', () => {
     assert.equal(live.size, 2);
   });
 
+  // Verifies: REQ-HUNT-036
   it('lets go of the oldest rather than refusing the newest', () => {
     const s = new Stash();
     for (let i = 0; i < 40; i++) s.add({}, `shot ${i}`);
-    assert.ok(s.count < 40, 'it kept every one of forty photographs');
+    assert.equal(s.count, MAX, 'it kept more photographs than it says it keeps');
     assert.equal(s.items[0].where, 'shot 39', 'the one just taken was the one refused');
     assert.equal(live.size, s.count, `${live.size - s.count} bitmaps were left behind`);
   });
