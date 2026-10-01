@@ -31,7 +31,7 @@
 // Small on purpose. Every one of these is embedded in the binary and inlined again,
 // base64, into any standalone HTML export - so a screenshot is not a screenshot here,
 // it is a permanent cost paid by every copy of the map anybody ever exports. They are
-// cropped to the thing being shown, scaled to SHOT_W, and written as WebP at a quality
+// cropped to the thing being shown, scaled down to SHOT_W, and written as WebP at a quality
 // that keeps flat color clean and lets the photographic noise go. That comes to tens
 // of kilobytes each rather than the half-megabyte a raw full-frame PNG costs.
 
@@ -75,9 +75,13 @@ const OUT = path.resolve(ARGS.out ?? path.join(REPO, 'web/static/tour'));
 const SERVED = path.resolve(ARGS.repo ?? REPO);
 const PORT = number('port', 0); // 0: whatever port is free
 
-// What a card's picture is drawn at. Wide enough to read a HUD in, narrow enough that
-// the dialog does not have to grow around it.
-const SHOT_W = 720;
+// What a card's picture is drawn at: the width of a scene's crop, so that it is kept
+// pixel for pixel, and near what a HiDPI screen shows the card at (the introduction is
+// at most 560 CSS pixels wide). A crop is taken at least that wide and a picture never
+// enlarged: one stretched, here or by the screen, is one blurred. Drawing the window at
+// two device pixels to the CSS pixel would be finer still, and is more than SwiftShader
+// can draw this repository's streets with.
+const SHOT_W = 920;
 const QUALITY = 0.82;
 // A screenshot waits for the next frame, and a frame of this repository's streets
 // drawn by SwiftShader can take longer than Playwright's thirty seconds.
@@ -251,35 +255,37 @@ function report(directory) {
  */
 async function findFire(page, view) {
   const png = (await page.screenshot({ timeout: SHOT_TIMEOUT })).toString('base64');
-  return page.evaluate(async ({ data, view }) => {
+  return page.evaluate(async ({ data, view, shotWidth }) => {
     const image = new Image();
     await new Promise(r => { image.onload = r; image.src = 'data:image/png;base64,' + data; });
     const c = document.createElement('canvas');
     c.width = image.width; c.height = image.height;
     c.getContext('2d').drawImage(image, 0, 0);
     const px = c.getContext('2d').getImageData(0, 0, image.width, image.height).data;
+    const k = image.width / view.width; // device pixels to the CSS pixel
     let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1, n = 0;
     for (let i = 0; i < px.length; i += 4) {
       const [r, g, b] = [px[i], px[i + 1], px[i + 2]];
       if (!(r > g && g > b && r - b > 30)) continue;
-      const at = i / 4, x = at % image.width, y = Math.floor(at / image.width);
+      const at = i / 4, x = (at % image.width) / k, y = Math.floor(at / image.width) / k;
       // The HUD is warm in places (a stamina bar, a severity dot); the city is not.
-      if (y < 90 || y > image.height - 120) continue;
+      if (y < 90 || y > view.height - 120) continue;
       x0 = Math.min(x0, x); x1 = Math.max(x1, x);
       y0 = Math.min(y0, y); y1 = Math.max(y1, y);
       n++;
     }
+    n = Math.round(n / (k * k)); // as many CSS pixels
     if (n < 40) return null;
     // Around it, not on it: a fire with a roof under it reads as a building alight.
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-    const w = Math.min(view.width, Math.max(520, (x1 - x0) * 4));
+    const w = Math.min(view.width, Math.max(shotWidth, (x1 - x0) * 4));
     const h = Math.round(w * 13 / 23);
     return {
       x: Math.max(0, Math.min(view.width - w, Math.round(cx - w / 2))),
       y: Math.max(90, Math.min(view.height - h - 60, Math.round(cy - h * 0.38))),
       width: Math.round(w), height: h, found: n,
     };
-  }, { data: png, view });
+  }, { data: png, view, shotWidth: SHOT_W });
 }
 
 /** Crops a region out of the page's last frame, scales it, and writes it as WebP. */
@@ -289,9 +295,11 @@ async function shot(page, name, clip) {
     const image = new Image();
     await new Promise(r => { image.onload = r; image.src = 'data:image/png;base64,' + data; });
     const c = document.createElement('canvas');
-    c.width = w;
-    c.height = Math.round(image.height * (w / image.width));
-    c.getContext('2d').drawImage(image, 0, 0, c.width, c.height);
+    c.width = Math.min(w, image.width);
+    c.height = Math.round(image.height * (c.width / image.width));
+    const g = c.getContext('2d');
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(image, 0, 0, c.width, c.height);
     return c.toDataURL('image/webp', q).split(',')[1];
   }, { data: png.toString('base64'), w: SHOT_W, q: QUALITY });
   const file = path.join(OUT, `${name}.webp`);
@@ -339,6 +347,13 @@ async function main() {
     const response = await route.fetch();
     await route.fulfill({ response, body: `${await response.text()}\nwindow.__tour = { get walker() { return walker; } };` });
   });
+  await ctx.addInitScript(() => {
+    // These pictures are of the map, not of its introductions: an introduction that
+    // opens after the script has looked for it holds the walker, and the street is
+    // photographed blurred behind it.
+    localStorage.setItem('depphunter.introduced', '1');
+    localStorage.setItem('depphunter.introduced.walk', '1');
+  });
   const page = await ctx.newPage();
   page.on('pageerror', e => console.error('page error:', e.message));
   await page.goto(url, { waitUntil: 'domcontentloaded' });
@@ -358,6 +373,7 @@ async function main() {
   await page.click('#walk');
   await page.waitForTimeout(3000);
   await skipTour(page);
+  await walkOn(page);
   await page.waitForTimeout(4000);
   await shot(page, 'street', mid);
 
@@ -380,6 +396,7 @@ async function main() {
   // 4. A roof alight, which is what a reachable vulnerability looks like: the walker
   // stood back from the hottest one with their hands down, and the flames then found
   // in the frame rather than assumed to be in the middle of it - see findFire.
+  await walkOn(page);
   await page.keyboard.press('h');
   await page.evaluate(standBackFromFire);
   await page.waitForTimeout(3000);
@@ -389,7 +406,7 @@ async function main() {
   await shot(page, 'fire', blaze || mid);
 
   // 5. The tracker, which says where the rest of it is.
-  await shot(page, 'tracker', { x: 10, y: VIEW.height - 250, width: 420, height: 240 });
+  await shot(page, 'tracker', { x: 10, y: VIEW.height - 304, width: 520, height: 294 });
 
   console.log('done; the cards name these in web/static/panels/tour.js');
 }
@@ -410,6 +427,20 @@ async function emptyOffHand(page) {
     await page.waitForTimeout(600);
   }
   console.log('  (could not put the off hand down; the fire scene may be airborne)');
+}
+
+/**
+ * Lets the walker go, as scripts/shots.mjs does: the way in cut short, and any hold
+ * released. Headless, the pointer is refused, and the walker is turned and the wheel
+ * aimed by the mouse's movement instead - but a walker held while something is read
+ * stands in a blurred street, and its keys do nothing.
+ */
+async function walkOn(page) {
+  await page.evaluate(() => {
+    const w = window.__tour.walker;
+    if (w.arrival) w.endArrival(true);
+    if (w.frozen) w.setFrozen(false);
+  });
 }
 
 /** Waits for the map to have drawn something and gone quiet. */
