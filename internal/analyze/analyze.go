@@ -18,6 +18,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/cache"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/links"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
@@ -109,6 +110,7 @@ func Run(ctx context.Context, root string, options Options) (*graph.Graph, Stats
 		}
 	}
 	b.relocate(options.Registry)
+	b.link()
 	stats.Parsed, stats.Cached, stats.ParsedFiles = int(counts.parsed.Load()), int(counts.cached.Load()), counts.files
 	options.Trace.Summarize(b.g)
 	options.Trace.Finish()
@@ -477,6 +479,29 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 	b.attribute(n, t)
 	merge(n, t)
 	return n.ID
+}
+
+// Public is the optional half of Indexes that tells an ecosystem's public index from
+// every other. internal/index's Config implements it.
+type Public interface {
+	Public(ecosystem, index string) bool
+}
+
+// link says where each package can be looked at: its repository, and its page on
+// the public index when that is where it resolves from. Without Public to say so,
+// only a package attributed to no index is taken to be the public one's.
+//
+// Implements: REQ-MOD-014
+func (b *builder) link() {
+	public, _ := b.indexes.(Public)
+	for n := range b.g.Of(graph.KindPackage) {
+		ecosystem := graph.EcosystemOf(n.Parent)
+		n.Repository = links.Repository(ecosystem, n.Name, n.Index, n.Origin, n.Git)
+		if n.Private || n.IndexUnknown || n.Index != "" && (public == nil || !public.Public(ecosystem, n.Index)) {
+			continue
+		}
+		n.Page = links.Page(ecosystem, n.Name, n.Index)
+	}
 }
 
 // packageNode is t's package node, added under its ecosystem's the first time; the

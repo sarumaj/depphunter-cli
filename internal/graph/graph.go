@@ -111,6 +111,14 @@ type Node struct {
 	//
 	// Implements: REQ-JS-018
 	Platform string `json:"platform,omitempty"`
+	// Page is a package's page on its ecosystem's public index, and Repository the
+	// web page of the repository its source lives in (internal/links). A package
+	// that resolves from any other index has no Page: naming it to the public site
+	// is what --private exists to prevent.
+	//
+	// Implements: REQ-MOD-014
+	Page       string `json:"page,omitempty"`
+	Repository string `json:"repository,omitempty"`
 }
 
 // Implements: REQ-MOD-006

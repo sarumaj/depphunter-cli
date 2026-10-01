@@ -822,3 +822,58 @@ func TestAPackageInstalledFromElsewhereIsPrivate(t *testing.T) {
 		}
 	}
 }
+
+// publicIndexes attributes npm's "internal" to an index of the organization's, its
+// "unvouched" to one only the repository names, and the rest to the public one.
+type publicIndexes struct{}
+
+func (publicIndexes) For(ecosystem, packageName string) (string, bool) {
+	switch packageName {
+	case "internal":
+		return "https://npm.corp.example", true
+	case "unvouched":
+		return "https://npm.repo-only.example", false
+	}
+	return "https://registry.npmjs.org", true
+}
+
+func (publicIndexes) Public(ecosystem, index string) bool {
+	return index == "https://registry.npmjs.org"
+}
+
+// A package gets a page on the public index only when that is where it resolves from:
+// one served by any other index, or the organization's own, would be named to a site
+// it has nothing to do with.
+//
+// Verifies: REQ-MOD-014
+func TestPackagesLinkToTheirPageAndRepository(t *testing.T) {
+	root := t.TempDir()
+	writeProject(t, root, map[string]string{"a.fake": "lodash\ninternal\nunvouched\nowned\nforked\n"})
+	p := fakePlugin{targets: map[string]lang.Target{
+		"lodash":    {Ecosystem: "npm", Package: "lodash"},
+		"internal":  {Ecosystem: "npm", Package: "internal"},
+		"unvouched": {Ecosystem: "npm", Package: "unvouched"},
+		"owned":     {Ecosystem: "npm", Package: "owned"},
+		"forked":    {Ecosystem: "npm", Package: "forked", Origin: "git+https://github.com/acme/forked.git"},
+	}}
+	g, _, err := Run(context.Background(), root, Options{
+		Plugins: []lang.Plugin{p},
+		Indexes: func([]*scan.File) Indexes { return publicIndexes{} },
+		Private: func(ecosystem, packageName string) bool { return packageName == "owned" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][2]string{
+		"lodash":    {"https://www.npmjs.com/package/lodash", ""},
+		"internal":  {"", ""},
+		"unvouched": {"", ""},
+		"owned":     {"", ""},
+		"forked":    {"", "https://github.com/acme/forked"},
+	}
+	for n := range g.Of(graph.KindPackage) {
+		if got := [2]string{n.Page, n.Repository}; got != want[n.Name] {
+			t.Errorf("%s: page and repository %q, want %q", n.Name, got, want[n.Name])
+		}
+	}
+}

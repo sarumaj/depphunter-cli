@@ -123,6 +123,17 @@ export interface GraphNode {
    * Implements: REQ-JS-018
    */
   platform?: string;
+
+  /**
+   * Page is a package's page on its ecosystem's public index, and Repository the
+   * web page of the repository its source lives in (internal/links). A package
+   * that resolves from any other index has no Page: naming it to the public site
+   * is what --private exists to prevent.
+   *
+   * Implements: REQ-MOD-014
+   */
+  page?: string;
+  repository?: string;
 }
 
 /**
