@@ -113,131 +113,160 @@ func isWord(c byte) bool {
 //
 // Implements: REQ-GLEAM-002, REQ-GLEAM-003, REQ-GLEAM-004, REQ-GLEAM-010
 func extractSource(source []byte) *lang.Extraction {
-	tokens := lex(source)
-	extraction := &lang.Extraction{}
-	var symbols lang.SymbolSet
-	seen := map[string]bool{}
-	addImport := func(kind, spec, module string, line int) {
-		key := kind + "\x00" + module
-		if module == "" || seen[key] {
+	x := &extractor{tokens: lex(source), extraction: &lang.Extraction{}, seen: map[string]bool{}, typeBody: -1}
+	for x.i = 0; x.i < len(x.tokens); x.i++ {
+		t := x.tokens[x.i]
+		switch {
+		case t.kind == tPunctuation:
+			x.punctuation(t)
+		case x.typeBody >= 0 && x.depth == x.typeBody && t.kind == tUpper && x.at(x.i-1).text != ".":
+			x.symbols.Add(x.owner+"."+t.text, "constructor", t.line)
+		case x.depth == 0 && t.kind == tIdentifier:
+			x.definition(t)
+		}
+	}
+	x.extraction.Symbols = x.symbols.List()
+	return x.extraction
+}
+
+// extractor is extractSource's walk: where it is (i), how many brackets are open,
+// and the custom type whose constructors it is reading, if any.
+type extractor struct {
+	tokens   []token
+	i        int
+	depth    int
+	typeBody int    // depth inside the current custom type's braces, else -1
+	owner    string // that type's name
+
+	extraction *lang.Extraction
+	symbols    lang.SymbolSet
+	seen       map[string]bool
+}
+
+func (x *extractor) at(i int) token {
+	if i < len(x.tokens) {
+		return x.tokens[i]
+	}
+	return token{kind: tOther}
+}
+
+func (x *extractor) addImport(kind, spec, module string, line int) {
+	key := kind + "\x00" + module
+	if module == "" || x.seen[key] {
+		return
+	}
+	x.seen[key] = true
+	x.extraction.Imports = append(x.extraction.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
+}
+
+// punctuation counts brackets, ends a custom type's body, and reads a top-level
+// @external(target, "module", ...).
+func (x *extractor) punctuation(t token) {
+	switch t.text {
+	case "{", "(", "[":
+		x.depth++
+	case "}", ")", "]":
+		if x.depth > 0 {
+			x.depth--
+		}
+		if x.depth < x.typeBody {
+			x.typeBody, x.owner = -1, ""
+		}
+	case "@":
+		if x.depth != 0 {
 			return
 		}
-		seen[key] = true
-		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
+		if n := x.at(x.i + 1); n.kind != tIdentifier || n.text != "external" || x.at(x.i+2).text != "(" {
+			return
+		}
+		target, module := x.at(x.i+3), x.at(x.i+5)
+		if x.at(x.i+4).text != "," || module.kind != tString {
+			return
+		}
+		switch target.text {
+		case "erlang":
+			x.addImport(kindErlang, "erlang:"+module.text, module.text, module.line)
+		case "javascript":
+			x.addImport(kindJS, module.text, module.text, module.line)
+		}
 	}
-	depth := 0
-	typeBody := -1 // depth inside the current custom type's braces, else -1
-	owner := ""
-	at := func(i int) token {
-		if i < len(tokens) {
-			return tokens[i]
+}
+
+// definition reads what a top-level name starts: an import, a function, a
+// constant, a type or an old-style external function.
+func (x *extractor) definition(t token) {
+	switch t.text {
+	case "import":
+		x.i = readImport(x.tokens, x.i+1, x.addImport) - 1 // the loop's i++ lands after the import
+	case "fn":
+		if n := x.at(x.i + 1); n.kind == tIdentifier {
+			x.symbols.Add(n.text, "func", n.line)
 		}
-		return token{kind: tOther}
+	case "const":
+		if n := x.at(x.i + 1); n.kind == tIdentifier {
+			x.symbols.Add(n.text, "const", n.line)
+		}
+	case "type":
+		x.typeDefinition()
+	case "external":
+		x.external()
 	}
-	for i := 0; i < len(tokens); i++ {
-		token := tokens[i]
-		if token.kind == tPunctuation {
-			switch token.text {
-			case "{", "(", "[":
-				depth++
-			case "}", ")", "]":
-				if depth > 0 {
-					depth--
-				}
-				if depth < typeBody {
-					typeBody, owner = -1, ""
-				}
-			case "@":
-				if depth == 0 {
-					if n := at(i + 1); n.kind == tIdentifier && n.text == "external" && at(i+2).text == "(" {
-						target, module := at(i+3), at(i+5)
-						if at(i+4).text == "," && module.kind == tString {
-							switch target.text {
-							case "erlang":
-								addImport(kindErlang, "erlang:"+module.text, module.text, module.line)
-							case "javascript":
-								addImport(kindJS, module.text, module.text, module.line)
-							}
-						}
-					}
-				}
-			}
-			continue
-		}
-		if typeBody >= 0 && depth == typeBody && token.kind == tUpper && at(i-1).text != "." {
-			symbols.Add(owner+"."+token.text, "constructor", token.line)
-			continue
-		}
-		if depth != 0 || token.kind != tIdentifier {
-			continue
-		}
-		switch token.text {
-		case "import":
-			i = readImport(tokens, i+1, addImport) - 1 // the loop's i++ lands after the import
-		case "fn":
-			if n := at(i + 1); n.kind == tIdentifier {
-				symbols.Add(n.text, "func", n.line)
-			}
-		case "const":
-			if n := at(i + 1); n.kind == tIdentifier {
-				symbols.Add(n.text, "const", n.line)
-			}
-		case "type":
-			n := at(i + 1)
-			if n.kind != tUpper {
+}
+
+// typeDefinition reads a type's name and, when a body follows its parameters,
+// has the walk read the constructors in it; `=` is an alias and ends it.
+func (x *extractor) typeDefinition() {
+	n := x.at(x.i + 1)
+	if n.kind != tUpper {
+		return
+	}
+	x.symbols.Add(n.text, "type", n.line)
+	j := x.i + 2
+	if x.at(j).text == "(" {
+		for d := 0; j < len(x.tokens); j++ {
+			if x.tokens[j].kind != tPunctuation {
 				continue
 			}
-			symbols.Add(n.text, "type", n.line)
-			// Skip type parameters, then a body opens the constructor list; `=` is an
-			// alias and ends it.
-			j := i + 2
-			if at(j).text == "(" {
-				for d := 0; j < len(tokens); j++ {
-					if tokens[j].kind != tPunctuation {
-						continue
-					}
-					if tokens[j].text == "(" {
-						d++
-					} else if tokens[j].text == ")" {
-						if d--; d == 0 {
-							j++
-							break
-						}
-					}
-				}
-			}
-			if t := at(j); t.kind == tPunctuation && t.text == "{" {
-				typeBody, owner = depth+1, n.text
-			}
-		case "external":
-			// Gleam before 0.30: external fn f(a) -> b = "module" "function"
-			if at(i+1).text != "fn" || at(i+2).kind != tIdentifier {
-				continue
-			}
-			symbols.Add(at(i+2).text, "func", at(i+2).line)
-			i += 2 // past fn and the name, so the fn case does not count it again
-			for j, d := i+1, 0; j < len(tokens) && j < i+254; j++ {
-				t := tokens[j]
-				if t.text == "(" {
-					d++
-				} else if t.text == ")" {
-					d--
-				} else if d == 0 && t.text == "=" && at(j+1).kind == tString {
-					m := at(j + 1)
-					if jsPath(m.text) {
-						addImport(kindJS, m.text, m.text, m.line)
-					} else {
-						addImport(kindErlang, "erlang:"+m.text, m.text, m.line)
-					}
-					break
-				} else if d == 0 && (t.text == "fn" || t.text == "pub" || t.text == "import") {
+			if x.tokens[j].text == "(" {
+				d++
+			} else if x.tokens[j].text == ")" {
+				if d--; d == 0 {
+					j++
 					break
 				}
 			}
 		}
 	}
-	extraction.Symbols = symbols.List()
-	return extraction
+	if t := x.at(j); t.kind == tPunctuation && t.text == "{" {
+		x.typeBody, x.owner = x.depth+1, n.text
+	}
+}
+
+// external reads Gleam before 0.30: external fn f(a) -> b = "module" "function".
+func (x *extractor) external() {
+	if x.at(x.i+1).text != "fn" || x.at(x.i+2).kind != tIdentifier {
+		return
+	}
+	x.symbols.Add(x.at(x.i+2).text, "func", x.at(x.i+2).line)
+	x.i += 2 // past fn and the name, so the fn case does not count it again
+	for j, d := x.i+1, 0; j < len(x.tokens) && j < x.i+254; j++ {
+		t := x.tokens[j]
+		if t.text == "(" {
+			d++
+		} else if t.text == ")" {
+			d--
+		} else if d == 0 && t.text == "=" && x.at(j+1).kind == tString {
+			m := x.at(j + 1)
+			if jsPath(m.text) {
+				x.addImport(kindJS, m.text, m.text, m.line)
+			} else {
+				x.addImport(kindErlang, "erlang:"+m.text, m.text, m.line)
+			}
+			return
+		} else if d == 0 && (t.text == "fn" || t.text == "pub" || t.text == "import") {
+			return
+		}
+	}
 }
 
 // readImport reads `a/b/c`, an optional `.{type T, f as g}` list and an optional
