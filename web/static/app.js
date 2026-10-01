@@ -6,7 +6,7 @@ import { MapScene } from './map/scene.js';
 import { readPalette, languageColors, assignSlots, boxColor } from './core/colors.js';
 import { Panel } from './panels/panel.js';
 import { computeVisibility, searchIndex, search } from './core/filter.js';
-import { STATIC, CLIENT, authed, send, fetchGraph, fetchConfig, fetchLazy, saveSettings, fetchSession, pushSelection, pushBackpack } from './core/data.js';
+import { STATIC, CLIENT, authed, send, fetchGraph, fetchConfig, fetchLazy, saveSettings, fetchSession, pushSelection, pushBackpack, locatePackage } from './core/data.js';
 import { MODES, isHistoryMode, effectiveMode, computeMetrics, historyT, timeRange, ago, formatDate } from './core/history.js';
 import { Labels } from './map/labels.js';
 import { Walker } from './walk/walk.js';
@@ -250,6 +250,8 @@ async function main() {
     colorOf: language => languages.of(language),
     onSelect: n => reveal(n),
     onOpen: openFile,
+    locate: locatePackage,
+    onBrowse: browse,
     linkKind: () => state.linkKind,
     historyOf: node => {
       const hm = metrics();
@@ -931,6 +933,35 @@ async function openFile(path, line = 1, hex = false) {
   else if (response.status === 202) updateStatus(`${path} opened in the Hex Editor`);
   else if (response.headers.get('X-Depphunter-Opened') === 'as-is') {
     updateStatus(`${path} opened as it is - in VS Code, Reopen Editor With… and pick the Hex Editor to edit its bytes`);
+  }
+}
+
+// A page of its own opens a package's links by itself. Framed - the editor's tab
+// is one - it may open no window, so the server hands the link to whatever can.
+const framed = (() => {
+  try {
+    return window.top !== window;
+  } catch {
+    return true;
+  }
+})();
+
+/**
+ * Opens what a package points at: `to` is 'page', 'repository' or 'folder', and
+ * `target` the address or the directory.
+ *
+ * Implements: REQ-UI-017
+ */
+async function browse(node, to, target, event) {
+  if (STATIC || (to !== 'folder' && !framed)) return;
+  event?.preventDefault();
+  try {
+    const response = await send('api/browse', 'POST', { id: node.id, to });
+    if (response.ok) return;
+    if (to !== 'folder') window.open(target, '_blank', 'noopener');
+    updateStatus(`could not open ${target}: ${(await response.text()).trim()}`);
+  } catch (err) {
+    updateStatus(`could not open ${target}: ${err.message}`);
   }
 }
 

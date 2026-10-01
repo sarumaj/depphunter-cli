@@ -127,7 +127,10 @@ const GRAPH = {
     { id: 'e:gostd', kind: 'ecosystem', name: 'go std' },
     packageNode('gostd', 'go/parser'),
     { id: 'e:npm', kind: 'ecosystem', name: 'npm' },
-    packageNode('npm', 'a', { version: '1.2.3', requested: '^1.2', index: 'https://registry.npmjs.org/' }),
+    packageNode('npm', 'a', {
+      version: '1.2.3', requested: '^1.2', index: 'https://registry.npmjs.org/',
+      page: 'https://www.npmjs.com/package/a', repository: 'https://github.com/o/a',
+    }),
     packageNode('npm', 'b', { version: '0.21.5', platform: 'os=linux & cpu=x64' }), packageNode('npm', 'c'), packageNode('npm', 'd'), packageNode('npm', 'x'), packageNode('npm', 'y'),
   ],
   edges: [
@@ -484,6 +487,53 @@ describe('opening the file from the corner', () => {
     const none = cornered(null);
     none.panel.show(model.byId.get('f:cmd/main.go'));
     assert.equal(none.slot.children.length, 0, 'a static export offered to open the file');
+  });
+});
+
+describe('where a package can be looked into', () => {
+  /** A panel whose server finds packages in `folders`, and the opens it was asked for. */
+  const linked = folders => {
+    const root = new El('aside'), body = new El('div');
+    new El('main').append(root);
+    root.append(body);
+    const opened = [];
+    const panel = new Panel(root, body, {
+      model, colorOf: () => '', onSelect() {}, linkKind: () => 'import', historyOf: () => null,
+      locate: async id => folders[id] ?? null,
+      onBrowse: (node, to, target) => opened.push([node.id, to, target]),
+    });
+    return { panel, body, opened };
+  };
+  const labels = body => body.querySelector('.p-links').children.map(c => c.textContent);
+
+  // Verifies: REQ-UI-017
+  it('links a package to its page and its repository, and to its folder once one is found', async () => {
+    const { panel, body, opened } = linked({ 'p:npm:a': '/work/node_modules/a' });
+    panel.show(model.byId.get('p:npm:a'));
+    assert.deepEqual(labels(body), ['npmjs.com ↗', 'Repository ↗']);
+    const [page] = body.querySelector('.p-links').children;
+    assert.equal(page.getAttribute('href'), 'https://www.npmjs.com/package/a');
+    assert.equal(page.getAttribute('target'), '_blank');
+    assert.equal(page.getAttribute('rel'), 'noopener noreferrer');
+    await new Promise(resolve => setTimeout(resolve));
+    assert.deepEqual(labels(body), ['npmjs.com ↗', 'Repository ↗', 'Folder ↗']);
+    fire(page, 'click');
+    fire(body.querySelector('button.p-link'), 'click');
+    assert.deepEqual(opened, [
+      ['p:npm:a', 'page', 'https://www.npmjs.com/package/a'],
+      ['p:npm:a', 'folder', '/work/node_modules/a'],
+    ]);
+  });
+
+  // Verifies: REQ-UI-017
+  it('offers nothing for a package that links nowhere, and no folder found for another', async () => {
+    const { panel, body } = linked({ 'p:npm:a': '/work/node_modules/a' });
+    panel.show(model.byId.get('p:npm:a'));
+    panel.show(model.byId.get('p:npm:c'));
+    await new Promise(resolve => setTimeout(resolve));
+    assert.deepEqual(labels(body), [], 'the folder of the package shown before landed on this one');
+    panel.show(model.byId.get('d:cmd'));
+    assert.equal(body.querySelector('.p-links'), null, 'a directory has package links');
   });
 });
 

@@ -8,14 +8,16 @@ import { sourceView, mediaKind, clearFound } from './source.js';
 
 // indexHost keeps the part of an index URL that identifies it on a stat tile.
 const indexHost = url => url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+// urlHost names a page by its site: npmjs.com for https://www.npmjs.com/package/x.
+const urlHost = url => url.replace(/^https?:\/\/(www\.)?/, '').replace(/[/?#].*$/, '');
 // originPlace keeps the part of where a package was installed from that says which:
 // the last two parts of a directory, or a repository's host and path.
 const originPlace = url => url.replace(/^[\w+.-]+:\/\//, '').replace(/[?#@].*$/, '').replace(/\/+$/, '')
   .split('/').slice(-2).join('/');
 
 export class Panel {
-  constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose, findingsOf, caught, onCatch }) {
-    Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose, findingsOf, caught, onCatch });
+  constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose, findingsOf, caught, onCatch, locate, onBrowse }) {
+    Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose, findingsOf, caught, onCatch, locate, onBrowse });
     this.seq = 0;
     // Which branches of the dependency trees are open, by direction and path, so a
     // live update redraws the panel without closing what the reader opened.
@@ -95,6 +97,7 @@ export class Panel {
         node.private ? h('span', { class: 'badge own', title: 'Yours: never named to a public index, never sent to the vulnerability database' }, 'private') : null,
         this.findingBadge(node)),
       this.stats(node),
+      node.kind === 'package' ? this.links(node, sequence) : null,
       this.findings(node),
       node.kind === 'dir' ? this.languageMix(node) : null,
       ...this.dependencies(node),
@@ -313,6 +316,30 @@ export class Panel {
         return h('div', { class: 'stats' }, stat(fmt.format(n.children.length), 'packages'));
     }
     return null;
+  }
+
+  /**
+   * Where a package can be looked into: its page on the index, its repository, and -
+   * once the server has found it - the folder it is installed in.
+   *
+   * Implements: REQ-UI-017
+   */
+  links(node, sequence) {
+    const link = (url, to, label, title) => h('a', {
+      class: 'p-link', href: url, target: '_blank', rel: 'noopener noreferrer', title: `${title}: ${url}`,
+      onclick: event => this.onBrowse?.(node, to, url, event),
+    }, `${label} ↗`);
+    const row = h('div', { class: 'p-links' },
+      node.page ? link(node.page, 'page', urlHost(node.page), 'Its page on the index') : null,
+      node.repository ? link(node.repository, 'repository', 'Repository', 'The repository of its source') : null);
+    this.locate?.(node.id).then(folder => {
+      if (!folder || sequence !== this.seq) return;
+      row.append(h('button', {
+        class: 'p-link', type: 'button', title: `Show the folder it is installed in: ${folder}`,
+        onclick: () => this.onBrowse?.(node, 'folder', folder),
+      }, 'Folder ↗'));
+    });
+    return row;
   }
 
   // Implements: REQ-MAP-030

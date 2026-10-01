@@ -863,6 +863,11 @@ main.walking #legend { display: none; }
 .stats { display: flex; gap: 20px; flex-wrap: wrap; }
 .stat .v { font-size: 18px; font-weight: 600; }
 .stat .k { color: var(--muted); font-size: 11px; }
+/* A package's page, repository and folder (panel.js links). */
+.p-links { display: flex; gap: 6px; flex-wrap: wrap; }
+.p-links:empty { display: none; }
+.p-link { font-size: 12px; padding: 2px 8px; white-space: nowrap; color: inherit; text-decoration: none; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.p-link:hover { border-color: var(--muted); }
 .p-section h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); display: flex; gap: 6px; align-items: center; }
 .p-section h4 .n { color: var(--muted); font-weight: 400; }
 .p-list { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }

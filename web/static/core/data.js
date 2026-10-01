@@ -99,6 +99,22 @@ export const send = (url, method, body) => fetch(url, {
   body: JSON.stringify(body),
 });
 
+/**
+ * The directory a package is installed in on the server's machine, or null: none
+ * found, or a static export, which has no machine to look on.
+ *
+ * Implements: REQ-SRV-018
+ */
+export async function locatePackage(id) {
+  if (STATIC) return null;
+  try {
+    const response = await fetch(`api/locate?id=${encodeURIComponent(id)}`, { headers: auth() });
+    return response.ok ? (await response.json()).folder || null : null;
+  } catch {
+    return null;
+  }
+}
+
 // Implements: REQ-CFG-012
 export async function saveSettings(ui) {
   const response = await send('api/settings', 'POST', ui);
