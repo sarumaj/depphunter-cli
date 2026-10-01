@@ -6,7 +6,7 @@ import { MapScene } from './scene.js';
 import { readPalette, languageColors, assignSlots, boxColor } from './colors.js';
 import { Panel } from './panel.js';
 import { computeVisibility, searchIndex, search } from './filter.js';
-import { STATIC, CLIENT, auth, authed, fetchGraph, fetchConfig, fetchLazy, saveSettings, fetchSession, pushSelection, pushBackpack } from './data.js';
+import { STATIC, CLIENT, authed, send, fetchGraph, fetchConfig, fetchLazy, saveSettings, fetchSession, pushSelection, pushBackpack } from './data.js';
 import { MODES, isHistoryMode, effectiveMode, computeMetrics, historyT, timeRange, ago, formatDate } from './history.js';
 import { Labels } from './labels.js';
 import { Walker } from './walk.js';
@@ -926,11 +926,7 @@ async function openFile(path, line = 1, hex = false) {
     location.href = `vscode://file${absolutePath.startsWith('/') ? '' : '/'}${encodeURI(absolutePath)}:${line}`;
     return;
   }
-  const response = await fetch('api/open', {
-    method: 'POST',
-    headers: auth({ 'Content-Type': 'application/json', 'X-Depphunter-Request': '1' }),
-    body: JSON.stringify({ path, line, hex }),
-  });
+  const response = await send('api/open', 'POST', { path, line, hex });
   if (!response.ok) updateStatus(`could not open editor: ${(await response.text()).trim()}`);
   else if (response.status === 202) updateStatus(`${path} opened in the Hex Editor`);
   else if (response.headers.get('X-Depphunter-Opened') === 'as-is') {
