@@ -3060,43 +3060,12 @@ export class Walker {
     }
     box.hidden = false;
     const canvas = box.querySelector('canvas');
-
-    // The range fits whatever is still out there, so the sweep is never all center
-    // dot or all rim arrows. Once one is close, though, holding the whole map is the
-    // wrong thing to hold: the range pulls in to the neighborhood and the dial grows
-    // to meet it, which is the difference between knowing a bug is somewhere ahead
-    // and seeing which side of the building it is on.
     const { x: px, z: pz, yaw } = this.p;
     const live = this.bugs?.bugs.filter(b => !b.caught) || [];
-    let far = RADAR_MIN, near = Infinity;
-    for (const at of [...live.map(b => b.position), ...alight]) {
-      const d = Math.hypot(at.x - px, at.z - pz);
-      far = Math.max(far, d);
-      near = Math.min(near, d);
-    }
-    const closing = near < RADAR_NEAR ? 1 - near / RADAR_NEAR : 0;
-    this.radarNear = near; // what the sweep thinks it is closing on, for the tests
-
-    // Both the range and the dial ease towards where they are going, and both ease
-    // by elapsed time rather than by redraw, so the approach looks the same whatever
-    // the frame rate is and whatever the throttle below decides.
-    const want = closing
-      ? clamp(Math.max(near * 2.4, RADAR_MIN), RADAR_MIN, RADAR_NEAR * 2.4)
-      : clamp(far * 1.2, RADAR_MIN, RADAR_MAX);
-    this.radarRange = ease(this.radarRange, want, RADAR_RANGE_TAU, deltaTime);
-    this.radarZoom = ease(this.radarZoom, 1 + closing * RADAR_GROW, RADAR_ZOOM_TAU, deltaTime);
-    // The dial grows by transform rather than by resizing the canvas: a scale is
-    // sub-pixel and costs the compositor alone, where a resize rounded to whole
-    // pixels grew in visible steps, threw the drawing away and reallocated the
-    // bitmap on the way. The bitmap is therefore made once, at the size the dial
-    // reaches when it is fully grown, so growing into it stays sharp.
-    canvas.style.transform = `scale(${this.radarZoom.toFixed(3)})`;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const pixels = Math.round(RADAR_SIZE * (1 + RADAR_GROW) * dpr);
-    if (canvas.width !== pixels) canvas.width = canvas.height = pixels;
+    const closing = this.zoomRadar(canvas, [...live.map(b => b.position), ...alight], deltaTime);
 
     // The contents turn as slowly as a walker does, so they are repainted a dozen
-    // times a second; the scale above follows every frame.
+    // times a second; the scale follows every frame.
     if (now - (this.radarAt || 0) < RADAR_MS) return;
     this.radarAt = now;
 
@@ -3106,40 +3075,11 @@ export class Walker {
     const size = RADAR_SIZE;
     const g = canvas.getContext('2d');
     const c = size / 2, R = c - 7;
-    const unit = pixels / size;
+    const unit = canvas.width / size;
     g.setTransform(unit, 0, 0, unit, 0, 0);
     g.clearRect(0, 0, size, size);
     const k = R / this.radarRange;
-
-    // The sweep itself: a disc, range rings, and the wedge the walker is looking into.
-    g.save();
-    g.beginPath();
-    g.arc(c, c, R, 0, Math.PI * 2);
-    g.fillStyle = v('--surface');
-    g.globalAlpha = 0.84;
-    g.fill();
-    g.globalAlpha = 1;
-    g.clip();
-    // The wedge is what the walker can actually see: the horizontal field of view,
-    // which is the vertical one widened by the aspect ratio.
-    const cam = this.scene.walkCamera;
-    const half = Math.atan(Math.tan((cam.fov * Math.PI / 180) / 2) * (cam.aspect || 1.6));
-    g.beginPath();
-    g.moveTo(c, c);
-    g.arc(c, c, R, -Math.PI / 2 - half, -Math.PI / 2 + half);
-    g.closePath();
-    g.fillStyle = v('--grid');
-    g.globalAlpha = 0.75;
-    g.fill();
-    g.globalAlpha = 1;
-    g.restore();
-    g.strokeStyle = v('--border');
-    g.lineWidth = 1;
-    for (const r of [R, R * 0.66, R * 0.33]) {
-      g.beginPath();
-      g.arc(c, c, r, 0, Math.PI * 2);
-      g.stroke();
-    }
+    drawSweep(g, c, R, this.scene.walkCamera, v);
 
     // Everything is placed in the walker's frame: forward is up.
     const sin = Math.sin(yaw), cos = Math.cos(yaw);
@@ -3175,75 +3115,8 @@ export class Walker {
       g.stroke();
     }
 
-    // The bugs, worst drawn last so a critical one is never hidden under a nit.
-    live.sort((a, b) => rankOf(a.f.severity) - rankOf(b.f.severity));
-    let nearest = null;
-    for (const bug of live) {
-      const m = bug.position;
-      const q = place(m.x, m.z);
-      if (!nearest || q.d < nearest.d) nearest = { d: q.d, bug };
-      g.fillStyle = colors[bug.f.severity] || v('--muted');
-      if (q.inside) {
-        g.beginPath();
-        g.arc(q.x, q.y, 3, 0, Math.PI * 2);
-        g.fill();
-      } else {
-        // Out of range: an arrow on the rim, pointing the way.
-        g.save();
-        g.translate(q.x, q.y);
-        g.rotate(q.angle);
-        g.beginPath();
-        g.moveTo(0, -4);
-        g.lineTo(3, 3);
-        g.lineTo(-3, 3);
-        g.closePath();
-        g.fill();
-        g.restore();
-      }
-    }
-
-    // The fires, last of all and over everything else on the sweep.
-    //
-    // They pulse, and nothing else on the dial does. A bug is a still dot and a tagged
-    // module a still ring, because neither is going anywhere: a bug walks its lap and
-    // waits to be caught, and a module stays tagged. A fire is the one mark here that
-    // is getting worse while it is being looked at, and the one worth turning round
-    // for - so it is the one that moves. What pulses is a ring thrown off the dot and
-    // fading as it widens, which is a thing spreading, drawn small.
-    for (const f of alight) {
-      const q = place(f.x, f.z);
-      const beat = ((now % RADAR_PULSE) / RADAR_PULSE + f.x * 0.11 + f.z * 0.07) % 1;
-      g.fillStyle = FIRE_DOT;
-      g.strokeStyle = FIRE_DOT;
-      if (q.inside) {
-        // The ring first, so the dot it comes off stays solid over it.
-        g.save();
-        g.globalAlpha = (1 - beat) * 0.7 * (0.4 + f.heat * 0.6);
-        g.lineWidth = 1.5;
-        g.beginPath();
-        g.arc(q.x, q.y, 3 + beat * 7, 0, Math.PI * 2);
-        g.stroke();
-        g.restore();
-        g.beginPath();
-        g.arc(q.x, q.y, 2.6 + f.heat * 1.4, 0, Math.PI * 2);
-        g.fill();
-      } else {
-        // Out of range, a fire gets the same rim arrow a bug does, and the same pulse
-        // with it: a district alight across the map is worth walking towards, and
-        // saying so is most of what the sweep is for.
-        g.save();
-        g.translate(q.x, q.y);
-        g.rotate(q.angle);
-        g.globalAlpha = 0.55 + (1 - beat) * 0.45;
-        g.beginPath();
-        g.moveTo(0, -5);
-        g.lineTo(3.4, 3.4);
-        g.lineTo(-3.4, 3.4);
-        g.closePath();
-        g.fill();
-        g.restore();
-      }
-    }
+    const nearest = drawBugs(g, live, place, colors, v);
+    drawFires(g, alight, place, now);
 
     // How far the sweep reaches, so a dot's distance can be read off it.
     g.fillStyle = v('--muted');
@@ -3275,17 +3148,48 @@ export class Walker {
     }
 
     const label = this.hud.querySelector('.w-nearest');
-    const { caught, total } = this.bugs?.counts || { caught: 0, total: 0 };
-    // What is alight comes first, whatever else the sweep is showing: it is the only
-    // thing on there that gets worse for being left.
-    const fire = alight.map(f => ({ f, d: Math.hypot(f.x - px, f.z - pz) }))
-      .sort((a, b) => a.d - b.d)[0];
-    label.textContent = fire
-      ? `${alight.length} alight · nearest ${Math.round(fire.d)} away · ${fire.f.node.name}`
-      : nearest
-        ? `nearest ${Math.round(nearest.d)} away · ${nearest.bug.f.severity}: ${nearest.bug.f.title}`
-        : `all ${total} bugs caught`;
-    if (!fire && !nearest && !caught) label.textContent = '';
+    label.textContent = radarLabel(alight, nearest, px, pz, this.bugs?.counts || { caught: 0, total: 0 });
+  }
+
+  /**
+   * Eases the sweep's range and the dial's size towards the marks at `marks`, and
+   * returns how far it is closing in on the nearest, 0 to 1.
+   *
+   * The range fits whatever is still out there, so the sweep is never all center
+   * dot or all rim arrows. Once one is close, though, holding the whole map is the
+   * wrong thing to hold: the range pulls in to the neighborhood and the dial grows
+   * to meet it, which is the difference between knowing a bug is somewhere ahead
+   * and seeing which side of the building it is on.
+   */
+  zoomRadar(canvas, marks, deltaTime) {
+    const { x: px, z: pz } = this.p;
+    let far = RADAR_MIN, near = Infinity;
+    for (const at of marks) {
+      const d = Math.hypot(at.x - px, at.z - pz);
+      far = Math.max(far, d);
+      near = Math.min(near, d);
+    }
+    const closing = near < RADAR_NEAR ? 1 - near / RADAR_NEAR : 0;
+    this.radarNear = near; // what the sweep thinks it is closing on, for the tests
+
+    // Both the range and the dial ease towards where they are going, and both ease
+    // by elapsed time rather than by redraw, so the approach looks the same whatever
+    // the frame rate is and whatever the throttle in drawRadar decides.
+    const want = closing
+      ? clamp(Math.max(near * 2.4, RADAR_MIN), RADAR_MIN, RADAR_NEAR * 2.4)
+      : clamp(far * 1.2, RADAR_MIN, RADAR_MAX);
+    this.radarRange = ease(this.radarRange, want, RADAR_RANGE_TAU, deltaTime);
+    this.radarZoom = ease(this.radarZoom, 1 + closing * RADAR_GROW, RADAR_ZOOM_TAU, deltaTime);
+    // The dial grows by transform rather than by resizing the canvas: a scale is
+    // sub-pixel and costs the compositor alone, where a resize rounded to whole
+    // pixels grew in visible steps, threw the drawing away and reallocated the
+    // bitmap on the way. The bitmap is therefore made once, at the size the dial
+    // reaches when it is fully grown, so growing into it stays sharp.
+    canvas.style.transform = `scale(${this.radarZoom.toFixed(3)})`;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const pixels = Math.round(RADAR_SIZE * (1 + RADAR_GROW) * dpr);
+    if (canvas.width !== pixels) canvas.width = canvas.height = pixels;
+    return closing;
   }
 
   // Names what the crosshair is on while it is a bug, so it is clear what would be
@@ -3572,6 +3476,127 @@ export class Walker {
         : this.noLock ? 'Drag to look · click: use the tool'
           : 'Click the map to capture the mouse, or drag to look';
   }
+}
+
+// ------------------------------------------------------------------ the sweep
+
+/**
+ * The sweep itself: a disc, range rings, and the wedge the walker is looking into -
+ * the horizontal field of view, which is the vertical one widened by the aspect ratio.
+ */
+function drawSweep(g, c, R, camera, v) {
+  g.save();
+  g.beginPath();
+  g.arc(c, c, R, 0, Math.PI * 2);
+  g.fillStyle = v('--surface');
+  g.globalAlpha = 0.84;
+  g.fill();
+  g.globalAlpha = 1;
+  g.clip();
+  const half = Math.atan(Math.tan((camera.fov * Math.PI / 180) / 2) * (camera.aspect || 1.6));
+  g.beginPath();
+  g.moveTo(c, c);
+  g.arc(c, c, R, -Math.PI / 2 - half, -Math.PI / 2 + half);
+  g.closePath();
+  g.fillStyle = v('--grid');
+  g.globalAlpha = 0.75;
+  g.fill();
+  g.globalAlpha = 1;
+  g.restore();
+  g.strokeStyle = v('--border');
+  g.lineWidth = 1;
+  for (const r of [R, R * 0.66, R * 0.33]) {
+    g.beginPath();
+    g.arc(c, c, r, 0, Math.PI * 2);
+    g.stroke();
+  }
+}
+
+/** An arrow on the sweep's rim at `q`, pointing the way to what is out of range. */
+function rimArrow(g, q, tip, side, alpha = null) {
+  g.save();
+  g.translate(q.x, q.y);
+  g.rotate(q.angle);
+  if (alpha !== null) g.globalAlpha = alpha;
+  g.beginPath();
+  g.moveTo(0, -tip);
+  g.lineTo(side, side);
+  g.lineTo(-side, side);
+  g.closePath();
+  g.fill();
+  g.restore();
+}
+
+/**
+ * The bugs, worst drawn last so a critical one is never hidden under a nit; returns
+ * the nearest, { d, bug }, or null.
+ */
+function drawBugs(g, live, place, colors, v) {
+  live.sort((a, b) => rankOf(a.f.severity) - rankOf(b.f.severity));
+  let nearest = null;
+  for (const bug of live) {
+    const m = bug.position;
+    const q = place(m.x, m.z);
+    if (!nearest || q.d < nearest.d) nearest = { d: q.d, bug };
+    g.fillStyle = colors[bug.f.severity] || v('--muted');
+    if (q.inside) {
+      g.beginPath();
+      g.arc(q.x, q.y, 3, 0, Math.PI * 2);
+      g.fill();
+    } else {
+      rimArrow(g, q, 4, 3);
+    }
+  }
+  return nearest;
+}
+
+/**
+ * The fires, last of all and over everything else on the sweep.
+ *
+ * They pulse, and nothing else on the dial does. A bug is a still dot and a tagged
+ * module a still ring, because neither is going anywhere: a bug walks its lap and
+ * waits to be caught, and a module stays tagged. A fire is the one mark here that
+ * is getting worse while it is being looked at, and the one worth turning round
+ * for - so it is the one that moves. What pulses is a ring thrown off the dot and
+ * fading as it widens, which is a thing spreading, drawn small.
+ */
+function drawFires(g, alight, place, now) {
+  for (const f of alight) {
+    const q = place(f.x, f.z);
+    const beat = ((now % RADAR_PULSE) / RADAR_PULSE + f.x * 0.11 + f.z * 0.07) % 1;
+    g.fillStyle = FIRE_DOT;
+    g.strokeStyle = FIRE_DOT;
+    if (q.inside) {
+      // The ring first, so the dot it comes off stays solid over it.
+      g.save();
+      g.globalAlpha = (1 - beat) * 0.7 * (0.4 + f.heat * 0.6);
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.arc(q.x, q.y, 3 + beat * 7, 0, Math.PI * 2);
+      g.stroke();
+      g.restore();
+      g.beginPath();
+      g.arc(q.x, q.y, 2.6 + f.heat * 1.4, 0, Math.PI * 2);
+      g.fill();
+    } else {
+      // Out of range, a fire gets the same rim arrow a bug does, and the same pulse
+      // with it: a district alight across the map is worth walking towards, and
+      // saying so is most of what the sweep is for.
+      rimArrow(g, q, 5, 3.4, 0.55 + (1 - beat) * 0.45);
+    }
+  }
+}
+
+/**
+ * The line under the sweep. What is alight comes first, whatever else the sweep is
+ * showing: it is the only thing on there that gets worse for being left.
+ */
+function radarLabel(alight, nearest, px, pz, { caught, total }) {
+  const fire = alight.map(f => ({ f, d: Math.hypot(f.x - px, f.z - pz) }))
+    .sort((a, b) => a.d - b.d)[0];
+  if (fire) return `${alight.length} alight · nearest ${Math.round(fire.d)} away · ${fire.f.node.name}`;
+  if (nearest) return `nearest ${Math.round(nearest.d)} away · ${nearest.bug.f.severity}: ${nearest.bug.f.title}`;
+  return caught ? `all ${total} bugs caught` : '';
 }
 
 const clamp = (v, low, high) => Math.min(high, Math.max(low, v));
