@@ -11,11 +11,11 @@ verification:
 
 ## Statement
 
-The top of every terrace on the street's own level (standing on the land rather
-than on another terrace) **shall** be drawn as streets wherever it is not
+The top of every terrace on the ground - one standing on the land, and a block
+standing on one of those - **shall** be drawn as streets wherever it is not
 covered by a child box: gaps between children **shall** be side streets and the
 padding along the terrace edge a ring road, so streets connect by construction.
-A raised terrace is a plaza instead (REQ-CITY-037).
+A terrace stacked higher is a plaza instead (REQ-CITY-037).
 
 ## Rationale
 

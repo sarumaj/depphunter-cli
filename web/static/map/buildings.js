@@ -29,6 +29,9 @@ export const FACADE = 2.8;
 /** One story, as a facade is laid out: FACADE times this in world units. */
 export const STORY = 0.3;
 
+/** A terrace's thickness: how far each level of the city stands above the one it is on. */
+export const TERRACE = 0.28;
+
 // Proportions that decide between types. A box lower than LOW is a story or so: a
 // shed or warehouse when it is broad, a small shop or pavilion otherwise. From
 // TOWER up a building is a tower, and from DECO up a tower may be an art-deco one
@@ -134,14 +137,15 @@ export function buildParameters(b, seed = seedOf(b)) {
 }
 
 /**
- * Whether a box is a terrace standing on another terrace rather than on the land: a
- * level raised above the street, which the city paves as a plaza for people on foot
- * rather than as a road (city.js streets). Its third build parameter says so; a
- * terrace has no facade for it to lift.
+ * Whether a box is a terrace stacked above the ground: the street's own level and the
+ * blocks standing on it are the ground, laid out in roads; a level on one of those
+ * blocks or higher is raised, which the city paves as a plaza for people on foot
+ * (city.js streets). Its third build parameter says so; a terrace has no facade for
+ * it to lift.
  *
  * Implements: REQ-CITY-037
  */
-export const raised = b => b.kind === 'terrace' && b.node?.kind !== 'file' && b.y > 1e-6;
+export const raised = b => b.kind === 'terrace' && b.node?.kind !== 'file' && b.y > TERRACE * 1.5;
 
 // ------------------------------------------------------------------ far average
 

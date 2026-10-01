@@ -1,7 +1,7 @@
 // Implements: REQ-DIST-017
 
 import { bulk } from '../core/model.js';
-import { FACADE, STORY } from './buildings.js';
+import { FACADE, STORY, TERRACE } from './buildings.js';
 
 // Archipelago layout: the repository is a mainland of nested terraces, each external
 // ecosystem an island in rings around it. Positions derive only from the hierarchy and the
@@ -12,7 +12,6 @@ import { FACADE, STORY } from './buildings.js';
 const FILE = FACADE;
 const GAP = 0.35;        // between siblings
 const PAD = 0.55;        // inside a terrace
-const TERRACE = 0.28;    // terrace thickness
 const MAX_H = 10;        // tallest building
 const SYM = 0.42, SYM_GAP = 0.12;
 const LAND_MARGIN = 1.2, LAND_H = 0.45, ISLAND_GAP = 4;

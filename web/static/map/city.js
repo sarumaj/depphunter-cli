@@ -506,44 +506,51 @@ export function rampsFor(boxes) {
   if (rampCache.has(boxes)) return rampCache.get(boxes);
   const ramps = [];
   for (const [t, kids] of blocks(boxes)) {
-    const tx0 = t.x - t.w / 2, tx1 = t.x + t.w / 2, tz0 = t.z - t.d / 2, tz1 = t.z + t.d / 2;
-    // From a street, a ramp a car can drive up; from a plaza (buildings.js raised),
-    // where nothing drives, a flight of stairs: shorter, steeper, and no driveway.
-    // Implements: REQ-CITY-037
-    const stairs = raised(t);
     for (const c of kids) {
       if (c.kind !== 'terrace' || c.node.kind === 'file') continue;
-      let best = null;
-      for (const side of sides(c)) {
-        if (side.len < (stairs ? STAIR_MIN_SIDE : RAMP_MIN_SIDE)) continue;
-        const rampLength = stairs ? STAIR_LEN : Math.min(RAMP_MAX, side.len - 0.8);
-        const width = stairs ? STAIR_W : RAMP_W;
-        const a = -side.len / 2 + RAMP_START;
-        const origin = [side.mid[0] + side.u[0] * a, side.mid[1] + side.u[1] * a];
-        const far = [origin[0] + side.u[0] * rampLength + side.n[0] * width, origin[1] + side.u[1] * rampLength + side.n[1] * width];
-        const r = {
-          x0: Math.min(origin[0], far[0]), x1: Math.max(origin[0], far[0]),
-          z0: Math.min(origin[1], far[1]), z1: Math.max(origin[1], far[1]),
-        };
-        let clear = Math.min(r.x0 - tx0, tx1 - r.x1, r.z0 - tz0, tz1 - r.z1);
-        for (const k of kids) if (k !== c) clear = Math.min(clear, rectDist(r, k));
-        if (clear >= RAMP_CLEAR && (!best || clear > best.clear)) {
-          best = {
-            ...r, clear, origin, u: side.u, n: side.n, len: rampLength, width, stairs,
-            rise: rampLength - (stairs ? STAIR_LANDING : RAMP_LANDING), y0: t.y + t.h, y1: c.y + c.h, drive: null,
-          };
-          if (!stairs) {
-            const d0 = [origin[0] + side.u[0] * best.rise, origin[1] + side.u[1] * best.rise];
-            const d1 = [origin[0] + side.u[0] * rampLength - side.n[0] * DRIVE, origin[1] + side.u[1] * rampLength - side.n[1] * DRIVE];
-            best.drive = { x0: Math.min(d0[0], d1[0]), x1: Math.max(d0[0], d1[0]), z0: Math.min(d0[1], d1[1]), z1: Math.max(d0[1], d1[1]) };
-          }
-        }
-      }
+      // Up to a road, a ramp a car can drive; up to a plaza (buildings.js raised),
+      // where nothing drives - or to a block with no side long enough for a ramp - a
+      // flight of stairs: shorter, steeper, and no driveway.
+      // Implements: REQ-CITY-037
+      const best = (!raised(c) && wayUp(t, c, kids, false)) || wayUp(t, c, kids, true);
       if (best) ramps.push(best);
     }
   }
   rampCache.set(boxes, ramps);
   return ramps;
+}
+
+// The way up to terrace c from the block t it stands on, on the side of c with the
+// most room beside it: a ramp, or with stairs a flight; null when no side has room.
+function wayUp(t, c, kids, stairs) {
+  const tx0 = t.x - t.w / 2, tx1 = t.x + t.w / 2, tz0 = t.z - t.d / 2, tz1 = t.z + t.d / 2;
+  let best = null;
+  for (const side of sides(c)) {
+    if (side.len < (stairs ? STAIR_MIN_SIDE : RAMP_MIN_SIDE)) continue;
+    const rampLength = stairs ? STAIR_LEN : Math.min(RAMP_MAX, side.len - 0.8);
+    const width = stairs ? STAIR_W : RAMP_W;
+    const a = -side.len / 2 + RAMP_START;
+    const origin = [side.mid[0] + side.u[0] * a, side.mid[1] + side.u[1] * a];
+    const far = [origin[0] + side.u[0] * rampLength + side.n[0] * width, origin[1] + side.u[1] * rampLength + side.n[1] * width];
+    const r = {
+      x0: Math.min(origin[0], far[0]), x1: Math.max(origin[0], far[0]),
+      z0: Math.min(origin[1], far[1]), z1: Math.max(origin[1], far[1]),
+    };
+    let clear = Math.min(r.x0 - tx0, tx1 - r.x1, r.z0 - tz0, tz1 - r.z1);
+    for (const k of kids) if (k !== c) clear = Math.min(clear, rectDist(r, k));
+    if (clear >= RAMP_CLEAR && (!best || clear > best.clear)) {
+      best = {
+        ...r, clear, origin, u: side.u, n: side.n, len: rampLength, width, stairs,
+        rise: rampLength - (stairs ? STAIR_LANDING : RAMP_LANDING), y0: t.y + t.h, y1: c.y + c.h, drive: null,
+      };
+      if (!stairs) {
+        const d0 = [origin[0] + side.u[0] * best.rise, origin[1] + side.u[1] * best.rise];
+        const d1 = [origin[0] + side.u[0] * rampLength - side.n[0] * DRIVE, origin[1] + side.u[1] * rampLength - side.n[1] * DRIVE];
+        best.drive = { x0: Math.min(d0[0], d1[0]), x1: Math.max(d0[0], d1[0]), z0: Math.min(d0[1], d1[1]), z1: Math.max(d0[1], d1[1]) };
+      }
+    }
+  }
+  return best;
 }
 
 /**
