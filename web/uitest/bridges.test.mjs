@@ -9,7 +9,8 @@ import { describe, it } from 'node:test';
 
 import { box } from './stub.mjs';
 
-const { bridgesFor, bridgeBounds, bridgeHeight, rampsFor, rampHeight, makeProps } = await import('../static/map/city.js');
+const { bridgesFor, bridgeBounds, bridgeHeight, rampsFor, rampHeight, makeProps, RAIL_H } = await import('../static/map/city.js');
+const { Walker } = await import('../static/walk/walk.js');
 
 // A body's radius, as walk.js knows it: what a deck is narrowed by before it will
 // carry anyone.
@@ -79,6 +80,38 @@ describe('a bridge deck', () => {
     const [r] = bridgesFor(twoIslands());
     const mid = (r.from + r.to) / 2;
     assert.equal(bridgeHeight(r, mid, r.across), bridgeHeight(r, mid, r.across, 0));
+  });
+});
+
+describe('the railings', () => {
+  // A walker as far as the railings concern it: where their feet are, and the bridges
+  // indexed the way walk.js indexes them.
+  function onBridge() {
+    const [r] = bridgesFor(twoIslands());
+    const w = Object.assign(Object.create(Walker.prototype), { p: {}, ramps: [], bridges: [r] });
+    w.indexDecks();
+    const mid = (r.from + r.to) / 2, half = (bridgeBounds(r).z1 - bridgeBounds(r).z0) / 2;
+    return { r, w, mid, deck: bridgeHeight(r, mid, r.across, BODY), side: r.across + half };
+  }
+
+  // Verifies: REQ-CITY-028
+  it('hold a walker on the deck, standing or in the air below their top', () => {
+    const { w, mid, deck, side } = onBridge();
+    for (const feet of [deck, deck - 0.05, deck + RAIL_H / 2]) {
+      w.p.feet = feet;
+      assert.ok(w.railed(mid, side - BODY - 0.01, mid, side + 0.2), `a walker at ${feet - deck} went through the railing`);
+    }
+  });
+
+  // Verifies: REQ-CITY-028
+  it('let a jump that clears them go over, and leave the ends and the water under the deck open', () => {
+    const { r, w, mid, deck, side } = onBridge();
+    w.p.feet = deck + RAIL_H + 0.01;
+    assert.equal(w.railed(mid, side - BODY - 0.01, mid, side + 0.2), false, 'a jump over the railing was held');
+    w.p.feet = SHORE;
+    assert.equal(w.railed(r.to - 0.01, r.across, r.to + 0.2, r.across), false, 'the end of the bridge is railed off');
+    w.p.feet = SHORE - 0.6;
+    assert.equal(w.railed(mid, r.across, mid, side + 0.2), false, 'the deck holds a swimmer under it');
   });
 });
 

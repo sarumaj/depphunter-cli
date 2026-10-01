@@ -25,7 +25,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { clamp, ease } from '../core/numbers.js';
 import { EYE, STEP, WATER, REACH, reducedMotion } from './walkbase.js';
-import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from '../map/city.js';
+import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds, RAIL_H } from '../map/city.js';
 import { Health } from './health.js';
 import { Wind } from './wind.js';
 import { tracker } from './tracker.js';
@@ -223,6 +223,7 @@ export class Walker {
     this.bridges = [];
     this.decks = new Map(); // ramps, by grid cell (indexDecks)
     this.spans = new Map(); // bridge decks, likewise, but tested differently (height)
+    this.railings = new Map(); // the bridges themselves, likewise (railed)
     this.aim = { i: -1, point: null, bug: null, box: null };
     this.spawned = false; // whether walk mode has been entered on this page yet
     this.arrival = null;  // the first arrival or a revival, while it plays (arrive)
@@ -378,6 +379,29 @@ export class Walker {
     };
     for (const r of this.ramps) put(this.decks, r, (x, z) => rampHeight(r, x, z));
     for (const b of this.bridges) put(this.spans, bridgeBounds(b), (x, z) => bridgeHeight(b, x, z, BODY));
+    this.railings = new Map();
+    for (const b of this.bridges) put(this.railings, bridgeBounds(b), b);
+  }
+
+  /**
+   * Whether a bridge's railing stands between (x, z) and (nx, nz): the walker is on a
+   * deck, with their feet below the railing's top, and the step would take them off it
+   * over the side rather than off an end onto the shore. It holds whether or not they
+   * are on the ground - a hop, or a stride down the arch that leaves the deck for a
+   * frame, is not a way through it; only a jump that clears it is a way over.
+   *
+   * Implements: REQ-CITY-028
+   */
+  railed(x, z, nx, nz) {
+    const feet = this.p.feet;
+    for (const b of this.railings.get(cellKey(x, z)) || NO_CELL) {
+      const deck = bridgeHeight(b, x, z, BODY);
+      if (!(feet >= deck - STEP && feet < deck + RAIL_H)) continue;
+      if (Number.isFinite(bridgeHeight(b, nx, nz, BODY))) continue;
+      const along = b.axis === 'x' ? nx : nz;
+      if (along > b.from && along < b.to) return true;
+    }
+    return false;
   }
 
   /**
@@ -1915,9 +1939,9 @@ export class Walker {
     const ok = h => h <= climb
       && (h > WATER || p.fly || !p.ground || wet || afloat || (step && p.feet - h <= WADE_IN));
     const nx = p.x + move.x * speed * deltaTime;
-    if (ok(this.height(nx, p.z, p.feet))) p.x = nx;
+    if (ok(this.height(nx, p.z, p.feet)) && !this.railed(p.x, p.z, nx, p.z)) p.x = nx;
     const nz = p.z + move.z * speed * deltaTime;
-    if (ok(this.height(p.x, nz, p.feet))) p.z = nz;
+    if (ok(this.height(p.x, nz, p.feet)) && !this.railed(p.x, p.z, p.x, nz)) p.z = nz;
     return afloat;
   }
 

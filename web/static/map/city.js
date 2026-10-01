@@ -630,7 +630,9 @@ function rectDist(a, b) {
 // railings and piers. The links form a spanning tree rooted at the mainland, each
 // island joined to the nearest shore already reachable, so every island can be walked
 // to. Shores (the land boxes) all have their tops at the same height.
-const DECK_W = 0.8, DECK_RISE = 0.25, DECK_T = 0.06, RAIL_H = 0.14, PIER_EVERY = 1.8, DECK_OVERLAP = 0.25;
+const DECK_W = 0.8, DECK_RISE = 0.25, DECK_T = 0.06, PIER_EVERY = 1.8, DECK_OVERLAP = 0.25;
+/** How high a bridge's railings stand above its deck. */
+export const RAIL_H = 0.14;
 
 const bridgeCache = new WeakMap();
 
