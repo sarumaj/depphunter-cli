@@ -46,12 +46,19 @@ export function binaryFor(configured: string | undefined, home: string | undefin
  * Why binaryFor's choice could not be started, saying where it was looked for: the
  * setting's binary, or - with none set - this build's own and then the PATH. A build
  * that ships no binary (one from a checkout, or the universal package) says so, which
- * is the difference between installing depphunter and installing the right package.
+ * is the difference between installing depphunter and installing the right package;
+ * a window left running the version an update replaced is told to reload.
  * Implements: REQ-EXT-019
  */
 export function notFound(configured: string | undefined, home: string | undefined): string {
   const bin = binaryFor(configured, home);
   if (configured?.trim()) return `${bin} was not found (the depphunter.path setting).`;
+  // An update installs the new version beside the old and removes the old once no
+  // window needs it - but a window opened before the update still runs the old one,
+  // and its directory may already be gone.
+  if (home && !fs.existsSync(home)) {
+    return `depphunter was not found: this window still runs a version of the extension that has since been updated or removed (${home}). Reload the window.`;
+  }
   if (bin !== 'depphunter') return `${bin} was not found.`;
   const own = home ? path.join(home, BUNDLED) : 'its bin directory';
   return `depphunter was not found: this build of the extension carries none in ${own}, and there is none on the PATH.`;

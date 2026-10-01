@@ -68,5 +68,8 @@ describe('which depphunter to run', () => {
     assert.ok(none.includes(`carries none in ${path.join(empty, 'bin')}`) && none.includes('PATH'), none);
     assert.strictEqual(notFound('/opt/depphunter', home), '/opt/depphunter was not found (the depphunter.path setting).');
     assert.strictEqual(notFound('', home), `${path.join(home, 'bin', NAME)} was not found.`);
+    // A window still running the version an update has since removed.
+    const gone = path.join(empty, 'sarumaj.depphunter-0.0.1');
+    assert.ok(notFound('', gone).includes('Reload the window'), notFound('', gone));
   });
 });
