@@ -1313,3 +1313,38 @@ describe('the toolbar in the street', () => {
     for (const id of ['rotate-left', 'rotate-right', 'fit', 'reset-view']) assert.ok(tag(id).includes('data-map-only'), `${id} is offered in the street`);
   });
 });
+
+describe('the planet changing size', () => {
+  // A walker as far as the radius concerns it: a scene that records what it is told.
+  function walker() {
+    const drawn = [];
+    const w = Object.assign(Object.create(WALK.Walker.prototype), {
+      radius: 40, shownRadius: 40, p: { feet: 0 }, limits: null,
+      scene: { setRadius: r => drawn.push(r), scene: { fog: {} } }, drawHud() {},
+    });
+    return { w, drawn };
+  }
+
+  // Verifies: REQ-WALK-009
+  it('eases the curvature to the new radius rather than jumping to it', () => {
+    const { w, drawn } = walker();
+    w.setRadius(50, true);
+    assert.equal(w.radius, 50, 'the radius asked for is not the one shown on the HUD');
+    assert.equal(drawn.length, 0, 'the planet changed size in the frame the key was pressed');
+    w.easeRadius(1 / 60);
+    assert.ok(drawn[0] > 40 && drawn[0] < 50, `the first frame drew ${drawn[0]}`);
+    for (let i = 0; i < 60; i++) w.easeRadius(1 / 60);
+    assert.equal(w.shownRadius, 50, 'the planet never settled on the radius asked for');
+    const frames = drawn.length;
+    w.easeRadius(1 / 60);
+    assert.equal(drawn.length, frames, 'a settled planet is still being redrawn');
+  });
+
+  // Verifies: REQ-WALK-009
+  it('changes at once where it is not eased', () => {
+    const { w, drawn } = walker();
+    w.setRadius(80);
+    assert.deepEqual(drawn, [80]);
+    assert.equal(w.shownRadius, 80);
+  });
+});

@@ -69,6 +69,7 @@ const TURN = 2.2;           // radians per second with the arrow keys
 // into a bank and back out of it (per second).
 const BANK_PER_TURN = 0.22, BANK_SIDE = 0.16, BANK_MAX = 0.42, BANK_EASE = 4;
 const MIN_R = 6, MAX_R = 2000;
+const RADIUS_EASE = 9; // per second: a change of radius is nineteen-twentieths done in a third of a second
 // Implements: REQ-WALK-011
 const MAX_LOOK_STEP = 250;  // pixels; larger pointer movements are glitches, not looks
 // How near the crosshair ray a bug counts as aimed at. It is generous, and grows with
@@ -312,6 +313,7 @@ export class Walker {
     this.handsOff = false; // H: the view with nothing held in it
     this.home = null;      // where the walker stood when they last left the street
     this.radius = 40;
+    this.shownRadius = 40; // what the planet is drawn at, on its way to radius (easeRadius)
     this.fov = FOV;
     this.bindInput();
   }
@@ -441,6 +443,7 @@ export class Walker {
     this.radius = clamp(diag * 0.6, 15, Math.min(600, this.maxRadius()));
     this.active = true;
     this.hud.hidden = false;
+    this.shownRadius = this.radius;
     this.scene.setWalking(true, this.radius);
     this.scene.scene.add(this.beacons);
     this.bugs?.show(true);
@@ -1522,8 +1525,8 @@ export class Walker {
     mine();
     if (e.repeat) return;
     this.keys.add(e.code);
-    if (BIGGER.has(e.key) || BIGGER_CODES.has(e.code)) this.setRadius(this.radius * 1.25);
-    else if (SMALLER.has(e.key) || SMALLER_CODES.has(e.code)) this.setRadius(this.radius / 1.25);
+    if (BIGGER.has(e.key) || BIGGER_CODES.has(e.code)) this.setRadius(this.radius * 1.25, true);
+    else if (SMALLER.has(e.key) || SMALLER_CODES.has(e.code)) this.setRadius(this.radius / 1.25, true);
     // While the wheel is up it has first refusal on everything: it answers the keys
     // that pick from it and passes on the ones that walk, so a walker can keep
     // moving through a change of hands.
@@ -1615,18 +1618,39 @@ export class Walker {
     return clamp(3 * Math.hypot(l.maxX - l.minX, l.maxZ - l.minZ), 60, MAX_R);
   }
 
-  setRadius(r) {
+  /** The planet's radius, at once - or, with `ease`, over the next few frames (easeRadius). */
+  setRadius(r, ease = false) {
     this.radius = clamp(r, MIN_R, this.maxRadius());
-    this.scene.setRadius(this.radius);
-    this.setFog();
+    if (!ease || reducedMotion()) this.showRadius(this.radius);
     this.drawHud();
+  }
+
+  showRadius(r) {
+    this.shownRadius = r;
+    this.scene.setRadius(r);
+    this.setFog();
+  }
+
+  /**
+   * The planet growing or shrinking to the radius asked for, over about a third of a
+   * second rather than in one frame: a curvature that jumps throws the whole horizon
+   * at the walker at once. It is eased in the radius's logarithm, so a step of [ or ]
+   * moves as smoothly on a small planet as on a large one.
+   *
+   * Implements: REQ-WALK-009
+   */
+  easeRadius(deltaTime) {
+    if (this.shownRadius === this.radius) return;
+    const k = 1 - Math.exp(-deltaTime * RADIUS_EASE);
+    const next = this.shownRadius * Math.pow(this.radius / this.shownRadius, k);
+    this.showRadius(Math.abs(next / this.radius - 1) < 1e-3 ? this.radius : next);
   }
 
   // Fog fades what lies near the horizon; a larger planet, or a higher flight, shows
   // farther.
   // Implements: REQ-WALK-017
   setFog() {
-    const far = Math.max(60, this.radius * 2.5) + 6 * Math.max(0, this.p.feet);
+    const far = Math.max(60, this.shownRadius * 2.5) + 6 * Math.max(0, this.p.feet);
     Object.assign(this.scene.scene.fog, { near: far * 0.3, far });
   }
 
@@ -1640,7 +1664,7 @@ export class Walker {
    * Implements: REQ-PERF-011
    */
   resting(now) {
-    const p = this.p, pose = `${p.x},${p.z},${p.feet},${p.yaw},${p.pitch},${this.fov}`;
+    const p = this.p, pose = `${p.x},${p.z},${p.feet},${p.yaw},${p.pitch},${this.fov},${this.shownRadius}`;
     if (pose !== this.pose) {
       this.pose = pose;
       this.movedAt = now;
@@ -1673,6 +1697,7 @@ export class Walker {
       this.autoFire(now);
       if (this.p.fly || aloft(this.chute)) this.setFog();
       this.zoom(deltaTime);
+      this.easeRadius(deltaTime);
       this.updateDarts(deltaTime);
       this.updatePuffs(deltaTime);
       this.updateCanopies(deltaTime);
