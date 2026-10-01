@@ -130,8 +130,18 @@ function pick(r, weights) {
  * height.
  */
 export function buildParameters(b, seed = seedOf(b)) {
-  return [archetype(b, seed), next(seed + 0.5), 0, Math.max(b.h, 0.01)];
+  return [archetype(b, seed), next(seed + 0.5), raised(b) ? 1 : 0, Math.max(b.h, 0.01)];
 }
+
+/**
+ * Whether a box is a terrace standing on another terrace rather than on the land: a
+ * level raised above the street, which the city paves as a plaza for people on foot
+ * rather than as a road (city.js streets). Its third build parameter says so; a
+ * terrace has no facade for it to lift.
+ *
+ * Implements: REQ-CITY-037
+ */
+export const raised = b => b.kind === 'terrace' && b.node?.kind !== 'file' && b.y > 1e-6;
 
 // ------------------------------------------------------------------ far average
 

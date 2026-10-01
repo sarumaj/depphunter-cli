@@ -11,10 +11,12 @@ verification:
 
 ## Statement
 
-Every nested terrace (a city block, not a file's symbol plot) with a side at
-least 1.7 units long **shall** get one ramp, 0.2 units wide, along the side with
-the most room beside it, in the street beside it, rising from a corner at the
-street's level to the terrace's top over at most 2.4 units.
+Every nested terrace (a city block, not a file's symbol plot) standing on a
+street-level terrace, with a side at least 1.7 units long, **shall** get one
+ramp, 0.2 units wide, along the side with the most room beside it, in the street
+beside it, rising from a corner at the street's level to the terrace's top over
+at most 2.4 units. A terrace standing on a plaza gets stairs instead
+(REQ-CITY-037).
 
 ## Rationale
 

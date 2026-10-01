@@ -30,6 +30,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { plants } from './models.js';
 import { NOISE_GLSL } from './cityglsl.js';
 import { Scatter } from './lod.js';
+import { raised } from './buildings.js';
 
 /** Box kinds as the shaders see them (attribute aKind). */
 export function kindCode(b) {
@@ -485,6 +486,10 @@ function blocks(boxes) {
 // Implements: REQ-CITY-017, REQ-CITY-020
 const RAMP_W = 0.2, RAMP_MAX = 2.4, RAMP_MIN_SIDE = 1.7, RAMP_START = 0.1, RAMP_CLEAR = 0.1;
 const RAMP_LANDING = 0.35, DRIVE = 0.14, APRON = RAMP_START + 0.07;
+// A flight of stairs between two plazas: STAIR_LEN long with a STAIR_LANDING at the
+// top, STAIR_W wide, each step STEP_RISE high at most. A side shorter than
+// STAIR_MIN_SIDE has no room for one.
+const STAIR_LEN = 0.8, STAIR_LANDING = 0.12, STAIR_W = 0.24, STEP_RISE = 0.035, STAIR_MIN_SIDE = 1.2;
 
 const rampCache = new WeakMap();
 
@@ -502,15 +507,20 @@ export function rampsFor(boxes) {
   const ramps = [];
   for (const [t, kids] of blocks(boxes)) {
     const tx0 = t.x - t.w / 2, tx1 = t.x + t.w / 2, tz0 = t.z - t.d / 2, tz1 = t.z + t.d / 2;
+    // From a street, a ramp a car can drive up; from a plaza (buildings.js raised),
+    // where nothing drives, a flight of stairs: shorter, steeper, and no driveway.
+    // Implements: REQ-CITY-037
+    const stairs = raised(t);
     for (const c of kids) {
       if (c.kind !== 'terrace' || c.node.kind === 'file') continue;
       let best = null;
       for (const side of sides(c)) {
-        if (side.len < RAMP_MIN_SIDE) continue;
-        const rampLength = Math.min(RAMP_MAX, side.len - 0.8);
+        if (side.len < (stairs ? STAIR_MIN_SIDE : RAMP_MIN_SIDE)) continue;
+        const rampLength = stairs ? STAIR_LEN : Math.min(RAMP_MAX, side.len - 0.8);
+        const width = stairs ? STAIR_W : RAMP_W;
         const a = -side.len / 2 + RAMP_START;
         const origin = [side.mid[0] + side.u[0] * a, side.mid[1] + side.u[1] * a];
-        const far = [origin[0] + side.u[0] * rampLength + side.n[0] * RAMP_W, origin[1] + side.u[1] * rampLength + side.n[1] * RAMP_W];
+        const far = [origin[0] + side.u[0] * rampLength + side.n[0] * width, origin[1] + side.u[1] * rampLength + side.n[1] * width];
         const r = {
           x0: Math.min(origin[0], far[0]), x1: Math.max(origin[0], far[0]),
           z0: Math.min(origin[1], far[1]), z1: Math.max(origin[1], far[1]),
@@ -518,10 +528,15 @@ export function rampsFor(boxes) {
         let clear = Math.min(r.x0 - tx0, tx1 - r.x1, r.z0 - tz0, tz1 - r.z1);
         for (const k of kids) if (k !== c) clear = Math.min(clear, rectDist(r, k));
         if (clear >= RAMP_CLEAR && (!best || clear > best.clear)) {
-          best = { ...r, clear, origin, u: side.u, n: side.n, len: rampLength, rise: rampLength - RAMP_LANDING, y0: t.y + t.h, y1: c.y + c.h };
-          const d0 = [origin[0] + side.u[0] * best.rise, origin[1] + side.u[1] * best.rise];
-          const d1 = [origin[0] + side.u[0] * rampLength - side.n[0] * DRIVE, origin[1] + side.u[1] * rampLength - side.n[1] * DRIVE];
-          best.drive = { x0: Math.min(d0[0], d1[0]), x1: Math.max(d0[0], d1[0]), z0: Math.min(d0[1], d1[1]), z1: Math.max(d0[1], d1[1]) };
+          best = {
+            ...r, clear, origin, u: side.u, n: side.n, len: rampLength, width, stairs,
+            rise: rampLength - (stairs ? STAIR_LANDING : RAMP_LANDING), y0: t.y + t.h, y1: c.y + c.h, drive: null,
+          };
+          if (!stairs) {
+            const d0 = [origin[0] + side.u[0] * best.rise, origin[1] + side.u[1] * best.rise];
+            const d1 = [origin[0] + side.u[0] * rampLength - side.n[0] * DRIVE, origin[1] + side.u[1] * rampLength - side.n[1] * DRIVE];
+            best.drive = { x0: Math.min(d0[0], d1[0]), x1: Math.max(d0[0], d1[0]), z0: Math.min(d0[1], d1[1]), z1: Math.max(d0[1], d1[1]) };
+          }
         }
       }
       if (best) ramps.push(best);
@@ -729,6 +744,12 @@ function* rampGeometry(ramps) {
   const LIFT = 0.004, PARAPET = 0.035;
   for (const r of ramps) {
     const at = (s, w, y) => [r.origin[0] + r.u[0] * s + r.n[0] * w, y, r.origin[1] + r.u[1] * s + r.n[1] * w];
+    if (r.stairs) {
+      // Implements: REQ-CITY-037
+      flight(r, at, quad, PARAPET);
+      yield;
+      continue;
+    }
     const y = s => r.y0 + (r.y1 - r.y0) * Math.min(1, s / r.rise) + LIFT;
     const n = Math.max(2, Math.ceil(r.rise / 0.25));
     const cuts = [...Array.from({ length: n + 1 }, (_, i) => r.rise * i / n), r.len];
@@ -764,6 +785,31 @@ function* rampGeometry(ramps) {
   yield;
   geo.setIndex(index);
   return geo;
+}
+
+// A flight of stone stairs from one plaza up to the next: its treads and risers, the
+// wall along its open side with a parapet stepping up with it, and a landing level
+// with the upper plaza. The walker goes up it as up a ramp (rampHeight); its steps
+// are what it looks like. aRamp 0 throughout: stone, as the ramps' walls are, in a
+// darker shade than theirs - the treads lighter than the risers, so the steps read.
+function flight(r, at, quad, parapet) {
+  const height = r.y1 - r.y0, n = Math.max(2, Math.ceil(height / STEP_RISE)), run = r.rise / n, w = r.width;
+  const stone = s => [s, 0, 0];
+  for (let i = 0; i < n; i++) {
+    const s0 = run * i, s1 = run * (i + 1), y0 = r.y0 + height * i / n, y1 = r.y0 + height * (i + 1) / n;
+    quad(at(s0, 0, y0), at(s0, w, y0), at(s0, w, y1), at(s0, 0, y1), stone(0), stone(w), stone(w), stone(0), 0.24); // riser
+    quad(at(s0, 0, y1), at(s0, w, y1), at(s1, w, y1), at(s1, 0, y1), stone(s0), stone(s0), stone(s1), stone(s1), 0.36); // tread
+    quad(at(s0, w, r.y0), at(s1, w, r.y0), at(s1, w, y1 + parapet), at(s0, w, y1 + parapet),
+      stone(s0), stone(s1), stone(s1), stone(s0), 0.3); // the open side's wall
+    quad(at(s0, w - 0.02, y1 + parapet), at(s1, w - 0.02, y1 + parapet), at(s1, w, y1 + parapet), at(s0, w, y1 + parapet),
+      stone(s0), stone(s1), stone(s1), stone(s0), 0.42); // its parapet
+  }
+  quad(at(r.rise, 0, r.y1), at(r.rise, w, r.y1), at(r.len, w, r.y1), at(r.len, 0, r.y1),
+    stone(r.rise), stone(r.rise), stone(r.len), stone(r.len), 0.36); // the landing
+  quad(at(r.rise, w, r.y0), at(r.len, w, r.y0), at(r.len, w, r.y1 + parapet), at(r.rise, w, r.y1 + parapet),
+    stone(r.rise), stone(r.len), stone(r.len), stone(r.rise), 0.3);
+  quad(at(r.len, 0, r.y0), at(r.len, w, r.y0), at(r.len, w, r.y1 + parapet), at(r.len, 0, r.y1 + parapet),
+    stone(0), stone(w), stone(w), stone(0), 0.3); // the landing's end
 }
 
 // The ramps' and bridges' look on top of a bendable material: asphalt with edge lines

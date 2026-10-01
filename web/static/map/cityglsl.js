@@ -278,9 +278,12 @@ Road roadField(vec3 lp, vec3 sz) {
 }
 
 // The top of a terrace as a city: asphalt between the buildings, sidewalks, crossings
-// and pocket parks.
-// Implements: REQ-CITY-006, REQ-CITY-007, REQ-CITY-008, REQ-CITY-009, REQ-CITY-010
+// and pocket parks - on the street's own level. A level raised above it (buildings.js
+// raised, the third build parameter) is a plaza: paved in larger slabs from one wall
+// to the next, with its parks and no traffic on it.
+// Implements: REQ-CITY-006, REQ-CITY-007, REQ-CITY-008, REQ-CITY-009, REQ-CITY-010, REQ-CITY-037
 vec3 streets(vec3 base, vec3 lp, vec3 sz) {
+  bool plaza = vBuild.z > 0.5;
   Road r = roadField(lp, sz);
   vec2 p = r.p;
   float d1 = r.d1, d2 = r.d2;
@@ -298,6 +301,13 @@ vec3 streets(vec3 base, vec3 lp, vec3 sz) {
   float kPark = smoothstep(edge - w, edge + w, d1);
 
   vec3 c = vec3(0.0);
+  if (plaza) {
+    vec3 slabs = paving(base, p * 0.55, f.paving * 0.55) * 1.04;
+    c = kPark > 0.0 ? mix(slabs, park(base, p, f), kPark) : slabs;
+    // The lawns are planters, behind a low stone edge.
+    c = mix(c, vec3(0.5, 0.5, 0.48) * dark(0.45), band(d1, edge - 0.016, edge + 0.002, w));
+    return c * tint(base, uGroundRef);
+  }
   if (kRoad > 0.0 && kPaving < 1.0 && kPark < 1.0) {
     c = asphalt(p, f.asphalt);
     if (!facing && d1 < CARRIAGE) {

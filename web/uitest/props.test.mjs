@@ -10,7 +10,8 @@ import { describe, it } from 'node:test';
 
 import { box } from './stub.mjs';
 
-const { makeProps, setNight } = await import('../static/map/city.js');
+const { makeProps, setNight, rampsFor, rampHeight } = await import('../static/map/city.js');
+const { raised, buildParameters } = await import('../static/map/buildings.js');
 
 describe('vegetation without the plant models', () => {
   // Verifies: REQ-CITY-022
@@ -51,5 +52,37 @@ describe('street lamps at night', () => {
     const group = makeProps([block], m => m, 'circuit');
     const glow = group.children.filter(mesh => mesh.userData.glow);
     assert.ok(glow.length && glow.every(mesh => mesh.visible && !mesh.userData.afterDark));
+  });
+});
+
+describe('the way up from one level to the next', () => {
+  // A terrace on the street's level, one on it, and one on that: a terrace's node is
+  // its kids' parentNode, which is how blocks() finds what stands on what.
+  const street = box('terrace', 0, 0, 12, 12, { y: 0, h: 0.28 });
+  const middle = box('terrace', 0, 0, 7, 7, { y: 0.28, h: 0.28 });
+  const top = box('terrace', 0, 0, 3, 3, { y: 0.56, h: 0.28 });
+  middle.node.parentNode = street.node;
+  top.node.parentNode = middle.node;
+
+  // Verifies: REQ-CITY-037
+  it('paves a raised level as a plaza and leaves the street\'s own level a road', () => {
+    assert.equal(raised(street), false);
+    assert.equal(raised(middle), true);
+    assert.equal(buildParameters(street)[2], 0);
+    assert.equal(buildParameters(middle)[2], 1, 'the shader is not told the level is a plaza');
+  });
+
+  // Verifies: REQ-CITY-037
+  it('drives up from a street, and climbs stairs from a plaza', () => {
+    const ramps = rampsFor([street, middle, top]);
+    const up = ramps.find(r => r.y1 === middle.y + middle.h), stairs = ramps.find(r => r.y1 === top.y + top.h);
+    assert.ok(up && !up.stairs && up.drive, 'no ramp with a driveway up from the street');
+    assert.ok(stairs?.stairs && !stairs.drive, 'no stairs up from the plaza');
+    assert.ok(stairs.len < up.len, 'the stairs are no shorter than a ramp');
+    // The walker goes up a flight as up a ramp: from the lower level to the upper.
+    const foot = [stairs.origin[0] + stairs.n[0] * stairs.width / 2, stairs.origin[1] + stairs.n[1] * stairs.width / 2];
+    const head = [foot[0] + stairs.u[0] * (stairs.len - 0.01), foot[1] + stairs.u[1] * (stairs.len - 0.01)];
+    assert.ok(Math.abs(rampHeight(stairs, ...foot) - stairs.y0) < 1e-9);
+    assert.ok(Math.abs(rampHeight(stairs, ...head) - stairs.y1) < 1e-9);
   });
 });
