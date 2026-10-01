@@ -255,7 +255,7 @@ async function main() {
     linkKind: () => state.linkKind,
     historyOf: node => {
       const hm = metrics();
-      return hm && { metric: hm.byId.get(node.id), since: state.since, authors: state.history.authors };
+      return hm && { metric: hm.byId.get(node.id), since: state.since, authors: state.history.authors, noLines: !!state.history.noLines };
     },
     openLabel: settings.static ? null : settings.editor ? 'Open in editor' : 'Open in VS Code',
     // Closing the details gives the pointer back, so walk mode may move again.
@@ -568,6 +568,12 @@ function setHistory(h) {
   group.hidden = !h;
   group.label = h ? 'Git history' : 'Git history (loading…)';
   for (const o of group.querySelectorAll('option')) o.disabled = !h;
+  // A partial clone's history has no lines to count (internal/history NoLines).
+  // Implements: REQ-HIST-016
+  const churn = group.querySelector('option[value="churn"]');
+  churn.disabled = !h || !!h.noLines;
+  churn.title = h?.noLines ? 'Not known: this is a partial clone, and counting lines would fetch every file it left out' : '';
+  if (h?.noLines && state.colorBy === 'churn') $('color-by').value = state.colorBy = 'commits';
   if (!h && isHistoryMode(state.colorBy)) $('color-by').value = state.colorBy = 'language';
   recolor();
   drawLegend();
@@ -1525,7 +1531,7 @@ function card(b, n) {
   if (hm) {
     const m = hm.byId.get(n.id);
     html += m
-      ? row(`Commits since ${formatDate(state.since)}`, fmt.format(m.commits)) + row('Lines changed', fmt.format(m.churn)) +
+      ? row(`Commits since ${formatDate(state.since)}`, fmt.format(m.commits)) + (state.history.noLines ? '' : row('Lines changed', fmt.format(m.churn))) +
         row('Last change', ago(m.last)) + row('Authors', m.authors.size)
       : row('Git history', 'not committed');
   }

@@ -8,7 +8,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -17,6 +16,8 @@ import (
 	"strings"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/sarumaj/depphunter-cli/internal/gitlocal"
 )
 
 // File is a project file with paths relative to the project root, always slash-separated.
@@ -102,7 +103,7 @@ func Scan(ctx context.Context, root string, options Options) ([]*File, error) {
 //
 // Implements: REQ-LANG-017, REQ-LANG-031
 func gitFiles(ctx context.Context, root string) ([]string, error) {
-	command := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	command := gitlocal.Command(ctx, root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	out, err := command.Output()
 	if err != nil {
 		return nil, err

@@ -521,7 +521,9 @@ export class Panel {
     const others = top.slice(5).reduce((a, [, c]) => a + c, 0);
     return h('div', { class: 'p-section' }, title,
       h('div', { class: 'stats' },
-        stat(fmt.format(m.commits), 'commits'), stat(fmt.format(m.churn), 'lines changed'),
+        stat(fmt.format(m.commits), 'commits'),
+        // Implements: REQ-HIST-016
+        nodeHistory.noLines ? null : stat(fmt.format(m.churn), 'lines changed'),
         stat(ago(m.last), 'last change'), stat(fmt.format(m.authors.size), 'authors')),
       top.length ? h('ul', { class: 'p-list authors' }, top.slice(0, 5).map(([a, c]) =>
         h('li', { title: `${nodeHistory.authors[a]}: ${c} commits` },

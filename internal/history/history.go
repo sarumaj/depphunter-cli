@@ -8,11 +8,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/sarumaj/depphunter-cli/internal/gitlocal"
 	"github.com/sarumaj/depphunter-cli/internal/store"
 )
 
@@ -31,11 +31,17 @@ type History struct {
 	Truncated bool                `json:"truncated"` // the limit was reached; older commits are missing
 	Authors   []string            `json:"authors"`   // display names, indexed by Change[1]
 	Files     map[string][]Change `json:"files"`     // project-relative path -> changes, newest first
+	// NoLines says the lines each change added and deleted are not known, and are
+	// 0: the repository is a partial clone without the contents they are counted
+	// from (Collect). Renames are not followed then either.
+	//
+	// Implements: REQ-HIST-016
+	NoLines bool `json:"noLines,omitempty"`
 }
 
 // Head returns the commit hash HEAD points to, or ErrNoHistory.
 func Head(ctx context.Context, root string) (string, error) {
-	out, err := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "--verify", "-q", "HEAD").Output()
+	out, err := gitlocal.Command(ctx, root, "rev-parse", "--verify", "-q", "HEAD").Output()
 	if err != nil {
 		return "", ErrNoHistory
 	}
@@ -47,7 +53,7 @@ func Head(ctx context.Context, root string) (string, error) {
 //
 // Implements: REQ-HIST-009
 func GitDirectories(ctx context.Context, root string) []string {
-	out, err := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "--absolute-git-dir").Output()
+	out, err := gitlocal.Command(ctx, root, "rev-parse", "--absolute-git-dir").Output()
 	if err != nil {
 		return nil
 	}
@@ -65,10 +71,40 @@ func Collect(ctx context.Context, root string, maxCommits int) (*History, error)
 	if err != nil {
 		return nil, err
 	}
+	h, err := collect(ctx, root, head, maxCommits, true)
+	// A partial clone has every commit and tree but not every file's contents, and
+	// counting a change's lines or finding a rename reads them. Fetching them is
+	// what git would do, and what asks the user for a password (gitlocal); what is
+	// on disk still says who changed which file when.
+	// Implements: REQ-HIST-016
+	if err != nil && ctx.Err() == nil && partial(ctx, root) {
+		if h, err = collect(ctx, root, head, maxCommits, false); h != nil {
+			h.NoLines = true
+		}
+	}
+	return h, err
+}
+
+// partial reports whether the repository at root is a partial clone: one with a
+// promisor remote, which hands out on demand the objects the clone left out.
+func partial(ctx context.Context, root string) bool {
+	out, _ := gitlocal.Command(ctx, root, "config", "--get-regexp", `^(extensions\.partialclone|remote\..*\.promisor)$`).Output()
+	return len(bytes.TrimSpace(out)) > 0
+}
+
+// collect reads the log, with each change's lines counted and renames followed
+// (--numstat -M) when lines is set, or only the names of the files each commit
+// touched (--name-only), which needs no file's contents.
+func collect(ctx context.Context, root, head string, maxCommits int, lines bool) (*History, error) {
+	changes := []string{"--no-renames", "--name-only"}
+	if lines {
+		changes = []string{"-M", "--numstat"}
+	}
 	// \x1e starts a commit header; \x1f separates its fields.
-	command := exec.CommandContext(ctx, "git", "-C", root, "log", "--no-merges", "-M", "--relative",
-		"--numstat", "--format=%x1e%at%x1f%aN%x1f%aE", "-n", strconv.Itoa(maxCommits+1), "HEAD",
-		"--", ".") // only commits touching root; --relative alone still lists the others
+	arguments := append([]string{"log", "--no-merges", "--relative"}, changes...)
+	command := gitlocal.Command(ctx, root, append(arguments,
+		"--format=%x1e%at%x1f%aN%x1f%aE", "-n", strconv.Itoa(maxCommits+1), "HEAD",
+		"--", ".")...) // only commits touching root; --relative alone still lists the others
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		return nil, err
@@ -119,14 +155,21 @@ func Collect(ctx context.Context, root string, maxCommits int) (*History, error)
 			author = int64(index)
 			continue
 		}
-		// numstat: "added<TAB>deleted<TAB>path"; binary files show "-".
-		parts := strings.SplitN(line, "\t", 3)
-		if len(parts) != 3 || h.Commits == 0 {
+		if line == "" || h.Commits == 0 {
 			continue
 		}
-		added, _ := strconv.ParseInt(parts[0], 10, 64)
-		deleted, _ := strconv.ParseInt(parts[1], 10, 64)
-		oldPath, newPath := renamePaths(unquote(parts[2]))
+		var added, deleted int64
+		oldPath, newPath := "", unquote(line)
+		if lines {
+			// numstat: "added<TAB>deleted<TAB>path"; binary files show "-".
+			parts := strings.SplitN(line, "\t", 3)
+			if len(parts) != 3 {
+				continue
+			}
+			added, _ = strconv.ParseInt(parts[0], 10, 64)
+			deleted, _ = strconv.ParseInt(parts[1], 10, 64)
+			oldPath, newPath = renamePaths(unquote(parts[2]))
+		}
 		path := current(filepath.ToSlash(newPath))
 		if oldPath != "" {
 			renamed[filepath.ToSlash(oldPath)] = path

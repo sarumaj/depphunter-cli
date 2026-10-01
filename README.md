@@ -993,6 +993,13 @@ time range; tooltips and the side panel report the same figures, and the panel
 additionally lists the principal authors. Renamed files retain the history of
 their former names. Under `--watch`, a new commit updates the overlay.
 
+git is only ever asked what is on disk: it is never allowed to fetch, never
+consults a credential helper and never prompts. A partial clone
+(`--filter=blob:none`) lacks the file contents that counting lines and finding
+renames read, so its history is read from the commits alone: commits, last
+change and authors are shown, "Lines changed" is not offered, and renames are
+not followed.
+
 ### Versions and pinning
 
 Every external package carries the version the project resolves it to — or,

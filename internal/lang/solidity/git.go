@@ -3,9 +3,10 @@ package solidity
 import (
 	"bytes"
 	"context"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/sarumaj/depphunter-cli/internal/gitlocal"
 )
 
 // gitTimeout bounds the one git call a resolver makes: a repository on a
@@ -25,8 +26,8 @@ func gitlinks(directory string, paths []string) map[string]string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
-	arguments := append([]string{"-C", directory, "ls-files", "--stage", "-z", "--"}, paths...)
-	data, err := exec.CommandContext(ctx, "git", arguments...).Output()
+	arguments := append([]string{"ls-files", "--stage", "-z", "--"}, paths...)
+	data, err := gitlocal.Command(ctx, directory, arguments...).Output()
 	if err != nil {
 		return out
 	}

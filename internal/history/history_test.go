@@ -218,3 +218,60 @@ func keys(m map[string][]Change) []string {
 	}
 	return out
 }
+
+// A partial clone of the repository, without the blobs: its history is read from the
+// commits and trees on disk, nothing is fetched and no credential helper is asked, and
+// it says that it counted no lines.
+//
+// Verifies: REQ-HIST-016
+func TestCollectFromAPartialClone(t *testing.T) {
+	origin := repository(t)
+	clone := filepath.Join(t.TempDir(), "clone")
+	marker := filepath.Join(t.TempDir(), "asked")
+	helper := filepath.Join(t.TempDir(), "helper.sh")
+	os.WriteFile(helper, []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o755)
+	empty := filepath.Join(t.TempDir(), "gitconfig")
+	os.WriteFile(empty, nil, 0o644)
+	source := "file://" + filepath.ToSlash(origin)
+	if !strings.HasPrefix(filepath.ToSlash(origin), "/") {
+		source = "file:///" + filepath.ToSlash(origin) // file:///C:/...
+	}
+	for _, arguments := range [][]string{
+		{"-C", origin, "config", "uploadpack.allowFilter", "true"},
+		{"clone", "-q", "--filter=blob:none", "--no-checkout", source, clone},
+		{"-C", clone, "config", "credential.helper", helper},
+	} {
+		command := exec.Command("git", arguments...)
+		command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+empty, "GIT_CONFIG_SYSTEM="+empty)
+		if out, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", arguments, err, out)
+		}
+	}
+	h, err := Collect(context.Background(), clone, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.NoLines || h.Commits != 5 || len(h.Authors) != 2 {
+		t.Fatalf("noLines %v, commits %d, authors %v", h.NoLines, h.Commits, h.Authors)
+	}
+	if a := h.Files["app/a.go"]; len(a) != 3 || a[0][0] != 3000 || a[0][2] != 0 || a[0][3] != 0 {
+		t.Errorf("app/a.go changes: %v", a)
+	}
+	// Renames are not followed without the contents to compare: the old name keeps its own.
+	if b := h.Files["app/b.go"]; len(b) != 2 {
+		t.Errorf("app/b.go changes: %v", b)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("the credential helper was asked")
+	}
+	// And the blobs are still missing: nothing was fetched on the way.
+	command := exec.Command("git", "-C", clone, "-c", "protocol.allow=never", "cat-file", "-e", "HEAD:README.md")
+	command.Env = append(os.Environ(), "GIT_NO_LAZY_FETCH=1", "GIT_CONFIG_GLOBAL="+empty, "GIT_CONFIG_SYSTEM="+empty)
+	if command.Run() == nil {
+		t.Error("a blob was fetched")
+	}
+	// A whole clone still counts its lines.
+	if full, err := Collect(context.Background(), origin, 100); err != nil || full.NoLines {
+		t.Errorf("a whole clone: noLines %v, %v", full != nil && full.NoLines, err)
+	}
+}
