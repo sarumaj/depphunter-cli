@@ -10,6 +10,7 @@ import { STATIC, CLIENT, authed, send, fetchGraph, fetchConfig, fetchLazy, saveS
 import { MODES, isHistoryMode, effectiveMode, computeMetrics, historyT, timeRange, ago, formatDate } from './core/history.js';
 import { Labels } from './map/labels.js';
 import { Walker } from './walk/walk.js';
+import { reducedMotion } from './walk/walkbase.js';
 import { loadHands } from './walk/hands.js';
 import { loadPlants, loadBugs } from './map/models.js';
 import { Bugs, TAKE_MS } from './hunt/bugs.js';
@@ -1065,8 +1066,17 @@ function relayoutSoon() {
   if (layoutDue) return;
   layoutDue = true;
   $('map').classList.add('laying-out');
-  requestAnimationFrame(() => setTimeout(() => layoutDue && relayout()));
+  // The city fades out, is laid out again while it cannot be seen, and fades back
+  // in: one depth turning into another, rather than every building jumping at once.
+  // Implements: REQ-MAP-064
+  const fade = !reducedMotion();
+  for (const id of ['map', 'labels']) $(id).classList.toggle('fading', fade);
+  setTimeout(() => requestAnimationFrame(() => setTimeout(() => layoutDue && relayout())), fade ? FADE_OUT : 0);
 }
+
+// How long the city takes to fade out before a change of depth lays it out again, in
+// milliseconds; the fade back in is style.css's.
+const FADE_OUT = 140;
 
 // Deepest level at which the map shows at most AUTO_ITEMS buildings and districts.
 function autoLevel() {
@@ -1242,6 +1252,7 @@ function setWalking(on) {
 function relayout() {
   layoutDue = false;
   $('map').classList.remove('laying-out');
+  for (const id of ['map', 'labels']) $(id).classList.remove('fading');
   const anchor = walker.active ? walker.anchorFor() : null;
   // Box indexes change: whatever was hovered or described is gone.
   state.hovered = -1;

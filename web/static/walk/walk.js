@@ -172,11 +172,13 @@ const KEYS = new Set([
   'Digit0', ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`), 'KeyT',
 ]);
 
-// Planet curvature, by the character typed rather than the key's place on the board:
-// on a German keyboard the key at BracketRight types '+', which would otherwise make
-// '+' curve the planet while '-' still changed the map's depth.
+// Planet curvature: [ and ], by the character typed rather than the key's place on
+// the board, and Page Up and Page Down, which are where they are on every layout - a
+// German keyboard types [ and ] only with AltGr. + and - are the map's depth, in the
+// street as on the map, so walk mode leaves them to it.
 // Implements: REQ-WALK-003
-const BIGGER = new Set(['+', '=', ']']), SMALLER = new Set(['-', '_', '[']);
+const BIGGER = new Set([']']), SMALLER = new Set(['[']);
+const BIGGER_CODES = new Set(['PageUp']), SMALLER_CODES = new Set(['PageDown']);
 
 export class Walker {
   /**
@@ -302,7 +304,8 @@ export class Walker {
 
   /** Keys that belong to walk mode while it is active. */
   owns(e) {
-    return this.active && (KEYS.has(e.code) || BIGGER.has(e.key) || SMALLER.has(e.key));
+    return this.active && (KEYS.has(e.code) || BIGGER.has(e.key) || SMALLER.has(e.key)
+      || BIGGER_CODES.has(e.code) || SMALLER_CODES.has(e.code));
   }
 
   /** Hands the walker the fires burning on it (fires.js); null takes them away. */
@@ -1482,8 +1485,8 @@ export class Walker {
     mine();
     if (e.repeat) return;
     this.keys.add(e.code);
-    if (BIGGER.has(e.key)) this.setRadius(this.radius * 1.25);
-    else if (SMALLER.has(e.key)) this.setRadius(this.radius / 1.25);
+    if (BIGGER.has(e.key) || BIGGER_CODES.has(e.code)) this.setRadius(this.radius * 1.25);
+    else if (SMALLER.has(e.key) || SMALLER_CODES.has(e.code)) this.setRadius(this.radius / 1.25);
     // While the wheel is up it has first refusal on everything: it answers the keys
     // that pick from it and passes on the ones that walk, so a walker can keep
     // moving through a change of hands.

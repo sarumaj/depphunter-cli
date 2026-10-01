@@ -1276,3 +1276,16 @@ describe('the tools\' icons', () => {
     }
   });
 });
+
+describe('the depth and the planet from the street', () => {
+  // Verifies: REQ-WALK-003
+  it('leaves + and - to the map\'s depth and curves the planet on [ ] and the page keys', () => {
+    const owns = (code, key) => WALK.Walker.prototype.owns.call({ active: true }, { code, key });
+    for (const [code, key] of [['Equal', '+'], ['Equal', '='], ['Minus', '-'], ['Minus', '_'], ['BracketRight', '+'], ['Slash', '-']]) {
+      assert.equal(owns(code, key), false, `walk mode took ${key} (${code}) from the map's depth`);
+    }
+    for (const [code, key] of [['BracketRight', ']'], ['BracketLeft', '['], ['PageUp', 'PageUp'], ['PageDown', 'PageDown']]) {
+      assert.equal(owns(code, key), true, `walk mode does not curve the planet on ${key}`);
+    }
+  });
+});
