@@ -775,7 +775,7 @@ func (c *Config) candidates(ecosystem, packageName, registry string) []candidate
 		if host := terraformHost(packageName); host != "" {
 			registry := "https://" + host
 			return []candidate{{url: registry, primary: true,
-				known: c.trusted[registry] || c.trusted[host] || c.credentials.TerraformHost(host)}}
+				known: c.knownRegistry(registry, host, c.credentials.TerraformHost)}}
 		}
 	}
 	if ecosystem == Buf {
@@ -786,7 +786,7 @@ func (c *Config) candidates(ecosystem, packageName, registry string) []candidate
 		if host, _, _ := strings.Cut(packageName, "/"); host != "" && !strings.EqualFold(host, Host(public[Buf])) {
 			registry := "https://" + strings.ToLower(host)
 			return []candidate{{url: registry, primary: true,
-				known: c.trusted[registry] || c.trusted[host] || c.credentials.BufToken(host) != ""}}
+				known: c.knownRegistry(registry, host, func(h string) bool { return c.credentials.BufToken(h) != "" })}}
 		}
 	}
 	one := func(s Source) []candidate {

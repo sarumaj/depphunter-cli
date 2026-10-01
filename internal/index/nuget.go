@@ -239,16 +239,29 @@ func (c *Config) fromEnvironment(v string) (value string, reference bool) {
 //
 // Implements: REQ-AUTH-023
 func (c *Config) lend(feed, user, pass string) {
-	if pass == "" || c.credentials == nil {
-		return
-	}
-	u, err := url.Parse(strings.TrimSpace(feed))
-	if err != nil || u.Host == "" {
-		return
-	}
-	if c.vouched(NuGet, feed, u) {
+	if pass != "" && c.mayLend(NuGet, feed) {
 		c.credentials.Lend(feed, user, pass)
 	}
+}
+
+// mayLend reports whether a credential may be lent for a feed the repository names:
+// there is a store to lend to, and the feed parses, names a host, and is one this
+// machine vouches for (vouched). Every lending path asks it first.
+//
+// Implements: REQ-AUTH-023
+func (c *Config) mayLend(ecosystem, feed string) bool {
+	if c.credentials == nil {
+		return false
+	}
+	u, err := url.Parse(strings.TrimSpace(feed))
+	return err == nil && u.Host != "" && c.vouched(ecosystem, feed, u)
+}
+
+// knownRegistry reports whether a registry a package names by its host is known:
+// the user vouched for it by URL or by host, or this machine holds a credential for
+// the host (credential, asked only when neither vouches).
+func (c *Config) knownRegistry(registry, host string, credential func(host string) bool) bool {
+	return c.trusted[registry] || c.trusted[host] || credential(host)
 }
 
 // vouched reports whether this machine vouches for a feed the repository names:

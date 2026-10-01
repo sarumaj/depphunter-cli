@@ -2,7 +2,6 @@ package index
 
 import (
 	"maps"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -210,14 +209,7 @@ func (c *Config) secretOf(v string) (string, bool) {
 //
 // Implements: REQ-AUTH-023
 func (c *Config) lendNpm(registry, packages string, bearer bool, value string) {
-	if value == "" || c.credentials == nil || strings.Contains(registry, "$") {
-		return
-	}
-	u, err := url.Parse(strings.TrimSpace(registry))
-	if err != nil || u.Host == "" {
-		return
-	}
-	if c.vouched(NPM, registry, u) {
+	if value != "" && !strings.Contains(registry, "$") && c.mayLend(NPM, registry) {
 		c.credentials.LendRegistry(registry, packages, bearer, value)
 	}
 }
