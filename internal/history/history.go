@@ -147,7 +147,7 @@ func Collect(ctx context.Context, root string, maxCommits int) (*History, error)
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("git log: %v: %s", err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("git log: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return h, nil
 }

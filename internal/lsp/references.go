@@ -379,7 +379,7 @@ func runServer(ctx context.Context, server Server, argv []string, options Option
 	if err := initialize(ctx, c, options.Root); err != nil {
 		return 0, err
 	}
-	queries := prepareQueries(ctx, c, server, options.Root, paths, files)
+	queries := prepareQueries(ctx, c, server, options, paths, files)
 	sent, failed := queryReferences(ctx, c, options, queries, files, add)
 	if ctx.Err() != nil {
 		return sent, ctx.Err()
@@ -424,9 +424,11 @@ type query struct {
 
 // prepareQueries opens each file with a server that wants them opened, records the
 // extents of its symbols (documentSpans), and finds where on its line each symbol's
-// name is.
-func prepareQueries(ctx context.Context, c *client, server Server, root string, paths []string, files map[string]*fileInfo) []query {
+// name is. A file the server could not be told about is logged, once.
+func prepareQueries(ctx context.Context, c *client, server Server, options Options, paths []string, files map[string]*fileInfo) []query {
+	root := options.Root
 	var queries []query
+	reported := false
 	for _, p := range paths {
 		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(p)))
 		if err != nil {
@@ -435,9 +437,12 @@ func prepareQueries(ctx context.Context, c *client, server Server, root string, 
 		uri := fileURI(filepath.Join(root, p))
 		if server.Open {
 			id, _ := server.languageID(p)
-			c.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{
+			if err := c.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{
 				"uri": uri, "languageId": id, "version": 1, "text": string(data),
-			}})
+			}}); err != nil && !reported {
+				reported = true
+				options.Logf("references: %s: could not open %s: %v", server.Name, p, err)
+			}
 		}
 		lines := strings.Split(string(data), "\n")
 		files[p].spans = documentSpans(ctx, c, uri, files[p].symbols)
