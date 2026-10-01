@@ -1027,6 +1027,13 @@ export function* dressing(boxes, bendable, style = 'city') {
     const these = trees.filter(it => it.kind === kind);
     yield* add(t.stem, set.stem, these, plantAt);
     yield* add(t.head, '#ffffff', these, plantAt, set.tint(t.hue, t));
+    for (const [r, opacity] of t.glow?.shells || []) {
+      const glow = yield* add(glowShell(r, t.glow.at), t.glow.color, these, plantAt, null, {
+        vertexColors: false, transparent: true, opacity,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      for (const mesh of glow.meshes) mesh.userData.glow = opacity;
+    }
   }
   const lows = set.lows || [{ head: set.low, hue: set.lowHue }];
   for (const [kind, low] of lows.entries()) {
@@ -1140,6 +1147,7 @@ export function setNight(group, night) {
     if (mesh.userData.glow) mesh.material.opacity = mesh.userData.glow * (night ? 1.5 : 1);
     // A street lamp is off by day: its glow, and the pool it throws, are night's alone.
     if (mesh.userData.afterDark) mesh.visible = night;
+    else if (mesh.userData.glow) continue;
     else if (mesh.userData.heads && night) mesh.material.color.set(group.userData.night);
     else mesh.material.color.set(mesh.userData.day).multiplyScalar(night ? 0.4 : 1);
   }
@@ -1377,7 +1385,11 @@ const glowShell = (r, y) => {
   return shells.get(key);
 };
 
-// What grows out in the dark: spires of crystal, and rubble that still glows.
+// What grows out in the dark: spires and clusters of crystal, fungi and seed pods
+// that light themselves, ringed stones and slabs of obsidian; low down, rubble,
+// sprouts of crystal and cinders. A part that lights itself carries its glow: the
+// height its shells sit at, their color, and their sizes and strengths (as GLOW).
+// Implements: REQ-MAP-057
 const shard = (r, h, x, y, z, tilt = 0) => shaded(
   new THREE.ConeGeometry(r, h, 5).rotateZ(tilt).translate(x, y + h / 2, z), 0.15);
 const CRYSTALS = [
@@ -1387,8 +1399,45 @@ const CRYSTALS = [
     head: merge([shard(0.07, 0.34, 0.06, 0.02, 0.02, 0.35), shard(0.06, 0.44, -0.05, 0.02, -0.03, -0.28), shard(0.05, 0.26, 0.01, 0.02, -0.08, 0.12)]),
   },
   { hue: 0.85, stem: shard(0.09, 0.07, 0, 0, 0), head: merge([shard(0.13, 0.28, 0, 0.03, 0)]) },
+  {
+    hue: 0.45, // a fungus that lights its own cap
+    stem: shaded(new THREE.CylinderGeometry(0.025, 0.04, 0.3, 7).translate(0, 0.15, 0)),
+    head: merge([
+      shaded(new THREE.SphereGeometry(0.15, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.55, 1).translate(0, 0.29, 0), 0.1),
+      shaded(new THREE.CylinderGeometry(0.15, 0.05, 0.03, 12).translate(0, 0.275, 0)),
+      blob(0.03, 0.06, 0.37, 0.03), blob(0.022, -0.07, 0.35, -0.02),
+    ]),
+    glow: { at: 0.31, color: '#8dffd8', shells: [[0.165, 0.09], [0.24, 0.03]] },
+  },
+  {
+    hue: 0.11, // a seed pod on a stalk, lit from within
+    stem: shaded(new THREE.CylinderGeometry(0.008, 0.016, 0.5, 5).rotateZ(0.08).translate(0.02, 0.25, 0)),
+    head: merge([
+      shaded(new THREE.IcosahedronGeometry(0.06, 1).scale(1, 1.3, 1).translate(0, 0.56, 0)),
+      shard(0.025, 0.12, 0.05, 0.2, 0, -0.9), shard(0.02, 0.1, -0.05, 0.3, 0.02, 0.9),
+    ]),
+    glow: { at: 0.56, color: '#ffc46b', shells: [[0.09, 0.45], [0.16, 0.18], [0.27, 0.06]] },
+  },
+  {
+    hue: 0.07, // a stone with a ring round it, on a plinth
+    stem: shaded(new THREE.CylinderGeometry(0.03, 0.07, 0.12, 6).translate(0, 0.06, 0)),
+    head: merge([
+      shaded(new THREE.IcosahedronGeometry(0.11, 1).translate(0, 0.25, 0), 0.25),
+      shaded(new THREE.TorusGeometry(0.19, 0.012, 4, 24).rotateX(Math.PI / 2 - 0.4).rotateZ(0.3).translate(0, 0.25, 0)),
+    ]),
+  },
+  {
+    hue: 0.68, // a slab of obsidian standing on end
+    stem: shaded(new THREE.BoxGeometry(0.16, 0.04, 0.09).translate(0, 0.02, 0)),
+    head: shaded(new THREE.BoxGeometry(0.1, 0.62, 0.035).rotateZ(0.06).translate(0, 0.34, 0), 0.1),
+  },
 ];
 const RUBBLE = merge([blob(0.07, 0, 0.045, 0, 0.7), blob(0.05, 0.06, 0.03, 0.02, 0.7), blob(0.045, -0.05, 0.03, -0.04, 0.7)]);
+const DEBRIS = [
+  { hue: 0.68, head: RUBBLE },
+  { hue: 0.55, head: merge([shard(0.03, 0.14, 0, 0, 0, 0.2), shard(0.025, 0.1, 0.04, 0, 0.02, -0.4), shard(0.02, 0.08, -0.035, 0, -0.02, 0.5)]) },
+  { hue: 0.03, head: merge([blob(0.05, 0, 0.03, 0, 0.6), blob(0.025, 0.06, 0.015, -0.03, 0.6)]) },
+];
 const BEACON_STEM = shaded(new THREE.CylinderGeometry(0.008, 0.016, 0.44, 5).translate(0, 0.22, 0));
 const BEACON = merge([
   shaded(new THREE.IcosahedronGeometry(0.055, 1).translate(0, 0.52, 0)),
@@ -1422,8 +1471,11 @@ const PROPS = {
     tint: (hue, part) => (it, c) => c.setHSL(hue + (it.r - 0.5) * 0.04, hue < 0.05 ? 0.05 : 0.55, (part.light ?? 0.12) + it.r * 0.12),
   },
   galaxy: {
-    species: CRYSTALS, stem: '#2b2540', low: RUBBLE, lowHue: 0.68,
+    species: CRYSTALS, stem: '#2b2540', lows: DEBRIS,
     pole: BEACON_STEM, poleColor: '#2b2540', lampHead: BEACON, headColor: '#4fd0e8', headNight: '#9df0ff',
+    // A beacon is lit day and night, as an LED is, and burns brighter in the dark.
+    // Implements: REQ-MAP-057
+    glowAt: 0.52, glow: [[0.075, 0.5], [0.13, 0.2], [0.22, 0.06]],
     solid: 0.085, post: 0.025,
     tint: hue => (it, c) => c.setHSL(hue + it.r * 0.12, 0.6 + 0.25 * it.r, 0.3 + it.r * 0.22),
   },
@@ -1455,7 +1507,7 @@ function dressed(style) {
       })),
       low: shaded(got.get('bush_head'), 0.16),
     },
-    galaxy: { ...PROPS.galaxy, low: shaded(got.get('rock_head'), 0.12) },
+    galaxy: { ...PROPS.galaxy, lows: [{ ...DEBRIS[0], head: shaded(got.get('rock_head'), 0.12) }, ...DEBRIS.slice(1)] },
   };
   return modeled[style] || set;
 }

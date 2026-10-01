@@ -43,6 +43,27 @@ describe('the parts on a circuit board', () => {
   });
 });
 
+describe('what stands in the galaxy', () => {
+  // Verifies: REQ-MAP-057
+  it('grows every kind of thing somewhere, and lights some of them day and night', () => {
+    const land = box('land', 0, 0, 40, 40, { y: -0.45, h: 0.45 });
+    const block = box('terrace', 0, 0, 8, 8, { y: 0, h: 0.2 });
+    const group = makeProps([land, block], m => m, 'galaxy');
+    // A stem and a head for each of the seven kinds, with a lit one's shells after
+    // its head, then the three low ones (lod.js draws each kind in full and coarse).
+    const drawn = group.children.filter(mesh => !mesh.userData.coarse && !mesh.userData.glow).slice(0, 7 * 2 + 3);
+    for (const mesh of drawn) assert.ok(mesh.count > 0, 'a kind of prop stands nowhere');
+    const glow = group.children.filter(mesh => mesh.userData.glow && !mesh.userData.coarse);
+    assert.equal(glow.length, 2 + 3 + 3, 'the fungi, the pods or the beacons do not glow');
+    assert.ok(glow.every(mesh => mesh.visible && mesh.count > 0), 'a glow is out by day');
+    const colors = glow.map(mesh => mesh.material.color.getHex());
+    setNight(group, true);
+    assert.ok(glow.every(mesh => mesh.visible), 'a glow is out at night');
+    assert.deepEqual(glow.map(mesh => mesh.material.color.getHex()), colors, 'a glow dims after dark');
+    assert.ok(glow.every(mesh => mesh.material.opacity === mesh.userData.glow * 1.5), 'a glow is no stronger at night');
+  });
+});
+
 describe('street lamps at night', () => {
   // Verifies: REQ-CITY-036
   it('lights the city\'s lamps after dark only, with a glow and a pool on the pavement', () => {
