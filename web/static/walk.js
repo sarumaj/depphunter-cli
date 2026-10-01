@@ -3234,96 +3234,16 @@ export class Walker {
 
   // Implements: REQ-HUNT-001, REQ-HUNT-017, REQ-HUNT-018, REQ-TOOL-004, REQ-TOOL-027
   updateDarts(deltaTime) {
-    const done = [], previous = new THREE.Vector3(), directory = new THREE.Vector3();
+    const done = [], previous = new THREE.Vector3(), moved = new THREE.Vector3();
     for (const dart of this.darts) {
       dart.t += deltaTime;
-      const m = dart.mesh;
-      previous.copy(m.position);
-      if (dart.glanced) {
-        // Off the wall and on its way back: see rebound.
-        if (this.rebound(dart, deltaTime)) done.push(dart);
-      } else if (dart.bug || dart.target) {
-        // A bug walks on while the cast is in the air, so the shot follows it.
-        if (dart.bug && !dart.bug.caught) dart.to.copy(dart.bug.position);
-        const u = Math.min(1, dart.t / dart.T);
-        m.position.lerpVectors(dart.start, dart.to, u);
-        m.position.y += dart.arc * 4 * u * (1 - u);
-        if (u >= 1) {
-          done.push(dart);
-          // A rod both lands the cast and hauls on it; a grapple only hauls.
-          if (!dart.tool.climbs) {
-            if (dart.bug) this.bugs.catch(dart.bug, dart.tool.catchAs);
-            else if (dart.target) this.tag(dart.target);
-          }
-          // A line hauls on a wall, not on a beetle: what the rod caught comes back
-          // on the line, and the walker stays where they are. A hook that does not
-          // hold flies on off the wall instead, so it is not done with yet.
-          if (dart.tool.reel && !dart.bug) {
-            if (!holds(dart.tool, dart.target, m.position)) {
-              this.glance(dart, dart.target);
-              done.pop();
-            } else if (this.hook(m.position, dart.target, dart)) dart.kept = true;
-          }
-        }
-      } else {
-        // A miss flies on under the tool's own physics: a dart drops like a dart, a
-        // bubble slows to a crawl and then climbs.
-        const { gravity, drag, track } = dart.flight || DEFAULT_FLIGHT;
-        dart.vel.y -= gravity * deltaTime;
-        if (drag) dart.vel.multiplyScalar(Math.max(0, 1 - drag * deltaTime));
-        // A tracking dart earns the name on a miss: its fins pull it round towards
-        // whatever wall lies ahead of it, so a shot lobbed over a block still finds
-        // one. Nothing else here steers, which is the whole of the difference between
-        // it and a nail.
-        if (track) this.steer(dart, track * deltaTime);
-        m.position.addScaledVector(dart.vel, deltaTime);
-        // Anything thrown catches a bug it passes through, aimed at or not - if it is
-        // the kind of thing that catches bugs at all.
-        const bug = hits(dart.tool, 'bugs') ? this.bugs?.at(m.position) : null;
-        if (bug) this.bugs.catch(bug, dart.tool.catchAs);
-        const hit = this.boxAt(m.position);
-        // One that has already glanced off a wall is on its way down, spent: it tags
-        // nothing and bites nothing on the way.
-        if (hit && !dart.glanced && !dart.tool.climbs && hits(dart.tool, 'buildings')
-          && hit.kind !== 'land' && hit.kind !== 'terrace') this.tag(hit);
-        // A grapple bites anything solid, the ground included: that is what makes a
-        // shot off a roof a way down rather than a wasted line. A rod does not - a
-        // cast that falls short lands on the pavement, and a line that hauls the
-        // walker a step across their own street is not worth having.
-        const ground = hit && (hit.kind === 'land' || hit.kind === 'terrace');
-        let glanced = false;
-        if (hit && dart.tool.reel && !dart.glanced && (dart.tool.climbs || !ground)) {
-          if (!holds(dart.tool, hit, m.position)) glanced = this.glance(dart, hit);
-          else if (this.hook(m.position, hit, dart)) dart.kept = true;
-        }
-        // A shot that hits nothing still has a range: what a tool reaches is what it
-        // throws that far, and a nail that sails on over the next six blocks made
-        // the reticle's own "too far" a lie. A line is shorter still - fired into
-        // the sky or out over the water a hook finds nothing to stop it, and without
-        // this it would be six seconds of a rope across the view, going nowhere.
-        const gone = dart.from ? m.position.distanceTo(dart.from) : 0;
-        // A tool that pays out a line ends where the line does, and says so; for
-        // everything else the end is the tool's reach.
-        const rope = dart.tool.reel && dart.from && gone > dart.tool.reel.max;
-        const spent = !dart.tool.reel && dart.from && gone > (dart.tool.reach ?? REACH);
-        if (rope) this.flash('The line ran out');
-        if (!glanced && (bug || hit || rope || spent || m.position.y < WATER || dart.t > 6)) done.push(dart);
-      }
-      // A dart points along its flight; a hoop spins, a bubble wobbles, a bobber
-      // just bobs along.
-      if (m.userData.aim && !dart.glanced && directory.subVectors(m.position, previous).lengthSq() > 1e-10) {
-        m.quaternion.setFromUnitVectors(FORWARD, directory.normalize());
-      }
-      if (m.userData.spin) m.rotation.z += m.userData.spin * deltaTime;
-      if (m.userData.wobble) m.scale.set(1 + Math.sin(dart.t * 9) * 0.07, 1 - Math.sin(dart.t * 9) * 0.07, 1);
-      // A cloud opens out as it goes: what left the horn as a gout is a fog by the
-      // time it is across the street, which is why the extinguisher is forgiving up
-      // close and no use at all past that.
-      if (m.userData.swell) m.scale.setScalar(1 + dart.t * m.userData.swell);
-      if (dart.line) { // keep the line between the hand it left and what was cast
-        const tip = this.muzzle(dart.hand) || new THREE.Vector3(this.p.x, this.p.feet + EYE - 0.05, this.p.z);
-        dart.line.geometry.setFromPoints([tip, m.position.clone()]);
-      }
+      previous.copy(dart.mesh.position);
+      // Off the wall and on its way back (rebound), cast at a mark, or a miss.
+      const over = dart.glanced ? this.rebound(dart, deltaTime)
+        : dart.bug || dart.target ? this.flyCast(dart)
+          : this.flyFree(dart, deltaTime);
+      if (over) done.push(dart);
+      this.dressDart(dart, moved.subVectors(dart.mesh.position, previous), deltaTime);
     }
     for (const dart of done) {
       // A line that bit keeps its hook and its rope: they are what the walker is
@@ -3333,6 +3253,102 @@ export class Walker {
         discard(dart.line);
       }
       this.darts.splice(this.darts.indexOf(dart), 1);
+    }
+  }
+
+  /** Flies a cast to its mark, and lands it there; whether it is over. */
+  flyCast(dart) {
+    const m = dart.mesh;
+    // A bug walks on while the cast is in the air, so the shot follows it.
+    if (dart.bug && !dart.bug.caught) dart.to.copy(dart.bug.position);
+    const u = Math.min(1, dart.t / dart.T);
+    m.position.lerpVectors(dart.start, dart.to, u);
+    m.position.y += dart.arc * 4 * u * (1 - u);
+    if (u < 1) return false;
+    // A rod both lands the cast and hauls on it; a grapple only hauls.
+    if (!dart.tool.climbs) {
+      if (dart.bug) this.bugs.catch(dart.bug, dart.tool.catchAs);
+      else if (dart.target) this.tag(dart.target);
+    }
+    // A line hauls on a wall, not on a beetle: what the rod caught comes back on the
+    // line, and the walker stays where they are. A hook that does not hold flies on
+    // off the wall instead, so it is not over yet.
+    if (dart.tool.reel && !dart.bug) {
+      if (!holds(dart.tool, dart.target, m.position)) {
+        this.glance(dart, dart.target);
+        return false;
+      }
+      if (this.hook(m.position, dart.target, dart)) dart.kept = true;
+    }
+    return true;
+  }
+
+  /**
+   * Flies a miss on under the tool's own physics - a dart drops like a dart, a bubble
+   * slows to a crawl and then climbs - and ends it on what it hits; whether it is over.
+   */
+  flyFree(dart, deltaTime) {
+    const m = dart.mesh;
+    const { gravity, drag, track } = dart.flight || DEFAULT_FLIGHT;
+    dart.vel.y -= gravity * deltaTime;
+    if (drag) dart.vel.multiplyScalar(Math.max(0, 1 - drag * deltaTime));
+    // A tracking dart earns the name on a miss: its fins pull it round towards
+    // whatever wall lies ahead of it, so a shot lobbed over a block still finds
+    // one. Nothing else here steers, which is the whole of the difference between
+    // it and a nail.
+    if (track) this.steer(dart, track * deltaTime);
+    m.position.addScaledVector(dart.vel, deltaTime);
+    // Anything thrown catches a bug it passes through, aimed at or not - if it is
+    // the kind of thing that catches bugs at all.
+    const bug = hits(dart.tool, 'bugs') ? this.bugs?.at(m.position) : null;
+    if (bug) this.bugs.catch(bug, dart.tool.catchAs);
+    const hit = this.boxAt(m.position);
+    // One that has already glanced off a wall is on its way down, spent: it tags
+    // nothing and bites nothing on the way.
+    if (hit && !dart.glanced && !dart.tool.climbs && hits(dart.tool, 'buildings')
+      && hit.kind !== 'land' && hit.kind !== 'terrace') this.tag(hit);
+    // A grapple bites anything solid, the ground included: that is what makes a
+    // shot off a roof a way down rather than a wasted line. A rod does not - a
+    // cast that falls short lands on the pavement, and a line that hauls the
+    // walker a step across their own street is not worth having.
+    const ground = hit && (hit.kind === 'land' || hit.kind === 'terrace');
+    let glanced = false;
+    if (hit && dart.tool.reel && !dart.glanced && (dart.tool.climbs || !ground)) {
+      if (!holds(dart.tool, hit, m.position)) glanced = this.glance(dart, hit);
+      else if (this.hook(m.position, hit, dart)) dart.kept = true;
+    }
+    // A shot that hits nothing still has a range: what a tool reaches is what it
+    // throws that far, and a nail that sails on over the next six blocks made
+    // the reticle's own "too far" a lie. A line is shorter still - fired into
+    // the sky or out over the water a hook finds nothing to stop it, and without
+    // this it would be six seconds of a rope across the view, going nowhere.
+    const gone = dart.from ? m.position.distanceTo(dart.from) : 0;
+    // A tool that pays out a line ends where the line does, and says so; for
+    // everything else the end is the tool's reach.
+    const rope = dart.tool.reel && dart.from && gone > dart.tool.reel.max;
+    const spent = !dart.tool.reel && dart.from && gone > (dart.tool.reach ?? REACH);
+    if (rope) this.flash('The line ran out');
+    return !glanced && (bug || hit || rope || spent || m.position.y < WATER || dart.t > 6);
+  }
+
+  /**
+   * Turns and shapes a shot for the frame, having `moved` since the last: a dart
+   * points along its flight; a hoop spins, a bubble wobbles, a bobber just bobs along.
+   */
+  dressDart(dart, moved, deltaTime) {
+    const m = dart.mesh;
+    if (m.userData.aim && !dart.glanced && moved.lengthSq() > 1e-10) {
+      m.quaternion.setFromUnitVectors(FORWARD, moved.normalize());
+    }
+    if (m.userData.spin) m.rotation.z += m.userData.spin * deltaTime;
+    if (m.userData.wobble) m.scale.set(1 + Math.sin(dart.t * 9) * 0.07, 1 - Math.sin(dart.t * 9) * 0.07, 1);
+    // A cloud opens out as it goes: what left the horn as a gout is a fog by the
+    // time it is across the street, which is why the extinguisher is forgiving up
+    // close and no use at all past that.
+    if (m.userData.swell) m.scale.setScalar(1 + dart.t * m.userData.swell);
+    if (dart.line) { // keep the line between the hand it left and what was cast
+      const tip = this.muzzle(dart.hand) || new THREE.Vector3(this.p.x, this.p.feet + EYE - 0.05, this.p.z);
+      dart.line.geometry.setFromPoints([tip, m.position.clone()]);
     }
   }
 
