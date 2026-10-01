@@ -125,6 +125,15 @@ const DROWN = 45;
 // at the end of it, how far and how fast the walker bobs while fighting it, how
 // quickly it all drains away again once they are out, and how far the hands dip.
 // Implements: REQ-WALK-055
+// What the map's water is in each style: the bay, the live backplane a board is
+// plugged into, the void between the platforms. The overlay that rises over the view
+// is the style's too (style.css .w-water).
+// Implements: REQ-WALK-055
+const WATERS = {
+  city: { sinking: 'In the water - get to a shore', cause: 'The water' },
+  circuit: { sinking: 'On the live backplane - get back on the board', cause: 'The backplane' },
+  galaxy: { sinking: 'Adrift in the void - get to a platform', cause: 'The void' },
+};
 const SINK_EYE = 0.06, DROWN_BOB = 0.05, DROWN_BOB_RATE = 7, SINK_BACK = 1.5, SINK_DIP = 0.12;
 // How long the screen stays red after the walk ends, before the map comes back.
 // Implements: REQ-WALK-033
@@ -1964,6 +1973,9 @@ export class Walker {
     }
   }
 
+  /** What the water is in the map's style (WATERS): what it is called in a flash and as a cause of death. */
+  waterKind() { return WATERS[this.scene?.style] || WATERS.city; }
+
   /**
    * The water, for a walker with nothing holding them up. It takes a couple of seconds,
    * which is long enough to wade ashore from the shallows and nowhere near long enough
@@ -1982,10 +1994,10 @@ export class Walker {
       this.sinking = true;
       this.sinkT = 0;
       this.sinkFrom = this.health.hp;
-      this.flash('In the water - get to a shore');
+      this.flash(this.waterKind().sinking);
     }
     this.sinkT += deltaTime;
-    if (this.health.hurt(DROWN * deltaTime)) this.die('The water');
+    if (this.health.hurt(DROWN * deltaTime)) this.die(this.waterKind().cause);
   }
 
   // Implements: REQ-TOOL-023, REQ-TOOL-025, REQ-TOOL-049, REQ-TOOL-050

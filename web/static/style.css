@@ -506,8 +506,51 @@ main { position: relative; flex: 1; min-height: 0; }
   50% { transform: translate(8px, -50vh); }
   to { transform: translate(-4px, -100vh); }
 }
+/* The water is the style's (walk.js WATERS). On a board the live backplane comes up,
+   dark and scanned, its edge flickering with charge, and sparks climb it; in the
+   galaxy the void does, starred and rimmed with light, and motes drift up through
+   it, glowing. */
+:root[data-style="circuit"] #walk-hud .w-water::before {
+  border-radius: 0;
+  background:
+    repeating-linear-gradient(to bottom, rgb(90 255 180 / 0.08) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(to right, rgb(200 120 50 / 0.16) 0 2px, transparent 2px 46px),
+    linear-gradient(to bottom, rgb(150 255 210 / 0.85) 0 2px, rgb(255 170 70 / 0.5) 3px, rgb(12 34 24 / 0.82) 14px, rgb(3 10 8 / 0.96) 100%);
+  animation: w-buzz 0.6s steps(3, end) infinite;
+}
+@keyframes w-buzz {
+  0% { transform: translateX(0); filter: brightness(1); }
+  33% { transform: translateX(-0.8%); filter: brightness(1.25); }
+  66% { transform: translateX(0.5%); filter: brightness(0.9); }
+}
+:root[data-style="circuit"] #walk-hud .w-bubbles i {
+  width: 4px; height: 4px; border: none; border-radius: 1px;
+  background: rgb(255 214 140); box-shadow: 0 0 5px 2px rgb(255 150 40 / 0.75);
+  animation-name: w-spark; animation-timing-function: steps(14, end);
+}
+@keyframes w-spark {
+  from { transform: translate(0, 0); }
+  30% { transform: translate(-7px, -30vh); }
+  60% { transform: translate(6px, -62vh); }
+  to { transform: translate(-3px, -100vh); }
+}
+:root[data-style="galaxy"] #walk-hud .w-water::before {
+  border-radius: 50% 50% 0 0 / 22px 22px 0 0;
+  background:
+    radial-gradient(circle, rgb(255 255 255 / 0.9) 0 1px, transparent 1.6px) 7px 11px / 41px 37px,
+    radial-gradient(circle, rgb(200 220 255 / 0.7) 0 0.8px, transparent 1.3px) 23px 3px / 29px 31px,
+    linear-gradient(to bottom, rgb(150 240 255 / 0.8) 0 2px, rgb(120 70 220 / 0.55) 7px, rgb(40 16 90 / 0.86) 40%, rgb(5 3 16 / 0.97) 100%);
+  animation: w-drift 3.2s ease-in-out infinite alternate;
+}
+@keyframes w-drift { from { transform: translateX(-2%) rotate(-0.4deg); } to { transform: translateX(2%) rotate(0.4deg); } }
+:root[data-style="galaxy"] #walk-hud .w-bubbles i {
+  border: none; background: rgb(200 245 255 / 0.9);
+  box-shadow: 0 0 8px 3px rgb(120 220 255 / 0.55), 0 0 18px 6px rgb(150 90 255 / 0.25);
+  animation-duration: 3.6s;
+}
 @media (prefers-reduced-motion: reduce) {
-  #walk-hud .w-water::before, #walk-hud .w-bubbles i { animation: none; }
+  #walk-hud .w-water::before, #walk-hud .w-bubbles i,
+  :root[data-style] #walk-hud .w-water::before, :root[data-style] #walk-hud .w-bubbles i { animation: none; }
 }
 /* Dying is its own red, and two washes over one street is one too many. */
 #walk-hud.dead .w-veil { display: none; }

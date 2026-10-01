@@ -1289,3 +1289,14 @@ describe('the depth and the planet from the street', () => {
     }
   });
 });
+
+describe('going under, in each style', () => {
+  // Verifies: REQ-WALK-055
+  it('names the water as the style has it', () => {
+    const kind = style => WALK.Walker.prototype.waterKind.call({ scene: { style } });
+    assert.match(kind('city').sinking, /water/);
+    assert.equal(kind('circuit').cause, 'The backplane');
+    assert.equal(kind('galaxy').cause, 'The void');
+    assert.equal(kind(undefined).cause, 'The water');
+  });
+});
