@@ -70,146 +70,189 @@ var stdlibFunction = map[string]bool{
 //
 // Implements: REQ-PUPPET-002, REQ-PUPPET-003
 func extractSource(source []byte) *lang.Extraction {
-	tokens := lex(source)
-	extraction := &lang.Extraction{}
-	if pascal(tokens) {
-		return extraction
+	x := &extractor{tokens: lex(source), extraction: &lang.Extraction{}, seen: map[string]bool{}}
+	if pascal(x.tokens) {
+		return x.extraction
 	}
-	seen := map[string]bool{}
-	reference := func(kind, module, spec string, line int) {
-		module = strings.TrimPrefix(module, "::")
-		if module == "" || seen[kind+" "+module] {
-			return
-		}
-		seen[kind+" "+module] = true
-		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
-	}
-	var symbols lang.SymbolSet
-	get := func(i int) token {
-		if i >= 0 && i < len(tokens) {
-			return tokens[i]
-		}
-		return token{kind: tPunctuation}
-	}
-	is := func(i int, text string) bool { t := get(i); return t.kind == tPunctuation && t.text == text }
-	for i := 0; i < len(tokens); i++ {
-		t := tokens[i]
-		previous := get(i - 1)
-		switch t.kind {
+	for x.i = 0; x.i < len(x.tokens); x.i++ {
+		switch t := x.tokens[x.i]; t.kind {
 		case tString:
 			if rest, ok := strings.CutPrefix(t.text, "puppet:///modules/"); ok && !t.interpolate {
-				reference(kindFile, rest, t.text, t.line)
+				x.reference(kindFile, rest, t.text, t.line)
 			}
 		case tReference:
-			if previous.kind == tName && previous.text == "type" {
-				if is(i+1, "=") {
-					symbols.Add(t.text, "type", t.line)
-				}
-				continue
-			}
-			lower := strings.ToLower(strings.TrimPrefix(t.text, "::"))
-			switch {
-			case t.text == "Class" && is(i+1, "["):
-				for _, n := range titles(tokens, i+2) {
-					if !coreType[strings.ToLower(n.text)] {
-						reference(kindClass, strings.ToLower(n.text), "Class['"+n.text+"']", n.line)
-					}
-				}
-			case strings.Contains(lower, "::") && (is(i+1, "[") && get(i+2).kind == tString || is(i+1, "{") || is(i+1, "<|") || is(i+1, "<<|")):
-				reference(kindDefine, lower, t.text, t.line)
-			case strings.Contains(lower, "::"):
-				reference(kindType, lower, t.text, t.line)
-			case !coreType[lower] && !dataType[t.text] && (is(i+1, "[") && get(i+2).kind == tString || is(i+1, "{") || is(i+1, "<|") || is(i+1, "<<|")):
-				reference(kindDefine, lower, t.text, t.line) // an unqualified custom type: Concat['x'], Firewall { }
-			}
+			x.typeReference(t)
 		case tName:
-			if previous.kind == tPunctuation && previous.text == "." { // $x.each, a method call
-				continue
+			if previous := x.get(x.i - 1); previous.kind != tPunctuation || previous.text != "." { // not $x.each, a method call
+				x.name(t)
 			}
-			next := get(i + 1)
-			switch t.text {
-			case "class":
-				if is(i+1, "{") { // class { 'a::b': ... }
-					for _, n := range titles(tokens, i+2) {
-						reference(kindClass, n.text, "class { '"+n.text+"': }", n.line)
-					}
-				} else if next.kind == tName {
-					symbols.Add(next.text, "class", next.line)
-					i++
-				}
-				continue
-			case "define", "function", "plan":
-				if next.kind == tName && !is(i-1, "=>") {
-					kind := map[string]string{"define": "define", "function": "function", "plan": "plan"}[t.text]
-					symbols.Add(next.text, kind, next.line)
-					i++
-				}
-				continue
-			case "node":
-				for j := i + 1; j < len(tokens) && !is(j, "{"); j++ {
-					switch n := tokens[j]; n.kind {
-					case tString, tRegex, tName:
-						symbols.Add(n.text, "node", n.line)
-					}
-					if is(j+1, ",") {
-						j++
-					} else {
-						i = j
-						break
-					}
-				}
-				continue
-			case "inherits":
-				if next.kind == tName {
-					reference(kindClass, next.text, "inherits "+next.text, next.line)
-				}
-				continue
-			case "include", "require", "contain":
-				if is(i+1, "=>") || is(i-1, ".") {
-					continue // the require metaparameter
-				}
-				for _, n := range classArguments(tokens, i+1) {
-					reference(kindClass, n.text, t.text+" "+n.text, n.line)
-				}
-				continue
-			case "template", "epp", "file":
-				if is(i+1, "(") {
-					kind := kindTemplate
-					if t.text == "file" {
-						kind = kindFile
-					}
-					for j := i + 2; j < len(tokens) && tokens[j].kind == tString && !tokens[j].interpolate; j += 2 {
-						if a := tokens[j].text; strings.Contains(a, "/") && !strings.HasPrefix(a, "/") {
-							reference(kind, a, t.text+"('"+a+"')", tokens[j].line)
-						}
-						if !is(j+1, ",") {
-							break
-						}
-					}
-					continue
-				}
-			}
-			if keyword[t.text] || previous.kind == tName && (previous.text == "class" || previous.text == "define" || previous.text == "function" || previous.text == "plan") {
-				continue
-			}
-			qualified := strings.Contains(strings.TrimPrefix(t.text, "::"), "::")
-			switch {
-			case is(i+1, "(") && qualified:
-				reference(kindFunction, t.text, t.text+"()", t.line)
-			case is(i+1, "(") && next.adjacent && stdlibFunction[t.text]:
-				reference(kindFunction, "stdlib::"+t.text, t.text+"()", t.line)
-			case is(i+1, "{") && resourceBody(tokens, i+2):
-				if qualified || !coreType[t.text] {
-					reference(kindDefine, t.text, t.text, t.line)
-				}
-			}
-		case tPunctuation:
-			// @name { } and @@name { }: virtual and exported resources are
-			// declarations like any other; the name is read next.
+			// tPunctuation: @name { } and @@name { }, virtual and exported resources,
+			// are declarations like any other; the name is read next.
 		}
 	}
-	extraction.Symbols = symbols.List()
-	return extraction
+	x.extraction.Symbols = x.symbols.List()
+	return x.extraction
+}
+
+// extractor is extractSource's walk over a manifest's tokens: where it is (i) and
+// what it has found.
+type extractor struct {
+	tokens     []token
+	i          int
+	extraction *lang.Extraction
+	symbols    lang.SymbolSet
+	seen       map[string]bool
+}
+
+func (x *extractor) reference(kind, module, spec string, line int) {
+	module = strings.TrimPrefix(module, "::")
+	if module == "" || x.seen[kind+" "+module] {
+		return
+	}
+	x.seen[kind+" "+module] = true
+	x.extraction.Imports = append(x.extraction.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
+}
+
+func (x *extractor) get(i int) token {
+	if i >= 0 && i < len(x.tokens) {
+		return x.tokens[i]
+	}
+	return token{kind: tPunctuation}
+}
+
+func (x *extractor) is(i int, text string) bool {
+	t := x.get(i)
+	return t.kind == tPunctuation && t.text == text
+}
+
+// declares reports whether what follows i declares or refers to a resource:
+// Name['title'], Name { }, and the collectors Name <| |> and Name <<| |>>.
+func (x *extractor) declares(i int) bool {
+	return x.is(i+1, "[") && x.get(i+2).kind == tString || x.is(i+1, "{") || x.is(i+1, "<|") || x.is(i+1, "<<|")
+}
+
+// typeReference reads a capitalized name: a type alias being declared, Class['a'],
+// a defined type declared or collected, or a type referred to.
+func (x *extractor) typeReference(t token) {
+	if previous := x.get(x.i - 1); previous.kind == tName && previous.text == "type" {
+		if x.is(x.i+1, "=") {
+			x.symbols.Add(t.text, "type", t.line)
+		}
+		return
+	}
+	lower := strings.ToLower(strings.TrimPrefix(t.text, "::"))
+	switch {
+	case t.text == "Class" && x.is(x.i+1, "["):
+		for _, n := range titles(x.tokens, x.i+2) {
+			if !coreType[strings.ToLower(n.text)] {
+				x.reference(kindClass, strings.ToLower(n.text), "Class['"+n.text+"']", n.line)
+			}
+		}
+	case strings.Contains(lower, "::") && x.declares(x.i):
+		x.reference(kindDefine, lower, t.text, t.line)
+	case strings.Contains(lower, "::"):
+		x.reference(kindType, lower, t.text, t.line)
+	case !coreType[lower] && !dataType[t.text] && x.declares(x.i):
+		x.reference(kindDefine, lower, t.text, t.line) // an unqualified custom type: Concat['x'], Firewall { }
+	}
+}
+
+// name reads a lower-case name: a declaration, a node, inherits, include and its
+// kin, a template or file call, or a function or resource it uses.
+func (x *extractor) name(t token) {
+	i, next := x.i, x.get(x.i+1)
+	switch t.text {
+	case "class":
+		if x.is(i+1, "{") { // class { 'a::b': ... }
+			for _, n := range titles(x.tokens, i+2) {
+				x.reference(kindClass, n.text, "class { '"+n.text+"': }", n.line)
+			}
+		} else if next.kind == tName {
+			x.symbols.Add(next.text, "class", next.line)
+			x.i++
+		}
+		return
+	case "define", "function", "plan":
+		if next.kind == tName && !x.is(i-1, "=>") {
+			x.symbols.Add(next.text, t.text, next.line)
+			x.i++
+		}
+		return
+	case "node":
+		x.node()
+		return
+	case "inherits":
+		if next.kind == tName {
+			x.reference(kindClass, next.text, "inherits "+next.text, next.line)
+		}
+		return
+	case "include", "require", "contain":
+		if x.is(i+1, "=>") || x.is(i-1, ".") {
+			return // the require metaparameter
+		}
+		for _, n := range classArguments(x.tokens, i+1) {
+			x.reference(kindClass, n.text, t.text+" "+n.text, n.line)
+		}
+		return
+	case "template", "epp", "file":
+		if x.is(i+1, "(") {
+			x.templateCall(t)
+			return
+		}
+	}
+	x.use(t)
+}
+
+// node reads the names a node definition lists, up to its body.
+func (x *extractor) node() {
+	for j := x.i + 1; j < len(x.tokens) && !x.is(j, "{"); j++ {
+		switch n := x.tokens[j]; n.kind {
+		case tString, tRegex, tName:
+			x.symbols.Add(n.text, "node", n.line)
+		}
+		if x.is(j+1, ",") {
+			j++
+		} else {
+			x.i = j
+			break
+		}
+	}
+}
+
+// templateCall reads the module paths template(), epp() and file() are given.
+func (x *extractor) templateCall(t token) {
+	kind := kindTemplate
+	if t.text == "file" {
+		kind = kindFile
+	}
+	for j := x.i + 2; j < len(x.tokens) && x.tokens[j].kind == tString && !x.tokens[j].interpolate; j += 2 {
+		if a := x.tokens[j].text; strings.Contains(a, "/") && !strings.HasPrefix(a, "/") {
+			x.reference(kind, a, t.text+"('"+a+"')", x.tokens[j].line)
+		}
+		if !x.is(j+1, ",") {
+			break
+		}
+	}
+}
+
+// use reads a name that is used rather than declared: a qualified function, a
+// stdlib function, or a resource of a defined type.
+func (x *extractor) use(t token) {
+	i, previous, next := x.i, x.get(x.i-1), x.get(x.i+1)
+	if keyword[t.text] || previous.kind == tName && (previous.text == "class" || previous.text == "define" || previous.text == "function" || previous.text == "plan") {
+		return
+	}
+	qualified := strings.Contains(strings.TrimPrefix(t.text, "::"), "::")
+	switch {
+	case x.is(i+1, "(") && qualified:
+		x.reference(kindFunction, t.text, t.text+"()", t.line)
+	case x.is(i+1, "(") && next.adjacent && stdlibFunction[t.text]:
+		x.reference(kindFunction, "stdlib::"+t.text, t.text+"()", t.line)
+	case x.is(i+1, "{") && resourceBody(x.tokens, i+2):
+		if qualified || !coreType[t.text] {
+			x.reference(kindDefine, t.text, t.text, t.line)
+		}
+	}
 }
 
 // resourceBody reports whether the `{` before i opens a resource body: a
