@@ -1344,81 +1344,7 @@ export class Walker {
     new ResizeObserver(measure).observe(canvas);
     window.addEventListener('resize', measure);
 
-    window.addEventListener('keydown', e => {
-      if (!this.owns(e) || e.target.closest('input, select, textarea, dialog') || e.ctrlKey || e.metaKey || e.altKey) return;
-      // This listener is registered before the map's; stopping here keeps the map from
-      // acting on the same key (V would leave walk mode and re-enter it at once).
-      const mine = () => { e.preventDefault(); e.stopImmediatePropagation(); };
-      // Any key cuts the way in short; V and M then go on to leave as usual.
-      if (this.arrival && !this.frozen) {
-        this.endArrival(true);
-        if (e.code !== 'KeyV' && e.code !== 'KeyM') { mine(); return; }
-      }
-      // Implements: REQ-WALK-046
-      if (this.frozen) {
-        // Held, the walker is not playing and the page is. So the page keeps its keys
-        // and only the few that put the street back are taken here - where swallowing
-        // the rest meant that once the pointer had been let go, a button in the
-        // toolbar could not be worked by keyboard at all.
-        if (e.repeat) return;
-        // ... and not even those from a control somebody has tabbed to, where Enter
-        // and Space belong to the control. The Walk button is the exception: it keeps
-        // the focus from the click that began the walk, so a walker is very often
-        // standing on it without having chosen to.
-        if (e.target !== document.body
-          && e.target.closest('button:not(#walk), a[href], summary, [role="option"]')) return;
-        switch (e.code) {
-          case 'KeyV': case 'KeyM': mine(); this.exit(); break;
-          case 'Escape':
-          case 'Enter': mine(); this.setFrozen(false); this.lockPointer(); break;
-        }
-        return;
-      }
-      mine();
-      if (e.repeat) return;
-      this.keys.add(e.code);
-      if (BIGGER.has(e.key)) this.setRadius(this.radius * 1.25);
-      else if (SMALLER.has(e.key)) this.setRadius(this.radius / 1.25);
-      // While the wheel is up it has first refusal on everything: it answers the keys
-      // that pick from it and passes on the ones that walk, so a walker can keep
-      // moving through a change of hands.
-      if (this.wheelKey(e.code)) return;
-      // The digits pick a tool outright, the way a shooter's number keys do, counting
-      // along the row: 1 to 3 for the carried tools and 4 to 0 for the hunt's. A
-      // carried tool's key pressed for the one already in hand puts it down, so it is
-      // never a no-op.
-      // Implements: REQ-TOOL-033, REQ-TOOL-054
-      const digit = toolForKey(e.code);
-      if (digit) {
-        if (digit !== this.primary.id) this.setTool(digit);
-        return;
-      }
-      switch (e.code) {
-        // Two triggers for the off hand, because one hand's tool wants a button of its
-        // own and the mouse's spare one is already the scope. C is free except while
-        // flying, where it is how you go down.
-        // Implements: REQ-TOOL-029, REQ-TOOL-030
-        case 'KeyF': this.useSecondary(); break;
-        case 'KeyC': if (!this.p.fly) this.useSecondary(); break;
-        // Changing hands, all three of them within reach of the hand that is already
-        // on W, A, S and D: the hunt's ring, the carried ring, and the wheel.
-        // Implements: REQ-TOOL-056, REQ-TOOL-057, REQ-TOOL-058
-        case 'KeyE': this.nextPrimary(); break;
-        case 'KeyQ': this.nextCarried(); break;
-        case 'KeyR': this.openWheel(); break;
-        case 'KeyH': this.setHandsOff(!this.handsOff); break;
-        case 'Escape':
-          // Browsers usually swallow the Esc that frees the pointer; if not, free it first.
-          if (document.pointerLockElement) document.exitPointerLock();
-          else this.exit();
-          break;
-        // Implements: REQ-HUNT-006
-        case 'Enter': this.hooks.onInspect(this.aimed()); break;
-        // V is the toggle the map also answers to; M says where it goes, for anyone
-        // who reaches for the map by name rather than remembering which way V points.
-        case 'KeyV': case 'KeyM': this.exit(); break;
-      }
-    });
+    window.addEventListener('keydown', e => this.keyDown(e));
     window.addEventListener('keyup', e => {
       this.keys.delete(e.code);
       // R let go having pointed at something is the whole gesture; let go having
@@ -1551,6 +1477,83 @@ export class Walker {
       if (this.active && !this.noLock) this.setFrozen(!fresh);
       if (this.active) this.drawHud();
     });
+  }
+
+  /** A key pressed anywhere on the page while walking. */
+  keyDown(e) {
+    if (!this.owns(e) || e.target.closest('input, select, textarea, dialog') || e.ctrlKey || e.metaKey || e.altKey) return;
+    // This listener is registered before the map's; stopping here keeps the map from
+    // acting on the same key (V would leave walk mode and re-enter it at once).
+    const mine = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+    // Any key cuts the way in short; V and M then go on to leave as usual.
+    if (this.arrival && !this.frozen) {
+      this.endArrival(true);
+      if (e.code !== 'KeyV' && e.code !== 'KeyM') { mine(); return; }
+    }
+    // Implements: REQ-WALK-046
+    if (this.frozen) {
+      // Held, the walker is not playing and the page is. So the page keeps its keys
+      // and only the few that put the street back are taken here - where swallowing
+      // the rest meant that once the pointer had been let go, a button in the
+      // toolbar could not be worked by keyboard at all.
+      if (e.repeat) return;
+      // ... and not even those from a control somebody has tabbed to, where Enter
+      // and Space belong to the control. The Walk button is the exception: it keeps
+      // the focus from the click that began the walk, so a walker is very often
+      // standing on it without having chosen to.
+      if (e.target !== document.body
+        && e.target.closest('button:not(#walk), a[href], summary, [role="option"]')) return;
+      switch (e.code) {
+        case 'KeyV': case 'KeyM': mine(); this.exit(); break;
+        case 'Escape':
+        case 'Enter': mine(); this.setFrozen(false); this.lockPointer(); break;
+      }
+      return;
+    }
+    mine();
+    if (e.repeat) return;
+    this.keys.add(e.code);
+    if (BIGGER.has(e.key)) this.setRadius(this.radius * 1.25);
+    else if (SMALLER.has(e.key)) this.setRadius(this.radius / 1.25);
+    // While the wheel is up it has first refusal on everything: it answers the keys
+    // that pick from it and passes on the ones that walk, so a walker can keep
+    // moving through a change of hands.
+    if (this.wheelKey(e.code)) return;
+    // The digits pick a tool outright, the way a shooter's number keys do, counting
+    // along the row: 1 to 3 for the carried tools and 4 to 0 for the hunt's. A
+    // carried tool's key pressed for the one already in hand puts it down, so it is
+    // never a no-op.
+    // Implements: REQ-TOOL-033, REQ-TOOL-054
+    const digit = toolForKey(e.code);
+    if (digit) {
+      if (digit !== this.primary.id) this.setTool(digit);
+      return;
+    }
+    switch (e.code) {
+      // Two triggers for the off hand, because one hand's tool wants a button of its
+      // own and the mouse's spare one is already the scope. C is free except while
+      // flying, where it is how you go down.
+      // Implements: REQ-TOOL-029, REQ-TOOL-030
+      case 'KeyF': this.useSecondary(); break;
+      case 'KeyC': if (!this.p.fly) this.useSecondary(); break;
+      // Changing hands, all three of them within reach of the hand that is already
+      // on W, A, S and D: the hunt's ring, the carried ring, and the wheel.
+      // Implements: REQ-TOOL-056, REQ-TOOL-057, REQ-TOOL-058
+      case 'KeyE': this.nextPrimary(); break;
+      case 'KeyQ': this.nextCarried(); break;
+      case 'KeyR': this.openWheel(); break;
+      case 'KeyH': this.setHandsOff(!this.handsOff); break;
+      case 'Escape':
+        // Browsers usually swallow the Esc that frees the pointer; if not, free it first.
+        if (document.pointerLockElement) document.exitPointerLock();
+        else this.exit();
+        break;
+      // Implements: REQ-HUNT-006
+      case 'Enter': this.hooks.onInspect(this.aimed()); break;
+      // V is the toggle the map also answers to; M says where it goes, for anyone
+      // who reaches for the map by name rather than remembering which way V points.
+      case 'KeyV': case 'KeyM': this.exit(); break;
+    }
   }
 
   // Implements: REQ-WALK-011, REQ-WALK-012
