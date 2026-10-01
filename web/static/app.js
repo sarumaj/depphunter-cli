@@ -1665,7 +1665,7 @@ function bindControls() {
   window.addEventListener('keydown', e => {
     if (e.target.closest('input, select, textarea, dialog') || e.ctrlKey || e.metaKey || e.altKey || walker.owns(e)) return;
     const sel = state.selected;
-    switch (e.key) {
+    switch (e.key.length === 1 ? e.key.toLowerCase() : e.key) {
       case 'Escape':
         if (document.pointerLockElement) document.exitPointerLock(); // a stray capture
         if (!$('stash').hidden) { setStashOpen(false); break; }
@@ -1674,14 +1674,14 @@ function bindControls() {
         select(null);
         break;
       // The findings list is the map's: from the street, the findings are the bugs.
-      case 'l': case 'L':
+      case 'l':
         if (!walker.active) setFindingsOpen($('findings').hidden, true);
         break;
-      case 'g': case 'G':
+      case 'g':
         // The photographs, from the street as much as from the map.
         if (!$('stash-btn').hidden) setStashOpen($('stash').hidden);
         break;
-      case 'b': case 'B':
+      case 'b':
         // The backpack needs the pointer, and in walk mode the reticle has it: opening
         // it there gives the pointer back and holds the view still, the same as reading
         // a building's details does, and closing it takes both back.
@@ -1690,23 +1690,23 @@ function bindControls() {
       // Fitting, rotating and stepping the depth all move the map's own camera, which
       // is not the one in use while walking, so they belong to the map view alone.
       case 'Home': if (!walker.active) scene.fit(L.bounds); break;
-      case 'r': case 'R': if (!walker.active) scene.reset(L.bounds); break;
-      case 'q': case 'Q': if (!walker.active) scene.setIso(scene.quarter - 1); break;
-      case 'e': case 'E': if (!walker.active) scene.setIso(scene.quarter + 1); break;
+      case 'r': if (!walker.active) scene.reset(L.bounds); break;
+      case 'q': if (!walker.active) scene.setIso(scene.quarter - 1); break;
+      case 'e': if (!walker.active) scene.setIso(scene.quarter + 1); break;
       case '+': case '=': setLevel(state.level + 1); break;
       case '-': case '_': setLevel(state.level - 1); break;
       case '?': readAway(); $('help').showModal(); break;
       case '/': document.exitPointerLock?.(); $('search').focus(); break;
-      case 'v': case 'V': setWalking(true); break;
-      case 'p': case 'P': saveScreenshot(); break;
+      case 'v': setWalking(true); break;
+      case 'p': saveScreenshot(); break;
       // Saving and exporting are toolbar buttons, and in walk mode the toolbar is
       // behind a captured pointer - so both have a key. The export menu wants the
       // pointer to pick from it and hands it back the way the backpack does; saving
       // needs none, and reports into the status line the walk HUD already carries.
       // Implements: REQ-WALK-034
-      case 'x': case 'X': openExport(); break;
-      case 'k': case 'K': if (!STATIC) saveViewSettings(); break;
-      case 'o': case 'O': {
+      case 'x': openExport(); break;
+      case 'k': if (!STATIC) saveViewSettings(); break;
+      case 'o': {
         if (STATIC) break; // no server, no editor
         const f = sel?.kind === 'symbol' ? sel.parentNode : sel;
         if (f?.kind === 'file') openFile(f.path, sel.line || 1, panel.hexFor(f.path));
@@ -1717,6 +1717,17 @@ function bindControls() {
       default: return;
     }
     e.preventDefault();
+  });
+}
+
+/**
+ * Closes a toolbar popover on a press outside `inside`, or on Escape - listened for on
+ * the button's group, not the popover, as the button keeps the focus while it is open.
+ */
+function dismissable(btn, pop, setOpen, inside) {
+  document.addEventListener('pointerdown', e => { if (!pop.hidden && !e.target?.closest?.(inside)) setOpen(false, false); });
+  btn.parentElement.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); setOpen(false); btn.focus(); }
   });
 }
 
@@ -1734,10 +1745,7 @@ function bindFilters() {
   // locked canvas cannot shut it on the way in.
   const setOpen = drawer({ panel: 'filters', button: 'filters-btn', walker: () => walker, hold: readAway });
   btn.onclick = () => setOpen(pop.hidden);
-  document.addEventListener('pointerdown', e => { if (!pop.hidden && !e.target.closest('.filters')) setOpen(false, false); });
-  btn.parentElement.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); setOpen(false); btn.focus(); }
-  });
+  dismissable(btn, pop, setOpen, '.filters');
 
   const onCheck = (listId, set) => $(listId).addEventListener('change', e => {
     const id = e.target.dataset.id;
@@ -1836,13 +1844,7 @@ function bindExport() {
     url.searchParams.set('ui', JSON.stringify(viewSettings()));
     e.target.closest('a').href = url.pathname + url.search;
   });
-  document.addEventListener('pointerdown', e => {
-    if (!pop.hidden && !e.target?.closest?.('.export')) setOpen(false, false);
-  });
-  // On the group, not the popover: the button keeps the focus while the menu is open.
-  btn.parentElement.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); setOpen(false); btn.focus(); }
-  });
+  dismissable(btn, pop, setOpen, '.export');
   pop.addEventListener('click', e => { if (e.target.closest('a, button')) setOpen(false); });
 }
 
