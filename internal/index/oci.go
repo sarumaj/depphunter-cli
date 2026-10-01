@@ -204,7 +204,7 @@ func (c *Config) ociEndpoints(image, reference string) (out []ociEndpoint, block
 		}
 		host := Host(registry)
 		return append(out, ociEndpoint{url: registry, base: registry, repository: repository,
-			known: registry == public[OCI] || c.trusted[registry] || c.trusted[host] || c.credentials.Registry(host)}), false
+			known: registry == public[OCI] || c.knownRegistry(registry, host, c.credentials.Registry)}), false
 	}
 	r := c.oci.registries[best]
 	if r.blocked {

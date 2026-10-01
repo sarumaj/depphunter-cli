@@ -442,14 +442,7 @@ func (c *Config) referencedCredential(user, pass string) (u, p string, ok bool) 
 //
 // Implements: REQ-AUTH-023, REQ-AUTH-026
 func (c *Config) lendPython(index, user, pass string) {
-	if c.credentials == nil || user == "" && pass == "" {
-		return
-	}
-	u, err := url.Parse(strings.TrimSpace(index))
-	if err != nil || u.Host == "" {
-		return
-	}
-	if c.vouched(PyPI, index, u) {
+	if (user != "" || pass != "") && c.mayLend(PyPI, index) {
 		c.credentials.LendIndex(index, user, pass)
 	}
 }
