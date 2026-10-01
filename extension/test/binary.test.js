@@ -9,7 +9,7 @@ const path = require('node:path');
 const { after, before, describe, it } = require('node:test');
 
 require('./stub'); // binary.js imports vscode, even though it asks it nothing
-const { binaryFor, bundled } = require('../out/binary.js');
+const { binaryFor, bundled, notFound } = require('../out/binary.js');
 
 const NAME = process.platform === 'win32' ? 'depphunter.exe' : 'depphunter';
 
@@ -59,5 +59,14 @@ describe('which depphunter to run', () => {
     // with, so an explicit value is never second-guessed.
     assert.strictEqual(binaryFor('/opt/depphunter', home), '/opt/depphunter');
     assert.strictEqual(binaryFor('  /opt/depphunter  ', home), '/opt/depphunter');
+  });
+
+  it('says where it looked when nothing could be started', () => {
+    // A build that ships none - one from a checkout, the universal package - says so,
+    // rather than sending somebody who installed the extension off to install more.
+    const none = notFound('', empty);
+    assert.ok(none.includes(`carries none in ${path.join(empty, 'bin')}`) && none.includes('PATH'), none);
+    assert.strictEqual(notFound('/opt/depphunter', home), '/opt/depphunter was not found (the depphunter.path setting).');
+    assert.strictEqual(notFound('', home), `${path.join(home, 'bin', NAME)} was not found.`);
   });
 });
