@@ -34,9 +34,10 @@ type resolver struct {
 	installed lang.Memo[string, *manifest] // name@version -> its installed elm.json, or nil
 }
 
-// elmHome is where the compiler keeps downloaded packages: ELM_HOME, else ~/.elm.
-func elmHome() string {
-	if h := os.Getenv("ELM_HOME"); h != "" {
+// elmHome is where the compiler keeps downloaded packages: ELM_HOME (a relative
+// one against the repository root), else ~/.elm.
+func elmHome(root string) string {
+	if h, _ := lang.FromEnvironment(root, os.Getenv("ELM_HOME")); h != "" {
 		return h
 	}
 	if h, err := os.UserHomeDir(); err == nil {

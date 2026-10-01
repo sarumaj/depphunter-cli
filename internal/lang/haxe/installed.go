@@ -48,13 +48,20 @@ func (r *resolver) lixScope(file string) *lixScope {
 	return s
 }
 
+// directoryOf is the directory an environment variable names, a relative one
+// taken against the repository root.
+func directoryOf(root string, getenv func(string) string, variable string) string {
+	directory, _ := lang.FromEnvironment(root, getenv(variable))
+	return directory
+}
+
 // libraryCache is lix's download cache: HAXE_LIBCACHE, else haxe_libraries/ under
 // HAXESHIM_ROOT or ~/haxe.
-func libraryCache(getenv func(string) string) string {
-	if c := getenv("HAXE_LIBCACHE"); c != "" {
+func libraryCache(root string, getenv func(string) string) string {
+	if c := directoryOf(root, getenv, "HAXE_LIBCACHE"); c != "" {
 		return c
 	}
-	if s := getenv("HAXESHIM_ROOT"); s != "" {
+	if s := directoryOf(root, getenv, "HAXESHIM_ROOT"); s != "" {
 		return filepath.Join(s, "haxe_libraries")
 	}
 	if h := getenv("HOME"); h != "" {
@@ -69,8 +76,8 @@ func libraryCache(getenv func(string) string) string {
 //
 // Implements: REQ-HAXE-006
 func (r *resolver) readLix(root string, all []*scan.File, getenv func(string) string) {
-	cache := libraryCache(getenv)
-	shim := getenv("HAXESHIM_ROOT")
+	cache := libraryCache(root, getenv)
+	shim := directoryOf(root, getenv, "HAXESHIM_ROOT")
 	if shim == "" && getenv("HOME") != "" {
 		shim = filepath.Join(getenv("HOME"), "haxe")
 	}
@@ -198,7 +205,7 @@ func (r *resolver) repositories(root string, getenv func(string) string) (local 
 			}
 		}
 	}
-	if p := getenv("HAXELIB_PATH"); p != "" {
+	if p := directoryOf(root, getenv, "HAXELIB_PATH"); p != "" {
 		return local, p
 	}
 	if h := getenv("HOME"); h != "" {

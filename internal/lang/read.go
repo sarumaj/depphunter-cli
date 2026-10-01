@@ -66,6 +66,30 @@ func OpenRoot(dir string) Root {
 // names.
 var Machine = Root{machine: true}
 
+// FromEnvironment is a directory a package manager was given in this process's
+// environment, taken as the tool takes it: a relative one against the repository
+// root, where the tool is taken to run (as PYTHONPATH's entries are). Its Root reads
+// it: the repository's when it lies there, so no link leads out of it, else
+// Machine. An empty value names none.
+//
+// Implements: REQ-LANG-031
+func FromEnvironment(root, value string) (string, Root) {
+	if value == "" {
+		return "", Root{}
+	}
+	if !filepath.IsAbs(value) {
+		absolute, err := filepath.Abs(root)
+		if err != nil {
+			return "", Root{}
+		}
+		value = filepath.Join(absolute, value)
+	}
+	if repository := OpenRoot(root); repository.Contains(value) {
+		return value, repository
+	}
+	return value, Machine
+}
+
 // Join is the absolute path of relative, a slash-separated path under the
 // root. It is cleaned, and so may name a path outside the root, which the
 // reads then refuse.

@@ -2902,7 +2902,7 @@ a build's `obj/` beside a project file are not read as source:
   forges is the crate's origin.
 - **Fetched crates**: the crates in `alire/cache/dependencies/` and
   `alire/cache/pins/`, and those the manifest names in Alire 2's shared cache
-  (`~/.cache/alire/releases`), say which crate has a unit or ships a project
+  (`~/.local/share/alire/releases`), say which crate has a unit or ships a project
   file; `--resolve-depth` follows the lock file's solution, else a fetched
   crate's `alire.toml`, and `--online` reads the release manifest of an exact
   version, or of the newest release a range admits, from the indexes alr

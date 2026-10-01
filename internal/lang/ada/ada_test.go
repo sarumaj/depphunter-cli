@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -54,7 +53,7 @@ func isolate(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("ALIRE_SETTINGS_DIR", "")
-	t.Setenv("XDG_CACHE_HOME", absolute)
+	t.Setenv("XDG_DATA_HOME", absolute)
 	t.Setenv("HOME", t.TempDir())
 }
 
@@ -524,15 +523,32 @@ func TestSourceDirectoryAboveTheRepository(t *testing.T) {
 	}
 }
 
-// A relative XDG_CACHE_HOME is ignored, as the XDG specification says: it would be
-// read from the repository depphunter runs in. The home directory's cache stands.
+// Where Alire 2 keeps shared releases: below ALIRE_SETTINGS_DIR, else its data
+// directory; a relative value is taken against the repository root and read
+// through the repository's Root.
 //
 // Verifies: REQ-ADA-008
-func TestRelativeXDGCacheIgnored(t *testing.T) {
-	env := map[string]string{"XDG_CACHE_HOME": "cache", "HOME": "/home/someone"}
-	got := sharedReleases(func(name string) string { return env[name] })
-	want := []string{filepath.Join("/home/someone", ".cache", "alire", "releases")}
-	if !slices.Equal(got, want) {
-		t.Errorf("shared releases: %v, want %v", got, want)
+func TestSharedReleases(t *testing.T) {
+	root := t.TempDir()
+	for _, c := range []struct {
+		name       string
+		env        map[string]string
+		goos, want string
+		repository bool
+	}{
+		{"settings", map[string]string{"ALIRE_SETTINGS_DIR": "/opt/alire", "XDG_DATA_HOME": "/data"}, "linux", "/opt/alire/cache/releases", false},
+		{"XDG", map[string]string{"XDG_DATA_HOME": "/data", "HOME": "/home/someone"}, "linux", "/data/alire/releases", false},
+		{"home", map[string]string{"HOME": "/home/someone"}, "linux", "/home/someone/.local/share/alire/releases", false},
+		{"relative", map[string]string{"XDG_DATA_HOME": "data", "HOME": "/home/someone"}, "linux", filepath.Join(root, "data", "alire", "releases"), true},
+		{"Windows", map[string]string{"LOCALAPPDATA": "/local", "XDG_DATA_HOME": "/data"}, "windows", "/local/alire/releases", false},
+		{"no home", map[string]string{}, "linux", "", false},
+	} {
+		got, files := sharedReleases(root, func(name string) string { return c.env[name] }, c.goos)
+		if got != filepath.FromSlash(c.want) {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+		if got != "" && files.Contains(filepath.Join(root, "x")) != c.repository {
+			t.Errorf("%s: read through the repository's Root: %v, want %v", c.name, !c.repository, c.repository)
+		}
 	}
 }

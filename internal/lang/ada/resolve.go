@@ -88,7 +88,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 					}
 				}
 				c.readInstalled(repository, absoluteDirectory)
-				c.readShared(sharedReleases(os.Getenv))
+				c.readShared(sharedReleases(root, os.Getenv, runtime.GOOS))
 				r.crates[c.directory] = c
 				r.order = append(r.order, c)
 				if c.m.name != "" {

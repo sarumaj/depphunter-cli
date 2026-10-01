@@ -309,3 +309,30 @@ func TestSourceBoundsListedAndUnlistedFilesAlike(t *testing.T) {
 		t.Error("Read(limit.lock) failed on a file of exactly MaxParseSize")
 	}
 }
+
+// A directory from the environment: a relative one against the repository root and
+// read through its Root, an absolute one elsewhere through Machine.
+//
+// Verifies: REQ-LANG-031
+func TestFromEnvironment(t *testing.T) {
+	root, elsewhere := t.TempDir(), filepath.Join(t.TempDir(), "cache")
+	inside := filepath.Join(root, "x")
+	for _, c := range []struct {
+		value, want string
+		repository  bool
+	}{
+		{"", "", false},
+		{"cache", filepath.Join(root, "cache"), true},
+		{filepath.Join(root, "cache"), filepath.Join(root, "cache"), true},
+		{"../elsewhere", filepath.Join(filepath.Dir(root), "elsewhere"), false},
+		{elsewhere, elsewhere, false},
+	} {
+		got, files := FromEnvironment(root, c.value)
+		if got != c.want {
+			t.Errorf("%q: %q, want %q", c.value, got, c.want)
+		}
+		if got != "" && files.Contains(inside) != c.repository {
+			t.Errorf("%q: read through the repository's Root: %v, want %v", c.value, !c.repository, c.repository)
+		}
+	}
+}

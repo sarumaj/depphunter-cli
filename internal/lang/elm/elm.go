@@ -68,7 +68,7 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
-	return newResolver(root, all, elmHome()), nil
+	return newResolver(root, all, elmHome(root)), nil
 }
 
 // Implements: REQ-ELM-002, REQ-ELM-003, REQ-ELM-005

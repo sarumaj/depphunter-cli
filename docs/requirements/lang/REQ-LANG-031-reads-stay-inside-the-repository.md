@@ -52,6 +52,14 @@ link pass off a large file as a small one.
    checkout), their caches and depots, the trees they install under the
    user's home, `CUE_CACHE_DIR`, and the Python interpreter's site-packages -
    is read as before.
+5. A package manager's directory named by a variable of the environment
+   (`ZIG_GLOBAL_CACHE_DIR`, `XDG_CACHE_HOME` for Zig, `XDG_DATA_HOME` and
+   `ALIRE_SETTINGS_DIR` for Alire, `DUB_HOME`, `DPATH`, `NIMBLE_DIR`,
+   `ELM_HOME`, `CUE_CACHE_DIR`, `HAXELIB_PATH`, `HAXE_LIBCACHE`,
+   `HAXESHIM_ROOT`), when relative, is taken against the repository root,
+   where the tool is taken to run, as `PYTHONPATH`'s entries are; one that
+   lies in the repository is read through its root. A tool's configuration
+   is not: a relative XDG variable is ignored there (REQ-SUP-064).
 
 ## Notes
 
