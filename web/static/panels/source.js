@@ -2,12 +2,12 @@
 // find bar above it, a preview for a picture, a clip or a recording, and for a file
 // with no text its size and, when asked, a hex dump of its first bytes.
 
-import hljs from './vendor/highlight.min.js';
-import powershell from './vendor/highlight-powershell.min.js';
+import hljs from '../vendor/highlight.min.js';
+import powershell from '../vendor/highlight-powershell.min.js';
 
-import { fileSize } from './model.js';
-import { BinaryFile, fetchBytes, fetchSource, fileURL } from './data.js';
-import { fmt, h, escapeHTML } from './dom.js';
+import { fileSize } from '../core/model.js';
+import { BinaryFile, fetchBytes, fetchSource, fileURL } from '../core/data.js';
+import { fmt, h, escapeHTML } from '../core/dom.js';
 
 hljs.registerLanguage('powershell', powershell);
 

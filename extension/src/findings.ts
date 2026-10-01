@@ -7,8 +7,8 @@
 // each one that is not in the backpack yet has a button that puts it there.
 //
 // Putting it there is the map's own catch. The page is the one that owns the backpack
-// (web/static/backpack.js keeps it in the browser's store), and a catch there records
-// a finding against the building its bug stands at (web/static/findings.js place).
+// (web/static/panels/backpack.js keeps it in the browser's store), and a catch there records
+// a finding against the building its bug stands at (web/static/core/findings.js place).
 // This side cannot run those modules, so placeFinding and packItemFor below say the
 // same thing in TypeScript, and extension/test/findings.test.js holds them to the
 // page's modules on the same graph: an entry caught here is the entry a catch on the

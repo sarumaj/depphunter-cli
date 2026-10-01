@@ -21,4 +21,4 @@ Same policy as REQ-DIST-016, applied to the browser modules.
 
 ## Acceptance criteria
 
-1. `web/static/filter.js` imports `vendor/fzf.es.js`.
+1. `web/static/core/filter.js` imports `vendor/fzf.es.js`.

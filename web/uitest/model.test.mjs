@@ -11,7 +11,7 @@ import { describe, it } from 'node:test';
 
 import './stub.mjs';
 
-const { buildModel, bulk, unread, fileSize } = await import('../static/model.js');
+const { buildModel, bulk, unread, fileSize } = await import('../static/core/model.js');
 
 /** A file node as the graph document carries one. */
 const file = (name, extra) => ({ id: `f:${name}`, kind: 'file', name, path: name, parent: 'd:.', ...extra });

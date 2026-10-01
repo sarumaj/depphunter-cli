@@ -39,8 +39,8 @@
 // a fire on the far side of the planet leans over the horizon with the street it is
 // standing in.
 
-import * as THREE from './vendor/three.module.min.js';
-import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
+import * as THREE from '../vendor/three.module.min.js';
+import { mergeGeometries } from '../vendor/BufferGeometryUtils.js';
 
 // A tongue's life, in seconds, and how far it leans while it lives. Fires are lit at
 // staggered phases so a fire is never all one age.

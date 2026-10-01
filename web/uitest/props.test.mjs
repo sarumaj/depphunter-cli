@@ -10,7 +10,7 @@ import { describe, it } from 'node:test';
 
 import { box } from './stub.mjs';
 
-const { makeProps } = await import('../static/city.js');
+const { makeProps } = await import('../static/map/city.js');
 
 describe('vegetation without the plant models', () => {
   // Verifies: REQ-CITY-022

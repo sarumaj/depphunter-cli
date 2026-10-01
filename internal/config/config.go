@@ -29,11 +29,11 @@ type UI struct {
 	Theme       string `yaml:"theme" mapstructure:"theme" json:"theme"`                     // auto | light | dark
 	ColorBy     string `yaml:"color_by" mapstructure:"color_by" json:"colorBy"`             // language | size | commits | churn | age | authors
 	HeightScale string `yaml:"height_scale" mapstructure:"height_scale" json:"heightScale"` // linear | sqrt | log
-	// Style is what the map is dressed as (see web/static/city.js): the same layout
+	// Style is what the map is dressed as (see web/static/map/city.js): the same layout
 	// drawn as a city, a printed circuit board or a galaxy.
 	Style   string `yaml:"style,omitempty" mapstructure:"style" json:"style"` // city | circuit | galaxy
 	ShowStd bool   `yaml:"show_std" mapstructure:"show_std" json:"showStd"`
-	// Tool is what walk mode puts in the walker's hands (see web/static/tools.js).
+	// Tool is what walk mode puts in the walker's hands (see web/static/walk/tools.js).
 	//
 	// Implements: REQ-TOOL-003
 	Tool        string `yaml:"tool,omitempty" mapstructure:"tool" json:"tool"`
@@ -62,7 +62,7 @@ func (u UI) Validate() error {
 			}
 			return oneOf("tool", u.Tool,
 				// The primary tools, which hunt, and then the secondary ones, which
-				// carry the walker (web/static/tools.js).
+				// carry the walker (web/static/walk/tools.js).
 				"rod", "net", "camera", "bubbles", "extinguisher", "dart", "nailer",
 				"parachute", "grapple", "jetpack", "skimmers")
 		}(),

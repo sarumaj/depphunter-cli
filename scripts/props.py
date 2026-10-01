@@ -20,7 +20,7 @@ What the script does is fit them to the map:
   * stand it on the origin and scale it to the height a prop is on the map;
   * write web/static/props.glb, which city.js loads once and instances.
 
-The node names are the contract with web/static/props.js.
+The node names are the contract with web/static/map/models.js.
 """
 
 # pyright: basic

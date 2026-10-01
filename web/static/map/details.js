@@ -20,7 +20,7 @@
 // exception is the setbacks, which change where there is a roof to stand on:
 // massTop gives the walker the tiers' roofs.
 
-import * as THREE from './vendor/three.module.min.js';
+import * as THREE from '../vendor/three.module.min.js';
 import { TYPE, STORY, FACADE, DECO, HELIPAD, archetype, buildParameters, seedOf, isGround } from './buildings.js';
 
 /** How far a balcony, an awning or a cornice stands out of a facade. */

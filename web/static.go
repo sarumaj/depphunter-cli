@@ -25,13 +25,15 @@ const (
 	staticTotal   = 24 << 20
 )
 
-// relativeImport matches `from './x.js'` and `import('./vendor/x.js')`.
-var relativeImport = regexp.MustCompile(`((?:from|import)\s*\(?\s*)(['"])\./(?:vendor/)?([\w.\-]+)\.js(['"])`)
+// relativeImport matches `from './x.js'`, `from '../walk/x.js'` and
+// `import('./vendor/x.js')`: a relative import of a module, wherever it lies.
+var relativeImport = regexp.MustCompile(`((?:from|import)\s*\(?\s*)(['"])(?:\.\.?/)+(?:[\w\-]+/)*([\w.\-]+)\.js(['"])`)
 
 // WriteStatic writes the UI as one self-contained HTML file that opens without a
 // server: every ES module is inlined as a data: URL behind an import map (relative
-// imports are rewritten to the map's names), the stylesheet is inlined, and the graph,
-// UI settings and source texts (within size limits) are embedded as JSON.
+// imports are rewritten to the map's names, which are the modules' file names, so
+// no two modules in any directory may share one), the stylesheet is inlined, and
+// the graph, UI settings and source texts (within size limits) are embedded as JSON.
 // extra holds optional datasets ("history", "references", "findings") embedded as they are.
 //
 // Implements: REQ-EXP-006, REQ-EXP-007, REQ-HIST-015
@@ -48,22 +50,7 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra m
 	css = []byte(minify.CSS(string(css)))
 	index = []byte(minify.HTML(string(index)))
 
-	imports := map[string]string{}
-	err = fs.WalkDir(assets, ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || path.Ext(p) != ".js" {
-			return err
-		}
-		source, err := fs.ReadFile(assets, p)
-		if err != nil {
-			return err
-		}
-		source = relativeImport.ReplaceAll(source, []byte(`$1"depphunter/$3"`))
-		// An export is one file with everything in it and no server to compress it,
-		// so the comments come out here too (internal/minify).
-		source = []byte(minify.JS(string(source)))
-		imports["depphunter/"+strings.TrimSuffix(path.Base(p), ".js")] = "data:text/javascript;base64," + base64.StdEncoding.EncodeToString(source)
-		return nil
-	})
+	imports, err := inlineModules(assets)
 	if err != nil {
 		return err
 	}
@@ -135,4 +122,30 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra m
 	}
 	_, err = io.Copy(w, bytes.NewBufferString(page))
 	return err
+}
+
+// inlineModules is every ES module under assets as a data: URL, by its name in the
+// import map, with its relative imports rewritten to those names.
+func inlineModules(assets fs.FS) (map[string]string, error) {
+	imports := map[string]string{}
+	err := fs.WalkDir(assets, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || path.Ext(p) != ".js" {
+			return err
+		}
+		source, err := fs.ReadFile(assets, p)
+		if err != nil {
+			return err
+		}
+		source = relativeImport.ReplaceAll(source, []byte(`$1"depphunter/$3"`))
+		// An export is one file with everything in it and no server to compress it,
+		// so the comments come out here too (internal/minify).
+		source = []byte(minify.JS(string(source)))
+		name := "depphunter/" + strings.TrimSuffix(path.Base(p), ".js")
+		if _, taken := imports[name]; taken {
+			return fmt.Errorf("static export: two modules are named %s.js", path.Base(name))
+		}
+		imports[name] = "data:text/javascript;base64," + base64.StdEncoding.EncodeToString(source)
+		return nil
+	})
+	return imports, err
 }

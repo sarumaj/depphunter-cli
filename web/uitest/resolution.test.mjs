@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-const { FLOOR, Resolution } = await import('../static/resolution.js');
+const { FLOOR, Resolution } = await import('../static/map/resolution.js');
 
 // Feeds `count` frames `gap` milliseconds apart from `start`; returns the time after.
 function run(resolution, start, gap, count) {

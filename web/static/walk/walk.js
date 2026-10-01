@@ -22,10 +22,10 @@
 // bug (bugs.js), and catching one reads out what was said about it. They bite back,
 // and a roof is a long way down, so the walker has a condition to keep (health.js).
 
-import * as THREE from './vendor/three.module.min.js';
-import { clamp, ease } from './numbers.js';
+import * as THREE from '../vendor/three.module.min.js';
+import { clamp, ease } from '../core/numbers.js';
 import { EYE, STEP, WATER, REACH, reducedMotion } from './walkbase.js';
-import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './city.js';
+import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from '../map/city.js';
 import { Health } from './health.js';
 import { Wind } from './wind.js';
 import { tracker } from './tracker.js';
@@ -34,8 +34,8 @@ import { canopy } from './canopy.js';
 import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee } from './tools.js';
 import { packedChute, aloft } from './parachute.js';
 import { ToolWheel, EMPTY, carriedRing, cycle, keyFor, keysFor, rowOrder, toolForKey } from './switcher.js';
-import { inBlaze } from './flames.js';
-import { massTop } from './details.js';
+import { inBlaze } from '../hunt/flames.js';
+import { massTop } from '../map/details.js';
 
 // Implements: REQ-WALK-004
 const WALK = 3.2, RUN = 8.5, FLY = 10; // units per second

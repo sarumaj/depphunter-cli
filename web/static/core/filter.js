@@ -1,7 +1,7 @@
 // Filters decide what exists on the map; search finds nodes among what is visible.
 
 // Implements: REQ-DIST-017
-import { Fzf, byLengthAsc } from './vendor/fzf.es.js';
+import { Fzf, byLengthAsc } from '../vendor/fzf.es.js';
 
 import { bulk } from './model.js';
 

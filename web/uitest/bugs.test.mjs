@@ -10,10 +10,10 @@ import { describe, it } from 'node:test';
 
 import { box, scene } from './stub.mjs';
 
-const { Bugs } = await import('../static/bugs.js');
-const TOOLS_MOD = await import('../static/tools.js');
-const { seatsOf } = await import('../static/fires.js');
-const { bugParts } = await import('../static/models.js');
+const { Bugs } = await import('../static/hunt/bugs.js');
+const TOOLS_MOD = await import('../static/walk/tools.js');
+const { seatsOf } = await import('../static/hunt/fires.js');
+const { bugParts } = await import('../static/map/models.js');
 
 /**
  * A tower with `findings` reported against it, as findings.js hands them over: the

@@ -2,9 +2,9 @@
 // the bugs, the fires and the tagged modules around them - and the beacons standing
 // over every module tagged. Mixed into Walker (walk.js).
 
-import * as THREE from './vendor/three.module.min.js';
-import { clamp, ease } from './numbers.js';
-import { severityColors, rankOf } from './findings.js';
+import * as THREE from '../vendor/three.module.min.js';
+import { clamp, ease } from '../core/numbers.js';
+import { severityColors, rankOf } from '../core/findings.js';
 
 // The bug tracker: how far around the walker it sweeps, and how often it is redrawn.
 // A dozen times a second is plenty for something that turns as slowly as a walker.

@@ -73,12 +73,12 @@ function fire(element, type, extra = {}) {
 
 globalThis.document.createElement = tag => new El(tag);
 
-const { buildModel } = await import('../static/model.js');
-const { computeVisibility } = await import('../static/filter.js');
-const { indexFindings } = await import('../static/findings.js');
-const { Backpack, catchFinding } = await import('../static/backpack.js');
-const { Bugs } = await import('../static/bugs.js');
-const { FindingList, findingRows } = await import('../static/findinglist.js');
+const { buildModel } = await import('../static/core/model.js');
+const { computeVisibility } = await import('../static/core/filter.js');
+const { indexFindings } = await import('../static/core/findings.js');
+const { Backpack, catchFinding } = await import('../static/panels/backpack.js');
+const { Bugs } = await import('../static/hunt/bugs.js');
+const { FindingList, findingRows } = await import('../static/panels/findinglist.js');
 
 const directory = (path, parent) => ({ id: `d:${path}`, kind: 'dir', name: path.split('/').pop(), path, parent });
 const file = (path, parent, language, loc) => ({ id: `f:${path}`, kind: 'file', name: path.split('/').pop(), path, parent, lang: language, loc });

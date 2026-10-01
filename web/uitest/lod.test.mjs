@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import './stub.mjs';
 
 const THREE = await import('../static/vendor/three.module.min.js');
-const { CELL, LEVELS, Scatter, simplified, cull } = await import('../static/lod.js');
+const { CELL, LEVELS, Scatter, simplified, cull } = await import('../static/map/lod.js');
 
 const place = (it, m) => m.makeTranslation(it.x, it.y, it.z);
 const crown = new THREE.IcosahedronGeometry(0.2, 3);

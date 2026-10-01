@@ -12,8 +12,8 @@
 // walking, since what is in the backpack is what stays caught. Only the walk up to it
 // is left out, which is the whole of what the list is for.
 
-import { rankOf, whereOf } from './findings.js';
-import { h, catchToggle, findingItem } from './dom.js';
+import { rankOf, whereOf } from '../core/findings.js';
+import { h, catchToggle, findingItem } from '../core/dom.js';
 
 /** What a row is sorted and labeled by: the package a finding is against, or its file. */
 const nameOf = f => f.package || f.path || '';

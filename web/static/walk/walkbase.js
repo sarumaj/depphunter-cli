@@ -2,7 +2,7 @@
 // it): the walker's measures, what a line can hold on to, and whether the page is to
 // keep still.
 
-import * as THREE from './vendor/three.module.min.js';
+import * as THREE from '../vendor/three.module.min.js';
 
 // A story is 0.84 units (buildings.js STORY and FACADE): the walker stands a little
 // over half as tall, a door a little taller than them.

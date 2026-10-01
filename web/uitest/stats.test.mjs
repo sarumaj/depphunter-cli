@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 
 import './stub.mjs';
 
-const { Stats, wanted } = await import('../static/stats.js');
+const { Stats, wanted } = await import('../static/map/stats.js');
 
 describe('rendering readout', () => {
   // Verifies: REQ-PERF-014

@@ -86,7 +86,7 @@
   --hl-title: #86b6ef; --hl-type: #b3a9f2;
 }
 
-/* The styles (web/static/city.js): what the map is dressed as. Only the environment
+/* The styles (web/static/map/city.js): what the map is dressed as. Only the environment
    changes - the ground, the water, the sky - because the colors that carry data are
    still the language and history palettes above. These come after both themes, so a
    style wins over the theme's ground and sky; and each style is themed the way the

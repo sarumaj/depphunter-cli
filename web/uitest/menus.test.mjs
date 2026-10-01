@@ -11,7 +11,7 @@ import { describe, it, beforeEach, mock } from 'node:test';
 
 import './stub.mjs';
 
-const { whenUnlocked } = await import('../static/dom.js');
+const { whenUnlocked } = await import('../static/core/dom.js');
 
 /** A document with a pointer lock the test releases by hand. */
 function locked(held = true) {

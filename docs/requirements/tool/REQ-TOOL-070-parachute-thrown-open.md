@@ -39,5 +39,5 @@ the key left of `1` it had first is a dead key on a German board.
 
 ## Notes
 
-The key is `key` on the tool in `web/static/tools.js`; `switcher.js` numbers the
-row without it.
+The key is `key` on the tool in `web/static/walk/tools.js`; `switcher.js` numbers
+the row without it.

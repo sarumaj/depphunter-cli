@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 
 import './stub.mjs';
 
-const { Backpack } = await import('../static/backpack.js');
+const { Backpack } = await import('../static/panels/backpack.js');
 
 const item = (id, caughtAt, extra = {}) => ({ id, severity: 'high', title: id, where: '', line: 0, nodeId: '', caughtAt, fixed: false, fixedAt: 0, ...extra });
 

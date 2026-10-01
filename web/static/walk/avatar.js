@@ -8,8 +8,8 @@
 // about). It is drawn twice - once solid, once faintly with the depth test off - so a
 // walker in a street between two towers is still visible through the one in front.
 
-import * as THREE from './vendor/three.module.min.js';
-import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
+import * as THREE from '../vendor/three.module.min.js';
+import { mergeGeometries } from '../vendor/BufferGeometryUtils.js';
 
 const PX = 34;     // how tall the figure tries to be on the screen
 const MIN = 0.06;  // never smaller than this in map units

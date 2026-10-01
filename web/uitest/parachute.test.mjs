@@ -13,11 +13,11 @@ import { describe, it } from 'node:test';
 
 import './stub.mjs';
 
-const P = await import('../static/parachute.js');
-const { Health } = await import('../static/health.js');
-const { TOOLS } = await import('../static/tools.js');
-const { Avatar } = await import('../static/avatar.js');
-const WALK = await import('../static/walk.js');
+const P = await import('../static/walk/parachute.js');
+const { Health } = await import('../static/walk/health.js');
+const { TOOLS } = await import('../static/walk/tools.js');
+const { Avatar } = await import('../static/walk/avatar.js');
+const WALK = await import('../static/walk/walk.js');
 const THREE = await import('../static/vendor/three.module.min.js');
 
 // A unit is about three and a half meters (health.js), so a speed in units a second

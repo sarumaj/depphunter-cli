@@ -38,6 +38,6 @@ map is read by its colors: the detail must never take the color away.
 
 ## Notes
 
-The far average is `facadeFar` in both `web/static/buildings.js` and the city
+The far average is `facadeFar` in both `web/static/map/buildings.js` and the city
 shader, built from one `LOOKS` table. A lit window counts for half its
 brightness from afar, so the dark theme's map keeps its legend.

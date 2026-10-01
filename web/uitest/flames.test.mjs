@@ -13,7 +13,7 @@ import { describe, it } from 'node:test';
 
 import './stub.mjs';
 
-const F = await import('../static/flames.js');
+const F = await import('../static/hunt/flames.js');
 
 describe('the shape of a tongue', () => {
   it('is blunt where it leaves the fire and pointed at the tip', () => {

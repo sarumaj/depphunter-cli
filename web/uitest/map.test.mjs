@@ -12,14 +12,14 @@ import { describe, it } from 'node:test';
 
 import './stub.mjs';
 
-const { buildModel, focusArcs, expandToLevel, toggles, isWithin } = await import('../static/model.js');
-const { computeVisibility } = await import('../static/filter.js');
-const { layout, representative, SCALES } = await import('../static/layout.js');
-const { boxColor, languageColors, assignSlots } = await import('../static/colors.js');
-const { effectiveMode, computeMetrics, historyT } = await import('../static/history.js');
-const { MapScene } = await import('../static/scene.js');
+const { buildModel, focusArcs, expandToLevel, toggles, isWithin } = await import('../static/core/model.js');
+const { computeVisibility } = await import('../static/core/filter.js');
+const { layout, representative, SCALES } = await import('../static/map/layout.js');
+const { boxColor, languageColors, assignSlots } = await import('../static/core/colors.js');
+const { effectiveMode, computeMetrics, historyT } = await import('../static/core/history.js');
+const { MapScene } = await import('../static/map/scene.js');
 const THREE = await import('../static/vendor/three.module.min.js');
-const { FACADE, STORY } = await import('../static/buildings.js');
+const { FACADE, STORY } = await import('../static/map/buildings.js');
 const FLOOR = STORY * FACADE; // the height of an empty file: a story
 
 // ---------------------------------------------------------------- fixtures

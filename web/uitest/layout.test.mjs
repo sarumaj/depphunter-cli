@@ -11,9 +11,9 @@ import { describe, it } from 'node:test';
 
 import './stub.mjs';
 
-const { buildModel } = await import('../static/model.js');
-const { computeVisibility } = await import('../static/filter.js');
-const { layout } = await import('../static/layout.js');
+const { buildModel } = await import('../static/core/model.js');
+const { computeVisibility } = await import('../static/core/filter.js');
+const { layout } = await import('../static/map/layout.js');
 
 /** A file node as the graph document carries one. */
 const file = (name, parent, extra) =>

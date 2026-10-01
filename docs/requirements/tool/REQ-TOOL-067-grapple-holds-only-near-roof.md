@@ -38,4 +38,4 @@ rather than a miss.
 
 ## Notes
 
-The grip is the grapple's `reel.grip` in `web/static/tools.js`.
+The grip is the grapple's `reel.grip` in `web/static/walk/tools.js`.

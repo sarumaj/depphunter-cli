@@ -10,8 +10,8 @@
 // The map draws without either of them - city.js keeps the blobs it always had, and
 // bugs.js the beetle it drew out of spheres - so nothing waits on these loads.
 
-import { GLTFLoader } from './vendor/GLTFLoader.js';
-import { STATIC } from './data.js';
+import { GLTFLoader } from '../vendor/GLTFLoader.js';
+import { STATIC } from '../core/data.js';
 
 const files = new Map(); // key -> { parts, loading }
 

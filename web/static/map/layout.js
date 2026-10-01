@@ -1,6 +1,6 @@
 // Implements: REQ-DIST-017
 
-import { bulk } from './model.js';
+import { bulk } from '../core/model.js';
 import { FACADE, STORY } from './buildings.js';
 
 // Archipelago layout: the repository is a mainland of nested terraces, each external

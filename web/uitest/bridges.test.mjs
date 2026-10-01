@@ -9,7 +9,7 @@ import { describe, it } from 'node:test';
 
 import { box } from './stub.mjs';
 
-const { bridgesFor, bridgeBounds, bridgeHeight } = await import('../static/city.js');
+const { bridgesFor, bridgeBounds, bridgeHeight } = await import('../static/map/city.js');
 
 // A body's radius, as walk.js knows it: what a deck is narrowed by before it will
 // carry anyone.

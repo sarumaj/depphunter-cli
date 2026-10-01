@@ -8,9 +8,9 @@ import { describe, it } from 'node:test';
 import { box } from './stub.mjs';
 
 const THREE = await import('../static/vendor/three.module.min.js');
-const B = await import('../static/buildings.js');
-const D = await import('../static/details.js');
-const { Walker } = await import('../static/walk.js');
+const B = await import('../static/map/buildings.js');
+const D = await import('../static/map/details.js');
+const { Walker } = await import('../static/walk/walk.js');
 
 // A district of files of every height, a unit and a bit apart as the layout packs
 // them, and some packages; ids fixed so the types are too.

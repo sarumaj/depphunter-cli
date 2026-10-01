@@ -12,7 +12,7 @@
 //
 // Implements: REQ-PERF-010
 
-import * as THREE from './vendor/three.module.min.js';
+import * as THREE from '../vendor/three.module.min.js';
 
 /** A cell's side, in world units. */
 export const CELL = 4;

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/sarumaj/depphunter-cli/internal/config"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
@@ -74,5 +75,36 @@ func TestWriteStatic(t *testing.T) {
 	}
 	if strings.Contains(page, `href="style.css"`) || strings.Contains(page, `src="app.js"`) {
 		t.Error("page still references external assets")
+	}
+}
+
+// Modules in subdirectories are inlined by their file names, their relative imports
+// rewritten whichever way they climb; two modules of one name are refused rather
+// than one quietly standing in for the other.
+//
+// Verifies: REQ-EXP-006
+func TestInlineModules(t *testing.T) {
+	file := func(source string) *fstest.MapFile { return &fstest.MapFile{Data: []byte(source)} }
+	imports, err := inlineModules(fstest.MapFS{
+		"app.js":                     file(`import { walk } from './walk/walk.js';`),
+		"walk/walk.js":               file(`import { clamp } from '../core/numbers.js';\nimport * as THREE from '../vendor/three.module.min.js';\nexport const walk = clamp;`),
+		"core/numbers.js":            file(`export const clamp = 1;`),
+		"vendor/three.module.min.js": file(`export const x = 1;`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	walk, _ := base64.StdEncoding.DecodeString(strings.TrimPrefix(imports["depphunter/walk"], "data:text/javascript;base64,"))
+	for _, want := range []string{`"depphunter/numbers"`, `"depphunter/three.module.min"`} {
+		if !strings.Contains(string(walk), want) {
+			t.Errorf("walk.js does not import %s: %s", want, walk)
+		}
+	}
+	if len(imports) != 4 {
+		t.Errorf("%d modules inlined, want 4: %v", len(imports), imports)
+	}
+	_, err = inlineModules(fstest.MapFS{"map/labels.js": file(""), "walk/labels.js": file("")})
+	if err == nil || !strings.Contains(err.Error(), "labels.js") {
+		t.Errorf("two modules named labels.js: %v", err)
 	}
 }
