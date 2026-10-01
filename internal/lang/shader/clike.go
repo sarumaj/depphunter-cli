@@ -43,9 +43,7 @@ func lexC(source []byte, dead []bool) []token {
 	for i := 0; i < len(source); {
 		c := source[i]
 		if lineStart && c != '\n' && line < len(dead) && dead[line] {
-			for i < len(source) && source[i] != '\n' {
-				i++
-			}
+			i = chars.LineEnd(source, i)
 			continue
 		}
 		switch {
@@ -70,9 +68,7 @@ func lexC(source []byte, dead []bool) []token {
 			}
 			continue
 		case c == '/' && i+1 < len(source) && source[i+1] == '/':
-			for i < len(source) && source[i] != '\n' {
-				i++
-			}
+			i = chars.LineEnd(source, i)
 			continue
 		case c == '/' && i+1 < len(source) && source[i+1] == '*':
 			i += 2

@@ -44,9 +44,7 @@ func lex(source []byte) []token {
 		case c == ' ' || c == '\t' || c == '\r':
 			i++
 		case c == '#':
-			for i < len(s) && s[i] != '\n' {
-				i++
-			}
+			i = chars.LineEnd(s, i)
 		case c == '"':
 			var b strings.Builder
 			j := i + 1

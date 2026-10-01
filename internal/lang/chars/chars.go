@@ -28,3 +28,12 @@ func IsIdentStartUTF8(c byte) bool { return IsIdentStart(c) || c >= 0x80 }
 
 // IsIdentUTF8 is IsWord for a name that may be written in any script.
 func IsIdentUTF8(c byte) bool { return IsWord(c) || c >= 0x80 }
+
+// LineEnd is the index of the first newline in s at or after i, or len(s): where
+// a line comment that starts at i ends.
+func LineEnd[S ~string | ~[]byte](s S, i int) int {
+	for i < len(s) && s[i] != '\n' {
+		i++
+	}
+	return i
+}

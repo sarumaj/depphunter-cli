@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // The declaration index reads Kotlin and Scala as text, but not line by line: a
@@ -67,9 +69,7 @@ func (b *blanker) code(i, nesting int, inner bool) int {
 		switch {
 		case character == '/' && i+1 < len(source) && source[i+1] == '/':
 			j := i
-			for j < len(source) && source[j] != '\n' {
-				j++
-			}
+			j = chars.LineEnd(source, j)
 			b.wipe(i, j)
 			i = j
 		case character == '/' && i+1 < len(source) && source[i+1] == '*':

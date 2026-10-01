@@ -40,3 +40,18 @@ func TestEveryByte(t *testing.T) {
 		t.Error("At")
 	}
 }
+
+func TestLineEnd(t *testing.T) {
+	for _, c := range []struct {
+		s    string
+		i    int
+		want int
+	}{{"// a\nb", 0, 4}, {"// a", 0, 4}, {"\n", 0, 0}, {"ab", 2, 2}, {"a\nb\n", 2, 3}} {
+		if got := LineEnd(c.s, c.i); got != c.want {
+			t.Errorf("LineEnd(%q, %d) = %d, want %d", c.s, c.i, got, c.want)
+		}
+		if got := LineEnd([]byte(c.s), c.i); got != c.want {
+			t.Errorf("LineEnd([]byte(%q), %d) = %d, want %d", c.s, c.i, got, c.want)
+		}
+	}
+}

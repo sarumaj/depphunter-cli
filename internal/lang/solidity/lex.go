@@ -1,5 +1,7 @@
 package solidity
 
+import "github.com/sarumaj/depphunter-cli/internal/lang/chars"
+
 // The lexer turns Solidity (and the Yul of assembly blocks, which shares its
 // comments, strings and brackets) into identifiers, punctuation, strings and
 // numbers. Comments - NatSpec's /// and /** */ included - are dropped, and
@@ -44,9 +46,7 @@ func lex(source []byte) []token {
 		case c == ' ' || c == '\t' || c == '\r' || c == '\f' || c == '\v':
 			i++
 		case c == '/' && i+1 < len(s) && s[i+1] == '/':
-			for i < len(s) && s[i] != '\n' {
-				i++
-			}
+			i = chars.LineEnd(s, i)
 		case c == '/' && i+1 < len(s) && s[i+1] == '*':
 			i += 2
 			for i < len(s) && !(s[i] == '*' && i+1 < len(s) && s[i+1] == '/') {

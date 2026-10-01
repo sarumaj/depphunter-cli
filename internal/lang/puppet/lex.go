@@ -60,9 +60,7 @@ func lex(source []byte) []token {
 			i++
 			adjacent = false
 		case c == '#':
-			for i < len(s) && s[i] != '\n' {
-				i++
-			}
+			i = chars.LineEnd(s, i)
 		case c == '/' && chars.At(s, i+1) == '*':
 			end := strings.Index(s[i+2:], "*/")
 			if end < 0 {

@@ -1,6 +1,10 @@
 package cue
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
+)
 
 type kind uint8
 
@@ -48,9 +52,7 @@ func lex(source []byte) []token {
 		case c == ' ' || c == '\t' || c == '\r':
 			i++
 		case c == '/' && i+1 < len(s) && s[i+1] == '/':
-			for i < len(s) && s[i] != '\n' {
-				i++
-			}
+			i = chars.LineEnd(s, i)
 		case c == '"' || c == '\'' || c == '#' && rawStart(s, i):
 			start := i
 			v, j := lexString(s, i, 0)

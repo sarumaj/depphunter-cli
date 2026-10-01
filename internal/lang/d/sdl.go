@@ -1,6 +1,10 @@
 package d
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
+)
 
 // A small reader of SDLang, the format of dub.sdl: tags, one per line (or
 // separated by ;), each a name, values and key=value attributes, with children
@@ -131,9 +135,7 @@ func sdlLex(s string) []sdlToken {
 			}
 			i = j
 		case c == '#' || c == '/' && strings.HasPrefix(s[i:], "//") || c == '-' && strings.HasPrefix(s[i:], "--"):
-			for i < len(s) && s[i] != '\n' {
-				i++
-			}
+			i = chars.LineEnd(s, i)
 		case c == '/' && strings.HasPrefix(s[i:], "/*"):
 			end := strings.Index(s[i+2:], "*/")
 			to := len(s)

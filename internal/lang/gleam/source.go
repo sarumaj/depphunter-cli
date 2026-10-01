@@ -50,9 +50,7 @@ func lex(source []byte) []token {
 		case c == ' ' || c == '\t' || c == '\r':
 			i++
 		case c == '/' && i+1 < len(s) && s[i+1] == '/':
-			for i < len(s) && s[i] != '\n' {
-				i++
-			}
+			i = chars.LineEnd(s, i)
 		case c == '"':
 			start, startLine := i+1, line
 			i++
