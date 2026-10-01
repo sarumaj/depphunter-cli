@@ -54,6 +54,7 @@ func isolate(t *testing.T) {
 	}
 	t.Setenv("ALIRE_SETTINGS_DIR", "")
 	t.Setenv("XDG_DATA_HOME", absolute)
+	t.Setenv("LOCALAPPDATA", absolute) // where Alire keeps them on Windows
 	t.Setenv("HOME", t.TempDir())
 }
 
@@ -529,22 +530,24 @@ func TestSourceDirectoryAboveTheRepository(t *testing.T) {
 //
 // Verifies: REQ-ADA-008
 func TestSharedReleases(t *testing.T) {
-	root := t.TempDir()
+	root, elsewhere := t.TempDir(), t.TempDir() // absolute on every platform
+	at := func(p ...string) string { return filepath.Join(append([]string{elsewhere}, p...)...) }
 	for _, c := range []struct {
 		name       string
 		env        map[string]string
 		goos, want string
 		repository bool
 	}{
-		{"settings", map[string]string{"ALIRE_SETTINGS_DIR": "/opt/alire", "XDG_DATA_HOME": "/data"}, "linux", "/opt/alire/cache/releases", false},
-		{"XDG", map[string]string{"XDG_DATA_HOME": "/data", "HOME": "/home/someone"}, "linux", "/data/alire/releases", false},
-		{"home", map[string]string{"HOME": "/home/someone"}, "linux", "/home/someone/.local/share/alire/releases", false},
-		{"relative", map[string]string{"XDG_DATA_HOME": "data", "HOME": "/home/someone"}, "linux", filepath.Join(root, "data", "alire", "releases"), true},
-		{"Windows", map[string]string{"LOCALAPPDATA": "/local", "XDG_DATA_HOME": "/data"}, "windows", "/local/alire/releases", false},
+		{"settings", map[string]string{"ALIRE_SETTINGS_DIR": at("opt", "alire"), "XDG_DATA_HOME": at("data")}, "linux", at("opt", "alire", "cache", "releases"), false},
+		{"XDG", map[string]string{"XDG_DATA_HOME": at("data"), "HOME": at("home")}, "linux", at("data", "alire", "releases"), false},
+		{"home", map[string]string{"HOME": at("home")}, "linux", at("home", ".local", "share", "alire", "releases"), false},
+		{"relative", map[string]string{"XDG_DATA_HOME": "data", "HOME": at("home")}, "linux", filepath.Join(root, "data", "alire", "releases"), true},
+		{"Windows", map[string]string{"LOCALAPPDATA": at("local"), "XDG_DATA_HOME": at("data")}, "windows", at("local", "alire", "releases"), false},
+		{"Windows profile", map[string]string{"USERPROFILE": at("profile")}, "windows", at("profile", "AppData", "Local", "alire", "releases"), false},
 		{"no home", map[string]string{}, "linux", "", false},
 	} {
 		got, files := sharedReleases(root, func(name string) string { return c.env[name] }, c.goos)
-		if got != filepath.FromSlash(c.want) {
+		if got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
 		if got != "" && files.Contains(filepath.Join(root, "x")) != c.repository {
