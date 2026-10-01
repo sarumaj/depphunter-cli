@@ -467,7 +467,7 @@ but never trusted with anything that decides what is sent where:
 | `layout.js`, `labels.js`, `colors.js` | The archipelago layout, labels, color roles from CSS |
 | `scene.js`, `city.js`, `buildings.js`, `details.js`, `lod.js`, `resolution.js`, `stats.js`, `models.js` | three.js rendering, the procedural city, building types and facades, balconies and rooftop details, culling and level of detail for the props, dynamic resolution, the `?stats` readout, loading the `.glb` models |
 | `pins.js`, `bugs.js`, `fires.js`, `flames.js` | Findings over the map, bugs on buildings, reachable vulnerabilities as fire |
-| `panel.js`, `findinglist.js`, `backpack.js`, `stash.js`, `tour.js` | The side panel, the list of findings, the catch, photographs, the introduction |
+| `panel.js`, `source.js`, `findinglist.js`, `backpack.js`, `stash.js`, `tour.js` | The side panel and the source it shows, the list of findings, the catch, photographs, the introduction |
 | `walk.js`, `tools.js`, `switcher.js`, `hands.js`, `avatar.js`, `parachute.js`, `health.js`, `wind.js` | Walk mode: the walker, its tools and hands, its marker on the map, the parachute, health and stamina |
 
 In the extension (`extension/src`), `extension.ts` runs one server per
