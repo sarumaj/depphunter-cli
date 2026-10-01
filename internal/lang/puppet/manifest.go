@@ -200,9 +200,7 @@ func rubyStatements(source []byte) [][]rToken {
 				flush()
 			}
 		case c == '#':
-			for i < len(s) && s[i] != '\n' {
-				i++
-			}
+			i = chars.LineEnd(s, i)
 		case c == '\'' || c == '"':
 			j := i + 1
 			var b strings.Builder

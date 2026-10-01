@@ -71,9 +71,7 @@ func lex(source []byte) []token {
 			}
 			continue
 		case c == '#':
-			for i < len(s) && s[i] != '\n' {
-				i++
-			}
+			i = chars.LineEnd(s, i)
 			continue
 		}
 		t := token{line: line, column: i - lineStart, first: first}

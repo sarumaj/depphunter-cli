@@ -322,9 +322,7 @@ func lexTokens(source []byte, directives bool) ([]token, []lang.RawImport) {
 }
 
 func lineEnd(source []byte, i int) int {
-	for i < len(source) && source[i] != '\n' {
-		i++
-	}
+	i = chars.LineEnd(source, i)
 	return i
 }
 

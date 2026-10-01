@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // splitArguments splits a call's argument list at the commas outside strings and
@@ -33,9 +34,7 @@ func splitArguments(s string) []string {
 		case c == '\'' || c == '"':
 			quote = c
 		case c == '#':
-			for i < len(s) && s[i] != '\n' {
-				i++
-			}
+			i = chars.LineEnd(s, i)
 			continue
 		case c == '(' || c == '[' || c == '{':
 			depth++

@@ -55,9 +55,7 @@ func lex(source []byte) []token {
 		case c == ' ' || c == '\t' || c == '\r':
 			i++
 		case c == '-' && chars.At(s, i+1) == '-':
-			for i < len(s) && s[i] != '\n' {
-				i++
-			}
+			i = chars.LineEnd(s, i)
 		case c == '{' && chars.At(s, i+1) == '-':
 			// Block comments nest: {- a {- b -} c -} is one comment.
 			depth := 0
