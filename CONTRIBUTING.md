@@ -357,7 +357,9 @@ The helpers keep plugins from growing their own copies: `util.go`
 (`ForEachFile`, `SymbolSet`, `MaxParseSize`), `paths.go` (walking up
 directories, `Layout` and `PathSet` of the files a resolver was given,
 `ClimbsOut`), `text.go`, `memo.go` (`Memo`, a typed `sync.Map`),
-`version.go` and `gitpin.go` (pinning rules). `read.go` holds how a resolver
+`version.go` and `gitpin.go` (pinning rules); a hand-written lexer takes its
+byte tests from `lang/chars` (`IsWord`, `IsIdentStart`, `IsDigit`, `At`, …).
+`read.go` holds how a resolver
 reads ([REQ-LANG-031]): a file under the repository through `lang.Root`
 (`lang.OpenRoot`), which refuses a path that leaves the repository through
 `..` or a symbolic link with `ErrOutside`; this machine's configuration and

@@ -1,6 +1,10 @@
 package r
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
+)
 
 // Token kinds of the R lexer.
 const (
@@ -52,8 +56,6 @@ func identifierPart(c byte) bool {
 	return identifierStart(c) || c >= '0' && c <= '9' || c == '_'
 }
 
-func digit(c byte) bool { return c >= '0' && c <= '9' }
-
 func (l *lexer) emit(k int, s string, line int) {
 	l.tokens = append(l.tokens, token{k: k, s: s, line: line, lineStart: l.lineStart})
 	l.lineStart = false
@@ -98,7 +100,7 @@ func (l *lexer) run() {
 		case c == '`':
 			line := l.line
 			l.emit(tIdentifier, l.quoted('`'), line)
-		case digit(c) || c == '.' && digit(l.peek(1)):
+		case chars.IsDigit(c) || c == '.' && chars.IsDigit(l.peek(1)):
 			l.number()
 		case identifierStart(c):
 			start := l.i
@@ -219,11 +221,11 @@ func (l *lexer) number() {
 	start := l.i
 	if source[l.i] == '0' && (l.peek(1) == 'x' || l.peek(1) == 'X') {
 		l.i += 2
-		for l.i < len(source) && (digit(source[l.i]) || source[l.i] >= 'a' && source[l.i] <= 'f' || source[l.i] >= 'A' && source[l.i] <= 'F') {
+		for l.i < len(source) && (chars.IsDigit(source[l.i]) || source[l.i] >= 'a' && source[l.i] <= 'f' || source[l.i] >= 'A' && source[l.i] <= 'F') {
 			l.i++
 		}
 	} else {
-		for l.i < len(source) && (digit(source[l.i]) || source[l.i] == '.') {
+		for l.i < len(source) && (chars.IsDigit(source[l.i]) || source[l.i] == '.') {
 			l.i++
 		}
 		if l.i < len(source) && (source[l.i] == 'e' || source[l.i] == 'E') {
@@ -231,7 +233,7 @@ func (l *lexer) number() {
 			if l.i < len(source) && (source[l.i] == '+' || source[l.i] == '-') {
 				l.i++
 			}
-			for l.i < len(source) && digit(source[l.i]) {
+			for l.i < len(source) && chars.IsDigit(source[l.i]) {
 				l.i++
 			}
 		}

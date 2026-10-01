@@ -1,6 +1,10 @@
 package cmake
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
+)
 
 // argument is one argument of a command invocation as written: its text with escapes
 // decoded (an escaped ";" is kept as "\;" so it does not split a list), and whether
@@ -42,9 +46,9 @@ func lex(source []byte) []command {
 			l.i++
 		case c == '#':
 			l.comment()
-		case isIdentifierStart(c):
+		case chars.IsIdentStart(c):
 			start, line := l.i, l.line
-			for l.i < len(l.s) && isIdentifier(l.s[l.i]) {
+			for l.i < len(l.s) && chars.IsWord(l.s[l.i]) {
 				l.i++
 			}
 			name := l.s[start:l.i]
@@ -67,12 +71,6 @@ type lexer struct {
 	i    int
 	line int
 }
-
-func isIdentifierStart(c byte) bool {
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-}
-
-func isIdentifier(c byte) bool { return isIdentifierStart(c) || (c >= '0' && c <= '9') }
 
 // bracketOpen reports the number of "=" of a bracket opening `[=*[` at l.i, or -1.
 func (l *lexer) bracketOpen() int {

@@ -4,6 +4,8 @@ import (
 	"path"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // A small reader for Dhall, shared with the purescript plugin (spago.dhall and
@@ -177,18 +179,18 @@ func Lex(source []byte) []Token {
 			i++
 		case c == ' ' || c == '\t' || c == '\r':
 			i++
-		case c == '-' && at(s, i+1) == '-':
+		case c == '-' && chars.At(s, i+1) == '-':
 			for i < len(s) && s[i] != '\n' {
 				i++
 			}
-		case c == '{' && at(s, i+1) == '-':
+		case c == '{' && chars.At(s, i+1) == '-':
 			depth := 0
 			for i < len(s) {
 				switch {
-				case s[i] == '{' && at(s, i+1) == '-':
+				case s[i] == '{' && chars.At(s, i+1) == '-':
 					depth++
 					i += 2
-				case s[i] == '-' && at(s, i+1) == '}':
+				case s[i] == '-' && chars.At(s, i+1) == '}':
 					depth--
 					i += 2
 				default:
@@ -216,7 +218,7 @@ func Lex(source []byte) []Token {
 					default:
 						text.WriteByte(s[i])
 					}
-				case s[i] == '$' && at(s, i+1) == '{':
+				case s[i] == '$' && chars.At(s, i+1) == '{':
 					interpolate = true
 					i = skipInterpolation(s, i+2, &line) - 1
 				default:
@@ -228,7 +230,7 @@ func Lex(source []byte) []Token {
 			}
 			i = min(i+1, len(s))
 			out = append(out, Token{Kind: TokenString, Text: text.String(), Line: start, Interpolate: interpolate})
-		case c == '\'' && at(s, i+1) == '\'':
+		case c == '\'' && chars.At(s, i+1) == '\'':
 			start, text, interpolate := line, strings.Builder{}, false
 			for i += 2; i < len(s); i++ {
 				switch {
@@ -241,7 +243,7 @@ func Lex(source []byte) []Token {
 				case strings.HasPrefix(s[i:], "''"):
 					i += 2
 					goto closed
-				case s[i] == '$' && at(s, i+1) == '{':
+				case s[i] == '$' && chars.At(s, i+1) == '{':
 					interpolate = true
 					i = skipInterpolation(s, i+2, &line) - 1
 				default:
@@ -259,7 +261,7 @@ func Lex(source []byte) []Token {
 			emit(TokenURL, s[i:j], line)
 			i = j
 		case strings.HasPrefix(s[i:], "./") || strings.HasPrefix(s[i:], "../") || strings.HasPrefix(s[i:], "~/") ||
-			c == '/' && i+1 < len(s) && (isWord(s[i+1]) || s[i+1] == '.' || s[i+1] == '-'):
+			c == '/' && i+1 < len(s) && (chars.IsWord(s[i+1]) || s[i+1] == '.' || s[i+1] == '-'):
 			j := locationEnd(s, i)
 			emit(TokenPath, s[i:j], line)
 			i = j
@@ -269,7 +271,7 @@ func Lex(source []byte) []Token {
 			i = j
 		case strings.HasPrefix(s[i:], "sha256:"):
 			j := i + 7
-			for j < len(s) && isWord(s[j]) {
+			for j < len(s) && chars.IsWord(s[j]) {
 				j++
 			}
 			emit(TokenHash, s[i:j], line)
@@ -285,7 +287,7 @@ func Lex(source []byte) []Token {
 			j := i + 1
 			for j < len(s) {
 				d := s[j]
-				if isWord(d) || d == '-' && at(s, j+1) != '>' || d == '/' && isWord(at(s, j+1)) {
+				if chars.IsWord(d) || d == '-' && chars.At(s, j+1) != '>' || d == '/' && chars.IsWord(chars.At(s, j+1)) {
 					j++
 					continue
 				}
@@ -295,7 +297,7 @@ func Lex(source []byte) []Token {
 			i = j
 		case c >= '0' && c <= '9':
 			j := i
-			for j < len(s) && (isWord(s[j]) || s[j] == '.') {
+			for j < len(s) && (chars.IsWord(s[j]) || s[j] == '.') {
 				j++
 			}
 			emit(TokenNumber, s[i:j], line)
@@ -854,17 +856,6 @@ func (r *dhallReader) skipUnion() {
 			return
 		}
 	}
-}
-
-func at(s string, i int) byte {
-	if i < len(s) {
-		return s[i]
-	}
-	return 0
-}
-
-func isWord(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'
 }
 
 // Spago reports whether a Dhall file is spago's: the package set

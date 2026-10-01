@@ -1,6 +1,10 @@
 package puppet
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
+)
 
 type tokenKind uint8
 
@@ -59,7 +63,7 @@ func lex(source []byte) []token {
 			for i < len(s) && s[i] != '\n' {
 				i++
 			}
-		case c == '/' && at(s, i+1) == '*':
+		case c == '/' && chars.At(s, i+1) == '*':
 			end := strings.Index(s[i+2:], "*/")
 			if end < 0 {
 				end = len(s) - i - 2
@@ -72,7 +76,7 @@ func lex(source []byte) []token {
 			start := line
 			j := i + 1
 			for ; j < len(s) && s[j] != '\''; j++ {
-				if s[j] == '\\' && (at(s, j+1) == '\'' || at(s, j+1) == '\\') {
+				if s[j] == '\\' && (chars.At(s, j+1) == '\'' || chars.At(s, j+1) == '\\') {
 					j++
 				}
 				if s[j] == '\n' {
@@ -88,7 +92,7 @@ func lex(source []byte) []token {
 			out = append(out, token{kind: tString, text: text, line: start, interpolate: interpolate, adjacent: adjacent})
 			adjacent = true
 			i = j
-		case c == '@' && at(s, i+1) == '(':
+		case c == '@' && chars.At(s, i+1) == '(':
 			end := strings.IndexAny(s[i:], ")\n")
 			if end < 0 || s[i+end] != ')' {
 				emit(tPunctuation, "@", line)
@@ -102,10 +106,10 @@ func lex(source []byte) []token {
 			i += end + 1
 		case c == '$':
 			j := i + 1
-			if at(s, j) == '{' { // ${x} outside a string: rare, read as a variable
+			if chars.At(s, j) == '{' { // ${x} outside a string: rare, read as a variable
 				j++
 			}
-			for j < len(s) && (isWord(s[j]) || s[j] == ':' && at(s, j+1) == ':') {
+			for j < len(s) && (chars.IsWord(s[j]) || s[j] == ':' && chars.At(s, j+1) == ':') {
 				if s[j] == ':' {
 					j++
 				}
@@ -128,7 +132,7 @@ func lex(source []byte) []token {
 			}
 			emit(tRegex, s[i+1:j], line)
 			i = j + 1
-		case isLower(c) || c == '_' || c == ':' && at(s, i+1) == ':' && (isLower(at(s, i+2)) || at(s, i+2) == '_'):
+		case chars.IsLower(c) || c == '_' || c == ':' && chars.At(s, i+1) == ':' && (chars.IsLower(chars.At(s, i+2)) || chars.At(s, i+2) == '_'):
 			j := name(s, i)
 			emit(tName, s[i:j], line)
 			i = j
@@ -138,7 +142,7 @@ func lex(source []byte) []token {
 			i = j
 		case c >= '0' && c <= '9':
 			j := i
-			for j < len(s) && (isWord(s[j]) || s[j] == '.') {
+			for j < len(s) && (chars.IsWord(s[j]) || s[j] == '.') {
 				j++
 			}
 			emit(tNumber, s[i:j], line)
@@ -163,9 +167,9 @@ func name(s string, i int) int {
 	j := i
 	for j < len(s) {
 		switch {
-		case isWord(s[j]):
+		case chars.IsWord(s[j]):
 			j++
-		case s[j] == ':' && at(s, j+1) == ':' && isWord(at(s, j+2)):
+		case s[j] == ':' && chars.At(s, j+1) == ':' && chars.IsWord(chars.At(s, j+2)):
 			j += 2
 		default:
 			return j
@@ -188,10 +192,10 @@ func dqString(s string, i int, line *int) (string, bool, int) {
 			}
 			b.WriteByte(s[i+1])
 			i += 2
-		case s[i] == '$' && at(s, i+1) == '{':
+		case s[i] == '$' && chars.At(s, i+1) == '{':
 			interpolate = true
 			i = skipInterpolate(s, i+2, line, 0)
-		case s[i] == '$' && (isWord(at(s, i+1)) || at(s, i+1) == ':'):
+		case s[i] == '$' && (chars.IsWord(chars.At(s, i+1)) || chars.At(s, i+1) == ':'):
 			interpolate = true
 			i++
 		default:
@@ -288,17 +292,4 @@ func regexAllowed(out []token) bool {
 		return keyword[t.text]
 	}
 	return t.text != ")" && t.text != "]" && t.text != "}"
-}
-
-func at(s string, i int) byte {
-	if i < len(s) {
-		return s[i]
-	}
-	return 0
-}
-
-func isLower(c byte) bool { return c >= 'a' && c <= 'z' }
-
-func isWord(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'
 }

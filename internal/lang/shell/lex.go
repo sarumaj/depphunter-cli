@@ -3,6 +3,8 @@ package shell
 import (
 	"cmp"
 	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // The scanner reads a shell script as the shell does, as far as dependencies need:
@@ -795,7 +797,7 @@ func (p *parser) dollar() (part, bool) {
 	case n == '_' || n >= 'a' && n <= 'z' || n >= 'A' && n <= 'Z':
 		p.i++
 		s := p.i
-		for p.i < len(p.source) && (p.source[p.i] == '_' || isAlnum(p.source[p.i])) {
+		for p.i < len(p.source) && (p.source[p.i] == '_' || chars.IsAlnum(p.source[p.i])) {
 			p.i++
 		}
 		return part{kind: pParameter, text: string(p.source[s:p.i])}, true
@@ -804,10 +806,6 @@ func (p *parser) dollar() (part, bool) {
 		return part{kind: pParameter, text: string(n)}, true
 	}
 	return part{}, false
-}
-
-func isAlnum(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
 // skipBraces skips a ${...} body after its "{", through the matching "}".
@@ -962,7 +960,7 @@ func validName(s string) bool {
 		return false
 	}
 	for i := 0; i < len(s); i++ {
-		if s[i] != '_' && !isAlnum(s[i]) {
+		if s[i] != '_' && !chars.IsAlnum(s[i]) {
 			return false
 		}
 	}

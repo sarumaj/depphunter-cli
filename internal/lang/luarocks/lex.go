@@ -1,6 +1,10 @@
 package luarocks
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
+)
 
 // Kind is what a token is.
 type Kind uint8
@@ -58,12 +62,6 @@ type lexer struct {
 	depth  int // nesting of interpolated strings, bounded
 }
 
-func isNameStart(c byte) bool {
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c >= 0x80
-}
-
-func isDigit(c byte) bool { return c >= '0' && c <= '9' }
-
 // punctuations are the operators of more than one character, longest first.
 var punctuations = []string{"...", "..=", "//=", "..", "==", "~=", "<=", ">=", "//", "::", "<<", ">>",
 	"->", "+=", "-=", "*=", "/=", "%=", "^="}
@@ -107,12 +105,12 @@ func (l *lexer) token() Token {
 		return Token{Kind: k, Text: text, Line: line, Start: start, End: l.i}
 	}
 	switch {
-	case isNameStart(c):
-		for l.i < len(l.source) && (isNameStart(l.source[l.i]) || isDigit(l.source[l.i])) {
+	case chars.IsIdentStartUTF8(c):
+		for l.i < len(l.source) && (chars.IsIdentStartUTF8(l.source[l.i]) || chars.IsDigit(l.source[l.i])) {
 			l.i++
 		}
 		return token(Name, string(l.source[start:l.i]))
-	case isDigit(c) || (c == '.' && isDigit(l.peek(1))):
+	case chars.IsDigit(c) || (c == '.' && chars.IsDigit(l.peek(1))):
 		l.number()
 		return token(Number, string(l.source[start:l.i]))
 	case c == '"' || c == '\'':
@@ -157,7 +155,7 @@ func (l *lexer) number() {
 	for l.i < len(l.source) {
 		c := l.source[l.i]
 		switch {
-		case isDigit(c) || isNameStart(c) && c < 0x80 || c == '.':
+		case chars.IsDigit(c) || chars.IsIdentStartUTF8(c) && c < 0x80 || c == '.':
 			l.i++
 			if (!hex && (c == 'e' || c == 'E')) || (hex && (c == 'p' || c == 'P')) {
 				if l.i < len(l.source) && (l.source[l.i] == '+' || l.source[l.i] == '-') {
@@ -230,9 +228,9 @@ func (l *lexer) quoted(q byte) string {
 					b = append(b, string(rune(v))...)
 				}
 			default:
-				if isDigit(e) {
+				if chars.IsDigit(e) {
 					v := int(e - '0')
-					for n := 1; n < 3 && l.i < len(l.source) && isDigit(l.source[l.i]); n++ {
+					for n := 1; n < 3 && l.i < len(l.source) && chars.IsDigit(l.source[l.i]); n++ {
 						v = v*10 + int(l.source[l.i]-'0')
 						l.i++
 					}
@@ -251,7 +249,7 @@ func (l *lexer) quoted(q byte) string {
 
 func hexValue(c byte) int {
 	switch {
-	case isDigit(c):
+	case chars.IsDigit(c):
 		return int(c - '0')
 	case c >= 'a' && c <= 'f':
 		return int(c-'a') + 10

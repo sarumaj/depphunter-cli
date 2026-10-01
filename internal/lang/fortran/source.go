@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // Import kinds, carried in RawImport.Name.
@@ -326,7 +327,6 @@ const maxTokens = 192
 func isLetter(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_' || c == '$'
 }
-func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 // tokenize splits a statement's text into at most limit tokens.
 func tokenize(s string, limit int) []token {
@@ -338,14 +338,14 @@ func tokenize(s string, limit int) []token {
 			i++
 		case isLetter(c):
 			j := i + 1
-			for j < len(s) && (isLetter(s[j]) || isDigit(s[j])) {
+			for j < len(s) && (isLetter(s[j]) || chars.IsDigit(s[j])) {
 				j++
 			}
 			out = append(out, token{text: s[i:j], lower: strings.ToLower(s[i:j]), kind: 'w'})
 			i = j
-		case isDigit(c):
+		case chars.IsDigit(c):
 			j := i + 1
-			for j < len(s) && (isDigit(s[j]) || s[j] == '.' || s[j] == '_' || isLetter(s[j])) {
+			for j < len(s) && (chars.IsDigit(s[j]) || s[j] == '.' || s[j] == '_' || isLetter(s[j])) {
 				j++
 			}
 			out = append(out, token{text: s[i:j], kind: 'n'})

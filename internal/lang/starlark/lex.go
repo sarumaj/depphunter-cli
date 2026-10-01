@@ -13,6 +13,8 @@ package starlark
 import (
 	"strings"
 	"unicode/utf8"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // Token kinds.
@@ -81,9 +83,9 @@ func lex(source []byte) []token {
 			var v string
 			v, i, line, lineStart = lexString(s, i, false, line, lineStart)
 			t.kind, t.text = tString, v
-		case isIdentifierStart(c):
+		case chars.IsIdentStartUTF8(c):
 			j := i
-			for j < len(s) && isIdentifierPart(s[j]) {
+			for j < len(s) && chars.IsIdentUTF8(s[j]) {
 				j++
 			}
 			word := s[i:j]
@@ -98,7 +100,7 @@ func lex(source []byte) []token {
 			i = j
 		case c >= '0' && c <= '9' || c == '.' && i+1 < len(s) && s[i+1] >= '0' && s[i+1] <= '9':
 			j := i + 1
-			for j < len(s) && (isIdentifierPart(s[j]) || s[j] == '.' ||
+			for j < len(s) && (chars.IsIdentUTF8(s[j]) || s[j] == '.' ||
 				(s[j] == '+' || s[j] == '-') && (s[j-1] == 'e' || s[j-1] == 'E') && !strings.HasPrefix(strings.ToLower(s[i:j]), "0x")) {
 				j++
 			}
@@ -121,12 +123,6 @@ func lex(source []byte) []token {
 	}
 	return tokens
 }
-
-func isIdentifierStart(c byte) bool {
-	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
-}
-
-func isIdentifierPart(c byte) bool { return isIdentifierStart(c) || c >= '0' && c <= '9' }
 
 // stringPrefix reports whether an identifier directly before a quote is a string
 // prefix: r (raw), b (bytes), or both.

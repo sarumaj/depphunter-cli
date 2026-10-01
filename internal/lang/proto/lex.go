@@ -1,5 +1,7 @@
 package proto
 
+import "github.com/sarumaj/depphunter-cli/internal/lang/chars"
+
 // The lexer reads the tokens of a .proto file: identifiers, numbers, strings (single
 // or double quoted, escapes kept), punctuation, with // and /* */ comments dropped.
 // Protocol Buffers' grammar is small and regular, so a scanner is all the plugin needs
@@ -19,12 +21,6 @@ type token struct {
 	text string // an identifier, a number, a punctuation character or a string's value
 	line int
 }
-
-func isLetter(c byte) bool {
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-}
-
-func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 // lex splits source into tokens. It never fails: an unterminated string or comment ends
 // at the end of the file.
@@ -77,16 +73,16 @@ func lex(source []byte) []token {
 			}
 			i++ // the closing quote
 			tokens = append(tokens, token{kind: tString, text: string(b), line: start})
-		case isLetter(c):
+		case chars.IsIdentStart(c):
 			j := i
-			for j < len(source) && (isLetter(source[j]) || isDigit(source[j])) {
+			for j < len(source) && (chars.IsIdentStart(source[j]) || chars.IsDigit(source[j])) {
 				j++
 			}
 			tokens = append(tokens, token{kind: tIdentifier, text: string(source[i:j]), line: line})
 			i = j
-		case isDigit(c):
+		case chars.IsDigit(c):
 			j := i
-			for j < len(source) && (isLetter(source[j]) || isDigit(source[j]) || source[j] == '.' ||
+			for j < len(source) && (chars.IsIdentStart(source[j]) || chars.IsDigit(source[j]) || source[j] == '.' ||
 				((source[j] == '-' || source[j] == '+') && (source[j-1] == 'e' || source[j-1] == 'E'))) {
 				j++
 			}

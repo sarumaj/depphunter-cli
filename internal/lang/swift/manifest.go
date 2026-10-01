@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // Package.swift is Swift code, but its dependencies and targets are written as calls
@@ -101,7 +102,7 @@ func calls(source, name string) []call {
 		}
 		at := i + j
 		i = at + len(needle)
-		if at > 0 && identifierCharacter(b[at-1]) || i < len(b) && identifierCharacter(b[i]) {
+		if at > 0 && chars.IsWord(b[at-1]) || i < len(b) && chars.IsWord(b[i]) {
 			continue
 		}
 		k := i
@@ -117,10 +118,6 @@ func calls(source, name string) []call {
 		}
 		out = append(out, call{arguments: splitArguments(source[k+1 : end]), line: strings.Count(source[:at], "\n") + 1})
 	}
-}
-
-func identifierCharacter(c byte) bool {
-	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
 // closing returns the index of the bracket closing the one at b[open], or -1.
@@ -172,7 +169,7 @@ func splitArguments(s string) []string {
 // label.
 func label(argument string) (string, string) {
 	i := 0
-	for i < len(argument) && identifierCharacter(argument[i]) {
+	for i < len(argument) && chars.IsWord(argument[i]) {
 		i++
 	}
 	if i > 0 && i < len(argument) && argument[i] == ':' {

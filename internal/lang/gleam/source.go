@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // Import kinds, carried in RawImport.Name.
@@ -66,23 +67,23 @@ func lex(source []byte) []token {
 			}
 			out = append(out, token{tString, s[start:min(i, len(s))], startLine})
 			i++
-		case isLower(c) || c == '_':
+		case chars.IsLower(c) || c == '_':
 			j := i + 1
-			for j < len(s) && isWord(s[j]) {
+			for j < len(s) && chars.IsWord(s[j]) {
 				j++
 			}
 			out = append(out, token{tIdentifier, s[i:j], line})
 			i = j
 		case c >= 'A' && c <= 'Z':
 			j := i + 1
-			for j < len(s) && isWord(s[j]) {
+			for j < len(s) && chars.IsWord(s[j]) {
 				j++
 			}
 			out = append(out, token{tUpper, s[i:j], line})
 			i = j
 		case c >= '0' && c <= '9':
 			j := i + 1
-			for j < len(s) && (isWord(s[j]) || s[j] == '.' && j+1 < len(s) && s[j+1] >= '0' && s[j+1] <= '9') {
+			for j < len(s) && (chars.IsWord(s[j]) || s[j] == '.' && j+1 < len(s) && s[j+1] >= '0' && s[j+1] <= '9') {
 				j++
 			}
 			out = append(out, token{tOther, s[i:j], line})
@@ -98,12 +99,6 @@ func lex(source []byte) []token {
 		}
 	}
 	return out
-}
-
-func isLower(c byte) bool { return c >= 'a' && c <= 'z' }
-
-func isWord(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'
 }
 
 // extractSource reads a module's imports, its @external targets and its

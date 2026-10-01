@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // A path is evaluated into a string that may start with one of these markers, for the
@@ -539,7 +540,7 @@ func splitParameter(inner string) (string, string) {
 		return inner, ""
 	}
 	i := 0
-	for i < len(inner) && (inner[i] == '_' || isAlnum(inner[i])) {
+	for i < len(inner) && (inner[i] == '_' || chars.IsAlnum(inner[i])) {
 		i++
 	}
 	if i == 0 && len(inner) > 0 {

@@ -3,6 +3,8 @@ package perl
 import (
 	"bytes"
 	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
 )
 
 // Token kinds. Perl cannot be tokenized without knowing what the parser expects
@@ -72,12 +74,6 @@ func lex(source []byte) []token {
 	return l.tokens
 }
 
-func identifierStart(c byte) bool {
-	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
-}
-
-func identifierByte(c byte) bool { return identifierStart(c) || c >= '0' && c <= '9' }
-
 func (l *lexer) at(i int) byte {
 	if i >= 0 && i < len(l.source) {
 		return l.source[i]
@@ -121,18 +117,18 @@ func (l *lexer) run() {
 			if len(l.heredocs) > 0 {
 				l.bodies()
 			}
-			if l.at(l.i) == '=' && identifierStart(l.at(l.i+1)) {
+			if l.at(l.i) == '=' && chars.IsIdentStartUTF8(l.at(l.i+1)) {
 				l.pod()
 			}
 		case c == ' ' || c == '\t' || c == '\r' || c == '\f' || c == '\v':
 			l.i++
 		case c == '#':
 			l.toEOL()
-		case c == '=' && l.i == 0 && identifierStart(l.at(1)):
+		case c == '=' && l.i == 0 && chars.IsIdentStartUTF8(l.at(1)):
 			l.pod()
 		case c == 4 || c == 26: // ^D, ^Z end the program text
 			return
-		case identifierStart(c):
+		case chars.IsIdentStartUTF8(c):
 			if !l.word() {
 				return
 			}
@@ -142,9 +138,9 @@ func (l *lexer) run() {
 			l.scalar()
 		case c == '@':
 			l.array()
-		case c == '%' && !l.operand && (identifierStart(l.at(l.i+1)) || strings.IndexByte("{$^+-:", l.at(l.i+1)) >= 0):
+		case c == '%' && !l.operand && (chars.IsIdentStartUTF8(l.at(l.i+1)) || strings.IndexByte("{$^+-:", l.at(l.i+1)) >= 0):
 			l.array()
-		case c == '*' && !l.operand && (identifierStart(l.at(l.i+1)) || l.at(l.i+1) == '{'):
+		case c == '*' && !l.operand && (chars.IsIdentStartUTF8(l.at(l.i+1)) || l.at(l.i+1) == '{'):
 			l.array()
 		case c == '\'' || c == '"' || c == '`':
 			line := l.line
@@ -180,7 +176,7 @@ func (l *lexer) toEOL() {
 func (l *lexer) pod() {
 	for l.i < len(l.source) {
 		end := bytes.IndexByte(l.source[l.i:], '\n')
-		cut := bytes.HasPrefix(l.source[l.i:], []byte("=cut")) && !identifierByte(l.at(l.i+4))
+		cut := bytes.HasPrefix(l.source[l.i:], []byte("=cut")) && !chars.IsIdentUTF8(l.at(l.i+4))
 		if end < 0 {
 			l.i = len(l.source)
 			return
@@ -188,7 +184,7 @@ func (l *lexer) pod() {
 		l.i += end + 1
 		l.line++
 		if cut {
-			if l.at(l.i) == '=' && identifierStart(l.at(l.i+1)) {
+			if l.at(l.i) == '=' && chars.IsIdentStartUTF8(l.at(l.i+1)) {
 				continue // another block right after
 			}
 			return
@@ -257,16 +253,16 @@ func (l *lexer) heredoc() bool {
 		term = string(l.source[k+1 : k+1+end])
 		interpolate = q != '\''
 		j = k + 1 + end + 1
-	case k == j && identifierStart(q) && (!l.operand || indent):
+	case k == j && chars.IsIdentStartUTF8(q) && (!l.operand || indent):
 		e := j
-		for e < len(l.source) && identifierByte(l.source[e]) {
+		for e < len(l.source) && chars.IsIdentUTF8(l.source[e]) {
 			e++
 		}
 		term = string(l.source[j:e])
 		j = e
-	case k == j && q == '\\' && identifierStart(l.at(j+1)):
+	case k == j && q == '\\' && chars.IsIdentStartUTF8(l.at(j+1)):
 		e := j + 1
-		for e < len(l.source) && identifierByte(l.source[e]) {
+		for e < len(l.source) && chars.IsIdentUTF8(l.source[e]) {
 			e++
 		}
 		term = string(l.source[j+1 : e])
@@ -294,7 +290,7 @@ func (l *lexer) readline() bool {
 		}
 		return false
 	}
-	for j < len(l.source) && (identifierByte(l.source[j]) || l.source[j] == '$' || l.source[j] == ':') {
+	for j < len(l.source) && (chars.IsIdentUTF8(l.source[j]) || l.source[j] == '$' || l.source[j] == ':') {
 		j++
 	}
 	if l.at(j) != '>' {
@@ -355,7 +351,7 @@ func (l *lexer) word() bool {
 	start, line := l.i, l.line
 	j := l.i
 	for {
-		for j < len(l.source) && identifierByte(l.source[j]) {
+		for j < len(l.source) && chars.IsIdentUTF8(l.source[j]) {
 			j++
 		}
 		if l.at(j) == ':' && l.at(j+1) == ':' {
@@ -409,7 +405,7 @@ func (l *lexer) quoteContext(start, end int) bool {
 	}
 	d := l.at(k)
 	switch {
-	case k >= len(l.source), identifierByte(d), d == '#' && space:
+	case k >= len(l.source), chars.IsIdentUTF8(d), d == '#' && space:
 		return false
 	case d == '=' && l.at(k+1) == '>', d == ',', d == ';', d == ')', d == ']', d == '}', d == '>' && space, d == '=' && space:
 		return false
@@ -468,7 +464,7 @@ func (l *lexer) quote(operator string, parts int, line int) {
 // "."), reporting whether there was one.
 func (l *lexer) format(j int) bool {
 	k := j
-	for k < len(l.source) && (l.source[k] == ' ' || l.source[k] == '\t' || identifierByte(l.source[k]) || l.source[k] == ':') {
+	for k < len(l.source) && (l.source[k] == ' ' || l.source[k] == '\t' || chars.IsIdentUTF8(l.source[k]) || l.source[k] == ':') {
 		k++
 	}
 	if l.at(k) != '=' || l.at(k+1) == '>' || l.at(k+1) == '=' {
@@ -506,7 +502,7 @@ func (l *lexer) number() {
 	j := l.i
 	if l.source[j] == '0' && (l.at(j+1) == 'x' || l.at(j+1) == 'X' || l.at(j+1) == 'b' || l.at(j+1) == 'B') {
 		j += 2
-		for j < len(l.source) && (identifierByte(l.source[j])) {
+		for j < len(l.source) && (chars.IsIdentUTF8(l.source[j])) {
 			j++
 		}
 	} else {
@@ -535,9 +531,9 @@ func (l *lexer) number() {
 // digits. It returns the end, or j when there is none.
 func (l *lexer) name(j int) int {
 	switch c := l.at(j); {
-	case identifierStart(c) || c == ':' && l.at(j+1) == ':':
+	case chars.IsIdentStartUTF8(c) || c == ':' && l.at(j+1) == ':':
 		for {
-			for j < len(l.source) && identifierByte(l.source[j]) {
+			for j < len(l.source) && chars.IsIdentUTF8(l.source[j]) {
 				j++
 			}
 			if l.at(j) == ':' && l.at(j+1) == ':' {
@@ -562,14 +558,14 @@ func (l *lexer) name(j int) int {
 func (l *lexer) scalar() {
 	j := l.i + 1
 	if l.at(j) == '#' {
-		if n := l.at(j + 1); n == '{' || n == '$' || identifierStart(n) {
+		if n := l.at(j + 1); n == '{' || n == '$' || chars.IsIdentStartUTF8(n) {
 			j++
 		} else {
 			l.emitVariable(j + 1)
 			return
 		}
 	}
-	for l.at(j) == '$' && (identifierStart(l.at(j+1)) || l.at(j+1) == '{' || l.at(j+1) == '$' || l.at(j+1) == ':' && l.at(j+2) == ':') {
+	for l.at(j) == '$' && (chars.IsIdentStartUTF8(l.at(j+1)) || l.at(j+1) == '{' || l.at(j+1) == '$' || l.at(j+1) == ':' && l.at(j+2) == ':') {
 		j++
 	}
 	if e := l.name(j); e > j {
@@ -587,7 +583,7 @@ func (l *lexer) scalar() {
 // array reads "@name", "@{", "@$ref", "%name", "%$ref", "*glob" and the like.
 func (l *lexer) array() {
 	j := l.i + 1
-	for l.at(j) == '$' && (identifierStart(l.at(j+1)) || l.at(j+1) == '{' || l.at(j+1) == '$' || l.at(j+1) == ':') {
+	for l.at(j) == '$' && (chars.IsIdentStartUTF8(l.at(j+1)) || l.at(j+1) == '{' || l.at(j+1) == '$' || l.at(j+1) == ':') {
 		j++
 	}
 	if e := l.name(j); e > j {

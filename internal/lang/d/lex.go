@@ -1,6 +1,10 @@
 package d
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang/chars"
+)
 
 // The lexer reads what the extraction needs from D: identifiers (keywords
 // included), punctuation, and every literal as one token, so nothing inside a
@@ -84,14 +88,6 @@ func (l *lexer) count(from, to int) {
 	l.line += strings.Count(l.s[from:min(to, len(l.s))], "\n")
 }
 
-func identifierStart(c byte) bool {
-	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
-}
-
-func identifierCharacter(c byte) bool { return identifierStart(c) || c >= '0' && c <= '9' }
-
-func digit(c byte) bool { return c >= '0' && c <= '9' }
-
 // operators are D's operators longer than one character, longest first per start.
 var operators = []string{">>>=", "...", "<<=", ">>=", ">>>", "^^=", "..", "=>", "==", "!=", "<=", ">=", "+=", "-=", "*=",
 	"/=", "%=", "&=", "|=", "^=", "~=", "&&", "||", "++", "--", "<<", ">>", "^^"}
@@ -134,9 +130,9 @@ func (l *lexer) run() {
 				l.emit(kPunctuation, "#")
 				l.i++
 			}
-		case identifierStart(c):
+		case chars.IsIdentStartUTF8(c):
 			l.identifier()
-		case digit(c) || c == '.' && l.i+1 < len(s) && digit(s[l.i+1]):
+		case chars.IsDigit(c) || c == '.' && l.i+1 < len(s) && chars.IsDigit(s[l.i+1]):
 			l.number()
 		default:
 			l.punctuation()
@@ -247,9 +243,9 @@ func (l *lexer) delimited(from int) {
 				}
 			}
 		}
-	case identifierStart(open):
+	case chars.IsIdentStartUTF8(open):
 		j := from
-		for j < len(s) && identifierCharacter(s[j]) {
+		for j < len(s) && chars.IsIdentUTF8(s[j]) {
 			j++
 		}
 		id := s[from:j]
@@ -306,7 +302,7 @@ func (l *lexer) character() {
 func (l *lexer) identifier() {
 	s := l.s
 	j := l.i
-	for j < len(s) && identifierCharacter(s[j]) {
+	for j < len(s) && chars.IsIdentUTF8(s[j]) {
 		j++
 	}
 	word := s[l.i:j]
@@ -342,9 +338,9 @@ func (l *lexer) number() {
 	for j < len(s) {
 		c := s[j]
 		switch {
-		case identifierCharacter(c) && c < 0x80:
+		case chars.IsIdentUTF8(c) && c < 0x80:
 			j++
-		case c == '.' && j+1 < len(s) && digit(s[j+1]):
+		case c == '.' && j+1 < len(s) && chars.IsDigit(s[j+1]):
 			j++
 		case (c == '+' || c == '-') && j > l.i && strings.ContainsRune("eEpP", rune(s[j-1])) && !strings.HasPrefix(s[l.i:], "0x") && !strings.HasPrefix(s[l.i:], "0X"):
 			j++
