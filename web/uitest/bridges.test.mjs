@@ -9,7 +9,7 @@ import { describe, it } from 'node:test';
 
 import { box } from './stub.mjs';
 
-const { bridgesFor, bridgeBounds, bridgeHeight } = await import('../static/map/city.js');
+const { bridgesFor, bridgeBounds, bridgeHeight, rampsFor, rampHeight, makeProps } = await import('../static/map/city.js');
 
 // A body's radius, as walk.js knows it: what a deck is narrowed by before it will
 // carry anyone.
@@ -79,5 +79,46 @@ describe('a bridge deck', () => {
     const [r] = bridgesFor(twoIslands());
     const mid = (r.from + r.to) / 2;
     assert.equal(bridgeHeight(r, mid, r.across), bridgeHeight(r, mid, r.across, 0));
+  });
+});
+
+describe('the road off a bridge', () => {
+  // Two shores, each with its terrace standing 1.2 in from the water, as layout.js
+  // places them: the bridge lands on the shore, short of the terrace's streets.
+  function shoresWithStreets() {
+    const main = box('land', 0, 0, 8.4, 8.4), island = box('land', 14, 0, 6.4, 6.4);
+    const mainBlock = box('terrace', 0, 0, 6, 6, { y: SHORE, h: 0.28 });
+    const islandBlock = box('terrace', 14, 0, 4, 4, { y: SHORE, h: 0.28 });
+    mainBlock.node = main.node;
+    islandBlock.node = island.node;
+    for (const b of [main, island]) Object.assign(b, { y: 0, h: SHORE });
+    return [main, island, mainBlock, islandBlock];
+  }
+
+  // Verifies: REQ-CITY-038
+  it('carries the deck on up each shore to the streets of its terrace', () => {
+    const boxes = shoresWithStreets();
+    const [bridge] = bridgesFor(boxes);
+    const ways = rampsFor(boxes).filter(r => r.approach);
+    assert.equal(ways.length, 2, 'a bridge end with no road up to the streets');
+    for (const r of ways) {
+      assert.equal(r.width, bridgeBounds(bridge).z1 - bridgeBounds(bridge).z0, 'the road narrows off the bridge');
+      const middle = r.origin[1] + r.width / 2;
+      // From the deck's end, at the shore's height, to the terrace's top at its wall.
+      assert.ok(Math.abs(rampHeight(r, r.origin[0], middle) - SHORE) < 1e-9);
+      const top = r.origin[0] + r.u[0] * r.len;
+      assert.ok(Math.abs(rampHeight(r, top, middle) - (SHORE + 0.28)) < 1e-9);
+      assert.ok(Math.abs(bridgeHeight(bridge, r.origin[0], middle) - SHORE) < 1e-9, 'the road and the deck meet at different heights');
+    }
+  });
+
+  // Verifies: REQ-CITY-038
+  it('plants no tree on it', () => {
+    const boxes = shoresWithStreets();
+    const ways = rampsFor(boxes).filter(r => r.approach);
+    const group = makeProps(boxes, m => m, 'city');
+    for (const o of group.userData.obstacles) {
+      for (const r of ways) assert.ok(o.x < r.x0 || o.x > r.x1 || o.z < r.z0 || o.z > r.z1, 'a tree or a lamp stands on the road');
+    }
   });
 });

@@ -516,6 +516,7 @@ export function rampsFor(boxes) {
       if (best) ramps.push(best);
     }
   }
+  ramps.push(...approaches(boxes));
   rampCache.set(boxes, ramps);
   return ramps;
 }
@@ -551,6 +552,46 @@ function wayUp(t, c, kids, stairs) {
     }
   }
   return best;
+}
+
+// Where a bridge comes ashore, a ramp as wide as its deck carries the road on, straight
+// up the shore, to the ring road of the terrace standing there: the bridge and the
+// streets are one road. A bridge that lands off the terrace's side keeps to the shore.
+// Implements: REQ-CITY-038
+function approaches(boxes) {
+  const terraces = new Map();
+  for (const b of boxes) if (b.kind === 'terrace') terraces.set(b.node, b);
+  const ways = [];
+  for (const bridge of bridgesFor(boxes)) {
+    const x = bridge.axis === 'x';
+    for (const end of [bridge.from, bridge.to]) {
+      const shore = [bridge.a, bridge.b].find(l => {
+        const r = rect(l);
+        return x ? end >= r.x0 && end <= r.x1 : end >= r.z0 && end <= r.z1;
+      });
+      const t = shore && terraces.get(shore.node);
+      if (!t) continue;
+      const tr = rect(t);
+      const [low, high] = x ? [tr.z0, tr.z1] : [tr.x0, tr.x1];
+      if (bridge.across - DECK_W / 2 < low + RAMP_CLEAR || bridge.across + DECK_W / 2 > high - RAMP_CLEAR) continue;
+      const toward = end === bridge.from ? -1 : 1; // the shore lies behind the deck's end
+      const wall = x ? (toward < 0 ? tr.x1 : tr.x0) : (toward < 0 ? tr.z1 : tr.z0);
+      const len = (wall - end) * toward;
+      if (len < 0.3) continue;
+      const u = x ? [toward, 0] : [0, toward], n = x ? [0, 1] : [1, 0];
+      const origin = x ? [end, bridge.across - DECK_W / 2] : [bridge.across - DECK_W / 2, end];
+      const footprint = (s0, s1) => {
+        const a = [origin[0] + u[0] * s0, origin[1] + u[1] * s0];
+        const b = [origin[0] + u[0] * s1 + n[0] * DECK_W, origin[1] + u[1] * s1 + n[1] * DECK_W];
+        return { x0: Math.min(a[0], b[0]), x1: Math.max(a[0], b[0]), z0: Math.min(a[1], b[1]), z1: Math.max(a[1], b[1]) };
+      };
+      ways.push({
+        ...footprint(0, len), origin, u, n, len, rise: len, width: DECK_W, stairs: false, approach: true,
+        y0: shore.y + shore.h, y1: t.y + t.h, drive: footprint(len, len + DRIVE),
+      });
+    }
+  }
+  return ways;
 }
 
 /**
@@ -759,6 +800,11 @@ function* rampGeometry(ramps) {
       continue;
     }
     const y = s => r.y0 + (r.y1 - r.y0) * Math.min(1, s / r.rise) + LIFT;
+    if (r.approach) {
+      approach(r, at, y, quad, PARAPET);
+      yield;
+      continue;
+    }
     const n = Math.max(2, Math.ceil(r.rise / 0.25));
     const cuts = [...Array.from({ length: n + 1 }, (_, i) => r.rise * i / n), r.len];
     for (let i = 0; i + 1 < cuts.length; i++) {
@@ -793,6 +839,29 @@ function* rampGeometry(ramps) {
   yield;
   geo.setIndex(index);
   return geo;
+}
+
+// A bridge's approach: the deck's road carried on up the shore (aRamp 3, the deck's
+// markings), a wall with a parapet down each side, and a driveway across the
+// terrace's sidewalk at the top.
+// Implements: REQ-CITY-038
+function approach(r, at, y, quad, parapet) {
+  const w = r.width, n = Math.max(2, Math.ceil(r.len / 0.25));
+  for (let i = 0; i < n; i++) {
+    const s0 = r.len * i / n, s1 = r.len * (i + 1) / n;
+    quad(at(s0, 0, y(s0)), at(s1, 0, y(s1)), at(s1, w, y(s1)), at(s0, w, y(s0)), [0, s0, 3], [0, s1, 3], [w, s1, 3], [w, s0, 3], 1);
+    for (const [side, inward] of [[0, 0.02], [w, w - 0.02]]) {
+      quad(at(s0, side, r.y0), at(s1, side, r.y0), at(s1, side, y(s1) + parapet), at(s0, side, y(s0) + parapet),
+        [s0, 0, 0], [s1, 0, 0], [s1, y(s1) + parapet - r.y0, 0], [s0, y(s0) + parapet - r.y0, 0], 0.68);
+      quad(at(s0, inward, y(s0) + parapet), at(s1, inward, y(s1) + parapet), at(s1, side, y(s1) + parapet), at(s0, side, y(s0) + parapet),
+        [s0, 0, 0], [s1, 0, 0], [s1, 0.02, 0], [s0, 0.02, 0], 0.95);
+      quad(at(s0, inward, y(s0)), at(s1, inward, y(s1)), at(s1, inward, y(s1) + parapet), at(s0, inward, y(s0) + parapet),
+        [s0, 0, 0], [s1, 0, 0], [s1, parapet, 0], [s0, parapet, 0], 0.8);
+    }
+  }
+  const top = y(r.len);
+  quad(at(r.len, 0, top), at(r.len + DRIVE, 0, top), at(r.len + DRIVE, w, top), at(r.len, w, top),
+    [0, r.len, 2], [0, r.len + DRIVE, 2], [w, r.len + DRIVE, 2], [w, r.len, 2], 1);
 }
 
 // A flight of stone stairs from one plaza up to the next: its treads and risers, the
@@ -915,8 +984,9 @@ export function* dressing(boxes, bendable, style = 'city') {
   const trees = [], bushes = [], lamps = [];
   const ramps = rampsFor(boxes), bridges = bridgesFor(boxes);
   const inDrive = drives(ramps);
-  const tree = (x, z, y, r) => trees.push({ x, z, y, r, s: 0.7 + 0.6 * r, kind: Math.floor(rand(z * 3.1, x) * set.species.length) });
-  const bush = (x, z, y, r) => bushes.push({ x, z, y, r, s: 0.7 + 0.7 * r });
+  const onApproach = drives(ramps.filter(r => r.approach).map(r => ({ drive: r })));
+  const tree = (x, z, y, r) => onApproach(x, z) || trees.push({ x, z, y, r, s: 0.7 + 0.6 * r, kind: Math.floor(rand(z * 3.1, x) * set.species.length) });
+  const bush = (x, z, y, r) => onApproach(x, z) || bushes.push({ x, z, y, r, s: 0.7 + 0.7 * r });
   for (const b of boxes) {
     const top = b.y + b.h;
     if (b.kind === 'land') {
