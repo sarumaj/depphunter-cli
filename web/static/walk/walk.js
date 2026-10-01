@@ -1405,33 +1405,43 @@ export class Walker {
     document.addEventListener('pointerlockerror', () => this.active && this.refused(null));
     // Implements: REQ-WALK-044
     document.addEventListener('pointerlockchange', () => {
-      const had = this.locked;
-      fresh = this.locked = document.pointerLockElement === canvas;
-      if (had && !fresh) this.releasedAt = performance.now();
-      if (fresh) this.lockFails = 0; // it can be had here; earlier refusals were passing
-      if (fresh && !this.active) document.exitPointerLock(); // never keep the map's cursor hidden
-      // Where the pointer can be captured at all, having it is what walking is, and
-      // this is the one place that decides. The mouse gone somewhere else - Esc, a
-      // switch to another tab, a reach for the toolbar over the street - holds the
-      // walker: one left running behind a dropdown keeps walking on whatever key was
-      // down when the pointer went, spends their wind, and can drown or walk off a
-      // roof while somebody is reading a menu. The mouse back on the street starts
-      // them again.
-      //
-      // Both halves, because half of it does not work. Holding on the way out without
-      // letting go on the way back in leaves a walker with the pointer captured and
-      // held still anyway, which is every control taken away at once - and it happens
-      // on nothing rarer than a click, since letting go of the reading closes the
-      // panel, the backpack and the photographs, and each of those asks for the
-      // pointer again on its way out. Reading the lock rather than counting the asks
-      // is also what makes that harmless.
-      //
-      // Not where the lock was refused in the first place: there the view is turned by
-      // dragging and the walker never has the pointer to lose, so this would hold them
-      // still for good.
-      if (this.active && !this.noLock) this.setFrozen(!fresh);
-      if (this.active) this.drawHud();
+      fresh = document.pointerLockElement === canvas;
+      this.pointerChanged();
     });
+  }
+
+  /**
+   * The pointer captured or let go: from pointerlockchange, or from the frame that
+   * finds the pointer gone before the browser has said so (loop) - which, after the
+   * Esc that frees it, can be seconds later.
+   */
+  pointerChanged() {
+    const had = this.locked;
+    const fresh = this.locked = document.pointerLockElement === this.scene.renderer.domElement;
+    if (had && !fresh) this.releasedAt = performance.now();
+    if (fresh) this.lockFails = 0; // it can be had here; earlier refusals were passing
+    if (fresh && !this.active) document.exitPointerLock(); // never keep the map's cursor hidden
+    // Where the pointer can be captured at all, having it is what walking is, and
+    // this is the one place that decides. The mouse gone somewhere else - Esc, a
+    // switch to another tab, a reach for the toolbar over the street - holds the
+    // walker: one left running behind a dropdown keeps walking on whatever key was
+    // down when the pointer went, spends their wind, and can drown or walk off a
+    // roof while somebody is reading a menu. The mouse back on the street starts
+    // them again.
+    //
+    // Both halves, because half of it does not work. Holding on the way out without
+    // letting go on the way back in leaves a walker with the pointer captured and
+    // held still anyway, which is every control taken away at once - and it happens
+    // on nothing rarer than a click, since letting go of the reading closes the
+    // panel, the backpack and the photographs, and each of those asks for the
+    // pointer again on its way out. Reading the lock rather than counting the asks
+    // is also what makes that harmless.
+    //
+    // Not where the lock was refused in the first place: there the view is turned by
+    // dragging and the walker never has the pointer to lose, so this would hold them
+    // still for good.
+    if (this.active && !this.noLock) this.setFrozen(!fresh);
+    if (this.active) this.drawHud();
   }
 
   /** A key pressed anywhere on the page while walking. */
@@ -1502,9 +1512,16 @@ export class Walker {
       case 'KeyR': this.openWheel(); break;
       case 'KeyH': this.setHandsOff(!this.handsOff); break;
       case 'Escape':
-        // Browsers usually swallow the Esc that frees the pointer; if not, free it first.
-        if (document.pointerLockElement) document.exitPointerLock();
-        else this.exit();
+        // The Esc that frees the pointer, whether or not the browser swallowed it. The
+        // browser lets go at once but says so (pointerlockchange) up to a second
+        // later, and the walker is held from the Esc rather than from the news of it:
+        // walking on in between, a second Esc took a walker who still looked captured
+        // for one who had nothing to free and threw them out of walk mode.
+        // Implements: REQ-WALK-056
+        if (document.pointerLockElement || this.locked) {
+          if (document.pointerLockElement) document.exitPointerLock();
+          if (!this.noLock) this.setFrozen(true);
+        } else this.exit();
         break;
       // Implements: REQ-HUNT-006
       case 'Enter': this.hooks.onInspect(this.aimed()); break;
@@ -1583,6 +1600,8 @@ export class Walker {
       this.last = now;
       // Dying is watched rather than played: the walker stops steering and the red
       // deepens instead, until it takes them back to the map.
+      // Implements: REQ-WALK-056
+      if (this.locked && document.pointerLockElement !== this.scene.renderer.domElement) this.pointerChanged();
       if (this.arrival) this.arrive(deltaTime);
       else if (this.dying !== null) this.fade(deltaTime);
       else {

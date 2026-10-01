@@ -1203,6 +1203,19 @@ describe('Esc while held, and keys during the flight in', () => {
   });
 
   // Verifies: REQ-WALK-056
+  it('holds the walker on the Esc that frees the pointer, before the browser says it has', () => {
+    // The browser has let go (no pointerLockElement) but not yet said so: the walker
+    // still has it as captured. That Esc is the release, not a second Esc.
+    const w = walker({ frozen: false, locked: true });
+    w.keyDown(press('Escape'));
+    assert.deepEqual(w.did, ['held']);
+    // With nothing captured and the walker walking on, Esc goes back to the map.
+    const free = walker({ frozen: false, locked: false, noLock: true });
+    free.keyDown(press('Escape'));
+    assert.deepEqual(free.did, ['map']);
+  });
+
+  // Verifies: REQ-WALK-056
   it('walks on from Esc where the pointer is never captured', () => {
     const w = walker({ noLock: true });
     w.keyDown(press('Escape'));

@@ -16,7 +16,10 @@ While the walker is held because the pointer was let go (REQ-WALK-044), `Esc`
 **shall** put away the details panel, the backpack, the photographs and the
 export menu when one of them is open and leave the walker held, and with none
 open **shall** return to the map. Where the pointer is never captured
-(REQ-WALK-047), `Esc` **shall** walk on instead. A refusal of the pointer lock
+(REQ-WALK-047), `Esc` **shall** walk on instead. The walker **shall** be held
+from the moment the pointer is let go - from the `Esc` walk mode receives, or
+from the first frame that finds the pointer gone - not only once the browser
+reports it, which can be seconds later. A refusal of the pointer lock
 in the moment after the user let the pointer go **shall not** count towards
 deciding that the pointer cannot be captured on the page.
 
@@ -32,5 +35,8 @@ then gave up on capturing the pointer for the rest of the visit.
 1. `Esc`, then `Esc` again with nothing open, returns to the map.
 2. With a building's details open, `Esc` closes them and the walker stays held;
    a click on the street walks on.
-3. Refusals within 1.5 s of letting the pointer go never turn the page into one
+3. An `Esc` received while the walker still counts the pointer as captured, and
+   the first frame after the browser let it go, hold the walker; neither leaves
+   walk mode.
+4. Refusals within 1.5 s of letting the pointer go never turn the page into one
    where the pointer is not captured; two refusals later still do.
