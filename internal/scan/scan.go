@@ -5,12 +5,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 
@@ -156,6 +158,9 @@ func walkFiles(ctx context.Context, root string) ([]string, error) {
 	return paths, err
 }
 
+// hardhatConfigs are the names a Hardhat project's config goes by.
+var hardhatConfigs = []string{"hardhat.config.js", "hardhat.config.ts", "hardhat.config.cjs", "hardhat.config.mjs", "hardhat.config.cts", "hardhat.config.mts"}
+
 // generatedBeside names directories that hold what a tool wrote only when its
 // manifest sits next to them: the PureScript compiler's output/ beside a
 // spago.yaml or spago.dhall, the shards shards installs into lib/ beside a
@@ -188,9 +193,9 @@ var generatedBeside = map[string][]string{
 	// typechain-types/.
 	"dependencies":    {"foundry.toml"},
 	"out":             {"foundry.toml"},
-	"cache":           {"foundry.toml", "hardhat.config.js", "hardhat.config.ts", "hardhat.config.cjs", "hardhat.config.mjs", "hardhat.config.cts", "hardhat.config.mts"},
-	"artifacts":       {"hardhat.config.js", "hardhat.config.ts", "hardhat.config.cjs", "hardhat.config.mjs", "hardhat.config.cts", "hardhat.config.mts"},
-	"typechain-types": {"hardhat.config.js", "hardhat.config.ts", "hardhat.config.cjs", "hardhat.config.mjs", "hardhat.config.cts", "hardhat.config.mts"},
+	"cache":           append([]string{"foundry.toml"}, hardhatConfigs...),
+	"artifacts":       hardhatConfigs,
+	"typechain-types": hardhatConfigs,
 	// Atlas clones a Nim project's dependencies into deps/ (its atlas.config
 	// in the project or in deps/).
 	"deps": {"*.nimble", "atlas.config", "atlas.workspace", "deps/atlas.config"},
@@ -270,53 +275,26 @@ func measure(f *File, maxSize int64) {
 		f.Language = "XML"
 	}
 	f.Interpreter = interpreter(head)
-	// ".m" is MATLAB's and Mercury's too, and ".h" C's: Objective-C says which by
-	// its keywords and directives, within the head already read. ".pl" is
-	// Prolog's too, and ".t" is Perl's only by convention: Perl says which by its
-	// #! line and statements. ".fs" is F#'s, a GLSL fragment shader's and Forth's.
-	// ".d" is D's, a make dependency file's and a DTrace script's. ".f" and ".for"
-	// are fixed-form Fortran's and sometimes Forth's. ".scm" and ".ss" are
-	// Scheme's, and Racket's when a #lang line starts them. ".cl" is Common
-	// Lisp's and OpenCL's. ".vs", ".gs", ".mesh" and ".task" are GLSL's when a
-	// directive or declaration of GLSL starts a line.
-	switch extension := strings.ToLower(path.Ext(f.Path)); {
-	case extension == ".m" && f.Language == "Objective-C" && !objcMarker(head, true):
-		f.Language = notObjC(head)
-	case extension == ".h" && f.Language == "C" && objcMarker(head, false):
-		f.Language = "Objective-C"
-	case extension == ".pl" && f.Language == "Perl" && !PerlInterpreter(f.Interpreter) && !perlMarker(head) && prologClause(head):
-		f.Language = "Prolog"
-	case extension == ".t" && f.Language == "Perl" && !PerlInterpreter(f.Interpreter) && !perlMarker(head):
-		f.Language = ""
-	case extension == ".fs" && f.Language == "F#" && glslSource(head):
-		f.Language = "GLSL"
-	case extension == ".fs" && f.Language == "F#" && forthSource(head):
-		f.Language = "Forth"
-	case (extension == ".f" || extension == ".for") && f.Language == "Fortran" && forthSource(head):
-		f.Language = "Forth"
-	case extension == ".d" && f.Language == "D" && dependencyFile(head):
-		f.Language = "Make"
-	case extension == ".d" && f.Language == "D" && (f.Interpreter == "dtrace" || dtraceSource(head)):
-		f.Language = "DTrace"
-	case (extension == ".scm" || extension == ".ss") && f.Language == "Scheme" && racketSource(head):
-		f.Language = "Racket"
-	case extension == ".cl" && f.Language == "Common Lisp" && openclSource(head):
-		f.Language = "OpenCL"
-	case (extension == ".vs" || extension == ".gs" || extension == ".mesh" || extension == ".task") && f.Language == "" && glslSource(head):
-		f.Language = "GLSL"
+	extension := strings.ToLower(path.Ext(f.Path))
+	for _, rule := range disambiguations {
+		if f.Language == rule.from && slices.Contains(rule.extensions, extension) && rule.when(f, head) {
+			f.Language = rule.to(head)
+			break
+		}
 	}
 	// A script without a language is labeled by the shell or perl its "#!" line
 	// runs.
-	switch {
-	case f.Language == "" && ShellInterpreter(f.Interpreter):
-		f.Language = "Shell"
-	case f.Language == "" && PerlInterpreter(f.Interpreter):
-		f.Language = "Perl"
-	case f.Language == "" && f.Interpreter == "bb":
-		f.Language = "Clojure" // a babashka script
-	case f.Language == "" && f.Interpreter == "racket":
-		f.Language = "Racket"
+	for _, s := range scripts {
+		if f.Language == "" && s.runs(f.Interpreter) {
+			f.Language = s.language
+			break
+		}
 	}
+	f.LOC = countLines(r)
+}
+
+// countLines counts r's lines, a last one without a newline included.
+func countLines(r io.Reader) int {
 	var lines, last int
 	buffer := make([]byte, 32*1024)
 	for {
@@ -332,5 +310,52 @@ func measure(f *File, maxSize int64) {
 	if last != 0 && last != '\n' {
 		lines++ // final line without trailing newline
 	}
-	f.LOC = lines
+	return lines
+}
+
+// A disambiguation relabels a file its extension gave the language `from` when the
+// head of it says otherwise; the first that applies wins.
+type disambiguation struct {
+	extensions []string
+	from       string
+	when       func(f *File, head []byte) bool
+	to         func(head []byte) string
+}
+
+func language(name string) func([]byte) string { return func([]byte) string { return name } }
+
+// ".m" is MATLAB's and Mercury's too, and ".h" C's: Objective-C says which by its
+// keywords and directives, within the head already read. ".pl" is Prolog's too, and
+// ".t" is Perl's only by convention: Perl says which by its #! line and statements.
+// ".fs" is F#'s, a GLSL fragment shader's and Forth's. ".d" is D's, a make dependency
+// file's and a DTrace script's. ".f" and ".for" are fixed-form Fortran's and
+// sometimes Forth's. ".scm" and ".ss" are Scheme's, and Racket's when a #lang line
+// starts them. ".cl" is Common Lisp's and OpenCL's. ".vs", ".gs", ".mesh" and ".task"
+// are GLSL's when a directive or declaration of GLSL starts a line.
+var disambiguations = []disambiguation{
+	{[]string{".m"}, "Objective-C", func(_ *File, h []byte) bool { return !objcMarker(h, true) }, notObjC},
+	{[]string{".h"}, "C", func(_ *File, h []byte) bool { return objcMarker(h, false) }, language("Objective-C")},
+	{[]string{".pl"}, "Perl", func(f *File, h []byte) bool {
+		return !PerlInterpreter(f.Interpreter) && !perlMarker(h) && prologClause(h)
+	}, language("Prolog")},
+	{[]string{".t"}, "Perl", func(f *File, h []byte) bool { return !PerlInterpreter(f.Interpreter) && !perlMarker(h) }, language("")},
+	{[]string{".fs"}, "F#", func(_ *File, h []byte) bool { return glslSource(h) }, language("GLSL")},
+	{[]string{".fs"}, "F#", func(_ *File, h []byte) bool { return forthSource(h) }, language("Forth")},
+	{[]string{".f", ".for"}, "Fortran", func(_ *File, h []byte) bool { return forthSource(h) }, language("Forth")},
+	{[]string{".d"}, "D", func(_ *File, h []byte) bool { return dependencyFile(h) }, language("Make")},
+	{[]string{".d"}, "D", func(f *File, h []byte) bool { return f.Interpreter == "dtrace" || dtraceSource(h) }, language("DTrace")},
+	{[]string{".scm", ".ss"}, "Scheme", func(_ *File, h []byte) bool { return racketSource(h) }, language("Racket")},
+	{[]string{".cl"}, "Common Lisp", func(_ *File, h []byte) bool { return openclSource(h) }, language("OpenCL")},
+	{[]string{".vs", ".gs", ".mesh", ".task"}, "", func(_ *File, h []byte) bool { return glslSource(h) }, language("GLSL")},
+}
+
+// scripts label a file with no language by the program its #! line runs.
+var scripts = []struct {
+	runs     func(interpreter string) bool
+	language string
+}{
+	{ShellInterpreter, "Shell"},
+	{PerlInterpreter, "Perl"},
+	{func(i string) bool { return i == "bb" }, "Clojure"}, // a babashka script
+	{func(i string) bool { return i == "racket" }, "Racket"},
 }
