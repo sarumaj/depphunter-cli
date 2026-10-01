@@ -149,6 +149,10 @@ const ARRIVAL = 5, ARRIVAL_BACK = 18, ARRIVAL_SIDE = 14, ARRIVAL_ABOVE = 9;
 // high the eye is off the ground at the start of it.
 // Implements: REQ-WALK-052
 const REVIVAL = 2.5, REVIVAL_EYE = 0.08;
+
+// How long after letting the pointer go a browser refuses to capture it again, in
+// milliseconds: Chrome holds out for about a second.
+const RELOCK = 1500;
 // ... and, having drowned, how far in from the water's edge they get up (ashore).
 const ASHORE_IN = 0.6;
 
@@ -239,6 +243,8 @@ export class Walker {
     // from a browser that refuses one request and grants the next.
     this.noLock = false;
     this.lockFails = 0;
+    this.locked = false; // the pointer is captured on the canvas
+    this.releasedAt = -Infinity; // when it last stopped being (performance.now())
     // One tool to a hand: the hunt in the right, whatever carries the walker in the
     // left. There is always a primary; the off hand may be empty.
     this.primary = toolFor(hooks.tool?.() || DEFAULT_TOOL);
@@ -1251,6 +1257,10 @@ export class Walker {
    */
   refused(err) {
     const sandboxed = err?.name === 'SecurityError' && /sandbox/i.test(err.message || '');
+    // A browser refuses every lock for a moment after the user let one go, and says
+    // nothing that tells that refusal from a frame's: those are not counted.
+    // Implements: REQ-WALK-056
+    if (!sandboxed && performance.now() - this.releasedAt < RELOCK) return;
     if (!sandboxed && ++this.lockFails < 2) return;
     if (this.noLock) return;
     this.noLock = true;
@@ -1395,7 +1405,9 @@ export class Walker {
     document.addEventListener('pointerlockerror', () => this.active && this.refused(null));
     // Implements: REQ-WALK-044
     document.addEventListener('pointerlockchange', () => {
-      fresh = document.pointerLockElement === canvas;
+      const had = this.locked;
+      fresh = this.locked = document.pointerLockElement === canvas;
+      if (had && !fresh) this.releasedAt = performance.now();
       if (fresh) this.lockFails = 0; // it can be had here; earlier refusals were passing
       if (fresh && !this.active) document.exitPointerLock(); // never keep the map's cursor hidden
       // Where the pointer can be captured at all, having it is what walking is, and
@@ -1424,15 +1436,18 @@ export class Walker {
 
   /** A key pressed anywhere on the page while walking. */
   keyDown(e) {
-    if (!this.owns(e) || e.target.closest('input, select, textarea, dialog') || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!this.active || e.target.closest('input, select, textarea, dialog') || e.ctrlKey || e.metaKey || e.altKey) return;
     // This listener is registered before the map's; stopping here keeps the map from
     // acting on the same key (V would leave walk mode and re-enter it at once).
     const mine = () => { e.preventDefault(); e.stopImmediatePropagation(); };
-    // Any key cuts the way in short; V and M then go on to leave as usual.
-    if (this.arrival && !this.frozen) {
+    // Any key cuts the way in short, walk mode's or not; V and M then go on to leave
+    // as usual.
+    // Implements: REQ-WALK-051
+    if (this.arrival && !this.frozen && !e.repeat) {
       this.endArrival(true);
       if (e.code !== 'KeyV' && e.code !== 'KeyM') { mine(); return; }
     }
+    if (!this.owns(e)) return;
     // Implements: REQ-WALK-046
     if (this.frozen) {
       // Held, the walker is not playing and the page is. So the page keeps its keys
@@ -1448,7 +1463,7 @@ export class Walker {
         && e.target.closest('button:not(#walk), a[href], summary, [role="option"]')) return;
       switch (e.code) {
         case 'KeyV': case 'KeyM': mine(); this.exit(); break;
-        case 'Escape':
+        case 'Escape': mine(); this.escapeHeld(); break;
         case 'Enter': mine(); this.setFrozen(false); this.lockPointer(); break;
       }
       return;
@@ -1497,6 +1512,33 @@ export class Walker {
       // who reaches for the map by name rather than remembering which way V points.
       case 'KeyV': case 'KeyM': this.exit(); break;
     }
+  }
+
+  /**
+   * Esc while held. The browser takes the Esc that frees the pointer and will not
+   * give it back for an Esc - a key that is no user gesture, pressed in the moment
+   * after a release the browser holds out against any new lock - so walking on from
+   * here took the hold off and left the walker with no mouse to look with. Esc puts
+   * away what is being read, and with nothing open it goes back to the map, as V and
+   * M do. Where the pointer is never captured there is nothing to take back, and Esc
+   * walks on.
+   *
+   * Implements: REQ-WALK-056
+   */
+  escapeHeld() {
+    if (this.noLock) {
+      this.setFrozen(false);
+      return;
+    }
+    if (!this.hooks.busy?.()) {
+      this.exit();
+      return;
+    }
+    this.hooks.onResume?.(); // the panel, the backpack, the photographs
+    // Closing the details lets the walker go (the panel's onClose); without the
+    // pointer, held is where they still are.
+    if (document.pointerLockElement !== this.scene.renderer.domElement) this.setFrozen(true);
+    this.flash('Click the street to walk on, or press Esc again for the map');
   }
 
   // Implements: REQ-WALK-011, REQ-WALK-012

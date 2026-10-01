@@ -1162,3 +1162,76 @@ describe('going under', () => {
     assert.ok(!hud.classList.on.has('drowning'), 'the water stayed on the screen ashore');
   });
 });
+
+describe('Esc while held, and keys during the flight in', () => {
+  const W = WALK.Walker.prototype;
+  /** A key press as walk mode's listener receives it, recording whether it was taken. */
+  const press = code => ({
+    code, key: '', repeat: false, target: { closest: () => null }, taken: false,
+    preventDefault() { this.taken = true; }, stopImmediatePropagation() {},
+  });
+  /** A walker as far as its keys concern it, with what it was asked to do recorded. */
+  function walker(extra = {}) {
+    const did = [];
+    return Object.assign({
+      active: true, frozen: true, noLock: false, arrival: null, did, flashed: [], keys: new Set(), wheelKey: () => false,
+      scene: { renderer: { domElement: {} } },
+      hooks: { busy: () => false, onResume: () => did.push('put away') },
+      owns: W.owns, keyDown: W.keyDown, escapeHeld: W.escapeHeld,
+      exit() { did.push('map'); }, setFrozen(on) { this.frozen = on; did.push(on ? 'held' : 'walk on'); },
+      lockPointer() { did.push('lock'); }, flash(m) { this.flashed.push(m); },
+      endArrival() { this.arrival = null; did.push('landed'); },
+    }, extra);
+  }
+
+  // Verifies: REQ-WALK-056
+  it('goes back to the map on Esc with nothing open, and never asks for the pointer', () => {
+    const w = walker();
+    w.keyDown(press('Escape'));
+    assert.deepEqual(w.did, ['map']);
+  });
+
+  // Verifies: REQ-WALK-056
+  it('puts away what is being read first, and stays held', () => {
+    // Closing the details lets the walker go (the panel's onClose), which is the
+    // state that had no mouse to look with: the walker is held again.
+    const w = walker({ hooks: { busy: () => true, onResume() { w.frozen = false; w.did.push('put away'); } } });
+    w.keyDown(press('Escape'));
+    assert.deepEqual(w.did, ['put away', 'held']);
+    assert.equal(w.frozen, true);
+    assert.equal(w.flashed.length, 1, 'nothing said how to walk on');
+  });
+
+  // Verifies: REQ-WALK-056
+  it('walks on from Esc where the pointer is never captured', () => {
+    const w = walker({ noLock: true });
+    w.keyDown(press('Escape'));
+    assert.deepEqual(w.did, ['walk on']);
+  });
+
+  // Verifies: REQ-WALK-056
+  it('does not give up on the pointer for refusals right after letting it go', () => {
+    const w = { lockFails: 0, noLock: false, releasedAt: performance.now(), flash() {}, drawHud() {}, refused: W.refused };
+    w.refused(null);
+    w.refused(null);
+    assert.equal(w.noLock, false, 'the browser winding down a release was taken for a frame that refuses');
+    w.releasedAt = -Infinity;
+    w.refused(null);
+    w.refused(null);
+    assert.equal(w.noLock, true, 'two refusals later no longer count');
+  });
+
+  // Verifies: REQ-WALK-051
+  it('lands on any key during the flight in, not only walk mode\'s', () => {
+    for (const code of ['KeyK', 'Digit1', 'KeyW', 'Slash']) {
+      const w = walker({ frozen: false, arrival: {} });
+      const e = press(code);
+      w.keyDown(e);
+      assert.deepEqual(w.did, ['landed'], `${code} did not land the walker`);
+      assert.ok(e.taken, `${code} went on to do something else as well`);
+    }
+    const v = walker({ frozen: false, arrival: {} });
+    v.keyDown(press('KeyV'));
+    assert.deepEqual(v.did, ['landed', 'map'], 'V landed the walker but did not leave');
+  });
+});

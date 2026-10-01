@@ -30,8 +30,8 @@ street is. Seen from above first, the street reads as a place in the city.
 1. On the first entry, the flight starts above the tallest roof and ends exactly
    on the landing spot, facing as that spot faces.
 2. Later entries on the same page start on foot at once.
-3. A key press or click during the flight lands the walker immediately; `V` and
-   `M` then leave walk mode as usual.
+3. A key press - any key, walk mode's or not - or a click during the flight
+   lands the walker immediately; `V` and `M` then leave walk mode as usual.
 4. With `prefers-reduced-motion: reduce`, no flight is played.
 5. On a first walk with its tour, the tour is read over the city at the top of
    the flight, the pointer is not captured while it is open, and the flight goes
