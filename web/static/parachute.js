@@ -25,6 +25,7 @@
 // chosen against that gravity and then checked against life in meters a second.
 
 import * as THREE from './vendor/three.module.min.js';
+import { clamp } from './numbers.js';
 
 // ------------------------------------------------------------------ the physics
 
@@ -984,5 +985,3 @@ export class LooseCanopy {
     this.materials = [];
   }
 }
-
-const clamp = (v, low, high) => Math.min(high, Math.max(low, v));

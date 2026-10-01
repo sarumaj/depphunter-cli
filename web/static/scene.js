@@ -11,6 +11,7 @@
 
 import * as THREE from './vendor/three.module.min.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
+import { clamp } from './numbers.js';
 import { buildParameters, isGround } from './buildings.js';
 import { Details, tiersOf } from './details.js';
 import { cull } from './lod.js';
@@ -979,8 +980,6 @@ const SEA_LEVEL = -WATER_DEPTH + 0.03, SEA_SIZE = 40;
 // the view's center is this far beyond the map (a share of its size, plus a minimum).
 // Implements: REQ-MAP-020, REQ-MAP-021
 const MIN_ZOOM_SHARE = 0.35, PAN_MARGIN = 0.25, PAN_MARGIN_MIN = 6;
-
-const clamp = (v, low, high) => Math.min(high, Math.max(low, v));
 
 // Colors arrive as CSS strings, one per box, and every ground vertex reads its box's
 // again; parsing one takes long enough to be worth doing once per color. setColors
