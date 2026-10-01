@@ -18,6 +18,7 @@ const { Wind } = await import('../static/wind.js');
 const { TOOLS, TOOL_IDS, PRIMARY_IDS, SECONDARY_IDS, hits, isSecondary, toolFor, idleTool, studyTool, DEFAULT_TOOL } = await import('../static/tools.js');
 const SWITCH = await import('../static/switcher.js');
 const WALK = await import('../static/walk.js');
+const SHOTS = await import('../static/shots.js');
 const BASE = await import('../static/walkbase.js');
 const THREE = await import('../static/vendor/three.module.min.js');
 
@@ -663,7 +664,7 @@ describe('what the tools reach and how long they last', () => {
       const by = TOOLS.nailer.flight.spread * TOOLS.nailer.reach;
       const hits = Array.from({ length: 400 }, () => {
         const to = aim.clone();
-        WALK.scatter(to, by);
+        SHOTS.scatter(to, by);
         return to;
       });
       const mean = hits.reduce((a, p) => a.add(p), new THREE.Vector3()).multiplyScalar(1 / hits.length);
