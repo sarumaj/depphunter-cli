@@ -100,11 +100,14 @@ func readSpagoYAML(source []byte) *spagoYAML {
 			}
 			if d := yamlnode.Get(v, "dependencies"); d != nil {
 				e.hasDependencies = true
-				for _, n := range d.Content {
+				// As a package's own: "- prelude" or "- prelude: >=6.0.0", aliases
+				// resolved like any other value.
+				for _, n := range yamlnode.Items(d) {
 					if n.Kind == yaml.ScalarNode {
 						e.dependencies = append(e.dependencies, n.Value)
-					} else if n.Kind == yaml.MappingNode && len(n.Content) > 0 {
-						e.dependencies = append(e.dependencies, n.Content[0].Value)
+					}
+					for _, entry := range yamlnode.Pairs(n) {
+						e.dependencies = append(e.dependencies, entry.Key.Value)
 					}
 				}
 			}
