@@ -187,19 +187,27 @@ func notObjC(head []byte) string {
 //
 // Implements: REQ-LANG-015, REQ-FSHARP-001, REQ-SHADER-001
 func glslSource(head []byte) bool {
+	return lineStarts(head, trimIndent, "#version", "#extension", "#define", "#include", "#pragma", "#ifdef", "#ifndef",
+		"precision ", "uniform ", "varying ", "attribute ", "layout(", "layout (", "void main") ||
+		bytes.Contains(head, []byte("gl_FragColor")) || bytes.Contains(head, []byte("gl_FragCoord"))
+}
+
+// lineStarts reports whether a line of head, trimmed by trim, starts with one of
+// prefixes.
+func lineStarts(head []byte, trim func([]byte) []byte, prefixes ...string) bool {
 	for _, line := range bytes.Split(head, []byte("\n")) {
-		line = bytes.TrimLeft(line, " \t\xef\xbb\xbf")
-		for _, p := range []string{"#version", "#extension", "#define", "#include", "#pragma", "#ifdef", "#ifndef", "precision ", "uniform ", "varying ", "attribute ", "layout(", "layout (", "void main"} {
+		line = trim(line)
+		for _, p := range prefixes {
 			if bytes.HasPrefix(line, []byte(p)) {
 				return true
 			}
 		}
-		if bytes.Contains(line, []byte("gl_FragColor")) || bytes.Contains(line, []byte("gl_FragCoord")) {
-			return true
-		}
 	}
 	return false
 }
+
+// trimIndent drops a line's indentation and a byte-order mark before it.
+func trimIndent(line []byte) []byte { return bytes.TrimLeft(line, " \t\xef\xbb\xbf") }
 
 // forthSource reports whether a ".fs" file's head is Forth: a line starting with
 // a `\` comment, or a colon definition (": name ... ;") in the first column.
@@ -246,18 +254,8 @@ func racketSource(head []byte) bool {
 //
 // Implements: REQ-LANG-015, REQ-COMMONLISP-001
 func openclSource(head []byte) bool {
-	if bytes.Contains(head, []byte("__kernel")) || bytes.Contains(head, []byte("__global")) || bytes.Contains(head, []byte("kernel void")) {
-		return true
-	}
-	for _, line := range bytes.Split(head, []byte("\n")) {
-		line = bytes.TrimLeft(line, " \t\xef\xbb\xbf")
-		for _, d := range []string{"#include", "#define", "#pragma", "#ifdef", "#ifndef", "#if ", "#endif"} {
-			if bytes.HasPrefix(line, []byte(d)) {
-				return true
-			}
-		}
-	}
-	return false
+	return bytes.Contains(head, []byte("__kernel")) || bytes.Contains(head, []byte("__global")) || bytes.Contains(head, []byte("kernel void")) ||
+		lineStarts(head, trimIndent, "#include", "#define", "#pragma", "#ifdef", "#ifndef", "#if ", "#endif")
 }
 
 // dependencyFile reports whether a ".d" file's head is a make dependency file,
@@ -295,13 +293,11 @@ func dependencyFile(head []byte) bool {
 //
 // Implements: REQ-LANG-015, REQ-DLANG-001
 func dtraceSource(head []byte) bool {
+	if lineStarts(head, bytes.TrimSpace, "#pragma D", "#include", "#define", "#if", "#endif") {
+		return true
+	}
 	for _, line := range bytes.Split(head, []byte("\n")) {
 		line = bytes.TrimSpace(line)
-		for _, p := range []string{"#pragma D", "#include", "#define", "#if", "#endif"} {
-			if bytes.HasPrefix(line, []byte(p)) {
-				return true
-			}
-		}
 		if probeDescription.Match(line) || providerBlock.Match(line) || string(line) == "BEGIN" || string(line) == "END" {
 			return true
 		}
@@ -322,15 +318,7 @@ var probeDescription = regexp.MustCompile(`^[A-Za-z0-9_$*-]*:[A-Za-z0-9_$*.-]*:[
 //
 // Implements: REQ-LANG-015, REQ-PERL-001
 func perlMarker(head []byte) bool {
-	for _, line := range bytes.Split(head, []byte("\n")) {
-		line = bytes.TrimLeft(line, " \t\xef\xbb\xbf")
-		for _, keyword := range []string{"use ", "no ", "require ", "package ", "sub ", "my ", "our ", "local ", "BEGIN", "=pod", "=head", "=encoding"} {
-			if bytes.HasPrefix(line, []byte(keyword)) {
-				return true
-			}
-		}
-	}
-	return false
+	return lineStarts(head, trimIndent, "use ", "no ", "require ", "package ", "sub ", "my ", "our ", "local ", "BEGIN", "=pod", "=head", "=encoding")
 }
 
 // prologClause reports whether a line of a file's head is Prolog: a directive
