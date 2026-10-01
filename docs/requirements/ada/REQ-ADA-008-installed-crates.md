@@ -15,7 +15,8 @@ The resolver **shall** index the units and project files of the crates
 Alire fetched beside a manifest (`alire/cache/dependencies/<crate>_<version>_<hash>/`
 and `alire/cache/pins/`), and of the crates the manifest or lock file
 names in Alire 2's shared releases cache (`$ALIRE_SETTINGS_DIR/cache`,
-else `$XDG_CACHE_HOME/alire`, else `~/.cache/alire`) at the locked or
+else `$XDG_CACHE_HOME/alire` when that is absolute, else `~/.cache/alire`) at
+the locked or
 exactly required version, else the newest there; nothing else in the
 shared cache **shall** be read. `--resolve-depth` **shall** follow the
 lock file's solution (each release's own `depends-on`, at the versions
