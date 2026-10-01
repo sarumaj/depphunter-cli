@@ -40,6 +40,7 @@
 // the next one - so the row reads T and then 1 to 0.
 
 import { TOOLS, PRIMARY_IDS, SECONDARY_IDS, toolFor } from './tools.js';
+import { toolIcon } from './icons.js';
 
 /** The left hand holding nothing, which is a choice on the wheel like any tool. */
 export const EMPTY = 'none';
@@ -216,7 +217,7 @@ export class ToolWheel {
       seat.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
       seat.append(
         Object.assign(document.createElement('kbd'), { textContent: keyFor(w.id) }),
-        document.createElement('i'),
+        toolIcon(w.id),
       );
       seat.setAttribute('aria-label', saysOf(w.id).name);
       face.append(seat);

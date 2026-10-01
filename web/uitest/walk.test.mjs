@@ -17,6 +17,7 @@ const { Health } = await import('../static/walk/health.js');
 const { Wind } = await import('../static/walk/wind.js');
 const { TOOLS, TOOL_IDS, PRIMARY_IDS, SECONDARY_IDS, hits, isSecondary, toolFor, idleTool, studyTool, DEFAULT_TOOL } = await import('../static/walk/tools.js');
 const SWITCH = await import('../static/walk/switcher.js');
+const ICONS = await import('../static/walk/icons.js');
 const WALK = await import('../static/walk/walk.js');
 const SHOTS = await import('../static/walk/shots.js');
 const BASE = await import('../static/walk/walkbase.js');
@@ -1246,5 +1247,32 @@ describe('Esc while held, and keys during the flight in', () => {
     const v = walker({ frozen: false, arrival: {} });
     v.keyDown(press('KeyV'));
     assert.deepEqual(v.did, ['landed', 'map'], 'V landed the walker but did not leave');
+  });
+});
+
+describe('the tools\' icons', () => {
+  // Verifies: REQ-TOOL-080
+  it('draws every tool and the empty hand, each differently, the same in the row and on the wheel', () => {
+    // An element as far as toolIcon needs one: its attributes and its markup.
+    const made = [];
+    const createElementNS = globalThis.document.createElementNS;
+    globalThis.document.createElementNS = (ns, tag) => {
+      const el = { ns, tag, attributes: {}, innerHTML: '', setAttribute(k, v) { this.attributes[k] = v; } };
+      made.push(el);
+      return el;
+    };
+    try {
+      const ids = [...TOOL_IDS, SWITCH.EMPTY];
+      for (const id of ids) assert.ok(ICONS.ICON_IDS.includes(id), `${id} has no icon of its own`);
+      const drawn = ids.map(id => ICONS.toolIcon(id));
+      assert.equal(new Set(drawn.map(svg => svg.innerHTML)).size, ids.length, 'two tools share an icon');
+      for (const svg of drawn) {
+        assert.equal(svg.tag, 'svg');
+        assert.equal(svg.attributes.viewBox, '0 0 24 24');
+        assert.equal(svg.attributes['aria-hidden'], 'true', 'an icon is read out beside the name it shows');
+      }
+    } finally {
+      globalThis.document.createElementNS = createElementNS;
+    }
   });
 });

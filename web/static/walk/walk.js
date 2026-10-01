@@ -34,6 +34,7 @@ import { canopy } from './canopy.js';
 import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee } from './tools.js';
 import { packedChute, aloft } from './parachute.js';
 import { ToolWheel, EMPTY, carriedRing, cycle, keyFor, keysFor, rowOrder, toolForKey } from './switcher.js';
+import { toolIcon } from './icons.js';
 import { inBlaze } from '../hunt/flames.js';
 import { massTop } from '../map/details.js';
 
@@ -813,7 +814,7 @@ export class Walker {
           // Its place in the row, which is its key: the row reads 1 to 0 from left to
           // right because the digits are counted along the order it is drawn in.
           Object.assign(document.createElement('kbd'), { textContent: keyFor(id) }),
-          document.createElement('i'),
+          toolIcon(id),
           Object.assign(document.createElement('span'), { className: 'w-slot-name', textContent: tool.label }),
         );
         slots.push(el);

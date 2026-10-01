@@ -406,28 +406,19 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .w-slot[data-kind="secondary"] { border-style: dashed; }
 #walk-hud .w-slot[data-kind="secondary"][aria-selected="true"] { border-color: #59b0e6; color: #cfe8f8; }
 #walk-hud .w-slot[data-kind="secondary"][aria-selected="true"] .w-slot-name { color: #59b0e6; }
-/* Each slot wears its tool: the reticle shapes again, small. */
-#walk-hud .w-slot i {
-  width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 50%;
+/* Each slot wears its tool's icon (walk/icons.js), drawn in the slot's color with
+   the part that names it picked out in the tool's own. */
+#walk-hud .w-icon {
+  width: 20px; height: 20px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
 }
-#walk-hud .w-slot[data-tool="rod"] i { border-color: #e4402f; background: linear-gradient(currentColor, currentColor) top / 100% 50% no-repeat; }
-#walk-hud .w-slot[data-tool="net"] i { border-style: dashed; }
-#walk-hud .w-slot[data-tool="camera"] i { border-radius: 2px; width: 15px; height: 11px; }
-#walk-hud .w-slot[data-tool="bubbles"] i { border-color: #7fc8f0; }
-#walk-hud .w-slot[data-tool="dart"] i { border-radius: 50%; box-shadow: inset 0 0 0 1px currentColor; }
-#walk-hud .w-slot[data-tool="nailer"] i { border: none; background: linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat, linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat; }
-#walk-hud .w-slot[data-tool="extinguisher"] i { border-color: #c0231f; border-radius: 3px; width: 9px; height: 14px; }
-#walk-hud .w-slot[data-tool="grapple"] i { border-bottom-color: transparent; }
-#walk-hud .w-slot[data-tool="jetpack"] i { border: none; clip-path: polygon(50% 0, 100% 100%, 50% 72%, 0 100%); background: currentColor; }
-#walk-hud .w-slot[data-tool="skimmers"] i { border-radius: 50% / 30%; height: 8px; width: 16px; }
-/* A canopy: a dome with its lines gathered under it. */
-#walk-hud .w-slot[data-tool="parachute"] i {
-  width: 16px; height: 12px; border: none; border-radius: 0;
-  background:
-    radial-gradient(ellipse 8px 5px at 50% 100%, transparent 5.5px, currentColor 6px, currentColor 7px, transparent 7.5px) top / 100% 6px no-repeat,
-    linear-gradient(to bottom right, transparent calc(50% - 0.75px), currentColor calc(50% - 0.75px), currentColor calc(50% + 0.75px), transparent calc(50% + 0.75px)) 2px 5px / 6px 7px no-repeat,
-    linear-gradient(to bottom left, transparent calc(50% - 0.75px), currentColor calc(50% - 0.75px), currentColor calc(50% + 0.75px), transparent calc(50% + 0.75px)) 8px 5px / 6px 7px no-repeat;
-}
+#walk-hud .w-icon .accent { fill: var(--tool-accent, currentColor); stroke: none; }
+#walk-hud .w-icon .accent-line { stroke: var(--tool-accent, currentColor); }
+#walk-hud .w-slot[data-tool="rod"], #walk-hud .w-slot[data-tool="camera"] { --tool-accent: #e4402f; }
+#walk-hud .w-slot[data-tool="extinguisher"] { --tool-accent: #c0231f; }
+#walk-hud .w-slot[data-tool="bubbles"] { --tool-accent: #7fc8f0; }
+#walk-hud .w-slot[data-tool="jetpack"] { --tool-accent: #f29a38; }
+#walk-hud .w-slot[data-tool="parachute"], #walk-hud .w-slot[data-tool="skimmers"] { --tool-accent: #59b0e6; }
 
 /* Held (M33): the street is waiting on something else - a panel being read, a menu,
    the toolbar over it - so it is softened and whatever took the mouse away is what
@@ -594,10 +585,10 @@ main { position: relative; flex: 1; min-height: 0; }
 /* A tank that has run dry. The tool is still on the wheel and still takes - it fills
    while it is not in hand, and reaching for it is how a walker finds out. */
 #walk-hud .w-wheel .w-slot.dry { opacity: 0.4; }
+/* Larger out on the rim, where there is room for them and they are what is read. */
+#walk-hud .w-wheel .w-icon { width: 28px; height: 28px; }
 /* An empty left hand, which is a choice here rather than the absence of one. */
-#walk-hud .w-wheel .w-slot[data-tool="none"] i {
-  border-style: dashed; border-color: var(--text-2); background: none;
-}
+#walk-hud .w-wheel .w-slot[data-tool="none"] .w-icon { color: var(--text-2); }
 #walk-hud .w-wheel-hub {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   width: calc(var(--hub) * 2); height: calc(var(--hub) * 2); border-radius: 50%;
