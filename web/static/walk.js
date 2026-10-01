@@ -23,6 +23,7 @@
 // and a roof is a long way down, so the walker has a condition to keep (health.js).
 
 import * as THREE from './vendor/three.module.min.js';
+import { clamp, ease } from './numbers.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './city.js';
 import { Health } from './health.js';
 import { Wind } from './wind.js';
@@ -3645,8 +3646,6 @@ function radarLabel(alight, nearest, px, pz, { caught, total }) {
   return caught ? `all ${total} bugs caught` : '';
 }
 
-const clamp = (v, low, high) => Math.min(high, Math.max(low, v));
-
 /**
  * Takes what a shot threw - its mesh, or the line it trailed - off the map, and frees
  * the geometries and materials it was drawn with: taken off and nothing more, they
@@ -3867,14 +3866,6 @@ export function revivalAt(land, t) {
 const inOut = t => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 /** Whether the page has been asked to keep still, which the ways in respect. */
 const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-/**
- * Exponential easing towards a value: `tau` is how long it takes to close most of
- * the gap, in seconds, whatever dt happens to be. An undefined current value starts
- * where it is going, so nothing animates in from zero on the first frame.
- */
-const ease = (current, want, tau, deltaTime) =>
-  current === undefined ? want : current + (want - current) * (1 - Math.exp(-Math.max(0, deltaTime) / tau));
 
 // The walker's footprint, sampled at its center and four corners (height). Flat
 // pairs, so walking it allocates nothing.

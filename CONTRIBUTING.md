@@ -463,6 +463,7 @@ but never trusted with anything that decides what is sent where:
 | `index.html`, `app.js`, `style.css` | The page, application state, menus and wiring every module together |
 | `data.js` | Talking to the server, or reading the data a static export embeds |
 | `dom.js` | DOM helpers, and what several modules show alike: the toolbar popover (`drawer`), a finding's row (`findingItem`) and the catch button (`catchToggle`) |
+| `numbers.js` | Small arithmetic several modules share: `clamp`, and `ease` towards a value over time |
 | `model.js`, `filter.js`, `history.js`, `findings.js` | The navigable tree and aggregates, filters and search, history metrics, findings by node |
 | `layout.js`, `labels.js`, `colors.js` | The archipelago layout, labels, color roles from CSS |
 | `scene.js`, `city.js`, `cityglsl.js`, `buildings.js`, `details.js`, `lod.js`, `resolution.js`, `stats.js`, `models.js` | three.js rendering, the procedural city and its shaders, building types and facades, balconies and rooftop details, culling and level of detail for the props, dynamic resolution, the `?stats` readout, loading the `.glb` models |
