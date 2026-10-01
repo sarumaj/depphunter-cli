@@ -80,6 +80,9 @@ const levelOf = pixels => {
   return level;
 };
 
+// How many instances a Scatter places between yields (build).
+const STEP = 1024;
+
 const cellKey = (x, z) => `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`;
 
 /**
@@ -90,37 +93,73 @@ const cellKey = (x, z) => `${Math.floor(x / CELL)},${Math.floor(z / CELL)}`;
  */
 export class Scatter {
   constructor(geometry, material, items, place, tint, cells) {
+    const steps = this.build(geometry, material, items, place, tint, cells);
+    while (!steps.next().done);
+  }
+
+  /**
+   * The constructor's work a step at a time, yielding every STEP items and after each
+   * level's mesh: a kind with tens of thousands of instances takes longer than a
+   * frame to lay out (city.js dressing).
+   *
+   * Implements: REQ-PERF-015
+   */
+  *build(geometry, material, items, place, tint, cells) {
     geometry.computeBoundingSphere();
     this.radius = geometry.boundingSphere.radius;
-    const order = items.map(it => [cellKey(it.x, it.z), it]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-    this.matrices = new Float32Array(order.length * 16);
-    this.colors = tint ? new Float32Array(order.length * 3) : null;
-    this.runs = []; // [cell, start, count], in instance order
+    // By cell, and within one in the order given: grouped first and then only the
+    // cells sorted, which is the order a stable sort of every item by its cell's key
+    // gives, for a sort of a few hundred keys rather than tens of thousands of items.
+    const byCell = new Map();
+    for (let i = 0; i < items.length; i++) {
+      if (i && i % STEP === 0) yield;
+      const it = items[i], key = cellKey(it.x, it.z);
+      if (!byCell.has(key)) byCell.set(key, []);
+      byCell.get(key).push(it);
+    }
+    const keys = [...byCell.keys()].sort();
+    yield;
+    const total = items.length;
+    this.matrices = new Float32Array(total * 16);
+    this.colors = tint ? new Float32Array(total * 3) : null;
+    this.runs = []; // [cell, start, count], in instance order: one to a cell
     const m = new THREE.Matrix4(), c = new THREE.Color();
-    order.forEach(([key, it], i) => {
-      place(it, m).toArray(this.matrices, i * 16);
-      if (tint) tint(it, c).toArray(this.colors, i * 3);
-      const last = this.runs[this.runs.length - 1];
-      if (last?.[0].key === key) last[2]++;
-      else {
-        let cell = cells.get(key);
-        if (!cell) cells.set(key, cell = { key, x: 0, z: 0, top: -Infinity, n: 0, hidden: false, pixels: Infinity });
-        this.runs.push([cell, i, 1]);
+    let i = 0;
+    for (const key of keys) {
+      let cell = cells.get(key);
+      if (!cell) cells.set(key, cell = { key, x: 0, z: 0, top: -Infinity, n: 0, hidden: false, pixels: Infinity });
+      const run = [cell, i, 0];
+      this.runs.push(run);
+      for (const it of byCell.get(key)) {
+        if (i && i % STEP === 0) yield;
+        place(it, m).toArray(this.matrices, i * 16);
+        if (tint) tint(it, c).toArray(this.colors, i * 3);
+        run[2]++;
+        cell.x += it.x; cell.z += it.z; cell.n++;
+        cell.top = Math.max(cell.top, it.y);
+        i++;
       }
-      const cell = this.runs[this.runs.length - 1][0];
-      cell.x += it.x; cell.z += it.z; cell.n++;
-      cell.top = Math.max(cell.top, it.y);
-    });
+    }
+    yield;
     const mesh = g => {
-      const out = new THREE.InstancedMesh(g, material, Math.max(1, order.length));
-      if (tint) out.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, order.length) * 3), 3);
+      // Made for one instance and given the buffer for all of them after: the
+      // constructor writes an identity into every instance, which on a large map is
+      // tens of milliseconds spent on values update() replaces before any is drawn.
+      const out = new THREE.InstancedMesh(g, material, 1);
+      out.instanceMatrix = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, total) * 16), 16);
+      if (tint) out.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(Math.max(1, total) * 3), 3);
       out.frustumCulled = false; // bent in walk mode; the cells are culled instead
       out.count = 0;
       return out;
     };
-    this.meshes = [mesh(geometry), ...LEVELS.map(level => mesh(simplified(geometry, level.grid)))];
+    this.meshes = [mesh(geometry)];
+    for (const level of LEVELS) {
+      yield;
+      this.meshes.push(mesh(simplified(geometry, level.grid)));
+    }
     for (const coarser of this.meshes.slice(1)) coarser.userData.coarse = true;
     this.wanted = new Uint8Array(this.runs.length).fill(NONE); // as the meshes start: empty
+    yield;
     this.update();
   }
 

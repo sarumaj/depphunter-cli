@@ -658,7 +658,7 @@ const clampTo = ([low, high], v) => Math.min(high - DECK_W, Math.max(low + DECK_
 // aRamp, as for ramps: across and along in world units, 3 on the deck (a road with a
 // center line), 0 on everything else.
 // Implements: REQ-CITY-027
-function bridgeGeometry(bridges) {
+function* bridgeGeometry(bridges) {
   const positions = [], ramp = [], shade = [], index = [];
   const quad = (a, b, c, d, ra, rb, rc, rd, k) => {
     const i = positions.length / 3;
@@ -699,11 +699,15 @@ function bridgeGeometry(bridges) {
       const [x, y, z] = at(t / spanLength, 0, -DECK_T);
       box(x, z, r.y - 0.45, y, 0.18, 0.18, 0.7);
     }
+    yield;
   }
+  yield;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  yield;
   geo.setAttribute('aRamp', new THREE.Float32BufferAttribute(ramp, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(shade, 3));
+  yield;
   geo.setIndex(index);
   return geo;
 }
@@ -713,7 +717,7 @@ function bridgeGeometry(bridges) {
 // onto the terrace and the apron at its foot. aRamp: across and along the roadway in
 // world units, and 1 on the sloped roadway (markings), 2 on plain asphalt, 0 on walls.
 // Implements: REQ-CITY-019, REQ-CITY-020
-function rampGeometry(ramps) {
+function* rampGeometry(ramps) {
   const positions = [], ramp = [], shade = [], index = [];
   const quad = (a, b, c, d, ra, rb, rc, rd, k) => {
     const i = positions.length / 3;
@@ -749,11 +753,15 @@ function rampGeometry(ramps) {
       [-DRIVE, r.rise, 2], [-DRIVE, r.len, 2], [0, r.len, 2], [0, r.rise, 2], 1);
     quad(at(-APRON, 0, r.y0 + LIFT), at(0, 0, r.y0 + LIFT), at(0, RAMP_W, r.y0 + LIFT), at(-APRON, RAMP_W, r.y0 + LIFT),
       [0, -APRON, 2], [0, 0, 2], [RAMP_W, 0, 2], [RAMP_W, -APRON, 2], 1);
+    yield;
   }
+  yield;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  yield;
   geo.setAttribute('aRamp', new THREE.Float32BufferAttribute(ramp, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(shade, 3));
+  yield;
   geo.setIndex(index);
   return geo;
 }
@@ -833,10 +841,26 @@ const PARK_CLEAR = 0.72, PARK_PATHS = 2.2, PATH_CLEAR = 0.16, MAX_PARK_SAMPLES =
  * Implements: REQ-CITY-012, REQ-CITY-022, REQ-MAP-050
  */
 export function makeProps(boxes, bendable, style = 'city') {
+  const steps = dressing(boxes, bendable, style);
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+  }
+}
+
+/**
+ * makeProps a step at a time: the generator yields between boxes, park rows and
+ * kinds of prop, and returns the Group. On a large map the whole of it takes longer
+ * than several frames, and taken in one go it held the map still just after it had
+ * been laid out (scene.js dressLater).
+ *
+ * Implements: REQ-PERF-015
+ */
+export function* dressing(boxes, bendable, style = 'city') {
   const set = dressed(style);
   const trees = [], bushes = [], lamps = [];
   const ramps = rampsFor(boxes), bridges = bridgesFor(boxes);
-  const inDrive = (x, z) => ramps.some(r => r.drive && x > r.drive.x0 - 0.2 && x < r.drive.x1 + 0.2 && z > r.drive.z0 - 0.2 && z < r.drive.z1 + 0.2);
+  const inDrive = drives(ramps);
   const tree = (x, z, y, r) => trees.push({ x, z, y, r, s: 0.7 + 0.6 * r, kind: Math.floor(rand(z * 3.1, x) * 3) });
   const bush = (x, z, y, r) => bushes.push({ x, z, y, r, s: 0.7 + 0.7 * r });
   for (const b of boxes) {
@@ -855,15 +879,17 @@ export function makeProps(boxes, bendable, style = 'city') {
     } else if (b.kind === 'terrace' && b.node.kind !== 'file' && Math.min(b.w, b.d) > 2 * LAMP_INSET + 0.2) {
       around(b, LAMP_INSET, LAMP_SPACING, (x, z) => inDrive(x, z) || lamps.push({ x, z, y: top }));
     }
+    yield;
   }
-  plantParks(boxes, tree, bush);
+  yield* plantParks(boxes, tree, bush);
 
   const group = new THREE.Group();
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
   const cells = new Map(), scatters = [];
-  const add = (geo, color, items, place, tint, options) => {
+  const add = function* (geo, color, items, place, tint, options) {
     const material = bendable(new THREE.MeshBasicMaterial({ color, vertexColors: true, ...options }));
-    const scatter = new Scatter(geo, material, items, place, tint, cells);
+    const scatter = Object.create(Scatter.prototype);
+    yield* scatter.build(geo, material, items, place, tint, cells);
     for (const mesh of scatter.meshes) {
       mesh.userData.day = color;
       group.add(mesh);
@@ -873,24 +899,25 @@ export function makeProps(boxes, bendable, style = 'city') {
   };
   const plantAt = (it, m) => m.compose(p.set(it.x, it.y, it.z), q.setFromAxisAngle(UP, it.r * 6.28), s.setScalar(it.s));
   const lampAt = (it, m) => m.compose(p.set(it.x, it.y, it.z), q.identity(), s.setScalar(1));
-  set.species.forEach((t, kind) => {
+  for (const [kind, t] of set.species.entries()) {
     const these = trees.filter(it => it.kind === kind);
-    add(t.stem, set.stem, these, plantAt);
-    add(t.head, '#ffffff', these, plantAt, set.tint(t.hue));
-  });
-  add(set.low, '#ffffff', bushes, plantAt, set.tint(set.lowHue));
-  add(set.pole, set.poleColor, lamps, lampAt);
-  for (const mesh of add(set.lampHead, set.headColor, lamps, lampAt).meshes) mesh.userData.heads = true;
+    yield* add(t.stem, set.stem, these, plantAt);
+    yield* add(t.head, '#ffffff', these, plantAt, set.tint(t.hue));
+  }
+  yield* add(set.low, '#ffffff', bushes, plantAt, set.tint(set.lowHue));
+  yield* add(set.pole, set.poleColor, lamps, lampAt);
+  for (const mesh of (yield* add(set.lampHead, set.headColor, lamps, lampAt)).meshes) mesh.userData.heads = true;
   group.userData.night = set.headNight;
   if (set.glowAt !== undefined) {
     for (const [r, opacity] of GLOW) {
-      const glow = add(glowShell(r, set.glowAt), set.headNight, lamps, lampAt, null, {
+      const glow = yield* add(glowShell(r, set.glowAt), set.headNight, lamps, lampAt, null, {
         vertexColors: false, transparent: true, opacity,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
       for (const mesh of glow.meshes) mesh.userData.glow = opacity;
     }
   }
+  yield;
   group.userData.lod = { cells, scatters };
   // What a walker cannot walk through. A trunk, a capacitor's case, a crystal and a
   // lamp post are all a circle standing on a spot; a bush is something to walk over.
@@ -898,8 +925,10 @@ export function makeProps(boxes, bendable, style = 'city') {
     ...trees.map(it => ({ x: it.x, z: it.z, y: it.y, r: set.solid * it.s })),
     ...lamps.map(it => ({ x: it.x, z: it.z, y: it.y, r: set.post })),
   ];
-  for (const geo of [ramps.length && rampGeometry(ramps), bridges.length && bridgeGeometry(bridges)]) {
-    if (!geo) continue;
+  const surfaces = [];
+  if (ramps.length) surfaces.push(yield* rampGeometry(ramps));
+  if (bridges.length) surfaces.push(yield* bridgeGeometry(bridges));
+  for (const geo of surfaces) {
     const mesh = new THREE.Mesh(geo, rampMaterial(bendable));
     mesh.frustumCulled = false;
     mesh.userData.day = '#ffffff';
@@ -909,10 +938,12 @@ export function makeProps(boxes, bendable, style = 'city') {
 }
 
 // Samples each block's lawn (the park the street shader draws) on a jittered grid
-// and plants trees and bushes there.
+// and plants trees and bushes there, yielding after every row and every building
+// filed for the distance test.
 // Implements: REQ-CITY-024
-function plantParks(boxes, tree, bush) {
+function* plantParks(boxes, tree, bush) {
   const all = blocks(boxes);
+  yield;
   const area = [...all.keys()].reduce((a, t) => a + t.w * t.d, 0);
   const step = Math.max(0.6, Math.sqrt(area / MAX_PARK_SAMPLES));
   const offPath = v => Math.abs(((v / PARK_PATHS) % 1 + 1) % 1 - 0.5) * PARK_PATHS > PATH_CLEAR;
@@ -921,21 +952,26 @@ function plantParks(boxes, tree, bush) {
     const x0 = t.x - t.w / 2 + PARK_CLEAR, x1 = t.x + t.w / 2 - PARK_CLEAR;
     const z0 = t.z - t.d / 2 + PARK_CLEAR, z1 = t.z + t.d / 2 - PARK_CLEAR;
     if (x1 <= x0 || z1 <= z0) continue;
-    // Kids by grid cell, for the distance test.
-    const cell = 1.5, grid = new Map();
+    // Kids by grid cell, for the distance test: one array over the block's cells,
+    // which a block of a hundred thousand of them fills far quicker than a Map would.
+    const cell = 1.5;
+    const i0 = Math.floor((t.x - t.w / 2) / cell) - 1, j0 = Math.floor((t.z - t.d / 2) / cell) - 1;
+    const ni = Math.floor((t.x + t.w / 2) / cell) + 2 - i0, nj = Math.floor((t.z + t.d / 2) / cell) + 2 - j0;
+    const grid = new Array(ni * nj);
+    const at = (i, j) => (i < i0 || j < j0 || i >= i0 + ni || j >= j0 + nj ? -1 : (i - i0) * nj + (j - j0));
     for (const k of kids) {
       for (let i = Math.floor((k.x - k.w / 2) / cell); i <= Math.floor((k.x + k.w / 2) / cell); i++) {
         for (let j = Math.floor((k.z - k.d / 2) / cell); j <= Math.floor((k.z + k.d / 2) / cell); j++) {
-          const key = i + ',' + j;
-          if (!grid.has(key)) grid.set(key, []);
-          grid.get(key).push(k);
+          const n = at(i, j);
+          if (n >= 0) (grid[n] ||= []).push(k);
         }
       }
+      yield;
     }
     const clear = (x, z) => {
       const i = Math.floor(x / cell), j = Math.floor(z / cell);
       for (let offsetI = -1; offsetI <= 1; offsetI++) for (let offsetJ = -1; offsetJ <= 1; offsetJ++) {
-        for (const k of grid.get(i + offsetI + ',' + (j + offsetJ)) || []) {
+        for (const k of grid[at(i + offsetI, j + offsetJ)] || []) {
           if (rectDist({ x0: x, x1: x, z0: z, z1: z }, k) < PARK_CLEAR) return false;
         }
       }
@@ -949,6 +985,7 @@ function plantParks(boxes, tree, bush) {
         if (r < 0.16) tree(px, pz, top, r / 0.16);
         else if (r < 0.5) bush(px, pz, top, (r - 0.16) / 0.34);
       }
+      yield;
     }
   }
 }
@@ -965,6 +1002,26 @@ export function setNight(group, night) {
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
+
+// Whether a point is on a ramp's driveway (or within 0.2 of one), where no lamp
+// stands. The driveways are filed by the cells of a grid they reach, so a point is
+// held against the few near it rather than against every ramp on the map.
+const DRIVE_CELL = 4;
+function drives(ramps) {
+  const grid = new Map();
+  for (const { drive } of ramps) {
+    if (!drive) continue;
+    for (let i = Math.floor((drive.x0 - 0.2) / DRIVE_CELL); i <= Math.floor((drive.x1 + 0.2) / DRIVE_CELL); i++) {
+      for (let j = Math.floor((drive.z0 - 0.2) / DRIVE_CELL); j <= Math.floor((drive.z1 + 0.2) / DRIVE_CELL); j++) {
+        const key = i + ',' + j;
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push(drive);
+      }
+    }
+  }
+  return (x, z) => (grid.get(Math.floor(x / DRIVE_CELL) + ',' + Math.floor(z / DRIVE_CELL)) || [])
+    .some(d => x > d.x0 - 0.2 && x < d.x1 + 0.2 && z > d.z0 - 0.2 && z < d.z1 + 0.2);
+}
 
 // Calls fn at points spaced along a rectangle inset from a box's edges.
 function around(b, inset, spacing, callback) {
@@ -1095,7 +1152,15 @@ const LED = merge([
 // added to whatever is behind them, the wider one fainter. Two is enough to read as
 // one soft ball at this size, and they cost two draws however many lights there are.
 const GLOW = [[0.075, 0.55], [0.135, 0.22], [0.24, 0.07]];
-const glowShell = (r, y) => new THREE.SphereGeometry(r, 9, 6).translate(0, y, 0);
+// One shell of each size and height for every layout: the props' instanced meshes
+// share their geometry across layouts and do not dispose of it (scene.js dropProps),
+// and lod.js keeps its coarse copies by geometry.
+const shells = new Map();
+const glowShell = (r, y) => {
+  const key = r + ',' + y;
+  if (!shells.has(key)) shells.set(key, new THREE.SphereGeometry(r, 9, 6).translate(0, y, 0));
+  return shells.get(key);
+};
 
 // What grows out in the dark: spires of crystal, and rubble that still glows.
 const shard = (r, h, x, y, z, tilt = 0) => shaded(

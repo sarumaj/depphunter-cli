@@ -16,8 +16,10 @@ Stepping the depth (REQ-MAP-023) **shall** show the new depth on the toolbar
 before the map is laid out, and **shall** lay the map out once for the depth
 reached by the steps taken meanwhile, not once per step. Out of walk mode, the
 street's trees, lamps and ramps **shall** be built after the new layout has
-been drawn once, and **shall** not be built for a layout replaced before then;
-in walk mode, and on entering it, they **shall** be built at once. The ground's
+been drawn once, a few milliseconds a frame, and **shall** not be finished for
+a layout replaced before then; in walk mode, and on entering it, they **shall**
+be built at once, and **shall** be the same props whichever way they were
+built. The ground's
 geometry **shall** be written into typed arrays sized beforehand.
 
 ## Rationale
@@ -35,6 +37,8 @@ street furniture cost more than the rest of the layout together.
 3. The ground geometry is identical, attribute by attribute, to what it was
    before the change.
 4. The finished map is drawn pixel for pixel as before.
+5. On a repository of 4,000 boxes at the depth shown, no frame spends more
+   than about 15 ms building props, where building them took 0.35 s in one go.
 
 ## Notes
 

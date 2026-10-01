@@ -16,7 +16,7 @@ import { buildParameters, isGround } from './buildings.js';
 import { Details, tiersOf } from './details.js';
 import { cull } from './lod.js';
 import { Resolution } from './resolution.js';
-import { kindCode, makeSky, waterMaterial, makeProps, setNight, roadUniforms, setRoads } from './city.js';
+import { kindCode, makeSky, waterMaterial, dressing, setNight, roadUniforms, setRoads } from './city.js';
 import { CITY_VERT_HEAD, CITY_VERT_BODY, CITY_FRAG_HEAD, CITY_FRAG_BODY } from './cityglsl.js';
 
 const ISO_POLAR = Math.acos(1 / Math.sqrt(3)); // true isometric elevation (35.26°)
@@ -398,24 +398,36 @@ export class MapScene {
   /**
    * The trees, lamps and ramps of a layout, which cost more than the rest of it put
    * together. Out of the street they wait until the layout has been drawn once, so a
-   * change of depth shows its city first and dresses it a moment later; a later
-   * layout drops a dressing still waiting. In the street they are built at once, and
+   * change of depth shows its city first, and are then built a few milliseconds a
+   * frame (city.js dressing), so the map can still be moved while they are; a later
+   * layout drops a dressing not yet done. In the street they are built at once, and
    * on stepping into it: the walker runs into them.
    *
    * Implements: REQ-PERF-015
    */
   dressLater(boxes) {
-    clearTimeout(this.dressing);
-    const dress = this.undressed = () => {
-      if (this.undressed !== dress) return;
+    const steps = dressing(boxes, m => this.bendable(m), this.style);
+    // Takes the steps until they are done or `budget` milliseconds have gone; true
+    // once the props are up, or once a later layout has taken over.
+    const dress = this.undressed = (budget = Infinity) => {
+      if (this.undressed !== dress) return true;
+      const until = performance.now() + budget;
+      let step;
+      do step = steps.next(); while (!step.done && performance.now() < until);
+      if (!step.done) return false;
       this.undressed = null;
-      this.props = makeProps(boxes, m => this.bendable(m), this.style);
+      this.props = step.value;
       if (this.colors) setNight(this.props, this.curve.uNight.value > 0);
       this.scene.add(this.props);
       this.requestRender();
+      return true;
     };
-    if (this.walking) dress();
-    else requestAnimationFrame(() => { this.dressing = setTimeout(dress); });
+    if (this.walking) {
+      dress();
+      return;
+    }
+    const frame = () => dress(DRESS_BUDGET) || requestAnimationFrame(frame);
+    requestAnimationFrame(() => requestAnimationFrame(frame));
   }
 
   // Each layout gets its own prop materials and ramp geometry; the instanced plants
@@ -988,6 +1000,9 @@ export class MapScene {
 const TICK = 66;
 // Runs `callback` when the page has nothing else to do, or within two seconds.
 const idle = callback => (window.requestIdleCallback ? requestIdleCallback(callback, { timeout: 2000 }) : setTimeout(callback, 200));
+
+// How much of a frame building the props may take, in milliseconds (dressLater).
+const DRESS_BUDGET = 6;
 
 // How long the map rests before a frame drawn smaller is drawn again in full, and
 // how soon after a frame the next has to be asked for to be timed against it.
