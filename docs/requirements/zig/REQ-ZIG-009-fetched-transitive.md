@@ -15,8 +15,9 @@ With `--resolve-depth`, a Zig package's dependencies **shall** be the URL
 dependencies of its own `build.zig.zon` when Zig has fetched it: under
 `zig-pkg/<hash>/` beside a `build.zig.zon` of the repository or above it
 (Zig 0.16), else in the global cache's `p/<hash>/` (`$ZIG_GLOBAL_CACHE_DIR`,
-`$XDG_CACHE_HOME/zig`, `%LOCALAPPDATA%\zig` on Windows, `~/.cache/zig`),
-read from disk; such an answer counts as installed.
+`$XDG_CACHE_HOME/zig`, `%LOCALAPPDATA%\zig` on Windows, `~/.cache/zig`, the
+two variables only when absolute), read from disk; such an answer counts as
+installed.
 
 ## Rationale
 

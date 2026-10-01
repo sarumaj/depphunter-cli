@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -520,5 +521,18 @@ func TestSourceDirectoryAboveTheRepository(t *testing.T) {
 		if got := r.Resolve("app.gpr", lang.RawImport{Module: module, Name: kindDirectory}); got != (lang.Target{}) {
 			t.Errorf("%s: got %+v, want nothing", module, got)
 		}
+	}
+}
+
+// A relative XDG_CACHE_HOME is ignored, as the XDG specification says: it would be
+// read from the repository depphunter runs in. The home directory's cache stands.
+//
+// Verifies: REQ-ADA-008
+func TestRelativeXDGCacheIgnored(t *testing.T) {
+	env := map[string]string{"XDG_CACHE_HOME": "cache", "HOME": "/home/someone"}
+	got := sharedReleases(func(name string) string { return env[name] })
+	want := []string{filepath.Join("/home/someone", ".cache", "alire", "releases")}
+	if !slices.Equal(got, want) {
+		t.Errorf("shared releases: %v, want %v", got, want)
 	}
 }

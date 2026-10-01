@@ -61,13 +61,14 @@ func (c *crateDirectory) readInstalled(repository lang.Root, absoluteDirectory s
 // sharedReleases are the directories where Alire 2 keeps the sources of the
 // releases it fetched once for every workspace ("shared" dependencies): the
 // cache below ALIRE_SETTINGS_DIR, else $XDG_CACHE_HOME/alire, else
-// ~/.cache/alire.
+// ~/.cache/alire. A relative XDG_CACHE_HOME is ignored, as the XDG specification
+// says: it would be read from wherever depphunter runs, which is the repository.
 func sharedReleases(getenv func(string) string) []string {
 	var out []string
 	if d := getenv("ALIRE_SETTINGS_DIR"); d != "" {
 		out = append(out, filepath.Join(d, "cache", "releases"))
 	}
-	if d := getenv("XDG_CACHE_HOME"); d != "" {
+	if d := getenv("XDG_CACHE_HOME"); filepath.IsAbs(d) {
 		out = append(out, filepath.Join(d, "alire", "releases"))
 	} else if h := getenv("HOME"); h != "" {
 		out = append(out, filepath.Join(h, ".cache", "alire", "releases"))

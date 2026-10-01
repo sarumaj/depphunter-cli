@@ -270,3 +270,28 @@ func TestTruncated(t *testing.T) {
 		readZon([]byte(s))
 	}
 }
+
+// A relative XDG_CACHE_HOME is not this machine's cache: it would be read from the
+// repository depphunter runs in, so a package there is not taken as fetched.
+//
+// Verifies: REQ-ZIG-009
+func TestRelativeXDGCacheIgnored(t *testing.T) {
+	root, err := filepath.Abs("testdata/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := langtest.Files(t, root)
+	t.Chdir(t.TempDir())
+	t.Setenv("ZIG_GLOBAL_CACHE_DIR", "")
+	t.Setenv("LOCALAPPDATA", "")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", "cache")
+	directory := filepath.Join("cache", "zig", "p", "known_folders-0.0.0-Fy-PJiDLAAB98m3uYUzatrTb2mO2fpvwx2zpSroEtfbO")
+	os.MkdirAll(directory, 0o755)
+	os.WriteFile(filepath.Join(directory, "build.zig.zon"), []byte(`.{ .name = .known_folders, .version = "0.0.0", .paths = .{""} }`), 0o644)
+	r := newResolver(root, files)
+	r.Dependencies(knownFolders)
+	if r.Installed(knownFolders) {
+		t.Error("a package under a relative XDG_CACHE_HOME was taken as fetched")
+	}
+}

@@ -546,8 +546,10 @@ func (r *resolver) fetchedZon(f fetched) []byte {
 	if c := os.Getenv("ZIG_GLOBAL_CACHE_DIR"); c != "" {
 		candidates = append(candidates, candidate{lang.Machine, filepath.Join(c, "p", f.hash)})
 	}
+	// Only absolute: a relative one would be read from wherever depphunter runs,
+	// which is the repository, as though it were this machine's cache.
 	for _, environment := range []string{"XDG_CACHE_HOME", "LOCALAPPDATA"} { // LOCALAPPDATA: Windows
-		if c := os.Getenv(environment); c != "" {
+		if c := os.Getenv(environment); filepath.IsAbs(c) {
 			candidates = append(candidates, candidate{lang.Machine, filepath.Join(c, "zig", "p", f.hash)})
 		}
 	}
