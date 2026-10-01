@@ -37,7 +37,7 @@ import { massTop } from './details.js';
 // over half as tall, a door a little taller than them.
 const EYE = 0.45;           // eye height above the feet
 // Implements: REQ-WALK-004
-const WALK = 2.6, RUN = 7, FLY = 10; // units per second
+const WALK = 3.2, RUN = 8.5, FLY = 10; // units per second
 // A jump clears a curb and a terrace wall and nothing more. At this gravity it tops
 // out about 0.4 units up, which against a story of 0.84 is a person leaving the ground
 // rather than one clearing a tree.
