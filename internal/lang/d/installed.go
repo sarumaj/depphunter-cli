@@ -14,7 +14,8 @@ import (
 // packageDirectories are the directories dub fetches packages into, most specific
 // first: the repository's .dub/packages (dub fetch --cache=local), then
 // $DUB_HOME/packages, $DPATH/dub/packages, else ~/.dub/packages (on Windows
-// %LOCALAPPDATA%\dub\packages).
+// %LOCALAPPDATA%\dub\packages); relative variables are taken against the
+// repository root.
 //
 // Implements: REQ-DLANG-008
 func packageDirectories(root string) []packageDirectory {
@@ -22,15 +23,15 @@ func packageDirectories(root string) []packageDirectory {
 	if root != "" {
 		out = append(out, packageDirectory{lang.OpenRoot(root), filepath.Join(root, ".dub", "packages")})
 	}
-	if h := os.Getenv("DUB_HOME"); h != "" {
-		return append(out, packageDirectory{lang.Machine, filepath.Join(h, "packages")})
+	if h, files := lang.FromEnvironment(root, os.Getenv("DUB_HOME")); h != "" {
+		return append(out, packageDirectory{files, filepath.Join(h, "packages")})
 	}
-	if h := os.Getenv("DPATH"); h != "" {
-		return append(out, packageDirectory{lang.Machine, filepath.Join(h, "dub", "packages")})
+	if h, files := lang.FromEnvironment(root, os.Getenv("DPATH")); h != "" {
+		return append(out, packageDirectory{files, filepath.Join(h, "dub", "packages")})
 	}
 	if runtime.GOOS == "windows" {
-		if h := os.Getenv("LOCALAPPDATA"); h != "" {
-			return append(out, packageDirectory{lang.Machine, filepath.Join(h, "dub", "packages")})
+		if h, files := lang.FromEnvironment(root, os.Getenv("LOCALAPPDATA")); h != "" {
+			return append(out, packageDirectory{files, filepath.Join(h, "dub", "packages")})
 		}
 	}
 	if h, err := os.UserHomeDir(); err == nil {
@@ -40,7 +41,7 @@ func packageDirectories(root string) []packageDirectory {
 }
 
 // packageDirectory is a directory dub fetches packages into and how it is read:
-// the repository's .dub/packages through its Root, the others through Machine.
+// through the repository's Root when it lies there, else through Machine.
 type packageDirectory struct {
 	files     lang.Root
 	directory string

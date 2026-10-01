@@ -533,7 +533,7 @@ func (r *resolver) fetchedZon(f fetched) []byte {
 		return nil
 	}
 	// The project's own zig-pkg/ is read through the repository's Root, the
-	// global caches of this machine through Machine.
+	// global caches through the Root lang.FromEnvironment gives.
 	type candidate struct {
 		files     lang.Root
 		directory string
@@ -543,15 +543,17 @@ func (r *resolver) fetchedZon(f fetched) []byte {
 	for d := range lang.DirectoryAndAncestors(f.directory) {
 		candidates = append(candidates, candidate{repository, filepath.Join(r.root, filepath.FromSlash(d), "zig-pkg", f.hash)})
 	}
-	if c := os.Getenv("ZIG_GLOBAL_CACHE_DIR"); c != "" {
-		candidates = append(candidates, candidate{lang.Machine, filepath.Join(c, "p", f.hash)})
-	}
-	// Only absolute: a relative one would be read from wherever depphunter runs,
-	// which is the repository, as though it were this machine's cache.
-	for _, environment := range []string{"XDG_CACHE_HOME", "LOCALAPPDATA"} { // LOCALAPPDATA: Windows
-		if c := os.Getenv(environment); filepath.IsAbs(c) {
-			candidates = append(candidates, candidate{lang.Machine, filepath.Join(c, "zig", "p", f.hash)})
+	// Zig's global cache: ZIG_GLOBAL_CACHE_DIR, else zig/ in XDG_CACHE_HOME or (on
+	// Windows) LOCALAPPDATA, else ~/.cache/zig. Every one that is set is tried.
+	for _, variable := range []string{"ZIG_GLOBAL_CACHE_DIR", "XDG_CACHE_HOME", "LOCALAPPDATA"} {
+		c, files := lang.FromEnvironment(r.root, os.Getenv(variable))
+		if c == "" {
+			continue
 		}
+		if variable != "ZIG_GLOBAL_CACHE_DIR" {
+			c = filepath.Join(c, "zig")
+		}
+		candidates = append(candidates, candidate{files, filepath.Join(c, "p", f.hash)})
 	}
 	if h, err := os.UserHomeDir(); err == nil {
 		candidates = append(candidates, candidate{lang.Machine, filepath.Join(h, ".cache", "zig", "p", f.hash)})

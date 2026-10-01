@@ -271,13 +271,13 @@ func TestTruncated(t *testing.T) {
 	}
 }
 
-// A relative XDG_CACHE_HOME is not this machine's cache: it would be read from the
-// repository depphunter runs in, so a package there is not taken as fetched.
+// A relative XDG_CACHE_HOME is taken as Zig takes it, against where it runs: the
+// repository root, not depphunter's working directory.
 //
 // Verifies: REQ-ZIG-009
-func TestRelativeXDGCacheIgnored(t *testing.T) {
-	root, err := filepath.Abs("testdata/repo")
-	if err != nil {
+func TestRelativeXDGCache(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("testdata/repo")); err != nil {
 		t.Fatal(err)
 	}
 	files := langtest.Files(t, root)
@@ -286,12 +286,20 @@ func TestRelativeXDGCacheIgnored(t *testing.T) {
 	t.Setenv("LOCALAPPDATA", "")
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CACHE_HOME", "cache")
-	directory := filepath.Join("cache", "zig", "p", "known_folders-0.0.0-Fy-PJiDLAAB98m3uYUzatrTb2mO2fpvwx2zpSroEtfbO")
-	os.MkdirAll(directory, 0o755)
-	os.WriteFile(filepath.Join(directory, "build.zig.zon"), []byte(`.{ .name = .known_folders, .version = "0.0.0", .paths = .{""} }`), 0o644)
+	directory := filepath.Join("zig", "p", "known_folders-0.0.0-Fy-PJiDLAAB98m3uYUzatrTb2mO2fpvwx2zpSroEtfbO")
+	zon := []byte(`.{ .name = .known_folders, .version = "0.0.0", .paths = .{""} }`)
+	os.MkdirAll(filepath.Join("cache", directory), 0o755) // depphunter's working directory
+	os.WriteFile(filepath.Join("cache", directory, "build.zig.zon"), zon, 0o644)
 	r := newResolver(root, files)
 	r.Dependencies(knownFolders)
 	if r.Installed(knownFolders) {
-		t.Error("a package under a relative XDG_CACHE_HOME was taken as fetched")
+		t.Error("a relative XDG_CACHE_HOME was read from depphunter's working directory")
+	}
+	os.MkdirAll(filepath.Join(root, "cache", directory), 0o755)
+	os.WriteFile(filepath.Join(root, "cache", directory, "build.zig.zon"), zon, 0o644)
+	r = newResolver(root, files)
+	r.Dependencies(knownFolders)
+	if !r.Installed(knownFolders) {
+		t.Error("a relative XDG_CACHE_HOME was not read from the repository root")
 	}
 }

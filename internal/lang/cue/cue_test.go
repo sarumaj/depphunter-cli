@@ -243,7 +243,7 @@ func TestModuleCache(t *testing.T) {
 		t.Errorf("no cache: %+v", got)
 	}
 	t.Setenv("CUE_CACHE_DIR", "")
-	if directory, err := os.UserCacheDir(); err == nil && cacheDirectory() != filepath.Join(directory, "cue") {
-		t.Errorf("cache dir %q, want cue/ in %q", cacheDirectory(), directory)
+	if directory, err := os.UserCacheDir(); err == nil && cacheDirectory("") != filepath.Join(directory, "cue") {
+		t.Errorf("cache dir %q, want cue/ in %q", cacheDirectory(""), directory)
 	}
 }

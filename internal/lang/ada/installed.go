@@ -58,22 +58,27 @@ func (c *crateDirectory) readInstalled(repository lang.Root, absoluteDirectory s
 	}
 }
 
-// sharedReleases are the directories where Alire 2 keeps the sources of the
-// releases it fetched once for every workspace ("shared" dependencies): the
-// cache below ALIRE_SETTINGS_DIR, else $XDG_CACHE_HOME/alire, else
-// ~/.cache/alire. A relative XDG_CACHE_HOME is ignored, as the XDG specification
-// says: it would be read from wherever depphunter runs, which is the repository.
-func sharedReleases(getenv func(string) string) []string {
-	var out []string
-	if d := getenv("ALIRE_SETTINGS_DIR"); d != "" {
-		out = append(out, filepath.Join(d, "cache", "releases"))
+// sharedReleases is where Alire 2 keeps the sources of the releases it fetched
+// once for every workspace ("shared" dependencies), and the Root that reads it:
+// releases/ in its cache, which is cache/ below ALIRE_SETTINGS_DIR when that is
+// set, else $XDG_DATA_HOME/alire, else ~/.local/share/alire (%LOCALAPPDATA%\alire
+// on Windows). Relative values are taken against the repository root.
+func sharedReleases(root string, getenv func(string) string, goos string) (string, lang.Root) {
+	if settings, files := lang.FromEnvironment(root, getenv("ALIRE_SETTINGS_DIR")); settings != "" {
+		return filepath.Join(settings, "cache", "releases"), files
 	}
-	if d := getenv("XDG_CACHE_HOME"); filepath.IsAbs(d) {
-		out = append(out, filepath.Join(d, "alire", "releases"))
-	} else if h := getenv("HOME"); h != "" {
-		out = append(out, filepath.Join(h, ".cache", "alire", "releases"))
+	variable, home := "XDG_DATA_HOME", filepath.Join(getenv("HOME"), ".local", "share")
+	if goos == "windows" {
+		variable, home = "LOCALAPPDATA", filepath.Join(getenv("USERPROFILE"), "AppData", "Local")
 	}
-	return out
+	data, files := lang.FromEnvironment(root, getenv(variable))
+	if data == "" {
+		if !filepath.IsAbs(home) { // no home directory
+			return "", lang.Root{}
+		}
+		data, files = home, lang.Machine
+	}
+	return filepath.Join(data, "alire", "releases"), files
 }
 
 // readShared adds the crates c's manifest or lock file names that Alire keeps
@@ -83,21 +88,16 @@ func sharedReleases(getenv func(string) string) []string {
 // into another's.
 //
 // Implements: REQ-ADA-008
-func (c *crateDirectory) readShared(directories []string) {
+func (c *crateDirectory) readShared(base string, files lang.Root) {
 	type release struct{ directory, version string }
 	found := map[string][]release{}
-	for _, base := range directories {
-		entries, err := os.ReadDir(base)
-		if err != nil {
+	entries, _ := files.ReadDir(base)
+	for _, e := range entries {
+		m := crateDirectoryRe.FindStringSubmatch(e.Name())
+		if m == nil || !e.IsDir() {
 			continue
 		}
-		for _, e := range entries {
-			m := crateDirectoryRe.FindStringSubmatch(e.Name())
-			if m == nil || !e.IsDir() {
-				continue
-			}
-			found[m[1]] = append(found[m[1]], release{filepath.Join(base, e.Name()), m[2]})
-		}
+		found[m[1]] = append(found[m[1]], release{filepath.Join(base, e.Name()), m[2]})
 	}
 	for _, name := range c.known() {
 		releases := found[name]
@@ -122,12 +122,12 @@ func (c *crateDirectory) readShared(directories []string) {
 		if best < 0 {
 			continue
 		}
-		c.add(lang.Machine, releases[best].directory, name, releases[best].version)
+		c.add(files, releases[best].directory, name, releases[best].version)
 	}
 }
 
 // add reads an installed crate's directory through files (the repository's Root
-// for its alire/cache, Machine for the shared releases): its manifest, project
+// for its alire/cache, sharedReleases' for the shared releases): its manifest, project
 // files and units.
 func (c *crateDirectory) add(files lang.Root, directory, name, version string) {
 	installed := &installedCrate{name: name, version: version, m: &manifest{dependencies: map[string]*dependency{}, pins: map[string]*pin{}}}

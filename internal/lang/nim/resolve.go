@@ -140,13 +140,13 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 // readGlobal reads the packages of the nimble directory that a manifest names,
 // the locked version if it is installed, else the newest.
 func (r *resolver) readGlobal(getenv func(string) string) {
-	directory := getenv("NIMBLE_DIR")
+	directory, files := lang.FromEnvironment(r.root, getenv("NIMBLE_DIR"))
 	if directory == "" {
 		home := getenv("HOME")
 		if home == "" {
 			return
 		}
-		directory = filepath.Join(home, ".nimble")
+		directory, files = filepath.Join(home, ".nimble"), lang.Machine
 	}
 	want, prefer := map[string]bool{}, map[string]string{}
 	for _, p := range r.order {
@@ -167,7 +167,7 @@ func (r *resolver) readGlobal(getenv func(string) string) {
 	if len(want) == 0 {
 		return
 	}
-	r.global = readPackages(lang.Machine, directory, false, want, prefer)
+	r.global = readPackages(files, directory, false, want, prefer)
 	for _, installedPackage := range r.global {
 		r.byAbsolute[filepath.Clean(installedPackage.root)] = installedPackage
 	}

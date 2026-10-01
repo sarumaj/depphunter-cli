@@ -85,13 +85,13 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
-	return newResolver(root, all, cacheDirectory()), nil
+	return newResolver(root, all, cacheDirectory(root)), nil
 }
 
-// cacheDirectory is where cue keeps the modules it fetched: $CUE_CACHE_DIR, else cue/ in
-// the user's cache directory.
-func cacheDirectory() string {
-	if directory := os.Getenv("CUE_CACHE_DIR"); directory != "" {
+// cacheDirectory is where cue keeps the modules it fetched: $CUE_CACHE_DIR (a relative
+// one against the repository root), else cue/ in the user's cache directory.
+func cacheDirectory(root string) string {
+	if directory, _ := lang.FromEnvironment(root, os.Getenv("CUE_CACHE_DIR")); directory != "" {
 		return directory
 	}
 	if directory, err := os.UserCacheDir(); err == nil {
