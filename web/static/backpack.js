@@ -94,6 +94,26 @@ export class Backpack {
   }
 
   /**
+   * Adds what `items` holds and the backpack does not: what the editor caught while
+   * no map was open, which only the server has. What both hold stays as the backpack
+   * has it; the whole is ordered newest first, as catching orders it. Quiet, like
+   * replace: the caller hands the result up itself.
+   *
+   * Implements: REQ-HUNT-028
+   */
+  merge(items) {
+    if (!Array.isArray(items)) return false;
+    const ids = this.ids;
+    const more = items.filter(it => it && typeof it.id === 'string' && !ids.has(it.id));
+    if (!more.length) return false;
+    this.items = [...this.items, ...more]
+      .sort((a, b) => (b.caughtAt || 0) - (a.caughtAt || 0))
+      .slice(0, MAX);
+    this.save(true);
+    return true;
+  }
+
+  /**
    * Compares what is in the backpack against the newest scanner reports. A finding
    * that is still reported is still there; one that is not has been fixed, and is
    * marked rather than dropped. Called with null - findings turned off, or a report
