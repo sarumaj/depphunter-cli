@@ -914,7 +914,7 @@ export function* dressing(boxes, bendable, style = 'city') {
   const trees = [], bushes = [], lamps = [];
   const ramps = rampsFor(boxes), bridges = bridgesFor(boxes);
   const inDrive = drives(ramps);
-  const tree = (x, z, y, r) => trees.push({ x, z, y, r, s: 0.7 + 0.6 * r, kind: Math.floor(rand(z * 3.1, x) * 3) });
+  const tree = (x, z, y, r) => trees.push({ x, z, y, r, s: 0.7 + 0.6 * r, kind: Math.floor(rand(z * 3.1, x) * set.species.length) });
   const bush = (x, z, y, r) => bushes.push({ x, z, y, r, s: 0.7 + 0.7 * r });
   for (const b of boxes) {
     const top = b.y + b.h;
@@ -955,9 +955,12 @@ export function* dressing(boxes, bendable, style = 'city') {
   for (const [kind, t] of set.species.entries()) {
     const these = trees.filter(it => it.kind === kind);
     yield* add(t.stem, set.stem, these, plantAt);
-    yield* add(t.head, '#ffffff', these, plantAt, set.tint(t.hue));
+    yield* add(t.head, '#ffffff', these, plantAt, set.tint(t.hue, t));
   }
-  yield* add(set.low, '#ffffff', bushes, plantAt, set.tint(set.lowHue));
+  const lows = set.lows || [{ head: set.low, hue: set.lowHue }];
+  for (const [kind, low] of lows.entries()) {
+    yield* add(low.head, '#ffffff', bushes.filter(it => Math.floor(it.r * 7919) % lows.length === kind), plantAt, set.tint(low.hue, low));
+  }
   yield* add(set.pole, set.poleColor, lamps, lampAt);
   for (const mesh of (yield* add(set.lampHead, set.headColor, lamps, lampAt)).meshes) mesh.userData.heads = true;
   group.userData.night = set.headNight;
@@ -1173,8 +1176,14 @@ const legs = (h, dx) => merge([
   shaded(new THREE.CylinderGeometry(0.008, 0.008, h, 5).translate(-dx, h / 2, 0)),
 ]);
 
-// Parts soldered to the board. A through-hole electrolytic capacitor with its vent
-// cross and polarity stripe, a small transistor in a TO-92 case, and a wound inductor.
+const box = (w, h, d, x, y, z) => shaded(new THREE.BoxGeometry(w, h, d).translate(x, y + h / 2, z));
+
+// Parts soldered to the board, two or three of each kind in the shapes they are sold
+// in: capacitors - a tall electrolytic with its vent cross, a squat one, a ceramic
+// disc, a film box; transistors - a small TO-92 and a TO-220 with its tab; inductors -
+// a wound drum and a toroid. The legs, and the TO-220's tab, are the stem, in tin.
+// light: how bright the part's color is, for the light ones.
+// Implements: REQ-MAP-055
 const PARTS = [
   {
     hue: 0.62, // the dark blue a capacitor's sleeve usually is
@@ -1188,11 +1197,39 @@ const PARTS = [
   },
   {
     hue: 0.0,
+    stem: legs(0.06, 0.03),
+    head: merge([
+      cyl(0.11, 0.11, 0.2, 0.06, 14),
+      shaded(new THREE.CylinderGeometry(0.112, 0.112, 0.016, 14).translate(0, 0.23, 0)),
+      box(0.025, 0.2, 0.012, 0, 0.06, 0.105),                                             // the minus stripe
+    ]),
+  },
+  {
+    hue: 0.08, light: 0.2, // a ceramic disc's glaze
+    stem: legs(0.14, 0.03),
+    head: shaded(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 14).rotateX(Math.PI / 2).translate(0, 0.2, 0)),
+  },
+  {
+    hue: 0.14, light: 0.32, // a film capacitor's yellow box
+    stem: legs(0.04, 0.05),
+    head: merge([box(0.17, 0.13, 0.08, 0, 0.04, 0), box(0.172, 0.01, 0.082, 0, 0.16, 0)]),
+  },
+  {
+    hue: 0.0,
     stem: legs(0.08, 0.016),
     head: merge([
       shaded(new THREE.CylinderGeometry(0.075, 0.075, 0.16, 12, 1, false, -Math.PI / 2, Math.PI).translate(0, 0.16, 0)),
       shaded(new THREE.BoxGeometry(0.15, 0.16, 0.03).translate(0, 0.16, 0.012)),
     ]),
+  },
+  {
+    hue: 0.0,
+    stem: merge([
+      legs(0.12, 0.05), cyl(0.008, 0.008, 0.12, 0, 5),
+      box(0.17, 0.13, 0.014, 0, 0.3, -0.022),                                             // the tab, with its screw
+      shaded(new THREE.CylinderGeometry(0.024, 0.024, 0.02, 8).rotateX(Math.PI / 2).translate(0, 0.365, -0.022)),
+    ]),
+    head: merge([box(0.17, 0.18, 0.05, 0, 0.12, 0), box(0.04, 0.004, 0.052, 0, 0.3, 0)]),
   },
   {
     hue: 0.09,
@@ -1202,13 +1239,31 @@ const PARTS = [
       ...[0, 1, 2, 3].map(i => shaded(new THREE.TorusGeometry(0.065, 0.014, 5, 10).rotateX(Math.PI / 2).translate(0, 0.11 + i * 0.055, 0))),
     ]),
   },
+  {
+    hue: 0.07, light: 0.18, // copper wound round a ring
+    stem: legs(0.05, 0.06),
+    head: merge([
+      shaded(new THREE.TorusGeometry(0.1, 0.045, 8, 18).translate(0, 0.17, 0)),
+      ...Array.from({ length: 12 }, (_, i) => shaded(new THREE.TorusGeometry(0.05, 0.008, 4, 8)
+        .rotateX(Math.PI / 2).translate(0.1, 0, 0).rotateZ(i * Math.PI / 6).translate(0, 0.17, 0))),
+    ]),
+  },
 ];
-// A surface-mount resistor: a body with tin ends, lying on its pads.
-const SMD = merge([
-  shaded(new THREE.BoxGeometry(0.13, 0.05, 0.07).translate(0, 0.025, 0)),
-  shaded(new THREE.BoxGeometry(0.03, 0.052, 0.072).translate(0.055, 0.026, 0)),
-  shaded(new THREE.BoxGeometry(0.03, 0.052, 0.072).translate(-0.055, 0.026, 0)),
-]);
+// The low ones, lying on their pads: a resistor with tin ends, a ceramic capacitor,
+// a SOT-23 transistor on its three feet and a shielded power inductor.
+const SMD = [
+  {
+    hue: 0.09,
+    head: merge([box(0.13, 0.05, 0.07, 0, 0, 0), box(0.03, 0.052, 0.072, 0.055, 0, 0), box(0.03, 0.052, 0.072, -0.055, 0, 0)]),
+  },
+  { hue: 0.08, light: 0.2, head: merge([box(0.1, 0.05, 0.06, 0, 0, 0), box(0.022, 0.052, 0.062, 0.04, 0, 0), box(0.022, 0.052, 0.062, -0.04, 0, 0)]) },
+  {
+    hue: 0.0,
+    head: merge([box(0.1, 0.035, 0.06, 0, 0.012, 0),
+      box(0.016, 0.012, 0.03, -0.03, 0, 0.042), box(0.016, 0.012, 0.03, 0.03, 0, 0.042), box(0.016, 0.012, 0.03, 0, 0, -0.042)]),
+  },
+  { hue: 0.6, head: merge([box(0.14, 0.06, 0.14, 0, 0, 0), cyl(0.045, 0.045, 0.004, 0.06, 12)]) },
+];
 const LED_LEGS = merge([
   shaded(new THREE.CylinderGeometry(0.009, 0.009, 0.42, 5).translate(0.016, 0.21, 0)),
   shaded(new THREE.CylinderGeometry(0.009, 0.009, 0.36, 5).translate(-0.016, 0.18, 0)),
@@ -1286,14 +1341,14 @@ const PROPS = {
     tint: hue => (it, c) => c.setHSL(hue + it.r * 0.07, 0.5 + 0.2 * it.r, 0.2 + it.r * 0.1),
   },
   circuit: {
-    species: PARTS, stem: '#b9bec6', low: SMD, lowHue: 0.09,
+    species: PARTS, stem: '#b9bec6', lows: SMD,
     pole: LED_LEGS, poleColor: '#b9bec6', lampHead: LED, headColor: '#e2513c', headNight: '#ff6a52',
     // An LED is lit whether or not the room is: the glow sits over its lens.
     glowAt: 0.52,
     solid: 0.09, post: 0.03,
     // Parts are made in a handful of colors, not a spectrum: a little jitter around
     // the one the part type is usually sold in.
-    tint: hue => (it, c) => c.setHSL(hue + (it.r - 0.5) * 0.04, hue < 0.05 ? 0.05 : 0.55, 0.12 + it.r * 0.12),
+    tint: (hue, part) => (it, c) => c.setHSL(hue + (it.r - 0.5) * 0.04, hue < 0.05 ? 0.05 : 0.55, (part.light ?? 0.12) + it.r * 0.12),
   },
   galaxy: {
     species: CRYSTALS, stem: '#2b2540', low: RUBBLE, lowHue: 0.68,

@@ -30,6 +30,19 @@ describe('vegetation without the plant models', () => {
   });
 });
 
+describe('the parts on a circuit board', () => {
+  // Verifies: REQ-MAP-055
+  it('solders every kind of part somewhere on a board', () => {
+    const land = box('land', 0, 0, 40, 40, { y: -0.45, h: 0.45 });
+    const group = makeProps([land], m => m, 'circuit');
+    // A stem and a head for each of the eight through-hole kinds, then the four
+    // surface-mount ones, each drawn in full and coarse (lod.js).
+    const drawn = group.children.filter(mesh => !mesh.userData.coarse && !mesh.userData.glow).slice(0, 8 * 2 + 4);
+    assert.equal(drawn.length, 20);
+    for (const mesh of drawn) assert.ok(mesh.count > 0, 'a kind of part stands nowhere');
+  });
+});
+
 describe('street lamps at night', () => {
   // Verifies: REQ-CITY-036
   it('lights the city\'s lamps after dark only, with a glow and a pool on the pavement', () => {
