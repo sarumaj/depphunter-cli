@@ -13,13 +13,13 @@ import { describe, it, mock } from 'node:test';
 
 import './stub.mjs';
 
-const { Health } = await import('../static/health.js');
-const { Wind } = await import('../static/wind.js');
-const { TOOLS, TOOL_IDS, PRIMARY_IDS, SECONDARY_IDS, hits, isSecondary, toolFor, idleTool, studyTool, DEFAULT_TOOL } = await import('../static/tools.js');
-const SWITCH = await import('../static/switcher.js');
-const WALK = await import('../static/walk.js');
-const SHOTS = await import('../static/shots.js');
-const BASE = await import('../static/walkbase.js');
+const { Health } = await import('../static/walk/health.js');
+const { Wind } = await import('../static/walk/wind.js');
+const { TOOLS, TOOL_IDS, PRIMARY_IDS, SECONDARY_IDS, hits, isSecondary, toolFor, idleTool, studyTool, DEFAULT_TOOL } = await import('../static/walk/tools.js');
+const SWITCH = await import('../static/walk/switcher.js');
+const WALK = await import('../static/walk/walk.js');
+const SHOTS = await import('../static/walk/shots.js');
+const BASE = await import('../static/walk/walkbase.js');
 const THREE = await import('../static/vendor/three.module.min.js');
 
 // How close two parts of a tool have to be to count as touching, in map units: a

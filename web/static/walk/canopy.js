@@ -2,7 +2,7 @@
 // landing costs, cutting it away, and the canopies left lying about or drifting off.
 // The canopy's own flight and rig are parachute.js's. Mixed into Walker (walk.js).
 
-import * as THREE from './vendor/three.module.min.js';
+import * as THREE from '../vendor/three.module.min.js';
 import { EYE, STEP, WATER, reducedMotion } from './walkbase.js';
 import { toolFor, viewLights, litPart } from './tools.js';
 import { deployChute, stepChute, aloft, cutAway, lookOf, poseRig, canopyRig, LooseCanopy, MIN_DEPLOY, DRAPE_AHEAD, dropFor } from './parachute.js';

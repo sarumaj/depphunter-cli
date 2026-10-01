@@ -21,9 +21,9 @@
 // has to stay as easy to hit as a fat one - and because the map's geometry is bent in
 // the vertex shader, where a raycaster cannot follow it.
 
-import * as THREE from './vendor/three.module.min.js';
+import * as THREE from '../vendor/three.module.min.js';
 import { boxFor } from './bugs.js';
-import { rankOf, severityColors, worse } from './findings.js';
+import { rankOf, severityColors, worse } from '../core/findings.js';
 
 const PIN_PX = 30;    // how tall a pin tries to be on the screen
 const HEAD = 0.26;    // the diamond on top, in pin units

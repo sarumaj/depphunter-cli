@@ -26,7 +26,7 @@
 // have colors of their own, tinted by how far the box's color is from its kind's
 // usual one (uGroundRef, uLandRef): nesting levels, hover and flashes still show.
 
-import * as THREE from './vendor/three.module.min.js';
+import * as THREE from '../vendor/three.module.min.js';
 import { plants } from './models.js';
 import { NOISE_GLSL } from './cityglsl.js';
 import { Scatter } from './lod.js';

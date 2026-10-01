@@ -1,7 +1,7 @@
 // The Findings view's catch against the map's own.
 //
 // The page owns the backpack, and a catch there records a finding against the node
-// its bug stands at (web/static/findings.js) in the shape web/static/backpack.js
+// its bug stands at (web/static/core/findings.js) in the shape web/static/panels/backpack.js
 // writes. The extension cannot run those modules, so it says the same in TypeScript
 // (findings.ts) - and a copy is only worth having while it agrees. So both are run
 // here on one graph and one findings document, and the entries compared: whatever
@@ -49,9 +49,9 @@ describe('the Findings view against the map', () => {
 
   before(async () => {
     // backpack.js reads and writes the browser's store, and does without one.
-    const { buildModel } = await load('model.js');
-    const { indexFindings } = await load('findings.js');
-    ({ Backpack } = await load('backpack.js'));
+    const { buildModel } = await load('core/model.js');
+    const { indexFindings } = await load('core/findings.js');
+    ({ Backpack } = await load('panels/backpack.js'));
     model = buildModel(GRAPH);
     index = indexFindings({ findings: FINDINGS }, model);
   });

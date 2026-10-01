@@ -87,7 +87,7 @@ type Finding struct {
 	// dependency that is vulnerable and a vulnerability this project can suffer, and
 	// most advisories against a lock file are the former. It is a field rather than a
 	// sentence in Detail because the map draws the two differently: what can be
-	// reached burns (web/static/fires.js), and what cannot walks a lap as a bug.
+	// reached burns (web/static/hunt/fires.js), and what cannot walks a lap as a bug.
 	Reached string `json:"reached,omitempty"`
 
 	Ecosystem string `json:"ecosystem,omitempty"`

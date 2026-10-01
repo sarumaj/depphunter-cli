@@ -12,7 +12,7 @@ import { describe, it, beforeEach } from 'node:test';
 
 import './stub.mjs';
 
-const { TOUR, WALK_TOUR, startTour, startWalkTour, walkTourPending } = await import('../static/tour.js');
+const { TOUR, WALK_TOUR, startTour, startWalkTour, walkTourPending } = await import('../static/panels/tour.js');
 
 const IDS = ['tour', 'tour-dots', 'tour-title', 'tour-body', 'tour-shot', 'tour-back', 'tour-next', 'tour-skip'];
 

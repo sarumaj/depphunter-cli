@@ -33,4 +33,4 @@ less of it. The height the canopy was flown down from has nothing to do with it.
 
 ## Notes
 
-The law is `Health.touchdown` in `web/static/health.js`.
+The law is `Health.touchdown` in `web/static/walk/health.js`.

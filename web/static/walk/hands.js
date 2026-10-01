@@ -11,10 +11,10 @@
 // frame at its corner however the tool is angled. Posing is by name (pose), and the
 // names are the WebXR joint names, which is the contract between this and scripts/hand.py.
 
-import * as THREE from './vendor/three.module.min.js';
-import { GLTFLoader } from './vendor/GLTFLoader.js';
-import { clone as cloneRigged } from './vendor/SkeletonUtils.js';
-import { STATIC } from './data.js';
+import * as THREE from '../vendor/three.module.min.js';
+import { GLTFLoader } from '../vendor/GLTFLoader.js';
+import { clone as cloneRigged } from '../vendor/SkeletonUtils.js';
+import { STATIC } from '../core/data.js';
 
 // The joints that bend. WebXR gives a finger a metacarpal inside the palm as well,
 // but that one is part of the hand's shape rather than part of closing it.

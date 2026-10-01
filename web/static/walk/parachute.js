@@ -24,8 +24,8 @@
 // real thing - the walker is small and the city is quick - so the speeds below are
 // chosen against that gravity and then checked against life in meters a second.
 
-import * as THREE from './vendor/three.module.min.js';
-import { clamp } from './numbers.js';
+import * as THREE from '../vendor/three.module.min.js';
+import { clamp } from '../core/numbers.js';
 
 // ------------------------------------------------------------------ the physics
 

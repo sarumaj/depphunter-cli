@@ -3,8 +3,8 @@
 // line that pulls the walker after it, and the puff where a shot strikes. Mixed into
 // Walker (walk.js).
 
-import * as THREE from './vendor/three.module.min.js';
-import { clamp } from './numbers.js';
+import * as THREE from '../vendor/three.module.min.js';
+import { clamp } from '../core/numbers.js';
 import { EYE, WATER, REACH, holds, faceOf } from './walkbase.js';
 import { hits } from './tools.js';
 

@@ -1,9 +1,9 @@
 // Side panel describing the selected node: stats, dependencies, dependents, source.
 
-import { ancestors, boundaryEdges, unread, fileSize } from './model.js';
-import { whereOf } from './findings.js';
-import { ago, formatDate } from './history.js';
-import { fmt, h, catchToggle, sevDot } from './dom.js';
+import { ancestors, boundaryEdges, unread, fileSize } from '../core/model.js';
+import { whereOf } from '../core/findings.js';
+import { ago, formatDate } from '../core/history.js';
+import { fmt, h, catchToggle, sevDot } from '../core/dom.js';
 import { sourceView, mediaKind, clearFound } from './source.js';
 
 // indexHost keeps the part of an index URL that identifies it on a stat tile.

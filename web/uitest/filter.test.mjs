@@ -11,9 +11,9 @@ import { describe, it } from 'node:test';
 
 import './stub.mjs';
 
-const { buildModel } = await import('../static/model.js');
-const { computeVisibility, globMatcher, parsePathFilter, searchIndex, search } = await import('../static/filter.js');
-const { assignSlots, languageColors } = await import('../static/colors.js');
+const { buildModel } = await import('../static/core/model.js');
+const { computeVisibility, globMatcher, parsePathFilter, searchIndex, search } = await import('../static/core/filter.js');
+const { assignSlots, languageColors } = await import('../static/core/colors.js');
 
 const directory = (path, parent) => ({ id: `d:${path}`, kind: 'dir', name: path.split('/').pop(), path, parent });
 const file = (path, parent, language, loc) => ({ id: `f:${path}`, kind: 'file', name: path.split('/').pop(), path, parent, lang: language, loc });

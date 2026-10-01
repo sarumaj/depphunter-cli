@@ -26,5 +26,5 @@ The point of catching a finding is to come back to it.
 ## Notes
 
 The side panel's `+` and the findings list (REQ-HUNT-050) catch through the same
-function (`catchFinding` in web/static/backpack.js), so an entry reads the same
-however it was caught.
+function (`catchFinding` in web/static/panels/backpack.js), so an entry reads the
+same however it was caught.

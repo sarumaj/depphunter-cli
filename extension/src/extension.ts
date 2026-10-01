@@ -342,7 +342,7 @@ async function dropFinding(it: { id: string }): Promise<void> {
   await putPack(attached.api, backpack.contents.filter(other => other.id !== it.id));
 }
 
-/** What the map's backpack holds at most (web/static/backpack.js), newest first. */
+/** What the map's backpack holds at most (web/static/panels/backpack.js), newest first. */
 const MAX_PACK = 500;
 
 /**

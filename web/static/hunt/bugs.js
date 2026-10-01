@@ -21,10 +21,10 @@
 // The bugs live on the flat map, like the walker: MapScene bends what is drawn, so a
 // bug's position here is a layout coordinate and nothing more.
 
-import * as THREE from './vendor/three.module.min.js';
-import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
-import { rankOf, severityColors } from './findings.js';
-import { bugParts } from './models.js';
+import * as THREE from '../vendor/three.module.min.js';
+import { mergeGeometries } from '../vendor/BufferGeometryUtils.js';
+import { rankOf, severityColors } from '../core/findings.js';
+import { bugParts } from '../map/models.js';
 import { reachable } from './fires.js';
 
 const MAX_BUGS = 140;     // a large repository reports thousands; the worst ones walk

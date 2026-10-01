@@ -9,9 +9,9 @@
 // city.js dresses both views up - as a city, a circuit board or a galaxy (setStyle);
 // walk mode adds sky and water.
 
-import * as THREE from './vendor/three.module.min.js';
-import { OrbitControls } from './vendor/OrbitControls.js';
-import { clamp } from './numbers.js';
+import * as THREE from '../vendor/three.module.min.js';
+import { OrbitControls } from '../vendor/OrbitControls.js';
+import { clamp } from '../core/numbers.js';
 import { buildParameters, isGround } from './buildings.js';
 import { Details, tiersOf } from './details.js';
 import { cull } from './lod.js';

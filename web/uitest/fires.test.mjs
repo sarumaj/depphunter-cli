@@ -14,8 +14,8 @@ import { describe, it } from 'node:test';
 import './stub.mjs';
 
 const { Fires, seatsOf, reachable, MOST, CATCHES, SPREADS_AT, SPREADS_EVERY, COOLS_FOR, DOUSES } =
-  await import('../static/fires.js');
-const { buildModel } = await import('../static/model.js');
+  await import('../static/hunt/fires.js');
+const { buildModel } = await import('../static/core/model.js');
 
 const vulnerability = (o = {}) => ({
   id: o.id || 'GO-1', kind: 'vulnerability', severity: 'high', title: 'bad',

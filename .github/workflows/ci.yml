@@ -84,7 +84,7 @@ jobs:
       - name: JavaScript syntax
         # Our own modules only: the vendored libraries are shipped as their authors
         # built them (see web/static/vendor/README.md).
-        run: for f in web/static/*.js; do node --check "$f"; done
+        run: find web/static -name '*.js' -not -path 'web/static/vendor/*' -print0 | xargs -0 -n1 node --check
       - name: markdownlint
         run: npx --yes markdownlint-cli@0.41.0 '**/*.md' --ignore '**/testdata/**' --ignore node_modules
       - name: Requirements traceability

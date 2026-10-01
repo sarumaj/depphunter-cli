@@ -37,4 +37,4 @@ everywhere.
 
 ## Notes
 
-The chance is the rod's `reel.bite` in `web/static/tools.js`.
+The chance is the rod's `reel.bite` in `web/static/walk/tools.js`.

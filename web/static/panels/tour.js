@@ -14,8 +14,8 @@
 // Both are remembered per browser rather than per repository, because what they explain
 // is the tool and not the project.
 
-import { $ } from './dom.js';
-import { STATIC } from './data.js';
+import { $ } from '../core/dom.js';
+import { STATIC } from '../core/data.js';
 
 /** The map's cards, in order. */
 // Implements: REQ-UI-004

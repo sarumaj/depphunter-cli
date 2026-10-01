@@ -1,6 +1,7 @@
 package minify
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,12 +64,16 @@ func TestHTML(t *testing.T) {
 // character that is not whitespace or inside a comment.
 func TestMinifyKeepsEveryLiteral(t *testing.T) {
 	directory := filepath.Join("..", "..", "web", "static")
-	files, err := filepath.Glob(filepath.Join(directory, "*.js"))
+	var files []string
+	err := filepath.WalkDir(directory, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && filepath.Ext(p) == ".js" {
+			files = append(files, p)
+		}
+		return err
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	more, _ := filepath.Glob(filepath.Join(directory, "vendor", "*.js"))
-	files = append(files, more...)
 	if len(files) < 10 {
 		t.Fatalf("expected the UI's modules under %s, found %d", directory, len(files))
 	}

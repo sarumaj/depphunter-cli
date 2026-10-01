@@ -44,7 +44,7 @@ where they are more than a pixel, and one draw per kind, they cost little.
 
 ## Notes
 
-`web/static/details.js`: `detailsOf` places them, `Details` keeps one
+`web/static/map/details.js`: `detailsOf` places them, `Details` keeps one
 InstancedMesh per kind and rebuilds the instances when the set of buildings
 changes, a budget of buildings a frame. Balcony railings are cut out of their
 panels up close and drawn as their average once a bar is below a pixel.

@@ -460,7 +460,7 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			// Content-Security-Policy below is the whole of the answer.
 			h.Set("X-Frame-Options", "DENY")
 		}
-		// blob: is for the photographs walk mode's camera keeps (web/static/stash.js):
+		// blob: is for the photographs walk mode's camera keeps (web/static/panels/stash.js):
 		// a picture is rendered off the canvas and held as a blob, and the panel that
 		// shows the ones taken so far draws each as an <img> pointing at it.
 		h.Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-ancestors "+ancestors)

@@ -102,9 +102,9 @@ globalThis.CSS ??= { escape: s => s };
 let requests = 0;
 globalThis.fetch = async () => { requests++; throw new Error('no network in a test'); };
 
-const { buildModel } = await import('../static/model.js');
-const { Panel } = await import('../static/panel.js');
-const { hexDump, mediaKind, findMatches, findBar } = await import('../static/source.js');
+const { buildModel } = await import('../static/core/model.js');
+const { Panel } = await import('../static/panels/panel.js');
+const { hexDump, mediaKind, findMatches, findBar } = await import('../static/panels/source.js');
 
 const directory = (path, parent) => ({ id: `d:${path}`, kind: 'dir', name: path.split('/').pop(), path, parent });
 const file = (path, parent, language, loc) => ({ id: `f:${path}`, kind: 'file', name: path.split('/').pop(), path, parent, lang: language, loc });

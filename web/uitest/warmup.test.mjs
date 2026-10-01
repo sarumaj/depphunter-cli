@@ -9,7 +9,7 @@ import { describe, it } from 'node:test';
 
 import './stub.mjs';
 
-const { MapScene } = await import('../static/scene.js');
+const { MapScene } = await import('../static/map/scene.js');
 const THREE = await import('../static/vendor/three.module.min.js');
 
 // Enough of a MapScene to warm: a scene with the boxes and a prop, and a renderer that

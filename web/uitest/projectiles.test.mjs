@@ -15,8 +15,8 @@ import { describe, it } from 'node:test';
 import './stub.mjs';
 
 const THREE = await import('../static/vendor/three.module.min.js');
-const { TOOLS, TOOL_IDS } = await import('../static/tools.js');
-const WALK = await import('../static/walk.js');
+const { TOOLS, TOOL_IDS } = await import('../static/walk/tools.js');
+const WALK = await import('../static/walk/walk.js');
 
 // The tools that throw something, and the two of them that pay out a line to it.
 const THROWN = TOOL_IDS.filter(id => TOOLS[id].projectile);

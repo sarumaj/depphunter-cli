@@ -39,7 +39,7 @@ same building every time it is seen.
 
 ## Notes
 
-`web/static/buildings.js` `archetype` chooses the type; the shaders read it,
+`web/static/map/buildings.js` `archetype` chooses the type; the shaders read it,
 with a per-building variant, from the `aBuild` attribute. Kinds of file (a
 binary, a configuration file, documentation) do not have types of their own:
 the box kinds the map already has decide the pavilions (symbols), and the

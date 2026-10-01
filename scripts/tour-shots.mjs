@@ -391,7 +391,7 @@ async function main() {
   // 5. The tracker, which says where the rest of it is.
   await shot(page, 'tracker', { x: 10, y: VIEW.height - 250, width: 420, height: 240 });
 
-  console.log('done; the cards name these in web/static/tour.js');
+  console.log('done; the cards name these in web/static/panels/tour.js');
 }
 
 /**

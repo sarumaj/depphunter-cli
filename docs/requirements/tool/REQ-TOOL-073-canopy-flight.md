@@ -37,4 +37,4 @@ land somewhere else on every screen.
 
 ## Notes
 
-Integrated in fixed substeps of 1/240 of a second (`web/static/parachute.js`).
+Integrated in fixed substeps of 1/240 of a second (`web/static/walk/parachute.js`).

@@ -65,7 +65,7 @@
 //                     reach: the row is numbered 1 to 0 along the tools without one
 //                     (switcher.js).
 
-import * as THREE from './vendor/three.module.min.js';
+import * as THREE from '../vendor/three.module.min.js';
 
 import { handModel, closeHand, closeFinger, setWrist, loadHands, handsReady } from './hands.js';
 import { NEUTRAL_BRAKE, FLARE_TIME } from './parachute.js';

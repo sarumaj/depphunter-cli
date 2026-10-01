@@ -37,4 +37,4 @@ skimmers. A rule the walker can learn beats a chance they cannot.
 
 ## Notes
 
-The rule is the rod's `reel.roof` in `web/static/tools.js`.
+The rule is the rod's `reel.roof` in `web/static/walk/tools.js`.

@@ -26,7 +26,7 @@ a color says nothing in a crowd or from behind:
     to rather than the one that flies away.
   * the mite, half a beetle and rounder, for the notes and the nits
 
-Each is a set of meshes, which is the contract with web/static/bugs.js. For the
+Each is a set of meshes, which is the contract with web/static/hunt/bugs.js. For the
 beetle they are named without a prefix, for the others with one (grub_, mite_):
 
   * shell  the body, which takes the severity's color

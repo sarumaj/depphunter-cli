@@ -10,7 +10,7 @@ import { describe, it, beforeEach } from 'node:test';
 
 import './stub.mjs';
 
-const { Stash } = await import('../static/stash.js');
+const { Stash } = await import('../static/panels/stash.js');
 
 /** Counts the object URLs handed out and given back. */
 function urls() {

@@ -458,18 +458,18 @@ but never trusted with anything that decides what is sent where:
 `scripts/shots.mjs` compares the whole page
 ([Building and testing](#building-and-testing)).
 
-| Module | Owns |
-|---|---|
-| `index.html`, `app.js`, `style.css` | The page, application state, menus and wiring every module together |
-| `data.js` | Talking to the server, or reading the data a static export embeds |
-| `dom.js` | DOM helpers, and what several modules show alike: the toolbar popover (`drawer`), a finding's row (`findingItem`) and the catch button (`catchToggle`) |
-| `numbers.js` | Small arithmetic several modules share: `clamp`, and `ease` towards a value over time |
-| `model.js`, `filter.js`, `history.js`, `findings.js` | The navigable tree and aggregates, filters and search, history metrics, findings by node |
-| `layout.js`, `labels.js`, `colors.js` | The archipelago layout, labels, color roles from CSS |
-| `scene.js`, `city.js`, `cityglsl.js`, `buildings.js`, `details.js`, `lod.js`, `resolution.js`, `stats.js`, `models.js` | three.js rendering, the procedural city and its shaders, building types and facades, balconies and rooftop details, culling and level of detail for the props, dynamic resolution, the `?stats` readout, loading the `.glb` models |
-| `pins.js`, `bugs.js`, `fires.js`, `flames.js` | Findings over the map, bugs on buildings, reachable vulnerabilities as fire |
-| `panel.js`, `source.js`, `findinglist.js`, `backpack.js`, `stash.js`, `tour.js` | The side panel and the source it shows, the list of findings, the catch, photographs, the introduction |
-| `walk.js`, `walkbase.js`, `tracker.js`, `shots.js`, `canopy.js`, `tools.js`, `switcher.js`, `hands.js`, `avatar.js`, `parachute.js`, `health.js`, `wind.js` | Walk mode: the walker and the measures its parts share, the tracker and beacons that show where the hunt is, what it throws and the lines it pays out, its tools and hands, its marker on the map, the parachute and the walker under it, health and stamina |
+Every directory under `web/static` is one part of the page; a module's file
+name is unique across all of them, because the export's import map knows modules
+by file name alone.
+
+| Directory | Modules | Owns |
+|---|---|---|
+| `web/static` | `index.html`, `app.js`, `style.css` | The page, application state, menus and wiring every module together; beside them the `.glb` models, the introduction's pictures (`tour/`) and the third-party libraries (`vendor/`) |
+| `core/` | `data.js`, `dom.js`, `numbers.js`, `model.js`, `filter.js`, `history.js`, `findings.js`, `colors.js` | Talking to the server, or reading the data a static export embeds; DOM helpers and what several modules show alike (the toolbar popover `drawer`, a finding's row `findingItem`, the catch button `catchToggle`); `clamp` and `ease`; the navigable tree and aggregates, filters and search, history metrics, findings by node, color roles from CSS |
+| `map/` | `layout.js`, `labels.js`, `scene.js`, `city.js`, `cityglsl.js`, `buildings.js`, `details.js`, `lod.js`, `resolution.js`, `stats.js`, `models.js` | The archipelago layout and its labels, three.js rendering, the procedural city and its shaders, building types and facades, balconies and rooftop details, culling and level of detail for the props, dynamic resolution, the `?stats` readout, loading the `.glb` models |
+| `hunt/` | `pins.js`, `bugs.js`, `fires.js`, `flames.js` | Findings over the map, bugs on buildings, reachable vulnerabilities as fire |
+| `panels/` | `panel.js`, `source.js`, `findinglist.js`, `backpack.js`, `stash.js`, `tour.js` | The side panel and the source it shows, the list of findings, the catch, photographs, the introduction |
+| `walk/` | `walk.js`, `walkbase.js`, `tracker.js`, `shots.js`, `canopy.js`, `tools.js`, `switcher.js`, `hands.js`, `avatar.js`, `parachute.js`, `health.js`, `wind.js` | Walk mode: the walker and the measures its parts share, the tracker and beacons that show where the hunt is, what it throws and the lines it pays out, its tools and hands, its marker on the map, the parachute and the walker under it, health and stamina |
 
 In the extension (`extension/src`), `extension.ts` runs one server per
 folder and registers the commands from one table, `COMMANDS`. `server.ts`

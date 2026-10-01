@@ -10,7 +10,7 @@ import { describe, it } from 'node:test';
 
 import './stub.mjs';
 
-const { Labels, covers } = await import('../static/labels.js');
+const { Labels, covers } = await import('../static/map/labels.js');
 
 const SCALE = 20; // pixels per map unit
 
