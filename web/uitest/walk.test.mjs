@@ -18,6 +18,7 @@ const { Wind } = await import('../static/wind.js');
 const { TOOLS, TOOL_IDS, PRIMARY_IDS, SECONDARY_IDS, hits, isSecondary, toolFor, idleTool, studyTool, DEFAULT_TOOL } = await import('../static/tools.js');
 const SWITCH = await import('../static/switcher.js');
 const WALK = await import('../static/walk.js');
+const BASE = await import('../static/walkbase.js');
 const THREE = await import('../static/vendor/three.module.min.js');
 
 // How close two parts of a tool have to be to count as touching, in map units: a
@@ -964,21 +965,21 @@ describe('what a line holds on to', () => {
   // Verifies: REQ-TOOL-067
   it('closes the grapple near a roof and nowhere lower', () => {
     const edge = tower.y + tower.h;
-    assert.ok(WALK.holds(grapple, tower, roof), 'the claw let go of the roof');
-    assert.ok(WALK.holds(grapple, tower, wall(edge - grapple.reel.grip + 0.01)), 'the claw let go of the parapet');
-    assert.ok(!WALK.holds(grapple, tower, wall(0.2)), 'the claw held the foot of the wall');
-    assert.ok(!WALK.holds(grapple, tower, wall(edge - grapple.reel.grip - 0.1)), 'the claw held halfway up');
+    assert.ok(BASE.holds(grapple, tower, roof), 'the claw let go of the roof');
+    assert.ok(BASE.holds(grapple, tower, wall(edge - grapple.reel.grip + 0.01)), 'the claw let go of the parapet');
+    assert.ok(!BASE.holds(grapple, tower, wall(0.2)), 'the claw held the foot of the wall');
+    assert.ok(!BASE.holds(grapple, tower, wall(edge - grapple.reel.grip - 0.1)), 'the claw held halfway up');
     // The ground is still the way down off a roof.
-    assert.ok(WALK.holds(grapple, street, new THREE.Vector3(3, 0, 3)), 'the claw would not bite the street');
+    assert.ok(BASE.holds(grapple, street, new THREE.Vector3(3, 0, 3)), 'the claw would not bite the street');
   });
 
   // Verifies: REQ-TOOL-069
   it('holds the rod on a roof and never on a wall, the same every time', () => {
     for (let i = 0; i < 5; i++) {
-      assert.ok(WALK.holds(rod, tower, roof), 'a cast onto the roof did not hold');
+      assert.ok(BASE.holds(rod, tower, roof), 'a cast onto the roof did not hold');
       // Even at the top of a wall, where the grapple would hold, a fish hook skips off.
-      assert.ok(!WALK.holds(rod, tower, wall(tower.h - 0.05)), 'a cast at the parapet held');
-      assert.ok(!WALK.holds(rod, tower, wall(1)), 'a cast at the wall held');
+      assert.ok(!BASE.holds(rod, tower, wall(tower.h - 0.05)), 'a cast at the parapet held');
+      assert.ok(!BASE.holds(rod, tower, wall(1)), 'a cast at the wall held');
     }
     // What it holds on to it winds the walker up onto, as the grapple does.
     assert.ok(rod.reel.onto, 'the rod leaves the walker hanging off the wall');
@@ -989,9 +990,9 @@ describe('what a line holds on to', () => {
   // Verifies: REQ-TOOL-067, REQ-TOOL-069
   it('sends a hook that does not hold back off the face it struck', () => {
     const at = (x, y, z) => new THREE.Vector3(x, y, z);
-    assert.deepEqual(WALK.faceOf(tower, at(0.5, 1, 0.1)).toArray(), [1, 0, 0], 'the east face');
-    assert.deepEqual(WALK.faceOf(tower, at(-0.1, 1, -0.5)).toArray(), [0, 0, -1], 'the north face');
-    assert.deepEqual(WALK.faceOf(tower, at(0.1, 4, 0.1)).toArray(), [0, 1, 0], 'the roof');
+    assert.deepEqual(BASE.faceOf(tower, at(0.5, 1, 0.1)).toArray(), [1, 0, 0], 'the east face');
+    assert.deepEqual(BASE.faceOf(tower, at(-0.1, 1, -0.5)).toArray(), [0, 0, -1], 'the north face');
+    assert.deepEqual(BASE.faceOf(tower, at(0.1, 4, 0.1)).toArray(), [0, 1, 0], 'the roof');
   });
 });
 

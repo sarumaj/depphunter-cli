@@ -24,6 +24,7 @@
 
 import * as THREE from './vendor/three.module.min.js';
 import { clamp, ease } from './numbers.js';
+import { EYE, STEP, WATER, REACH, holds, faceOf, reducedMotion } from './walkbase.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './city.js';
 import { Health } from './health.js';
 import { Wind } from './wind.js';
@@ -34,9 +35,6 @@ import { ToolWheel, EMPTY, carriedRing, cycle, keyFor, keysFor, rowOrder, toolFo
 import { inBlaze } from './flames.js';
 import { massTop } from './details.js';
 
-// A story is 0.84 units (buildings.js STORY and FACADE): the walker stands a little
-// over half as tall, a door a little taller than them.
-const EYE = 0.45;           // eye height above the feet
 // Implements: REQ-WALK-004
 const WALK = 3.2, RUN = 8.5, FLY = 10; // units per second
 // A jump clears a curb and a terrace wall and nothing more. At this gravity it tops
@@ -44,13 +42,7 @@ const WALK = 3.2, RUN = 8.5, FLY = 10; // units per second
 // rather than one clearing a tree.
 // Implements: REQ-WALK-005
 const JUMP = 3.2, GRAVITY = 13;
-// A curb, a ramp's slope and a bridge's arch are walked, a terrace wall (0.28 in
-// layout.js) is not - that takes the ramp or a jump.
-// Implements: REQ-WALK-006
-const STEP = 0.15;          // highest ledge walked up without jumping
 const BODY = 0.12;          // walker radius for collisions
-const WATER = -0.45;        // the water surface (layout LAND_H below the mainland)
-const REACH = 90;           // aiming distance
 const CELL = 2;             // spatial grid for box lookups
 // A grid cell as one number rather than "gx,gz". These lookups happen several hundred
 // times a frame - the crosshair marches a ray through them, and every step the walker
@@ -3374,35 +3366,6 @@ export function arrivalAt(land, top, t) {
   pitch += (land.pitch - pitch) * k;
   return { x, z, feet, yaw, pitch };
 }
-/**
- * Whether a line that struck `box` at `at` holds. The ground always does - it is what
- * a shot off a roof is for - and so does anything that is not a building. On a
- * building the grapple's claw holds within its `grip` of the roof's edge and nowhere
- * lower; a fishing hook (`roof`) holds only where it came down on the roof itself,
- * never on a wall. Either way the same shot always does the same thing.
- *
- * Implements: REQ-TOOL-067, REQ-TOOL-069
- */
-export function holds(tool, box, at) {
-  const line = tool.reel;
-  if (!line || !box || box.kind === 'land' || box.kind === 'terrace') return true;
-  if (line.grip !== undefined && box.y + box.h - at.y > line.grip) return false;
-  return !line.roof || faceOf(box, at).y === 1;
-}
-
-/**
- * The outward normal of the face of `box` that `at` is nearest: a side, or the top.
- * The bottom is never struck from outside a box that stands on something.
- */
-export function faceOf(box, at) {
-  const sides = [
-    [box.w / 2 - Math.abs(at.x - box.x), Math.sign(at.x - box.x) || 1, 0, 0],
-    [box.d / 2 - Math.abs(at.z - box.z), 0, 0, Math.sign(at.z - box.z) || 1],
-    [Math.abs(box.y + box.h - at.y), 0, 1, 0],
-  ];
-  const [, x, y, z] = sides.reduce((a, b) => (b[0] < a[0] ? b : a));
-  return new THREE.Vector3(x, y, z);
-}
 
 // The focus in the blur (focusOn): how far past the building's outline the street
 // stays sharp, and over how many pixels the blur then comes in, both in CSS pixels.
@@ -3535,8 +3498,6 @@ export function revivalAt(land, t) {
   };
 }
 const inOut = t => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
-/** Whether the page has been asked to keep still, which the ways in respect. */
-const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // The walker's footprint, sampled at its center and four corners (height). Flat
 // pairs, so walking it allocates nothing.
