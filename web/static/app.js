@@ -67,6 +67,7 @@ let flames;       // ... and what that looks like, on the map and in the street
 let pins;         // the same findings, as markers over the map
 let avatar;       // where the walker stands, seen from the map
 let pack;         // what has been caught (backpack.js)
+let packJoined = false; // whether the server's copy has been taken in (REQ-HUNT-028)
 let findingList;  // every finding on the map, as a list to catch from (findinglist.js)
 let stash;        // what the camera has photographed (stash.js)
 let aimX = 0;     // where the walk-mode tooltip was last placed
@@ -192,9 +193,16 @@ async function main() {
   pack = new Backpack(model.root.name, drawPack);
   stash = new Stash(drawStash);
   // The page is the one with a store that outlives the server, so what it remembers
-  // is what the session starts from.
+  // is what the session starts from - with what the server holds besides, which is
+  // what the editor caught while no map was open.
   // Implements: REQ-HUNT-028
-  pushBackpack(pack.items);
+  // Until then nothing goes up, or an early redraw's push would overwrite the very
+  // copy being fetched.
+  fetchSession().then(session => {
+    if (session) pack.merge(session.backpack);
+    packJoined = true;
+    pushBackpack(pack.items);
+  });
   bugs = new Bugs(scene, {
     // A caught bug reads itself out: the building it belongs to is selected and its
     // finding opened, exactly as a second shot into a building would. It also goes
@@ -419,7 +427,7 @@ function drawPack(_pack, fromServer = false) {
   bugs?.keepCaught(pack.ids);
   // ... and whatever else is looking at this server - the editor's side panel - is
   // reading the same catch, so it goes up. Not when it just came down from there.
-  if (!fromServer) pushBackpack(pack.items);
+  if (!fromServer && packJoined) pushBackpack(pack.items);
   scene?.requestRender();
   const { total, open, fixed } = pack.counts;
   $('pack-btn').hidden = !(total || state.findings);
