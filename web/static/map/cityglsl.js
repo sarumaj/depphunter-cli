@@ -607,8 +607,11 @@ vec3 pane(vec3 base, vec2 f, vec2 fw, float id, float tint, vec3 lamp, float lit
     vec3 cloth = mix(vec3(0.5, 0.48, 0.44) * dark(0.2), lamp * 0.62, lit) * (0.78 + 0.22 * fold);
     room = mix(room, cloth, 1.0 - band(f.x, side, 1.0 - side, fw.x));
   }
-  // Tinted glass carries the building's own color at the sky's brightness.
+  // Tinted glass carries the building's own color at the sky's brightness, and up
+  // close the light catches it in a streak across the pane.
   vec3 glass = sky * mix(vec3(1.0), base / max(max(base.r, max(base.g, base.b)), 0.05), tint);
+  float sw = fw.x + fw.y;
+  glass *= 1.0 + 0.18 * band(fract(f.x * 0.7 + f.y * 0.9 + id), 0.2, 0.32, sw) * fine;
   return mix(room, glass, clamp(glancing * (1.0 - 0.7 * lit) + tint * 0.3, 0.0, 1.0));
 }
 
@@ -740,6 +743,10 @@ vec3 facade(vec3 base, float u, float faceW, float v, float H, float roofAt, vec
     wall *= mix(1.0, 1.14, pier * (1.0 - far));
   }
   wall *= dark(0.5);
+  // Up close, the render's grain: plaster, concrete or stone is never one flat tone.
+  // Implements: REQ-CITY-035
+  float gw = fwidth(u * 300.0);
+  if (gw < 0.8) wall *= 1.0 + 0.1 * (vnoise(vec2(u, v) * 300.0 + seed * 9.0) - 0.5) * (1.0 - smoothstep(0.25, 0.8, gw));
 
   // The windows: where in the bay, how framed, how divided.
   vec4 rect = vec4(0.2, 0.8, 0.28, 0.86);   // x0, x1, y0, y1 within the bay
@@ -797,8 +804,12 @@ vec3 facade(vec3 base, float u, float faceW, float v, float H, float roofAt, vec
       c = mix(c, mix(wall, vec3(0.7, 0.69, 0.66) * dark(0.45), 0.6), lintel);
     }
   }
-  c = mix(c, frame, inFrame);
-  if (inWin > 0.0) c = mix(c, mix(pane(base, pf, pfw, id, tint, lamp, lit, sky, glancing), frame, bars), inWin);
+  // The frame set into the wall: lit along its head, in shadow along its sill.
+  float bevel = fine * (step(1.0, pf.y) * 0.14 - step(pf.y, 0.0) * 0.2);
+  c = mix(c, frame * (1.0 + bevel), inFrame);
+  // The pane sits back in the wall, in the frame's shadow along its head and one jamb.
+  float recess = 1.0 - 0.3 * fine * max(smoothstep(0.9, 1.0, pf.y), smoothstep(0.06, 0.0, pf.x));
+  if (inWin > 0.0) c = mix(c, mix(pane(base, pf, pfw, id, tint, lamp, lit, sky, glancing) * recess, frame, bars), inWin);
   // A painted balcony on the French windows: its slab edge and a railing of bars.
   if (balcony > 0.5 && upper > 0.5 && vDetail < 0.5) {
     float rail = band(f.x, 0.08, 0.92, w.x) * band(f.y, 0.0, 0.33, w.y);
@@ -844,6 +855,11 @@ vec3 facade(vec3 base, float u, float faceW, float v, float H, float roofAt, vec
     vec3 leaf = mix(vec3(0.16, 0.12, 0.09) * dark(0.5), vec3(1.0, 0.8, 0.55) * 0.7, uNight * 0.7);
     leaf *= 1.0 - 0.35 * band(f.x, 0.49, 0.51, w.x);            // two leaves
     leaf = mix(leaf, sky * 0.8, band(f.y, 0.4, 0.68, w.y) * band(fract(f.x * 2.5), 0.15, 0.85, w.x * 2.5) * 0.7); // their glazing
+    // Up close: a kick plate along the foot and a brass pull on each leaf at the seam.
+    float near = 1.0 - smoothstep(0.004, 0.012, max(w.x, w.y));
+    leaf = mix(leaf, vec3(0.5, 0.5, 0.52) * dark(0.45), band(f.y, 0.0, 0.08, w.y) * near * 0.8);
+    float pull = (band(f.x, 0.463, 0.48, w.x) + band(f.x, 0.52, 0.537, w.x)) * band(f.y, 0.3, 0.42, w.y);
+    leaf = mix(leaf, vec3(0.78, 0.62, 0.3) * dark(0.4), pull * near);
     c = mix(c, leaf, door);
   }
   if (type == WAREHOUSE) {

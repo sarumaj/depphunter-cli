@@ -151,6 +151,10 @@ const ARRIVAL = 5, ARRIVAL_BACK = 18, ARRIVAL_SIDE = 14, ARRIVAL_ABOVE = 9;
 // Implements: REQ-WALK-052
 const REVIVAL = 2.5, REVIVAL_EYE = 0.08;
 
+// How long the view has to stay put before the frame is drawn in full (resting), in
+// milliseconds.
+const REST = 250;
+
 // How long after letting the pointer go a browser refuses to capture it again, in
 // milliseconds: Chrome holds out for about a second.
 const RELOCK = 1500;
@@ -1593,6 +1597,24 @@ export class Walker {
     Object.assign(this.scene.scene.fog, { near: far * 0.3, far });
   }
 
+  /**
+   * Whether the view has not moved for REST milliseconds: the walker standing at a
+   * door or under a window to look at it. The frame is then drawn at the canvas's full
+   * resolution whatever the frame rate (resolution.js) - a picture that stays on the
+   * screen is the one place a smaller one shows, and a facade that fills the screen is
+   * just what makes frames slow enough to be drawn smaller.
+   *
+   * Implements: REQ-PERF-011
+   */
+  resting(now) {
+    const p = this.p, pose = `${p.x},${p.z},${p.feet},${p.yaw},${p.pitch},${this.fov}`;
+    if (pose !== this.pose) {
+      this.pose = pose;
+      this.movedAt = now;
+    }
+    return now - this.movedAt > REST;
+  }
+
   // ------------------------------------------------------------------ simulation
 
   // Implements: REQ-WALK-042
@@ -1638,7 +1660,7 @@ export class Walker {
         this.p.yaw, this.p.pitch + hang.pitch, this.roll + hang.roll);
       this.hangCanopy(now);
       if (!this.still && !this.arrival) this.updateAim();
-      this.scene.renderNow();
+      this.scene.renderNow(true, this.resting(now));
       if (this.frozen && this.focus) this.drawFocus();
       else this.drawCatchFocus();
       this.hooks.onRender();

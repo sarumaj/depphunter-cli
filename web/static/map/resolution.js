@@ -8,14 +8,17 @@
 // Implements: REQ-PERF-011
 
 /** The share of the canvas's pixels a frame is never drawn with less than, a side. */
-export const FLOOR = 0.5;
-// Frames slower than SLOW milliseconds shrink the picture by STEP - the median of the
+export const FLOOR = 0.7;
+// Below 70% a side a facade's windows and doors read as blocks, and a frame rate in the
+// high thirties is still a walk, where a blurred street is not: frames are drawn
+// smaller only once they are slower than that. Frames slower than SLOW milliseconds
+// shrink the picture by STEP - the median of the
 // last WINDOW, so that a hitch (a collection, a file loading) is not taken for a slow
 // GPU; faster than FAST for a whole window of them, it grows back, but not to a size
 // that was too slow within the last MEMORY milliseconds. A gap longer than PAUSE is
 // the page put away, not a slow frame. Between two changes at least SETTLE: a change
 // takes a frame or two to show in the timing.
-const SLOW = 1000 / 45, FAST = 1000 / 57, STEP = 0.85, WINDOW = 30, MEMORY = 8000, PAUSE = 2000, SETTLE = 500;
+const SLOW = 1000 / 36, FAST = 1000 / 57, STEP = 0.85, WINDOW = 30, MEMORY = 8000, PAUSE = 2000, SETTLE = 500;
 
 export class Resolution {
   constructor() {
