@@ -192,7 +192,7 @@ uniform vec3 uLandRef;
 vec3 tint(vec3 base, vec3 ref) { return clamp(base / max(ref, vec3(0.02)), 0.4, 2.2); }
 
 const float SIDEWALK = 0.065;
-const float CARRIAGE = 0.42; // farther from every obstacle than this is a park, not a street
+const float CARRIAGE = 0.84; // farther from every obstacle than this is a park, not a street
 
 // A pocket park where the packing left a hole: a mown lawn crossed by gravel paths
 // (PARK_PATHS apart; makeProps keeps its bushes and trees off them).

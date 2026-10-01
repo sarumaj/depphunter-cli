@@ -416,7 +416,7 @@ describe('positions', () => {
     for (let k = 0; k < 25; k++) nodes.push(file(`f${k}.go`, 'd:.', { loc: 10 }));
     const { L } = draw({ nodes, edges: [] }, { expanded: ['d:a', 'd:b'] });
     const root = L.byNode.get('d:.');
-    const PAD = 0.55, GAP = 0.35;
+    const PAD = 1.1, GAP = 0.7;
     const kids = L.boxes.filter(b => b.kind !== 'land' && b.node.parentNode === root.node);
     const used = kids.reduce((a, b) => a + (b.w + GAP) * (b.d + GAP), 0);
     const space = (root.w - 2 * PAD + GAP) * (root.d - 2 * PAD + GAP);

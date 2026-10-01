@@ -10,8 +10,8 @@ import { FACADE, STORY, TERRACE } from './buildings.js';
 // A building's footprint grows with its facade (buildings.js FACADE), so a face
 // holds as many windows as it was laid out with; its height is data and does not.
 const FILE = FACADE;
-const GAP = 0.35;        // between siblings
-const PAD = 0.55;        // inside a terrace
+const GAP = 0.7;         // between siblings
+const PAD = 1.1;         // inside a terrace
 const MAX_H = 10;        // tallest building
 const SYM = 0.42, SYM_GAP = 0.12;
 const LAND_MARGIN = 1.2, LAND_H = 0.45, ISLAND_GAP = 4;

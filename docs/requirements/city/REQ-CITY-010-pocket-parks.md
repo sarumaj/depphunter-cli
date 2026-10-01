@@ -11,7 +11,7 @@ verification:
 
 ## Statement
 
-Free space of a terrace farther than a street's width (0.42 units plus the
+Free space of a terrace farther than a street's width (0.84 units plus the
 sidewalk) from every obstacle **shall** be drawn as a park: a mown lawn crossed
 by gravel paths every 2.2 units, bordered by a sidewalk.
 

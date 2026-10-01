@@ -484,7 +484,7 @@ function blocks(boxes) {
 // long, replaces the street's curb. The far end leaves room for the stairs (the
 // stairs shader).
 // Implements: REQ-CITY-017, REQ-CITY-020
-const RAMP_W = 0.2, RAMP_MAX = 2.4, RAMP_MIN_SIDE = 1.7, RAMP_START = 0.1, RAMP_CLEAR = 0.1;
+const RAMP_W = 0.4, RAMP_MAX = 2.4, RAMP_MIN_SIDE = 1.7, RAMP_START = 0.1, RAMP_CLEAR = 0.1;
 const RAMP_LANDING = 0.35, DRIVE = 0.14, APRON = RAMP_START + 0.07;
 // A flight of stairs between two plazas: STAIR_LEN long with a STAIR_LANDING at the
 // top, STAIR_W wide, each step STEP_RISE high at most. A side shorter than
@@ -750,6 +750,7 @@ function* rampGeometry(ramps) {
   };
   const LIFT = 0.004, PARAPET = 0.035;
   for (const r of ramps) {
+    const width = r.width;
     const at = (s, w, y) => [r.origin[0] + r.u[0] * s + r.n[0] * w, y, r.origin[1] + r.u[1] * s + r.n[1] * w];
     if (r.stairs) {
       // Implements: REQ-CITY-037
@@ -762,25 +763,25 @@ function* rampGeometry(ramps) {
     const cuts = [...Array.from({ length: n + 1 }, (_, i) => r.rise * i / n), r.len];
     for (let i = 0; i + 1 < cuts.length; i++) {
       const s0 = cuts[i], s1 = cuts[i + 1], k = s0 < r.rise ? 1 : 2;
-      quad(at(s0, 0, y(s0)), at(s1, 0, y(s1)), at(s1, RAMP_W, y(s1)), at(s0, RAMP_W, y(s0)),
-        [0, s0, k], [0, s1, k], [RAMP_W, s1, k], [RAMP_W, s0, k], 1);
+      quad(at(s0, 0, y(s0)), at(s1, 0, y(s1)), at(s1, width, y(s1)), at(s0, width, y(s0)),
+        [0, s0, k], [0, s1, k], [width, s1, k], [width, s0, k], 1);
       // Outer wall, up to the parapet's top, and the parapet's top.
-      quad(at(s0, RAMP_W, r.y0), at(s1, RAMP_W, r.y0), at(s1, RAMP_W, y(s1) + PARAPET), at(s0, RAMP_W, y(s0) + PARAPET),
+      quad(at(s0, width, r.y0), at(s1, width, r.y0), at(s1, width, y(s1) + PARAPET), at(s0, width, y(s0) + PARAPET),
         [s0, 0, 0], [s1, 0, 0], [s1, y(s1) + PARAPET - r.y0, 0], [s0, y(s0) + PARAPET - r.y0, 0], 0.68);
-      quad(at(s0, RAMP_W - 0.02, y(s0) + PARAPET), at(s1, RAMP_W - 0.02, y(s1) + PARAPET), at(s1, RAMP_W, y(s1) + PARAPET), at(s0, RAMP_W, y(s0) + PARAPET),
+      quad(at(s0, width - 0.02, y(s0) + PARAPET), at(s1, width - 0.02, y(s1) + PARAPET), at(s1, width, y(s1) + PARAPET), at(s0, width, y(s0) + PARAPET),
         [s0, 0, 0], [s1, 0, 0], [s1, 0.02, 0], [s0, 0.02, 0], 0.95);
-      quad(at(s0, RAMP_W - 0.02, y(s0)), at(s1, RAMP_W - 0.02, y(s1)), at(s1, RAMP_W - 0.02, y(s1) + PARAPET), at(s0, RAMP_W - 0.02, y(s0) + PARAPET),
+      quad(at(s0, width - 0.02, y(s0)), at(s1, width - 0.02, y(s1)), at(s1, width - 0.02, y(s1) + PARAPET), at(s0, width - 0.02, y(s0) + PARAPET),
         [s0, 0, 0], [s1, 0, 0], [s1, PARAPET, 0], [s0, PARAPET, 0], 0.8);
     }
     // The high end: its wall down to the street, and a barrier: traffic turns onto
     // the terrace here.
-    quad(at(r.len, 0, r.y0), at(r.len, RAMP_W, r.y0), at(r.len, RAMP_W, y(r.len) + PARAPET), at(r.len, 0, y(r.len) + PARAPET),
-      [0, 0, 0], [RAMP_W, 0, 0], [RAMP_W, r.y1 - r.y0 + PARAPET, 0], [0, r.y1 - r.y0 + PARAPET, 0], 0.75);
+    quad(at(r.len, 0, r.y0), at(r.len, width, r.y0), at(r.len, width, y(r.len) + PARAPET), at(r.len, 0, y(r.len) + PARAPET),
+      [0, 0, 0], [width, 0, 0], [width, r.y1 - r.y0 + PARAPET, 0], [0, r.y1 - r.y0 + PARAPET, 0], 0.75);
     // Driveway across the terrace's sidewalk, and the apron over the street's curb.
     quad(at(r.rise, -DRIVE, y(r.len)), at(r.len, -DRIVE, y(r.len)), at(r.len, 0, y(r.len)), at(r.rise, 0, y(r.len)),
       [-DRIVE, r.rise, 2], [-DRIVE, r.len, 2], [0, r.len, 2], [0, r.rise, 2], 1);
-    quad(at(-APRON, 0, r.y0 + LIFT), at(0, 0, r.y0 + LIFT), at(0, RAMP_W, r.y0 + LIFT), at(-APRON, RAMP_W, r.y0 + LIFT),
-      [0, -APRON, 2], [0, 0, 2], [RAMP_W, 0, 2], [RAMP_W, -APRON, 2], 1);
+    quad(at(-APRON, 0, r.y0 + LIFT), at(0, 0, r.y0 + LIFT), at(0, width, r.y0 + LIFT), at(-APRON, width, r.y0 + LIFT),
+      [0, -APRON, 2], [0, 0, 2], [width, 0, 2], [width, -APRON, 2], 1);
     yield;
   }
   yield;
@@ -881,7 +882,7 @@ function rampMaterial(bendable) {
 const TREE_SPACING = 1.1, LAMP_SPACING = 1.6, LAMP_INSET = 0.035, SHORE_INSET = 0.6;
 // Parks: planted where the street shader draws lawn (farther than CARRIAGE + SIDEWALK
 // from every obstacle, with a margin), off the gravel paths every PARK_PATHS.
-const PARK_CLEAR = 0.72, PARK_PATHS = 2.2, PATH_CLEAR = 0.16, MAX_PARK_SAMPLES = 60000;
+const PARK_CLEAR = 1.14, PARK_PATHS = 2.2, PATH_CLEAR = 0.16, MAX_PARK_SAMPLES = 60000;
 
 /**
  * What stands on the map: along every shore and in every park a tall prop and a low

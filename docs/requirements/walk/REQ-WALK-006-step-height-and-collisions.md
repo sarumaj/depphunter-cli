@@ -30,7 +30,7 @@ slides along walls instead of sticking to them.
 ## Notes
 
 Fixed: `STEP` in `walk.js` is 0.15 units, below a terrace
-wall (`TERRACE` 0.28 in `layout.js`), so a terrace needs its ramp or a jump
+wall (`TERRACE` 0.28 in `buildings.js`), so a terrace needs its ramp or a jump
 (`JUMP` tops out near 0.4). Ramps and bridge arches change height continuously
 and stay walkable. Climbing out of the water keeps its own allowance: `WADE` rose
 from 0.25 to 0.42 so that a step and a wade still clear the shore by the same
