@@ -65,6 +65,9 @@ export type ServerEvent =
   // A binary file the map wants opened in a hex editor, sent to this client alone
   // because it asked for them (?opens=hex).
   | { name: 'open'; data: { path: string; hex: boolean } }
+  // A package's page, repository or folder the map wants opened, sent to this client
+  // alone because it asked for them (?opens=links): the map's frame can open none.
+  | { name: 'browse'; data: { name: string; url?: string; folder?: string } }
   // The greeting every connection opens with. `resumed` says the stream carried on
   // from the last event this client saw, so nothing was announced while it was away;
   // without it a reconnection is indistinguishable from a first connection, and the
@@ -155,6 +158,19 @@ export class Api {
     return set.findings ?? [];
   }
 
+  /**
+   * The directory a package is installed in on the server's machine, or undefined
+   * when the server found none.
+   * Implements: REQ-EXT-037
+   */
+  async locate(id: string): Promise<string | undefined> {
+    try {
+      return (await this.json<{ folder?: string }>('GET', `/api/locate?id=${encodeURIComponent(id)}`)).folder;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** An export, as bytes, for whatever the user chose to save it as. */
   download(path: string): Promise<Buffer> {
     return this.request('GET', path);
@@ -186,8 +202,10 @@ export class Api {
       // therefore whether anything was announced while the connection was down.
       const resume = this.lastEvent ? { 'Last-Event-ID': this.lastEvent } : {};
       // opens=hex: this client can open a file in a hex editor, which a page asks for
-      // on a binary file and a launcher on the command line cannot do (REQ-EXT-034).
-      request = this.open('GET', '/api/events?opens=hex', undefined, response => {
+      // on a binary file and a launcher on the command line cannot do (REQ-EXT-034);
+      // links: and a package's page, repository or folder, which the map's frame
+      // cannot (REQ-EXT-037).
+      request = this.open('GET', '/api/events?opens=hex,links', undefined, response => {
         if (response.statusCode !== 200) {
           response.resume();
           again();

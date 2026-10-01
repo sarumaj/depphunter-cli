@@ -570,6 +570,14 @@ The Dependencies view's title bar holds the resolution report, the graph export
 and a refresh, and a file's row has a button that opens the file; the Backpack's
 title bar exports it.
 
+A package's row has buttons that open its page on the index it is published on
+and the repository of its source in the browser, and one that reveals the folder
+it is installed in: in the Explorer when that is in the workspace — a
+`node_modules` or a `vendor` directory — and otherwise, for a shared cache such
+as Go's module cache or `~/.m2`, in a window of its own or the system's file
+manager. The map's details panel offers the same three links, which in the
+editor's tab the server hands to the extension to open.
+
 The two views and the map form a single interface: selecting a row selects the
 corresponding building on the map, and selecting a building on the map expands
 the tree to its row. The server is what makes this so — it holds the selection

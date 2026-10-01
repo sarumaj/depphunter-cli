@@ -12,6 +12,7 @@ import * as vscode from 'vscode';
 
 import { Api, Finding, PackItem, errorText, withoutQuery } from './api';
 import { BackpackView } from './backpack';
+import { openLink, revealFolder } from './browse';
 import { FindingsView, nameOf, packItemFor } from './findings';
 import * as panel from './panel';
 import { StartError, start } from './server';
@@ -116,6 +117,9 @@ const COMMANDS: Record<string, (...args: never[]) => unknown> = {
   'depphunter.refresh': () => refreshPanel(),
   'depphunter.select': (row: Row) => attached?.api.select(row.node.id).catch(noted),
   'depphunter.openFile': (row: Row) => openFile(row),
+  'depphunter.openPackagePage': (row: Row) => openLink(row.node.page),
+  'depphunter.openRepository': (row: Row) => openLink(row.node.repository),
+  'depphunter.revealPackage': (row: Row) => revealPackage(row),
   'depphunter.showFinding': (it: PackItem) => showFinding(it),
   'depphunter.dropFinding': (it: { id: string }) => dropFinding(it),
   'depphunter.catchFinding': (f?: Finding) => catchFinding(f),
@@ -204,6 +208,11 @@ async function attach(session: Session): Promise<void> {
         break;
       case 'open':
         if (event.data.hex && typeof event.data.path === 'string') void openHex(session.root, event.data.path);
+        break;
+      // Implements: REQ-EXT-037
+      case 'browse':
+        if (typeof event.data.url === 'string') void openLink(event.data.url);
+        else if (typeof event.data.folder === 'string') void revealFolder(event.data.folder, event.data.name);
         break;
       case 'hello': {
         // A connection that did not resume may have missed announcements while it
@@ -311,6 +320,17 @@ async function openFile(row: Row): Promise<void> {
   if (!file?.path || !attached) return;
   const uri = vscode.Uri.file(path.join(attached.root, file.path));
   await vscode.window.showTextDocument(uri, { preview: true });
+}
+
+/**
+ * Shows the folder a package from the tree is installed in, as the server finds it.
+ * Implements: REQ-EXT-037
+ */
+async function revealPackage(row: Row): Promise<void> {
+  if (!attached || row.node.kind !== 'package') return;
+  const folder = await attached.api.locate(row.node.id);
+  if (folder) await revealFolder(folder, row.node.name);
+  else void vscode.window.showInformationMessage(`depphunter found no folder ${row.node.name} is installed in on this machine.`);
 }
 
 /**

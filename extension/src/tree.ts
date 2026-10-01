@@ -138,7 +138,10 @@ export class DependencyTree extends ListView<Row> {
     item.iconPath = icon(n);
     item.description = description(n, !!row.cycle);
     item.tooltip = tooltip(n, !!row.cycle);
-    item.contextValue = n.kind;
+    // Implements: REQ-EXT-037
+    item.contextValue = n.kind === 'package'
+      ? ['package', n.page && 'page', n.repository && 'repository'].filter(Boolean).join(' ')
+      : n.kind;
     item.command = { command: 'depphunter.select', title: 'Show on the Map', arguments: [row] };
     return item;
   }
