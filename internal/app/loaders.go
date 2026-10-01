@@ -36,17 +36,24 @@ func (a *app) startLoaders(ctx context.Context, mapServer *server.Server, g *gra
 				return
 			}
 			historyHead, historyRead = head, true
-			mapServer.SetHistory(a.loadHistory(ctx, g))
+			published("history", mapServer.SetHistory(a.loadHistory(ctx, g)))
 		}),
 		references: latest.New(func(g *graph.Graph) {
-			mapServer.SetReferences(a.loadReferences(ctx, g))
+			published("references", mapServer.SetReferences(a.loadReferences(ctx, g)))
 		}),
 		findings: latest.New(func(g *graph.Graph) {
-			mapServer.SetFindings(a.loadFindings(ctx, g))
+			published("findings", mapServer.SetFindings(a.loadFindings(ctx, g)))
 		}),
 	}
 	a.runLoaders(l, g, true)
 	return l
+}
+
+// published logs a dataset the map could not be given: it goes on without it.
+func published(name string, err error) {
+	if err != nil {
+		log.Printf("%s not published: %v", name, err)
+	}
 }
 
 // runLoaders runs the enabled loaders on g in the background. changed says whether
