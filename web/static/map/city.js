@@ -909,12 +909,27 @@ export function* dressing(boxes, bendable, style = 'city') {
   for (const mesh of (yield* add(set.lampHead, set.headColor, lamps, lampAt)).meshes) mesh.userData.heads = true;
   group.userData.night = set.headNight;
   if (set.glowAt !== undefined) {
-    for (const [r, opacity] of GLOW) {
+    for (const [r, opacity] of set.glow || GLOW) {
       const glow = yield* add(glowShell(r, set.glowAt), set.headNight, lamps, lampAt, null, {
         vertexColors: false, transparent: true, opacity,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
-      for (const mesh of glow.meshes) mesh.userData.glow = opacity;
+      for (const mesh of glow.meshes) {
+        Object.assign(mesh.userData, { glow: opacity, afterDark: !!set.afterDark });
+        mesh.visible = !set.afterDark; // setNight shows it, after dark
+      }
+    }
+  }
+  // A street lamp lights the pavement under it: a pool of its light, brightest under
+  // the head and gone at its rim.
+  // Implements: REQ-CITY-036
+  if (set.pool) {
+    const pool = yield* add(lightPool(set.pool), set.headNight, lamps, lampAt, null, {
+      transparent: true, opacity: POOL, blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    for (const mesh of pool.meshes) {
+      Object.assign(mesh.userData, { glow: POOL, afterDark: true });
+      mesh.visible = false;
     }
   }
   yield;
@@ -996,6 +1011,8 @@ export function setNight(group, night) {
     // A glow is the one thing that does not go down with the light: it is the
     // light. It is drawn a little stronger in the dark, as one looks.
     if (mesh.userData.glow) mesh.material.opacity = mesh.userData.glow * (night ? 1.5 : 1);
+    // A street lamp is off by day: its glow, and the pool it throws, are night's alone.
+    if (mesh.userData.afterDark) mesh.visible = night;
     else if (mesh.userData.heads && night) mesh.material.color.set(group.userData.night);
     else mesh.material.color.set(mesh.userData.day).multiplyScalar(night ? 0.4 : 1);
   }
@@ -1152,6 +1169,25 @@ const LED = merge([
 // added to whatever is behind them, the wider one fainter. Two is enough to read as
 // one soft ball at this size, and they cost two draws however many lights there are.
 const GLOW = [[0.075, 0.55], [0.135, 0.22], [0.24, 0.07]];
+// How bright a street lamp's pool of light is at its middle, before night's 1.5.
+const POOL = 0.32;
+const pools = new Map();
+// A disc on the ground, white in the middle and black at the rim: added to the street
+// under it, the black adds nothing, so the pool fades out to its edge. Lifted clear of
+// the pavement it lies on.
+function lightPool(r) {
+  if (!pools.has(r)) {
+    const geometry = new THREE.CircleGeometry(r, 24).rotateX(-Math.PI / 2).translate(0, 0.012, 0);
+    const position = geometry.getAttribute('position'), colors = [];
+    for (let i = 0; i < position.count; i++) {
+      const k = Math.max(0, 1 - Math.hypot(position.getX(i), position.getZ(i)) / r) ** 1.6;
+      colors.push(k, k, k);
+    }
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    pools.set(r, geometry);
+  }
+  return pools.get(r);
+}
 // One shell of each size and height for every layout: the props' instanced meshes
 // share their geometry across layouts and do not dispose of it (scene.js dropProps),
 // and lod.js keeps its coarse copies by geometry.
@@ -1187,6 +1223,12 @@ const PROPS = {
   city: {
     species: TREES, stem: '#5a4030', low: BUSH, lowHue: 0.25,
     pole: POLE, poleColor: '#3a3d42', lampHead: HEAD, headColor: '#8a8d92', headNight: '#ffd28a',
+    // Lit at night only, as street lamps are: a glow round the head, and its light
+    // in a pool on the pavement.
+    // Implements: REQ-CITY-036
+    glowAt: 0.6, afterDark: true, pool: 0.34,
+    // Tighter than an LED's: a lamp lights the street, it is not a ball of light.
+    glow: [[0.045, 0.5], [0.08, 0.2], [0.13, 0.06]],
     solid: 0.055, post: 0.03,
     tint: hue => (it, c) => c.setHSL(hue + it.r * 0.07, 0.5 + 0.2 * it.r, 0.2 + it.r * 0.1),
   },
