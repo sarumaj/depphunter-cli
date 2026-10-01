@@ -258,10 +258,21 @@ func (c *Config) mayLend(ecosystem, feed string) bool {
 }
 
 // knownRegistry reports whether a registry a package names by its host is known:
-// the user vouched for it by URL or by host, or this machine holds a credential for
-// the host (credential, asked only when neither vouches).
+// the user vouched for it by URL or by host - the host in any case, as host names
+// are - or this machine holds a credential for the host (credential, asked only
+// when neither vouches).
+//
+// Implements: REQ-SUP-042
 func (c *Config) knownRegistry(registry, host string, credential func(host string) bool) bool {
-	return c.trusted[registry] || c.trusted[host] || credential(host)
+	if c.trusted[registry] || c.trusted[host] {
+		return true
+	}
+	for vouched := range c.trusted {
+		if strings.EqualFold(vouched, host) || strings.EqualFold(vouched, "https://"+host) {
+			return true
+		}
+	}
+	return credential(host)
 }
 
 // vouched reports whether this machine vouches for a feed the repository names:
