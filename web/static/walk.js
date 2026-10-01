@@ -1761,72 +1761,9 @@ export class Walker {
     }
     // Under a canopy the canopy has the walker, until the ground has them instead.
     if (aloft(this.chute)) return this.glide(deltaTime);
-    const turn = (k.has('ArrowLeft') ? 1 : 0) - (k.has('ArrowRight') ? 1 : 0);
-    p.yaw += turn * TURN * deltaTime;
-    const forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
-    const side = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
-    // Sprinting is the legs' work, so it is the legs that pay for it; a jet carries
-    // the walker on its own tank and asks nothing of them.
-    const wants = k.has('ShiftLeft') || k.has('ShiftRight');
-    const run = wants && (p.fly || this.wind.ready);
-    this.wind.breathe(deltaTime, run && !p.fly && (forward !== 0 || side !== 0));
-    // A burst on the jet backpack runs down whether or not it is being used to go
-    // anywhere, so opening the throttle is a decision rather than a switch.
-    this.burst = Math.max(0, this.burst - deltaTime);
-    const speed = (p.fly ? (run ? FLY * 2.5 : FLY) : run ? RUN : WALK)
-      * (this.burst > 0 ? BURST_SPEED : 1);
-    // On foot, W and S move level; flying, they move where the view points (look
-    // down and press W to dive), and Space and C add straight up and down.
-    const lift = p.fly ? (k.has('Space') ? 1 : 0) - (k.has('KeyC') ? 1 : 0) : 0;
-    const level = p.fly ? Math.cos(p.pitch) : 1;
-    let mx = -Math.sin(p.yaw) * level * forward + Math.cos(p.yaw) * side;
-    let mz = -Math.cos(p.yaw) * level * forward - Math.sin(p.yaw) * side;
-    let my = p.fly ? Math.sin(p.pitch) * forward + lift : 0;
-    const magnitude = Math.hypot(mx, my, mz);
-    if (magnitude > 1) { mx /= magnitude; my /= magnitude; mz /= magnitude; }
-
-    // Axis by axis, so the walker slides along walls. There is one question, and it is
-    // the same one everywhere: can they get up onto that? The bay is not a wall around
-    // the map, it is ground half a unit lower than the shore - so it can be walked
-    // into, waded about in and, with a shore to hand, climbed out of, exactly as a
-    // sunken yard could be. What it does to somebody standing in it is the water's
-    // business (drowns) rather than the movement's.
-    const wet = !p.fly && this.height(p.x, p.z, p.feet) <= WATER;
-    const afloat = !p.fly && this.floating();
-    // ... and getting out is the one thing that needs help: the shore stands further
-    // above the surface than a step, so anybody down there - on a pair of floats or in
-    // it - carries an allowance to climb it. It is the water that gives this and not
-    // the skimmers, so wearing them on a street is not a reason to climb higher walls.
-    const inWater = p.ground && (wet || this.onWater());
-    // Implements: REQ-WALK-040
-    const climb = p.feet + (p.ground || p.fly ? STEP : 0.05) + (inWater ? WADE : 0);
-    // Getting in has one rule of its own, and it is about the drop rather than the
-    // water: a shore is a curb to step off and a bridge is not. Off a deck, and off
-    // anything else standing well above the surface, the bay has to be jumped into -
-    // walking off an edge into a drop is not a thing anybody means to do, and the
-    // railings are there to be gone over rather than through. In the air, in it
-    // already, or shod for it, none of this arises.
-    const step = !this.onDeck();
-    // Implements: REQ-WALK-041
-    const ok = h => h <= climb
-      && (h > WATER || p.fly || !p.ground || wet || afloat || (step && p.feet - h <= WADE_IN));
-    const nx = p.x + mx * speed * deltaTime;
-    if (ok(this.height(nx, p.z, p.feet))) p.x = nx;
-    const nz = p.z + mz * speed * deltaTime;
-    if (ok(this.height(p.x, nz, p.feet))) p.z = nz;
-    // How hard the walker is moving, eased: the tool in their hands sways with it.
-    const effort = magnitude > 0 ? (p.fly ? 0.3 : run ? 1.5 : 1) : 0;
-    this.pace += (effort - this.pace) * Math.min(1, deltaTime * 7);
-    // The key list folds away while moving and comes back after a pause.
-    // Implements: REQ-WALK-018
-    if (magnitude > 0) {
-      this.movedAt = performance.now();
-      if (!this.hudTimer) this.hudTimer = setTimeout(() => this.hud.classList.add('compact'), 2500);
-    } else if (this.hudTimer && performance.now() - this.movedAt > 6000) {
-      clearTimeout(this.hudTimer);
-      this.hudTimer = 0;
-      this.hud.classList.remove('compact');
-    }
+    const { move, run, speed } = this.intent(deltaTime);
+    const afloat = this.stride(move, speed, deltaTime);
+    this.paced(move.magnitude, run, deltaTime);
 
     const planted = this.scene.props?.userData.obstacles || null;
     if (planted !== this.props) this.indexProps(planted);
@@ -1846,7 +1783,7 @@ export class Walker {
     p.fly = this.flying();
     if (p.fly) {
       const ceiling = (this.limits?.maxY ?? 0) + SKY_MARGIN;
-      p.feet = Math.max(floor, Math.min(ceiling, p.feet + my * speed * deltaTime));
+      p.feet = Math.max(floor, Math.min(ceiling, p.feet + move.y * speed * deltaTime));
       p.vy = 0;
       p.ground = p.feet <= floor;
       this.fell = null;
@@ -1878,6 +1815,96 @@ export class Walker {
     // back together. Last, so that anything which has just landed this turn holds it
     // off rather than being half undone by it in the same frame.
     this.health.mend(deltaTime);
+  }
+
+  /**
+   * What the keys ask for this frame: the turn, made at once, and the way to go - a
+   * direction no longer than 1, with its length - at what speed, running or not.
+   */
+  intent(deltaTime) {
+    const k = this.keys, p = this.p;
+    const turn = (k.has('ArrowLeft') ? 1 : 0) - (k.has('ArrowRight') ? 1 : 0);
+    p.yaw += turn * TURN * deltaTime;
+    const forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
+    const side = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+    // Sprinting is the legs' work, so it is the legs that pay for it; a jet carries
+    // the walker on its own tank and asks nothing of them.
+    const wants = k.has('ShiftLeft') || k.has('ShiftRight');
+    const run = wants && (p.fly || this.wind.ready);
+    this.wind.breathe(deltaTime, run && !p.fly && (forward !== 0 || side !== 0));
+    // A burst on the jet backpack runs down whether or not it is being used to go
+    // anywhere, so opening the throttle is a decision rather than a switch.
+    this.burst = Math.max(0, this.burst - deltaTime);
+    const speed = (p.fly ? (run ? FLY * 2.5 : FLY) : run ? RUN : WALK)
+      * (this.burst > 0 ? BURST_SPEED : 1);
+    // On foot, W and S move level; flying, they move where the view points (look
+    // down and press W to dive), and Space and C add straight up and down.
+    const lift = p.fly ? (k.has('Space') ? 1 : 0) - (k.has('KeyC') ? 1 : 0) : 0;
+    const level = p.fly ? Math.cos(p.pitch) : 1;
+    let x = -Math.sin(p.yaw) * level * forward + Math.cos(p.yaw) * side;
+    let z = -Math.cos(p.yaw) * level * forward - Math.sin(p.yaw) * side;
+    let y = p.fly ? Math.sin(p.pitch) * forward + lift : 0;
+    const magnitude = Math.hypot(x, y, z);
+    if (magnitude > 1) { x /= magnitude; y /= magnitude; z /= magnitude; }
+    return { move: { x, y, z, magnitude }, run, speed };
+  }
+
+  /**
+   * Moves the walker across the ground by `move` at `speed`, where they can go; whether
+   * they are afloat.
+   *
+   * Axis by axis, so the walker slides along walls. There is one question, and it is
+   * the same one everywhere: can they get up onto that? The bay is not a wall around
+   * the map, it is ground half a unit lower than the shore - so it can be walked into,
+   * waded about in and, with a shore to hand, climbed out of, exactly as a sunken yard
+   * could be. What it does to somebody standing in it is the water's business
+   * (drowns) rather than the movement's.
+   */
+  stride(move, speed, deltaTime) {
+    const p = this.p;
+    const wet = !p.fly && this.height(p.x, p.z, p.feet) <= WATER;
+    const afloat = !p.fly && this.floating();
+    // ... and getting out is the one thing that needs help: the shore stands further
+    // above the surface than a step, so anybody down there - on a pair of floats or in
+    // it - carries an allowance to climb it. It is the water that gives this and not
+    // the skimmers, so wearing them on a street is not a reason to climb higher walls.
+    const inWater = p.ground && (wet || this.onWater());
+    // Implements: REQ-WALK-040
+    const climb = p.feet + (p.ground || p.fly ? STEP : 0.05) + (inWater ? WADE : 0);
+    // Getting in has one rule of its own, and it is about the drop rather than the
+    // water: a shore is a curb to step off and a bridge is not. Off a deck, and off
+    // anything else standing well above the surface, the bay has to be jumped into -
+    // walking off an edge into a drop is not a thing anybody means to do, and the
+    // railings are there to be gone over rather than through. In the air, in it
+    // already, or shod for it, none of this arises.
+    const step = !this.onDeck();
+    // Implements: REQ-WALK-041
+    const ok = h => h <= climb
+      && (h > WATER || p.fly || !p.ground || wet || afloat || (step && p.feet - h <= WADE_IN));
+    const nx = p.x + move.x * speed * deltaTime;
+    if (ok(this.height(nx, p.z, p.feet))) p.x = nx;
+    const nz = p.z + move.z * speed * deltaTime;
+    if (ok(this.height(p.x, nz, p.feet))) p.z = nz;
+    return afloat;
+  }
+
+  /**
+   * How hard the walker is moving, eased - the tool in their hands sways with it - and
+   * the key list, folded away while moving and back after a pause.
+   *
+   * Implements: REQ-WALK-018
+   */
+  paced(magnitude, run, deltaTime) {
+    const effort = magnitude > 0 ? (this.p.fly ? 0.3 : run ? 1.5 : 1) : 0;
+    this.pace += (effort - this.pace) * Math.min(1, deltaTime * 7);
+    if (magnitude > 0) {
+      this.movedAt = performance.now();
+      if (!this.hudTimer) this.hudTimer = setTimeout(() => this.hud.classList.add('compact'), 2500);
+    } else if (this.hudTimer && performance.now() - this.movedAt > 6000) {
+      clearTimeout(this.hudTimer);
+      this.hudTimer = 0;
+      this.hud.classList.remove('compact');
+    }
   }
 
   /**
