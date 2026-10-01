@@ -16,7 +16,8 @@ pipeline as the file's symbols of kind `job`, and for GitLab **shall** treat
 every top-level mapping key other than the reserved pipeline keys (`image`,
 `services`, `stages`, `types`, `before_script`, `after_script`, `variables`,
 `cache`, `include`, `default`, `workflow`) as a job, including hidden
-`.template` jobs.
+`.template` jobs. What a job (or GitLab's `default`, or a GitHub step) takes
+through a YAML merge key (`<<: *defaults`) **shall** be read as its own.
 
 ## Rationale
 
@@ -29,3 +30,5 @@ source file.
    symbols.
 2. The GitLab test pipeline has exactly the symbols `unit` and
    `.hidden-template`.
+3. A GitLab job's image, services and trigger, and a GitHub job's container and
+   steps, taken through a merge key are that job's dependencies.
