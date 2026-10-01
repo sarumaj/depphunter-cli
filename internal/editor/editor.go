@@ -74,3 +74,16 @@ func Command(template, file string, line int) (*exec.Cmd, error) {
 	}
 	return exec.Command(arguments[0], arguments[1:]...), nil
 }
+
+// Reveal is the command that shows a directory in the system's file manager.
+//
+// Implements: REQ-SRV-019
+func Reveal(goos, directory string) *exec.Cmd {
+	switch goos {
+	case "darwin":
+		return exec.Command("open", directory)
+	case "windows":
+		return exec.Command("explorer", directory)
+	}
+	return exec.Command("xdg-open", directory)
+}

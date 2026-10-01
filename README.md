@@ -423,6 +423,8 @@ set.
 | `GET /api/backpack?format=`                            | the collected findings as `json`, `csv` or `md`                                                                              |
 | `PUT /api/backpack`                                    | `{"items": [...], "origin": "…"}`; replaces the contents                                                                     |
 | `POST /api/open`                                       | `{"path": "…", "line": 12}`; opens the file in the configured editor                                                         |
+| `GET /api/locate?id=`                                  | `{"folder": "…"}`, the directory a package is installed in on this machine; `404` when none is found                         |
+| `POST /api/browse`                                     | `{"id": "p:npm:lodash", "to": "page"}`; opens a package's `page`, `repository` or `folder`                                   |
 | `POST /api/settings`                                   | writes the `ui:` section of the configuration file                                                                           |
 
 `origin` identifies the client that made the change and is echoed in the

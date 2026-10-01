@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 	"github.com/sarumaj/depphunter-cli/internal/history"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
+	"github.com/sarumaj/depphunter-cli/internal/userconf"
 	"github.com/sarumaj/depphunter-cli/web"
 )
 
@@ -78,7 +80,13 @@ type Server struct {
 	// (/api/events?opens=hex) - the VS Code extension, which can ask the editor it
 	// runs in for one where the launcher on the command line cannot.
 	hexers map[chan event]struct{}
-	done   chan struct{}
+	// linkers are the streams that open a link or a folder for the page
+	// (?opens=links): the extension again, whose map sits in a frame that may open
+	// nothing of its own.
+	linkers map[chan event]struct{}
+	// machine is where installed packages are looked for (internal/locate).
+	machine userconf.Machine
+	done    chan struct{}
 	// What the clients share while the map is open (session.go): the selected node
 	// and the catch, so the page and the editor's side panel are one interface.
 	selected string
@@ -146,13 +154,15 @@ func New(settings config.Config, g *graph.Graph, assets fs.FS) (*Server, error) 
 	s := &Server{
 		token: hex.EncodeToString(token), cookie: cookieFor(token), root: settings.Root, assets: assets, editor: settings.Editor, config: settings,
 		embed: settings.Embed,
-		subs:  map[chan event]struct{}{}, hexers: map[chan event]struct{}{}, done: make(chan struct{}),
+		subs:  map[chan event]struct{}{}, hexers: map[chan event]struct{}{}, linkers: map[chan event]struct{}{}, done: make(chan struct{}),
 		lazy: map[dataset]*lazyData{
 			datasetHistory:    {pending: settings.History},
 			datasetReferences: {pending: settings.LSP},
 			datasetFindings:   {pending: settings.FindingsEnabled()},
 		},
 	}
+	home, _ := os.UserHomeDir()
+	s.machine = userconf.New(home, os.Getenv)
 	var err error
 	if s.snap, err = newSnapshot(g, 1); err != nil {
 		return nil, err
@@ -435,6 +445,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/backpack", s.handlePackExport)
 	mux.HandleFunc("PUT /api/backpack", s.handlePack)
 	mux.HandleFunc("POST /api/open", s.handleOpen)
+	mux.HandleFunc("GET /api/locate", s.handleLocate)
+	mux.HandleFunc("POST /api/browse", s.handleBrowse)
 	mux.HandleFunc("POST /api/settings", s.handleSettings)
 	mux.Handle("GET /", newAssets(s.assets))
 	return s.guard(mux)
@@ -688,17 +700,24 @@ func (s *Server) handToHexer(path string) bool {
 		Path string `json:"path"`
 		Hex  bool   `json:"hex"`
 	}{path, true})
+	return s.handTo(s.hexers, event{name: "open", data: data})
+}
+
+// handTo gives an event to the streams that said they can act on it - to them
+// alone - and reports whether any took it.
+func (s *Server) handTo(streams map[chan event]struct{}, sent event) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	sent := false
-	for channel := range s.hexers {
+	sent.sequence = s.sequence
+	taken := false
+	for channel := range streams {
 		select {
-		case channel <- event{name: "open", data: data, sequence: s.sequence}:
-			sent = true
+		case channel <- sent:
+			taken = true
 		default: // a stream too far behind to take it is not one to rely on
 		}
 	}
-	return sent
+	return taken
 }
 
 // handleEvents streams graph updates as Server-Sent Events.
@@ -711,11 +730,15 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	channel := make(chan event, 8)
-	hexer := r.URL.Query().Get("opens") == "hex"
+	opens := strings.Split(r.URL.Query().Get("opens"), ",")
 	s.mu.Lock()
 	s.subs[channel] = struct{}{}
-	if hexer {
+	if slices.Contains(opens, "hex") {
 		s.hexers[channel] = struct{}{}
+	}
+	// Implements: REQ-SRV-019
+	if slices.Contains(opens, "links") {
+		s.linkers[channel] = struct{}{}
 	}
 	version, etag, sequence := s.snap.version, s.snap.etag, s.sequence
 	s.mu.Unlock()
@@ -723,6 +746,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		delete(s.subs, channel)
 		delete(s.hexers, channel)
+		delete(s.linkers, channel)
 		s.mu.Unlock()
 	}()
 
