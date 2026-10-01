@@ -15,7 +15,7 @@ verification:
 In walk mode `W`/`ArrowUp` **shall** move the walker forward, `S`/`ArrowDown`
 backward, `A` and `D` **shall** strafe left and right, `ArrowLeft` and
 `ArrowRight` **shall** turn the walker, and holding `Shift` **shall** make the
-walker run (2.6 units/s walking, 7 units/s running).
+walker run (3.2 units/s walking, 8.5 units/s running).
 
 ## Rationale
 
