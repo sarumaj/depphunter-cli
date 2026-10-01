@@ -41,14 +41,23 @@ func TestFolder(t *testing.T) {
 	)
 	tree(t, home,
 		"go/pkg/mod/github.com/!burnt!sushi/toml@v1.4.0", ".cargo/registry/src/index.crates.io-6f17d22bba15001f/serde-1.0.210",
-		".m2/repository/com/google/guava/guava/33.3.1-jre", ".nuget/packages/newtonsoft.json/13.0.3", ".pub-cache/hosted/pub.dev/http-1.2.2",
+		".m2/repository/com/google/guava/guava/33.3.1-jre", ".nuget/packages/newtonsoft.json/13.0.3",
 	)
 	machine := userconf.Machine{Home: home, GOOS: runtime.GOOS, Environment: func(key string) string {
-		if key == "GOENV" {
+		switch key {
+		case "GOENV":
 			return "off"
+		case "LOCALAPPDATA":
+			return filepath.Join(home, "AppData", "Local")
 		}
 		return ""
 	}}
+	// Dart keeps its cache in %LOCALAPPDATA% on Windows, in the home directory elsewhere.
+	pubCache := filepath.Join(home, ".pub-cache")
+	if runtime.GOOS == "windows" {
+		pubCache = filepath.Join(home, "AppData", "Local", "Pub", "Cache")
+	}
+	tree(t, pubCache, "hosted/pub.dev/http-1.2.2")
 	// file:///C:/src/lib on Windows.
 	fileURL := "file://" + filepath.ToSlash(filepath.Join(root, "libs", "local"))
 	if runtime.GOOS == "windows" {
@@ -73,7 +82,7 @@ func TestFolder(t *testing.T) {
 		{Package{Ecosystem: "maven", Name: "com.google.guava:guava", Version: "33.3.1-jre"}, filepath.Join(home, ".m2", "repository", "com", "google", "guava", "guava", "33.3.1-jre")},
 		{Package{Ecosystem: "nuget", Name: "Newtonsoft.Json", Version: "13.0.3"}, filepath.Join(home, ".nuget", "packages", "newtonsoft.json", "13.0.3")},
 		{Package{Ecosystem: "rubygems", Name: "rake", Version: "13.2.1"}, filepath.Join(root, "vendor", "bundle", "ruby", "3.3.0", "gems", "rake-13.2.1")},
-		{Package{Ecosystem: "pub", Name: "http", Version: "1.2.2"}, filepath.Join(home, ".pub-cache", "hosted", "pub.dev", "http-1.2.2")},
+		{Package{Ecosystem: "pub", Name: "http", Version: "1.2.2"}, filepath.Join(pubCache, "hosted", "pub.dev", "http-1.2.2")},
 		{Package{Ecosystem: "pypi", Name: "local", Origin: fileURL}, filepath.Join(root, "libs", "local")},
 		{Package{Ecosystem: "hex", Name: "local", Origin: "path:libs/local"}, filepath.Join(root, "libs", "local")},
 		{Package{Ecosystem: "pypi", Name: "remote", Origin: "git+https://github.com/acme/remote.git"}, ""},

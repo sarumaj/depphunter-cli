@@ -286,8 +286,8 @@ func pub(machine userconf.Machine, name, version string) string {
 		return ""
 	}
 	cache := machine.Environment("PUB_CACHE")
-	if cache == "" && machine.GOOS == "windows" {
-		cache = filepath.Join(machine.Environment("LOCALAPPDATA"), "Pub", "Cache")
+	if local := machine.Environment("LOCALAPPDATA"); cache == "" && machine.GOOS == "windows" && local != "" {
+		cache = filepath.Join(local, "Pub", "Cache")
 	} else if cache == "" {
 		cache = filepath.Join(machine.Home, ".pub-cache")
 	}
