@@ -29,7 +29,7 @@ import * as THREE from './vendor/three.module.min.js';
 // ------------------------------------------------------------------ the physics
 
 /** Walk mode's gravity (walk.js GRAVITY), which the canopy's trim is solved against. */
-export const CHUTE_GRAVITY = 13;
+const CHUTE_GRAVITY = 13;
 
 // How long the pilot chute takes to drag the bag off the walker's back, and how long
 // the canopy then takes to open. A second is what a real one takes from line stretch,
@@ -62,7 +62,7 @@ const TOGGLE_TAU = 0.22;
 // and out of it, what a toggle held down on one side adds to the drag - which is what
 // makes a turn cost height as well as the bank - and how hard the canopy pulls the
 // flight path round to where it is pointed.
-export const TURN_RATE = 1.2;
+const TURN_RATE = 1.2;
 const TURN_TAU = 0.35, BANK_TAU = 0.4, TURN_DRAG = 0.5, SIDE_GRIP = 1.6;
 // A canopy flown faster than its trim speed, the way the opening leaves it, is pushed
 // off its angle and luffs: this much more drag for each share of speed over trim. It
@@ -79,7 +79,7 @@ const SURGE_DRAG = 1.5;
 // more drag - and it takes STALL_EASE to fly again.
 export const FLARE_TIME = 1.5;
 const FLARE_RISE = 0.15, FLARE_LIFT = 2.4, FLARE_DRAG = 2.6;
-export const STALL_TIME = 1.1;
+const STALL_TIME = 1.1;
 const STALL_EASE = 0.8, STALL_LIFT = 0.45, STALL_DRAG = 1.3;
 // The pilot chute's own drag while it drags the bag out, per unit of speed: next to
 // nothing, which is why a pilot chute thrown low changes nothing about the landing.
@@ -87,7 +87,7 @@ const PILOT_DRAG = 0.01;
 // The walker swinging under it: the length of the pendulum (the lines), how quickly a
 // swing dies away (as a damping ratio), and how far the lines can stretch and give
 // on the opening jolt, with how stiff and how damped that give is.
-export const LINE = 1.15;
+const LINE = 1.15;
 const SWING_DAMPING = 0.22, SAG_RATE = 11, SAG_DAMPING = 0.35, SAG_GAIN = 0.0045, SAG_MAX = 0.12;
 // The substep, and the most a frame is allowed to ask for: a frame that took a second
 // (a tab brought back from the background) is not a second of canopy flight.
@@ -101,7 +101,7 @@ const MOST = 0.1;
  * lift is gravity times the cosine of the glide path over the airspeed squared, drag
  * the same with the sine.
  */
-export function coefficientsFor({ speed, sink }) {
+function coefficientsFor({ speed, sink }) {
   const air = Math.hypot(speed, sink), path = Math.atan2(sink, speed);
   const k = CHUTE_GRAVITY / (air * air);
   return { lift: k * Math.cos(path), drag: k * Math.sin(path) };
@@ -111,7 +111,7 @@ export function coefficientsFor({ speed, sink }) {
 const SOLVED = TRIM.map(t => ({ brake: t.brake, ...coefficientsFor(t) }));
 
 /** The canopy's lift and drag at `brake`, between the trim points. */
-export function trimAt(brake) {
+function trimAt(brake) {
   const b = clamp(brake, SOLVED[0].brake, SOLVED[SOLVED.length - 1].brake);
   let i = 0;
   while (i < SOLVED.length - 2 && b > SOLVED[i + 1].brake) i++;
@@ -167,7 +167,7 @@ export function opennessOf(chute) {
 }
 
 /** The opening, u from 0 to 1 over INFLATE_TIME: a smoothstep with a snap past full. */
-export function inflation(u) {
+function inflation(u) {
   const k = clamp(u, 0, 1);
   const snap = OVERSHOOT * Math.sin(Math.PI * clamp((k - (2 * SNAP_AT - 1)) / (2 * (1 - SNAP_AT)), 0, 1));
   return k * k * (3 - 2 * k) + snap;
@@ -188,7 +188,7 @@ const liftShare = open => clamp((open - 0.35) / 0.6, 0, 1);
  *
  * Implements: REQ-TOOL-074
  */
-export function flareAt(t) {
+function flareAt(t) {
   if (t < 0) return [1, 1];
   if (t < FLARE_TIME) {
     const bite = Math.min(1, t / FLARE_RISE), pull = t / FLARE_TIME;
@@ -359,14 +359,14 @@ function swing(chute, ax, ay, az, h) {
 // What a landing is judged on: the sink, and some of the speed along the ground - a
 // canopy landing is run out, so the legs take a share of the forward speed and not all
 // of it.
-export const HORIZONTAL_SHARE = 0.4;
+const HORIZONTAL_SHARE = 0.4;
 
 /**
  * The speed a touchdown is judged at, in units a second.
  *
  * Implements: REQ-TOOL-075
  */
-export function touchdownSpeed(vertical, horizontal) {
+function touchdownSpeed(vertical, horizontal) {
   return Math.hypot(vertical, HORIZONTAL_SHARE * horizontal);
 }
 

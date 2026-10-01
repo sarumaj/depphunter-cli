@@ -30,7 +30,7 @@ export const GEAR_MAX = 0.24;
 // The setbacks of an art-deco tower: the shaft rises to SHAFT of the height, the
 // first tier to TIER, the crown to the top; each is inset by SETBACK of the
 // footprint on every side from the one under it.
-export const SHAFT = 0.72, TIER = 0.86, SETBACK = 0.12;
+const SHAFT = 0.72, TIER = 0.86, SETBACK = 0.12;
 // Level of detail. Walking, the buildings within WALK_REACH get their details;
 // on the map, those on screen once a unit is MAP_ZOOM pixels or more. Never more
 // than MAX_BOXES at once, and BUDGET new ones a frame. A map of no more than
@@ -322,7 +322,7 @@ export const DETAIL_KINDS = Object.keys(DETAIL_GEOMETRY);
  * average once a bar is smaller than a pixel; awnings are striped or plain by
  * building. Everything dims at night as the facades do.
  */
-export function detailMaterial(bendable) {
+function detailMaterial(bendable) {
   const material = bendable(new THREE.MeshBasicMaterial({ vertexColors: true }));
   const bend = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {

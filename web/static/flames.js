@@ -44,16 +44,16 @@ import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
 // A tongue's life, in seconds, and how far it leans while it lives. Fires are lit at
 // staggered phases so a fire is never all one age.
-export const LIVES = 1.15;
-export const LEANS = 0.22;
+const LIVES = 1.15;
+const LEANS = 0.22;
 // How many tongues a fire gets: a couple when it has just caught, a crown of them
 // when it is well alight. Smoke and embers only come once it is properly going.
 // Many and small rather than few and large. A handful of big blades is a candle: the
 // shape of each one is what you end up looking at. A crowd of little ones is a fire,
 // because what you look at is the crowd - no single tongue is legible, they overlap
 // into a body, and the body is doing something different every frame.
-export const TONGUES = 16, PUFFS = 5, EMBERS = 5;
-export const SMOKES_AT = 0.5;
+const TONGUES = 16, PUFFS = 5, EMBERS = 5;
+const SMOKES_AT = 0.5;
 // The bed: wide, low, barely moving tongues under the licking ones.
 //
 // This is the piece that turns a group of flames into a fire. Tongues on their own
@@ -62,7 +62,7 @@ export const SMOKES_AT = 0.5;
 // A fire is a body of light with tongues coming off it, and the body is what says the
 // thing underneath is alight rather than decorated. Laid down first, wide enough to
 // overlap each other and everything above them, they weld the whole into one.
-export const BED = 7;
+const BED = 7;
 
 /**
  * Where a tongue is in its life, at a phase 0..1 through it.
@@ -120,7 +120,7 @@ export const alphaAt = t => Math.min(1, t * 7) * Math.max(0, 1 - t ** 1.7);
 const BODY = 0.68;
 
 /** The color at a height fraction up a tongue, mixed from the run above. */
-export function heatAt(t) {
+function heatAt(t) {
   const at = Math.min(HEAT.length - 1, Math.max(0, t)) * (HEAT.length - 1);
   const i = Math.min(HEAT.length - 2, Math.floor(at)), k = at - i;
   return HEAT[i].map((v, n) => v + (HEAT[i + 1][n] - v) * k);
@@ -205,7 +205,7 @@ export const wobble = (n, salt = 0) => {
  * Against the building, not against nothing: a blaze on a roof is about as wide as the
  * roof and about as tall as it is wide. Twice that is a bonfire standing on a shed.
  */
-export function blazeSize(heat, w, d) {
+function blazeSize(heat, w, d) {
   const spread = Math.min(1.6, Math.max(0.35, Math.min(w, d) * 0.72));
   return { spread, tall: (0.26 + heat * 0.5) * Math.max(0.7, spread * 1.3) };
 }
@@ -213,7 +213,7 @@ export function blazeSize(heat, w, d) {
 // How far the heat carries past the flames themselves, in map units. Close: this is a
 // fire on a roof, not a firestorm, and a walker on the next roof is watching it rather
 // than in it.
-export const SCORCHES = 0.9;
+const SCORCHES = 0.9;
 
 /**
  * Whether a walker standing at (x, feet, z) is in the fire on `f` - which carries the

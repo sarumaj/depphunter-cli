@@ -19,9 +19,9 @@ import { STATIC } from './data.js';
 // The joints that bend. WebXR gives a finger a metacarpal inside the palm as well,
 // but that one is part of the hand's shape rather than part of closing it.
 // Implements: REQ-TOOL-009
-export const FINGERS = ['index', 'middle', 'ring', 'pinky'].map(d =>
+const FINGERS = ['index', 'middle', 'ring', 'pinky'].map(d =>
   ['proximal', 'intermediate', 'distal'].map(j => `${d}-finger-phalanx-${j}`));
-export const THUMB = ['thumb-metacarpal', 'thumb-phalanx-proximal', 'thumb-phalanx-distal'];
+const THUMB = ['thumb-metacarpal', 'thumb-phalanx-proximal', 'thumb-phalanx-distal'];
 
 let model = null;    // the loaded scene, shared by every clone
 let loading = null;  // the load in flight

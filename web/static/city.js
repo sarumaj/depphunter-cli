@@ -31,9 +31,6 @@ import { plants } from './models.js';
 import { NOISE_GLSL } from './cityglsl.js';
 import { Scatter } from './lod.js';
 
-// The boxes' shaders are in cityglsl.js; MapScene takes them from here.
-export { CITY_VERT_HEAD, CITY_VERT_BODY, CITY_FRAG_HEAD, CITY_FRAG_BODY } from './cityglsl.js';
-
 /** Box kinds as the shaders see them (attribute aKind). */
 export function kindCode(b) {
   switch (b.kind) {

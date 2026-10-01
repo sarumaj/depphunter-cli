@@ -3,7 +3,7 @@
 // lies below it. The same index answers three questions - what the panel lists, what
 // color the streets' bugs are, and how many there are still to catch.
 
-export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info', 'unknown'];
+const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info', 'unknown'];
 const RANK = { critical: 5, high: 4, medium: 3, low: 2, info: 1, unknown: 0 };
 
 export const rankOf = severity => RANK[severity] ?? 0;
