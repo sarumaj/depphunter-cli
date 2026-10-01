@@ -24,3 +24,6 @@ every package marked, and a warning that is always on is a warning nobody reads.
 
 1. A package whose repository-only index is vouched for is not marked.
 2. The resolution report lists that index with origin `--trust-index`.
+3. A registry a package names by its host (a Terraform module, a Buf module, a
+   container image) is vouched for by its host or its `https://` URL written in
+   any case: `--trust-index buf.corp.test` vouches for `BUF.Corp.test/acme/x`.

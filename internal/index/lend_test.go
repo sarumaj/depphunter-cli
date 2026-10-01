@@ -144,10 +144,10 @@ python "https://user@feed.corp/r" "" store=false: ""
 `
 
 // A registry a package names by host is known when the user vouches for it by URL or
-// by host, or this machine holds a credential for the host (each ecosystem's own
-// test covers the credential).
+// by host, the host in any case, or this machine holds a credential for the host
+// (each ecosystem's own test covers the credential).
 //
-// Verifies: REQ-SUP-016
+// Verifies: REQ-SUP-016, REQ-SUP-042
 func TestRegistryHostKnown(t *testing.T) {
 	packages := map[string]string{
 		TerraformModule: "tf.corp.test/acme/vpc/aws",
@@ -157,7 +157,8 @@ func TestRegistryHostKnown(t *testing.T) {
 	var got []string
 	for _, ecosystem := range []string{TerraformModule, Buf, OCI} {
 		for _, trust := range [][]string{nil, {"https://tf.corp.test", "https://buf.corp.test", "https://oci.corp.test"},
-			{"tf.corp.test", "buf.corp.test", "oci.corp.test"}, {"BUF.Corp.test"}} {
+			{"tf.corp.test", "buf.corp.test", "oci.corp.test"}, {"BUF.Corp.test"},
+			{"TF.CORP.TEST", "https://Buf.Corp.Test", "https://OCI.corp.test"}} {
 			c := Discover(nil, environment(nil), t.TempDir())
 			c.Credentials(auth.Read(t.TempDir(), environment(nil)))
 			c.Trust(trust)
@@ -175,12 +176,15 @@ terraform-module []: https://tf.corp.test false
 terraform-module [https://tf.corp.test https://buf.corp.test https://oci.corp.test]: https://tf.corp.test true
 terraform-module [tf.corp.test buf.corp.test oci.corp.test]: https://tf.corp.test true
 terraform-module [BUF.Corp.test]: https://tf.corp.test false
+terraform-module [TF.CORP.TEST https://Buf.Corp.Test https://OCI.corp.test]: https://tf.corp.test true
 buf []: https://buf.corp.test false
 buf [https://tf.corp.test https://buf.corp.test https://oci.corp.test]: https://buf.corp.test true
-buf [tf.corp.test buf.corp.test oci.corp.test]: https://buf.corp.test false
+buf [tf.corp.test buf.corp.test oci.corp.test]: https://buf.corp.test true
 buf [BUF.Corp.test]: https://buf.corp.test true
+buf [TF.CORP.TEST https://Buf.Corp.Test https://OCI.corp.test]: https://buf.corp.test true
 oci []: https://oci.corp.test false
 oci [https://tf.corp.test https://buf.corp.test https://oci.corp.test]: https://oci.corp.test true
 oci [tf.corp.test buf.corp.test oci.corp.test]: https://oci.corp.test true
 oci [BUF.Corp.test]: https://oci.corp.test false
+oci [TF.CORP.TEST https://Buf.Corp.Test https://OCI.corp.test]: https://oci.corp.test true
 `
