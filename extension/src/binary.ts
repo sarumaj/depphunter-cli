@@ -41,3 +41,18 @@ export function bundled(home: string | undefined): string | undefined {
 export function binaryFor(configured: string | undefined, home: string | undefined): string {
   return configured?.trim() || bundled(home) || 'depphunter';
 }
+
+/**
+ * Why binaryFor's choice could not be started, saying where it was looked for: the
+ * setting's binary, or - with none set - this build's own and then the PATH. A build
+ * that ships no binary (one from a checkout, or the universal package) says so, which
+ * is the difference between installing depphunter and installing the right package.
+ * Implements: REQ-EXT-019
+ */
+export function notFound(configured: string | undefined, home: string | undefined): string {
+  const bin = binaryFor(configured, home);
+  if (configured?.trim()) return `${bin} was not found (the depphunter.path setting).`;
+  if (bin !== 'depphunter') return `${bin} was not found.`;
+  const own = home ? path.join(home, BUNDLED) : 'its bin directory';
+  return `depphunter was not found: this build of the extension carries none in ${own}, and there is none on the PATH.`;
+}

@@ -18,7 +18,7 @@ import * as fs from 'node:fs';
 import { ChildProcess, spawn } from 'node:child_process';
 import * as vscode from 'vscode';
 
-import { binaryFor } from './binary';
+import { binaryFor, notFound } from './binary';
 import { editorTemplate } from './launcher';
 
 // The origins the map may be framed by.
@@ -117,7 +117,7 @@ export function start(root: string, home: string | undefined, log: vscode.Output
 
     child.on('error', (err: NodeJS.ErrnoException) => stop(() => reject(
       err.code === 'ENOENT'
-        ? new StartError(`${bin} was not found.`, true)
+        ? new StartError(notFound(config.get<string>('path'), home), true)
         : new StartError(`${bin} could not be started: ${err.message}`))));
 
     child.on('exit', (code, signal) => stop(() => reject(new StartError(
