@@ -47,16 +47,28 @@ WAIST = 0.29  # where the model ends at the top
 APART = 0.03  # each hip joint off the middle
 SEGMENTS = 14  # round a leg
 
-SKIN = (0.88, 0.67, 0.53)
+# The fabrics, as web/static/walk/cloth.js numbers them. Each vertex carries its own, as
+# the _CLOTH attribute (carried in the color's alpha until it is written).
+CLOTH: dict[str, int] = {"skin": 0, "knit": 1, "twill": 2, "rubber": 3, "suit": 4, "leather": 5}
+
+SKIN = (0.88, 0.67, 0.53, 0.0)
 
 
-def color(hexa: str) -> tuple[float, float, float]:
-    """An sRGB hex color, as linear floats, which is what Blender stores."""
-    return tuple(((int(hexa[i : i + 2], 16) / 255) ** 2.2) for i in (1, 3, 5))  # type: ignore[return-value]
+def color(hexa: str, kind: str) -> tuple[float, float, float, float]:
+    """An sRGB hex color, as linear floats, which is what Blender stores, and the
+    fabric it is in the alpha."""
+    rgb = tuple(((int(hexa[i : i + 2], 16) / 255) ** 2.2) for i in (1, 3, 5))
+    return (*rgb, CLOTH[kind] / 8)  # type: ignore[return-value]
+
+
+def fabric(outfit: dict, hexa: str) -> str:
+    """The fabric an outfit's color is: its own, where the outfit names one."""
+    return outfit.get("fabrics", {}).get(hexa, outfit["cloth"])
 
 
 # Each outfit: the profile of a leg from the waist down - [height, half width, half
-# depth, color] - and its feet.
+# depth, color] - and its feet; the fabric it is mostly made of (cloth), and the colors
+# that are another (fabrics).
 OUTFITS: dict[str, dict] = {
     "city": {
         "leg": [
@@ -79,7 +91,10 @@ OUTFITS: dict[str, dict] = {
             "toe": "#d8433a",
             "height": 0.03,
             "wide": 1.0,
+            "fabrics": {"upper": "knit", "sole": "rubber", "toe": "rubber"},
         },
+        "cloth": "twill",
+        "fabrics": {"#2a9d8f": "knit", "#f2f2f2": "knit"},
     },
     "circuit": {
         "leg": [
@@ -104,7 +119,10 @@ OUTFITS: dict[str, dict] = {
             "toe": "#8a6d45",
             "height": 0.05,
             "wide": 1.12,
+            "fabrics": {"upper": "leather", "sole": "rubber", "toe": "leather"},
         },
+        "cloth": "twill",
+        "fabrics": {"#1b1d22": "leather", "#202326": "rubber", "#d8e04a": "rubber"},
     },
     "galaxy": {
         "leg": [
@@ -127,7 +145,10 @@ OUTFITS: dict[str, dict] = {
             "toe": "#9aa3b5",
             "height": 0.062,
             "wide": 1.3,
+            "fabrics": {"upper": "suit", "sole": "rubber", "toe": "rubber"},
         },
+        "cloth": "suit",
+        "fabrics": {"#9aa3b5": "rubber", "#6ff4ff": "rubber"},
     },
 }
 
@@ -159,7 +180,7 @@ def cap(bm, loop: list, z: float, cx: float, col, colors):
 def shoe(bm, side: float, spec: dict, colors):
     """A shoe or a boot: an upper round the foot from heel to toe over a sole."""
     wide, top = spec["wide"], spec["height"]
-    upper, sole, toe = color(spec["upper"]), color(spec["sole"]), color(spec["toe"])
+    upper, sole, toe = (color(spec[part], spec["fabrics"][part]) for part in ("upper", "sole", "toe"))
     cx = side * APART
     # Lengthwise sections: [y, half width, top height], heel to toe.
     sections = [
@@ -217,16 +238,17 @@ def mesh_for(name: str, outfit: dict):
     colors: dict = {}
     profile = outfit["leg"]
     waist = [r for r in profile if r[0] > HIP + 1e-6]
-    loops = [ring(bm, z, 0.0, rx, ry, color(col), colors) for z, rx, ry, col in waist]
+    paint = lambda hexa: color(hexa, fabric(outfit, hexa)) if hexa else SKIN  # noqa: E731
+    loops = [ring(bm, z, 0.0, rx, ry, paint(col), colors) for z, rx, ry, col in waist]
     # ... down over the tops of the legs, where it is hidden in them.
     _, rx, ry, col = waist[-1]
-    loops.append(ring(bm, HIP - 0.012, 0.0, rx * 0.92, ry * 0.95, color(col), colors))
+    loops.append(ring(bm, HIP - 0.012, 0.0, rx * 0.92, ry * 0.95, paint(col), colors))
     for a, b in pairwise(loops):
         bridge(bm, a, b)
-    cap(bm, loops[0], waist[0][0], 0.0, color(waist[0][3]), colors)
+    cap(bm, loops[0], waist[0][0], 0.0, paint(waist[0][3]), colors)
     for side in (-1.0, 1.0):
         legs = [
-            ring(bm, z, side * APART, rx, ry, color(col) if col else SKIN, colors)
+            ring(bm, z, side * APART, rx, ry, paint(col), colors)
             for z, rx, ry, col in profile
             if z <= HIP + 1e-6
         ]
@@ -238,7 +260,7 @@ def mesh_for(name: str, outfit: dict):
             legs[-1],
             bottom[0],
             side * APART,
-            color(bottom[3]) if bottom[3] else SKIN,
+            paint(bottom[3]),
             colors,
         )
         shoe(bm, side, outfit["shoe"], colors)
@@ -248,7 +270,10 @@ def mesh_for(name: str, outfit: dict):
     bm.free()
     attribute = mesh.color_attributes.new("Col", "BYTE_COLOR", "POINT")
     for i, c in enumerate(painted):
-        attribute.data[i].color = (*c, 1.0)
+        attribute.data[i].color = (*c[:3], 1.0)
+    fabrics = mesh.attributes.new("_CLOTH", "FLOAT", "POINT")
+    for i, c in enumerate(painted):
+        fabrics.data[i].value = round(c[3] * 8)
     mesh.color_attributes.active_color = attribute
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.scene.collection.objects.link(obj)  # type: ignore[reportAttributeAccessIssue]
@@ -373,6 +398,7 @@ def main():
         export_normals=False,
         export_texcoords=False,
         export_vertex_color="ACTIVE",
+        export_attributes=True,
     )
     for obj in made:
         print(f"  {obj.name}: {len(obj.data.polygons)} faces")

@@ -5,8 +5,8 @@
 //
 // They stand in the walk scene at the walker's feet - where the planet's bend is
 // nothing, so they are drawn flat - turned the way the walker faces, a little behind
-// the eye as hips are, and posed from what the walker is doing. Unlit like the map,
-// with their shading baked in from their normals, as the props' is.
+// the eye as hips are, and posed from what the walker is doing. Unlit like the map; the
+// fabric shades itself (cloth.js).
 //
 // Implements: REQ-WALK-059
 
@@ -15,6 +15,7 @@ import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneRigged } from '../vendor/SkeletonUtils.js';
 import { STATIC } from '../core/data.js';
 import { EYE } from './walkbase.js';
+import { fabric } from './cloth.js';
 
 const HIP = 0.245;   // the hips over the feet, as the model has them
 const SIT = 0.22;    // the eye over a seat (play.js)
@@ -39,21 +40,17 @@ export function loadLegs() {
   return loading;
 }
 
-// A geometry with its shading baked into its colors: lighter facing up and towards the
-// light, as city.js shades the props.
-const baked = new Map();
-function bake(geometry) {
-  if (baked.has(geometry)) return baked.get(geometry);
+// The model's geometry ready to draw: its normals, which the fabric is lit by
+// (cloth.js), and which fabric each vertex is (_CLOTH, from scripts/legs.py).
+const prepared = new Map();
+function prepare(geometry) {
+  if (prepared.has(geometry)) return prepared.get(geometry);
   const out = geometry.clone();
   out.computeVertexNormals();
-  const n = out.getAttribute('normal'), c = out.getAttribute('color');
-  const colors = new Float32Array(c.count * 3);
-  for (let i = 0; i < c.count; i++) {
-    const k = 0.62 + 0.3 * Math.max(0, n.getY(i)) + 0.1 * n.getX(i) - 0.05 * n.getZ(i);
-    colors.set([c.getX(i) * k, c.getY(i) * k, c.getZ(i) * k], i * 3);
-  }
-  out.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  baked.set(geometry, out);
+  const kinds = out.getAttribute('_cloth');
+  out.setAttribute('cloth', kinds || new THREE.Float32BufferAttribute(new Array(out.getAttribute('position').count).fill(0), 1));
+  out.deleteAttribute('_cloth');
+  prepared.set(geometry, out);
   return out;
 }
 
@@ -86,8 +83,9 @@ export class Legs {
     for (const o of meshes) {
       o.visible = o === pick;
       if (o !== pick) continue;
-      o.geometry = bake(o.geometry);
-      o.material = new THREE.MeshBasicMaterial({ vertexColors: true });
+      o.geometry = prepare(o.geometry);
+      // A weave every couple of centimeters: 180 to a unit of the map.
+      o.material = fabric(new THREE.MeshBasicMaterial({ vertexColors: true }), 180, { lit: false });
       o.frustumCulled = false;
     }
     this.bones = new Map();

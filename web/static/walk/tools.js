@@ -71,6 +71,7 @@ import * as THREE from '../vendor/three.module.min.js';
 
 import { GRAVITY } from './ballistics.js';
 import { handModel, closeHand, closeFinger, setWrist, loadHands, handsReady, SKIN } from './hands.js';
+import { fabric } from './cloth.js';
 import { NEUTRAL_BRAKE, FLARE_TIME } from './parachute.js';
 
 /**
@@ -193,8 +194,10 @@ function linkPart(from, to, r, color) {
 // may by then be in the mirrored one walk.js hangs in the off hand. A closed surface
 // costs nothing for not being culled, and the alternative is a hand that turns itself
 // inside out a frame or two after it loads.
+// Cloth over it is matte and woven (cloth.js): the weave repeats some 90 times along a
+// unit of the hand, about every centimeter.
 const skinMaterial = () =>
-  new THREE.MeshPhongMaterial({ color: SKIN, shininess: 8, specular: 0x141414, side: THREE.DoubleSide });
+  fabric(new THREE.MeshPhongMaterial({ color: SKIN, shininess: 8, specular: 0x141414, side: THREE.DoubleSide }), 90);
 
 /**
  * The lights the walk camera carries for its own hands: a key over the left shoulder,
@@ -531,7 +534,9 @@ export function ballInHands(ball) {
     held.add(ball);
     g.add(held);
     for (const side of [-1, 1]) {
-      grasps(g, held, { at: [side * HELD_BALL * 0.92, -HELD_BALL * 0.3, HELD_BALL * 0.25], along: [0, 1, -0.25], back: [side * 0.45, -0.55, 1], close: 0.25 }, side);
+      // The left hand is the right one mirrored, so what runs through its fist runs the
+      // other way: thumbs up on both.
+      grasps(g, held, { at: [side * HELD_BALL * 0.92, -HELD_BALL * 0.3, HELD_BALL * 0.25], along: [0, side, -0.25 * side], back: [side * 0.45, -0.55, 1], close: 0.25 }, side);
     }
   });
 }

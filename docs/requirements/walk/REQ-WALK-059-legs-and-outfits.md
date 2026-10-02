@@ -32,6 +32,13 @@ pads and a reflective band, work boots, and insulating gloves; in the galaxy a
 spacesuit's legs, moon boots, and the suit's sleeves and gloves with a ring of
 light at the cuff. Changing the style **shall** change the outfit at once.
 
+Clothes **shall** look like cloth over a body and not like skin of another
+color: a sleeve and a glove are layers over the arm, cut straight across where
+they end with a rim down to the skin; every fabric - a T-shirt's knit, a twill,
+rubber, a spacesuit's quilted panels, leather - **shall** show its weave or seams
+in its shading and catch the light as matte cloth does, the weave fading out
+where it would be finer than the screen can show.
+
 ## Rationale
 
 A first-person walker who sits on a swing and sees no knees, or kicks a ball
@@ -44,5 +51,7 @@ where the walker is as plainly as the sky does.
    thighs on the seat and the shins hanging off it.
 2. A kick swings the right leg back, through and forward.
 3. Sitting on a seesaw's end at the ground, the feet are above it.
-4. The city's arms are bare to the T-shirt's sleeve; the board's are gloved
+4. A sleeve ends in a clean edge with a rim, and the shorts, the coverall and
+   the suit show their weave or seams up close.
+5. The city's arms are bare to the T-shirt's sleeve; the board's are gloved
    and sleeved; the galaxy's are a spacesuit's - and the legs likewise.

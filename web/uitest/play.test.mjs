@@ -330,3 +330,30 @@ describe('what the walker wears, and how their legs go', () => {
     assert.ok(drop <= 0.07, `the feet go ${(drop - 0.07).toFixed(3)} into the ground`);
   });
 });
+
+const { layer, CLOTH } = await import('../static/walk/cloth.js');
+
+describe('clothes as layers', () => {
+  // Verifies: REQ-WALK-059
+  it('cuts a sleeve straight across where it ends, stands it off the arm, and rims its end', () => {
+    // An arm: a tube along z, skinned to one bone.
+    const arm = new THREE.CylinderGeometry(0.03, 0.03, 0.4, 16, 20, true).rotateX(Math.PI / 2);
+    const n = arm.getAttribute('position').count;
+    arm.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(new Array(n * 4).fill(0), 4));
+    arm.setAttribute('skinWeight', new THREE.Float32BufferAttribute(Array.from({ length: n }, () => [1, 0, 0, 0]).flat(), 4));
+    const sleeve = layer(arm, { to: -0.033, inflate: 0.004, color: '#2a9d8f', kind: CLOTH.knit });
+    const p = sleeve.getAttribute('position');
+    let furthest = -Infinity, onCut = 0, outside = 0, under = 0;
+    for (let i = 0; i < p.count; i++) {
+      const z = p.getZ(i), r = Math.hypot(p.getX(i), p.getY(i));
+      furthest = Math.max(furthest, z);
+      if (Math.abs(z + 0.033) < 1e-6) onCut++;
+      if (Math.abs(r - 0.034) < 1e-3) outside++;
+      if (r < 0.03) under++;
+    }
+    assert.ok(furthest <= -0.033 + 1e-6, `the sleeve runs on to ${furthest}, past its end`);
+    assert.ok(onCut > 16, 'not cut straight across');
+    assert.ok(outside > 0 && under > 0, 'no rim from the sleeve down to the arm at its end');
+    assert.ok([...sleeve.getAttribute('cloth').array].every(k => k === CLOTH.knit));
+  });
+});

@@ -262,9 +262,10 @@ legs.
 
 The walker's own legs are modeled too: `scripts/legs.py` writes
 `web/static/legs.glb`, one rig and three meshes skinned to it, one for each
-style's outfit, colored with vertex colors. The hands are not remodeled for the
-outfits; the sleeves and gloves are painted on them by how far up the arm each
-vertex is.
+style's outfit, colored with vertex colors and marked with the fabric each
+vertex is (`_CLOTH`). The hands are not remodeled for the outfits; their
+sleeves and gloves are layers cut from the arm's own mesh at load time
+(`web/static/walk/cloth.js`), which also shades every fabric with its weave.
 
 What the parks' play equipment is made of is mostly posts, bars and blocks, which
 are what a goal frame or a swing's legs are, and are built in

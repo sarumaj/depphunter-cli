@@ -15,6 +15,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneRigged } from '../vendor/SkeletonUtils.js';
 import { STATIC } from '../core/data.js';
+import { CLOTH, layer } from './cloth.js';
 
 // The joints that bend. WebXR gives a finger a metacarpal inside the palm as well,
 // but that one is part of the hand's shape rather than part of closing it.
@@ -52,40 +53,55 @@ export const handsReady = () => model !== null;
 export const SKIN = '#c98d63';
 
 // What the arms wear in each of the map's styles: bare, with a T-shirt's sleeve above
-// the elbow, in a city; an electrician's sleeves and insulating gloves on a board; a
-// spacesuit's sleeves and gloves, a ring of light at the cuff, in the galaxy. Painted
-// on by how far up the arm each vertex is in the bind pose, where scripts/hand.py
-// stands the wrist on the origin with the fingers along +z and the arm back along -z.
+// the elbow, in a city; an electrician's coverall sleeves and insulating gloves with
+// gauntlets over the cuffs on a board; a spacesuit's sleeves and gloves, a ring of light
+// at the wrist, in the galaxy. Each is a layer cut from the arm's own mesh (cloth.js),
+// along z in the bind pose, where scripts/hand.py stands the wrist on the origin with
+// the fingers along +z and the arm back along -z.
 // Implements: REQ-WALK-059
 const OUTFITS = {
-  city: { glove: SKIN, cuff: SKIN, sleeve: SKIN, upper: '#2a9d8f' },
-  circuit: { glove: '#d9772b', cuff: '#c46a24', sleeve: '#24365a', upper: '#24365a' },
-  galaxy: { glove: '#e3e6ee', cuff: '#6ff4ff', sleeve: '#eef0f4', upper: '#eef0f4' },
+  city: [{ to: -0.3, inflate: 0.004, color: '#2a9d8f', kind: CLOTH.knit }],
+  circuit: [
+    { to: -0.035, inflate: 0.0035, color: '#24365a', kind: CLOTH.twill },
+    { from: -0.012, inflate: 0.0018, color: '#d9772b', kind: CLOTH.rubber },
+    { from: -0.05, to: -0.012, inflate: 0.0048, color: '#c46a24', kind: CLOTH.rubber },
+  ],
+  galaxy: [
+    { to: -0.02, inflate: 0.005, color: '#eef0f4', kind: CLOTH.suit },
+    { from: -0.03, inflate: 0.0025, color: '#d6d9e2', kind: CLOTH.rubber },
+    { from: -0.026, to: -0.018, inflate: 0.0065, color: '#6ff4ff', kind: CLOTH.rubber },
+  ],
 };
-const CUFF = -0.012, SLEEVE = -0.04, ELBOW = -0.3; // where each begins, along z
 
 let worn = 'city';
 
 /** Dresses the hands made from now on for the map's `style`. */
 export function wear(style) { worn = OUTFITS[style] ? style : 'city'; }
 
-/** What an arm dressed for `style` is the color of, `z` along it from the wrist (+z the fingers). */
+/** What an arm dressed for `style` is the color of, `z` along it from the wrist (+z the fingers): its outermost layer's, or the skin's. */
 export function outfitAt(style, z) {
-  const o = OUTFITS[style] || OUTFITS.city;
-  return z > CUFF ? o.glove : z > SLEEVE ? o.cuff : z > ELBOW ? o.sleeve : o.upper;
+  let top = null;
+  for (const l of OUTFITS[style] || OUTFITS.city) {
+    if (z >= (l.from ?? -Infinity) && z <= (l.to ?? Infinity) && (!top || l.inflate > top.inflate)) top = l;
+  }
+  return top ? top.color : SKIN;
 }
 
-const dressed = new Map(); // a geometry -> its copy for each style
-function dress(geometry, style) {
-  let copies = dressed.get(geometry);
-  if (!copies) dressed.set(geometry, copies = new Map());
-  if (copies.has(style)) return copies.get(style);
-  const out = geometry.clone(), position = out.getAttribute('position');
-  const c = new THREE.Color(), colors = new Float32Array(position.count * 3);
-  for (let i = 0; i < position.count; i++) colors.set(c.set(outfitAt(style, position.getZ(i))).toArray(), i * 3);
-  out.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  copies.set(style, out);
-  return out;
+// The bare arm, skin all over, and each style's layers over it: made once a geometry.
+const bare = new Map(), layers = new Map();
+function skinOf(geometry) {
+  if (!bare.has(geometry)) {
+    const out = geometry.clone(), n = out.getAttribute('position').count, c = new THREE.Color(SKIN);
+    out.setAttribute('color', new THREE.Float32BufferAttribute(Array.from({ length: n }, () => [c.r, c.g, c.b]).flat(), 3));
+    out.setAttribute('cloth', new THREE.Float32BufferAttribute(new Array(n).fill(CLOTH.skin), 1));
+    bare.set(geometry, out);
+  }
+  return bare.get(geometry);
+}
+function layersOf(geometry, style) {
+  const key = `${geometry.uuid}/${style}`;
+  if (!layers.has(key)) layers.set(key, OUTFITS[style].map(l => layer(geometry, l)));
+  return layers.get(key);
 }
 
 /**
@@ -108,14 +124,29 @@ export function handModel(mirror = 1, material) {
   const bones = new Map();
   material.vertexColors = true;
   material.color?.set('#ffffff');
+  const skins = [];
   h.traverse(o => {
+    if (o.isSkinnedMesh) skins.push(o);
     if (o.isMesh) {
-      o.geometry = dress(o.geometry, worn);
       o.material = material;
       o.frustumCulled = false;
     }
     if (o.isBone) bones.set(o.name, { bone: o, rest: o.quaternion.clone() });
   });
+  // What the walker wears over the arm, skinned to the same bones.
+  for (const o of skins) {
+    const source = o.geometry;
+    o.geometry = skinOf(source);
+    for (const geometry of layersOf(source, worn)) {
+      const cover = new THREE.SkinnedMesh(geometry, material);
+      cover.position.copy(o.position);
+      cover.quaternion.copy(o.quaternion);
+      cover.scale.copy(o.scale);
+      cover.bind(o.skeleton, o.bindMatrix);
+      cover.frustumCulled = false;
+      o.parent.add(cover);
+    }
+  }
   g.add(h);
   g.userData.bones = bones;
   g.userData.mirror = mirror;
