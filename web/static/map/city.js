@@ -954,6 +954,10 @@ const TREE_SPACING = 1.1, LAMP_SPACING = 1.6, LAMP_INSET = 0.035, SHORE_INSET = 
 // Parks: planted where the street shader draws lawn (farther than CARRIAGE + SIDEWALK
 // from every obstacle, with a margin), off the gravel paths every PARK_PATHS.
 const PARK_CLEAR = 1.14, PARK_PATHS = 2.2, PATH_CLEAR = 0.16, MAX_PARK_SAMPLES = 60000;
+// Amenities: one square of lawn between the paths (SQUARE across, inside them) and
+// LAWN clear of everything around it, as the street shader draws lawn; a square that
+// has the room gets one AMENITY_CHANCE of the time.
+const SQUARE = PARK_PATHS - 2 * PATH_CLEAR, LAWN = 0.94, AMENITY_CHANCE = 0.16;
 
 /**
  * What stands on the map: along every shore and in every park a tall prop and a low
@@ -989,6 +993,8 @@ export function* dressing(boxes, bendable, style = 'city') {
   const onApproach = drives(ramps.filter(r => r.approach).map(r => ({ drive: r })));
   const tree = (x, z, y, r) => onApproach(x, z) || trees.push({ x, z, y, r, s: 0.7 + 0.6 * r, kind: Math.floor(rand(z * 3.1, x) * set.species.length) });
   const bush = (x, z, y, r) => onApproach(x, z) || bushes.push({ x, z, y, r, s: 0.7 + 0.7 * r });
+  const amenities = [];
+  const amenity = (x, z, y, r, turn) => amenities.push({ x, z, y, turn, kind: Math.floor(r * (set.amenities?.length || 1)) });
   for (const b of boxes) {
     const top = b.y + b.h;
     if (b.kind === 'land') {
@@ -1007,7 +1013,7 @@ export function* dressing(boxes, bendable, style = 'city') {
     }
     yield;
   }
-  yield* plantParks(boxes, tree, bush);
+  yield* plantParks(boxes, tree, bush, amenity);
 
   const group = new THREE.Group();
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
@@ -1040,6 +1046,19 @@ export function* dressing(boxes, bendable, style = 'city') {
   const lows = set.lows || [{ head: set.low, hue: set.lowHue }];
   for (const [kind, low] of lows.entries()) {
     yield* add(low.head, '#ffffff', bushes.filter(it => Math.floor(it.r * 7919) % lows.length === kind), plantAt, set.tint(low.hue, low));
+  }
+  // Implements: REQ-CITY-039
+  const amenityAt = (it, m) => m.compose(p.set(it.x, it.y, it.z), q.setFromAxisAngle(UP, it.turn), s.setScalar(1));
+  for (const [kind, a] of (set.amenities || []).entries()) {
+    const these = amenities.filter(it => it.kind === kind);
+    const scatter = yield* add(a.head, '#ffffff', these, amenityAt);
+    for (const mesh of scatter.meshes) mesh.userData.amenity = kind;
+    for (const [shell, opacity] of a.glow?.shells || []) {
+      const glow = yield* add(shell, a.glow.color, these, amenityAt, null, {
+        vertexColors: false, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      for (const mesh of glow.meshes) Object.assign(mesh.userData, { glow: opacity, amenity: kind });
+    }
   }
   yield* add(set.pole, set.poleColor, lamps, lampAt);
   for (const mesh of (yield* add(set.lampHead, set.headColor, lamps, lampAt)).meshes) mesh.userData.heads = true;
@@ -1075,6 +1094,11 @@ export function* dressing(boxes, bendable, style = 'city') {
   group.userData.obstacles = [
     ...trees.map(it => ({ x: it.x, z: it.z, y: it.y, r: set.solid * it.s })),
     ...lamps.map(it => ({ x: it.x, z: it.z, y: it.y, r: set.post })),
+    // A goalpost, a hoop's pole, a swing's legs: turned with what they belong to.
+    ...amenities.flatMap(it => (set.amenities?.[it.kind]?.posts || []).map(([px, pz, r]) => {
+      const c = Math.cos(it.turn), sn = Math.sin(it.turn);
+      return { x: it.x + px * c + pz * sn, z: it.z - px * sn + pz * c, y: it.y, r };
+    })),
   ];
   const surfaces = [];
   if (ramps.length) surfaces.push(yield* rampGeometry(ramps));
@@ -1090,9 +1114,11 @@ export function* dressing(boxes, bendable, style = 'city') {
 
 // Samples each block's lawn (the park the street shader draws) on a jittered grid
 // and plants trees and bushes there, yielding after every row and every building
-// filed for the distance test.
-// Implements: REQ-CITY-024
-function* plantParks(boxes, tree, bush) {
+// filed for the distance test. First, some of the squares of lawn between its paths
+// that are lawn all over are given to the style's amenities, and nothing is planted
+// on those.
+// Implements: REQ-CITY-024, REQ-CITY-039
+function* plantParks(boxes, tree, bush, amenity) {
   const all = blocks(boxes);
   yield;
   const area = [...all.keys()].reduce((a, t) => a + t.w * t.d, 0);
@@ -1128,10 +1154,34 @@ function* plantParks(boxes, tree, bush) {
       }
       return true;
     };
+    // A square between the paths is lawn all over when it is LAWN from the block's
+    // edge and from everything standing on it, which is where the street shader stops
+    // drawing street.
+    const roomy = (cx, cz) => {
+      const r = { x0: cx - SQUARE / 2, x1: cx + SQUARE / 2, z0: cz - SQUARE / 2, z1: cz + SQUARE / 2 };
+      if (r.x0 < t.x - t.w / 2 + LAWN || r.x1 > t.x + t.w / 2 - LAWN || r.z0 < t.z - t.d / 2 + LAWN || r.z1 > t.z + t.d / 2 - LAWN) return false;
+      for (let i = Math.floor((r.x0 - LAWN) / cell); i <= Math.floor((r.x1 + LAWN) / cell); i++) {
+        for (let j = Math.floor((r.z0 - LAWN) / cell); j <= Math.floor((r.z1 + LAWN) / cell); j++) {
+          for (const k of grid[at(i, j)] || []) if (rectDist(r, k) < LAWN) return false;
+        }
+      }
+      return true;
+    };
+    const taken = new Set();
+    for (let kz = Math.ceil(z0 / PARK_PATHS); kz * PARK_PATHS <= z1; kz++) {
+      for (let kx = Math.ceil(x0 / PARK_PATHS); kx * PARK_PATHS <= x1; kx++) {
+        const cx = kx * PARK_PATHS, cz = kz * PARK_PATHS;
+        if (rand(cx * 0.37 + 11.3, cz * 0.53 - 7.1) >= AMENITY_CHANCE || !roomy(cx, cz)) continue;
+        amenity(cx, cz, top, rand(cx * 1.13 - 4.1, cz * 0.91 + 9.7), rand(cz + 3.7, cx) < 0.5 ? 0 : Math.PI / 2);
+        taken.add(kx + ',' + kz);
+      }
+    }
+    yield;
     for (let z = z0; z <= z1; z += step) {
       for (let x = x0; x <= x1; x += step) {
         const px = x + (rand(x, z) - 0.5) * step * 0.8, pz = z + (rand(z, x) - 0.5) * step * 0.8;
         if (px < x0 || px > x1 || pz < z0 || pz > z1 || !offPath(px) || !offPath(pz) || !clear(px, pz)) continue;
+        if (taken.size && taken.has(Math.round(px / PARK_PATHS) + ',' + Math.round(pz / PARK_PATHS))) continue;
         const r = rand(px * 1.7, pz * 2.3);
         if (r < 0.16) tree(px, pz, top, r / 0.16);
         else if (r < 0.5) bush(px, pz, top, (r - 0.16) / 0.34);
@@ -1446,12 +1496,186 @@ const BEACON = merge([
   shaded(new THREE.TorusGeometry(0.075, 0.006, 5, 14).rotateX(Math.PI / 2).translate(0, 0.52, 0)),
 ]);
 
+// ------------------------------------------------------------------ amenities
+
+// What a park holds besides its trees: in a city a five-a-side pitch, a basketball
+// court and a playground; on a board a pin header, a heat sink and a coin cell with
+// its crystal; in the galaxy a landing pad, a dish listening to the sky and a ring
+// of standing stones round a lit crystal. Each fills one square of lawn between the
+// park's gravel paths (plantParks), modeled along x about its middle with the
+// ground at 0, and says where it stands in the walker's way: posts, [x, z, radius].
+// Implements: REQ-CITY-039
+const painted = (geo, hex, jitter = 0) => {
+  geo = shaded(geo, jitter);
+  const c = new THREE.Color(hex), colors = geo.getAttribute('color');
+  for (let i = 0; i < colors.count; i++) colors.setXYZ(i, colors.getX(i) * c.r, colors.getY(i) * c.g, colors.getZ(i) * c.b);
+  return geo;
+};
+// Flat on the ground: a patch of surface, a painted line, a painted ring.
+const LIFT = 0.006, PAINT = 0.009;
+const patch = (w, d, hex, x = 0, z = 0) => painted(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2).translate(x, LIFT, z), hex);
+const stripe = (x0, z0, x1, z1, hex, width = 0.018) => {
+  const len = Math.hypot(x1 - x0, z1 - z0);
+  return painted(new THREE.PlaneGeometry(len, width).rotateX(-Math.PI / 2).rotateY(-Math.atan2(z1 - z0, x1 - x0))
+    .translate((x0 + x1) / 2, PAINT, (z0 + z1) / 2), hex);
+};
+const outline = (w, d, hex, x = 0, z = 0, width) => merge([
+  stripe(x - w / 2, z - d / 2, x + w / 2, z - d / 2, hex, width), stripe(x - w / 2, z + d / 2, x + w / 2, z + d / 2, hex, width),
+  stripe(x - w / 2, z - d / 2, x - w / 2, z + d / 2, hex, width), stripe(x + w / 2, z - d / 2, x + w / 2, z + d / 2, hex, width),
+]);
+const ring = (r, hex, x = 0, z = 0, start = 0, sweep = Math.PI * 2, width = 0.018) => painted(
+  new THREE.RingGeometry(r - width / 2, r + width / 2, 28, 1, start, sweep).rotateX(-Math.PI / 2).translate(x, PAINT, z), hex);
+// Standing: a post, a bar between two points, a block.
+const post = (x, z, h, r, hex, y = 0) => painted(new THREE.CylinderGeometry(r, r, h, 6).translate(x, y + h / 2, z), hex);
+const bar = (a, b, r, hex) => {
+  const from = new THREE.Vector3(...a), to = new THREE.Vector3(...b), len = from.distanceTo(to);
+  const geo = new THREE.CylinderGeometry(r, r, len, 5);
+  geo.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize()));
+  return painted(geo.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2), hex);
+};
+const block = (w, h, d, x, y, z, hex) => painted(new THREE.BoxGeometry(w, h, d).translate(x, y + h / 2, z), hex);
+// The halo round whatever on one lights itself, as an LED's (GLOW): a shell at each
+// point, for each [radius, strength].
+const lit = (points, shells) => shells.map(([r, opacity]) => [
+  merge(points.map(([x, y, z]) => shaded(new THREE.SphereGeometry(r, 9, 6).translate(x, y, z)))), opacity]);
+const PAD_LAMPS = Array.from({ length: 6 }, (_, i) => [Math.cos(i * Math.PI / 3) * 0.72, 0.11, Math.sin(i * Math.PI / 3) * 0.72]);
+
+// A goal: two posts and a crossbar on the line, the net sloping back to the ground.
+const goal = side => {
+  const x = side * 0.85, back = side * 0.95, white = '#f2f2ee', net = '#c9ccd0';
+  return merge([
+    post(x, -0.13, 0.12, 0.007, white), post(x, 0.13, 0.12, 0.007, white), bar([x, 0.12, -0.13], [x, 0.12, 0.13], 0.007, white),
+    bar([x, 0.12, -0.13], [back, 0, -0.13], 0.004, net), bar([x, 0.12, 0.13], [back, 0, 0.13], 0.004, net),
+    painted(new THREE.PlaneGeometry(0.26, Math.hypot(0.1, 0.12)).rotateY(Math.PI / 2)
+      .rotateZ(side * Math.atan2(0.1, 0.12)).translate((x + back) / 2, 0.06, 0), net),
+  ]);
+};
+// A hoop on its pole, the board facing in across the court.
+const hoop = side => {
+  const x = side * 0.68, white = '#f4f4f0', orange = '#e06a1c';
+  return merge([
+    post(x, 0, 0.3, 0.01, '#3b4148'), bar([x, 0.28, 0], [side * 0.6, 0.28, 0], 0.007, '#3b4148'),
+    block(0.012, 0.1, 0.17, side * 0.6, 0.24, 0, white),
+    painted(new THREE.TorusGeometry(0.028, 0.004, 4, 14).rotateX(Math.PI / 2).translate(side * 0.565, 0.25, 0), orange),
+  ]);
+};
+const CITY_AMENITIES = [
+  { // five-a-side
+    head: merge([
+      patch(1.78, 1.18, '#4c9a42'), patch(0.3, 1.18, '#57a64b', -0.6), patch(0.3, 1.18, '#57a64b', 0), patch(0.3, 1.18, '#57a64b', 0.6),
+      outline(1.7, 1.1, '#f4f4ee'), stripe(0, -0.55, 0, 0.55, '#f4f4ee'), ring(0.15, '#f4f4ee'),
+      outline(0.24, 0.5, '#f4f4ee', -0.73), outline(0.24, 0.5, '#f4f4ee', 0.73), goal(-1), goal(1),
+    ]),
+    posts: [[-0.85, -0.13, 0.03], [-0.85, 0.13, 0.03], [0.85, -0.13, 0.03], [0.85, 0.13, 0.03]],
+  },
+  { // a basketball court
+    head: merge([
+      patch(1.5, 0.98, '#b4573c'), patch(0.26, 0.28, '#d07a52', -0.6), patch(0.26, 0.28, '#d07a52', 0.6),
+      outline(1.36, 0.86, '#f4f4ee'), stripe(0, -0.43, 0, 0.43, '#f4f4ee'), ring(0.13, '#f4f4ee'),
+      outline(0.26, 0.28, '#f4f4ee', -0.55), outline(0.26, 0.28, '#f4f4ee', 0.55),
+      ring(0.36, '#f4f4ee', -0.68, 0, -Math.PI / 2, Math.PI), ring(0.36, '#f4f4ee', 0.68, 0, Math.PI / 2, Math.PI),
+      hoop(-1), hoop(1),
+    ]),
+    posts: [[-0.68, 0, 0.03], [0.68, 0, 0.03]],
+  },
+  { // a playground: swings, a slide and a seesaw, in a sandpit
+    head: merge([
+      patch(1.5, 1.3, '#d9c28c'), outline(1.5, 1.3, '#8a6d45', 0, 0, 0.03),
+      // the swings
+      bar([-0.55, 0, -0.42], [-0.45, 0.32, -0.42], 0.009, '#2f6fb3'), bar([-0.35, 0, -0.42], [-0.45, 0.32, -0.42], 0.009, '#2f6fb3'),
+      bar([-0.55, 0, 0.12], [-0.45, 0.32, 0.12], 0.009, '#2f6fb3'), bar([-0.35, 0, 0.12], [-0.45, 0.32, 0.12], 0.009, '#2f6fb3'),
+      bar([-0.45, 0.32, -0.44], [-0.45, 0.32, 0.14], 0.009, '#2f6fb3'),
+      ...[-0.28, -0.02].flatMap(z => [
+        bar([-0.45, 0.32, z - 0.04], [-0.45, 0.08, z - 0.04], 0.002, '#8d9196'), bar([-0.45, 0.32, z + 0.04], [-0.45, 0.08, z + 0.04], 0.002, '#8d9196'),
+        block(0.06, 0.012, 0.1, -0.45, 0.07, z, '#c23b2c'),
+      ]),
+      // the slide: its ladder, its platform and the chute down
+      bar([0.18, 0, -0.3], [0.2, 0.24, -0.3], 0.007, '#e3b324'), bar([0.18, 0, -0.18], [0.2, 0.24, -0.18], 0.007, '#e3b324'),
+      ...[0.06, 0.12, 0.18].map(y => bar([0.185 + y * 0.08, y, -0.3], [0.185 + y * 0.08, y, -0.18], 0.004, '#e3b324')),
+      block(0.12, 0.015, 0.14, 0.26, 0.24, -0.24, '#c23b2c'),
+      painted(new THREE.BoxGeometry(0.42, 0.012, 0.11).rotateZ(-Math.atan2(0.22, 0.38)).translate(0.51, 0.13, -0.24), '#e3b324'),
+      // the seesaw
+      block(0.04, 0.05, 0.04, 0.35, 0, 0.32, '#3b4148'),
+      painted(new THREE.BoxGeometry(0.5, 0.012, 0.05).rotateZ(0.12).translate(0.35, 0.06, 0.32), '#c23b2c'),
+    ]),
+    posts: [[-0.55, -0.42, 0.03], [-0.35, -0.42, 0.03], [-0.55, 0.12, 0.03], [-0.35, 0.12, 0.03], [0.22, -0.24, 0.08], [0.35, 0.32, 0.04]],
+  },
+];
+const CIRCUIT_AMENITIES = [
+  { // a pin header, two rows of gold pins in a black shroud, and a smaller one beside it
+    head: merge([
+      outline(1.2, 0.36, '#e8ecef', 0, -0.2, 0.012), block(1.1, 0.07, 0.26, 0, 0, -0.2, '#1d1f22'),
+      ...Array.from({ length: 16 }, (_, i) => block(0.022, 0.16, 0.022, -0.48 + (i % 8) * 0.137, 0, -0.26 + Math.floor(i / 8) * 0.12, '#d9b04c')),
+      outline(0.5, 0.2, '#e8ecef', -0.2, 0.3, 0.012), block(0.44, 0.06, 0.14, -0.2, 0, 0.3, '#1d1f22'),
+      ...Array.from({ length: 4 }, (_, i) => block(0.022, 0.14, 0.022, -0.36 + i * 0.107, 0, 0.3, '#d9b04c')),
+    ]),
+    posts: [[-0.3, -0.2, 0.15], [0.3, -0.2, 0.15], [-0.2, 0.3, 0.1]],
+  },
+  { // a heat sink on its chip
+    head: merge([
+      outline(0.86, 0.86, '#e8ecef', 0, 0, 0.012), block(0.62, 0.05, 0.62, 0, 0, 0, '#1d1f22'),
+      block(0.7, 0.04, 0.7, 0, 0.05, 0, '#a9b1b9'),
+      ...Array.from({ length: 8 }, (_, i) => block(0.7, 0.22, 0.018, 0, 0.09, -0.31 + i * 0.0886, '#bcc4cc')),
+    ]),
+    posts: [[0, 0, 0.36]],
+  },
+  { // a coin cell in its holder, and a crystal in its can
+    head: merge([
+      ring(0.3, '#e8ecef', -0.25, 0, 0, Math.PI * 2, 0.012),
+      painted(new THREE.CylinderGeometry(0.27, 0.27, 0.05, 24).translate(-0.25, 0.025, 0), '#202326'),
+      painted(new THREE.CylinderGeometry(0.23, 0.23, 0.035, 24).translate(-0.25, 0.0675, 0), '#c8ced4'), block(0.08, 0.01, 0.02, -0.25, 0.086, 0, '#7d848b'), block(0.02, 0.01, 0.08, -0.25, 0.086, 0, '#7d848b'),
+      outline(0.36, 0.16, '#e8ecef', 0.38, 0, 0.012),
+      painted(new THREE.CylinderGeometry(0.06, 0.06, 0.26, 12).scale(1, 1, 0.45).rotateZ(Math.PI / 2).translate(0.38, 0.065, 0), '#cfd5db'),
+    ]),
+    posts: [[-0.25, 0, 0.28], [0.38, 0, 0.1]],
+  },
+];
+const GALAXY_AMENITIES = [
+  { // a landing pad: a hexagon of plating rimmed with light, lamps at its corners
+    head: merge([
+      painted(new THREE.CylinderGeometry(0.75, 0.78, 0.035, 6).translate(0, 0.0175, 0), '#2a2740'),
+      painted(new THREE.TorusGeometry(0.6, 0.012, 4, 6).rotateX(Math.PI / 2).rotateY(Math.PI / 6).translate(0, 0.04, 0), '#6ff4ff'),
+      painted(new THREE.TorusGeometry(0.22, 0.012, 4, 24).rotateX(Math.PI / 2).translate(0, 0.04, 0), '#6ff4ff'),
+      ...Array.from({ length: 6 }, (_, i) => {
+        const a = i * Math.PI / 3;
+        return merge([post(Math.cos(a) * 0.72, Math.sin(a) * 0.72, 0.1, 0.012, '#3a3552'),
+          painted(new THREE.IcosahedronGeometry(0.025, 0).translate(Math.cos(a) * 0.72, 0.11, Math.sin(a) * 0.72), '#ffd27a')]);
+      }),
+    ]),
+    posts: Array.from({ length: 6 }, (_, i) => [Math.cos(i * Math.PI / 3) * 0.72, Math.sin(i * Math.PI / 3) * 0.72, 0.03]),
+    glow: { color: '#ffd27a', shells: lit(PAD_LAMPS, [[0.05, 0.5], [0.1, 0.18]]) },
+  },
+  { // a dish listening to the sky
+    head: merge([
+      post(0, 0, 0.05, 0.2, '#2f2b45'), post(0, 0, 0.28, 0.04, '#4a4466', 0.05),
+      painted(new THREE.SphereGeometry(0.34, 18, 6, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38).rotateZ(0.7).translate(0.12, 0.5, 0), '#cfd2e6', 0.05),
+      bar([0.05, 0.4, 0], [-0.18, 0.62, 0], 0.008, '#8b86a8'),
+      painted(new THREE.IcosahedronGeometry(0.03, 0).translate(-0.18, 0.62, 0), '#6ff4ff'),
+    ]),
+    posts: [[0, 0, 0.2]],
+    glow: { color: '#6ff4ff', shells: lit([[-0.18, 0.62, 0]], [[0.06, 0.45], [0.12, 0.15]]) },
+  },
+  { // a ring of standing stones round a lit crystal
+    head: merge([
+      ring(0.55, '#6ff4ff', 0, 0, 0, Math.PI * 2, 0.02),
+      ...Array.from({ length: 7 }, (_, i) => {
+        const a = i * Math.PI * 2 / 7;
+        return painted(new THREE.BoxGeometry(0.1, 0.32 + 0.08 * Math.sin(i * 2.3), 0.06).rotateY(-a)
+          .translate(Math.cos(a) * 0.62, (0.32 + 0.08 * Math.sin(i * 2.3)) / 2, Math.sin(a) * 0.62), '#3b3656', 0.2);
+      }),
+      painted(new THREE.ConeGeometry(0.07, 0.36, 5).translate(0, 0.18, 0), '#9a7cff', 0.15),
+    ]),
+    posts: [...Array.from({ length: 7 }, (_, i) => [Math.cos(i * Math.PI * 2 / 7) * 0.62, Math.sin(i * Math.PI * 2 / 7) * 0.62, 0.06]), [0, 0, 0.07]],
+    glow: { color: '#b49cff', shells: lit([[0, 0.22, 0]], [[0.12, 0.3], [0.24, 0.1], [0.4, 0.04]]) },
+  },
+];
+
 // Each style's props, in the same four roles: a tall one for shores and parks, a low
 // one beside it, and a light with its stem for the terrace edges.
 // Implements: REQ-MAP-055, REQ-MAP-057
 const PROPS = {
   city: {
-    species: TREES, stem: '#5a4030', low: BUSH, lowHue: 0.25,
+    species: TREES, stem: '#5a4030', low: BUSH, lowHue: 0.25, amenities: CITY_AMENITIES,
     pole: POLE, poleColor: '#3a3d42', lampHead: HEAD, headColor: '#8a8d92', headNight: '#ffd28a',
     // Lit at night only, as street lamps are: a glow round the head, and its light
     // in a pool on the pavement.
@@ -1463,7 +1687,7 @@ const PROPS = {
     tint: hue => (it, c) => c.setHSL(hue + it.r * 0.07, 0.5 + 0.2 * it.r, 0.2 + it.r * 0.1),
   },
   circuit: {
-    species: PARTS, stem: '#b9bec6', lows: SMD,
+    species: PARTS, stem: '#b9bec6', lows: SMD, amenities: CIRCUIT_AMENITIES,
     pole: LED_LEGS, poleColor: '#b9bec6', lampHead: LED, headColor: '#e2513c', headNight: '#ff6a52',
     // An LED is lit whether or not the room is: the glow sits over its lens.
     glowAt: 0.52,
@@ -1473,7 +1697,7 @@ const PROPS = {
     tint: (hue, part) => (it, c) => c.setHSL(hue + (it.r - 0.5) * 0.04, hue < 0.05 ? 0.05 : 0.55, (part.light ?? 0.12) + it.r * 0.12),
   },
   galaxy: {
-    species: CRYSTALS, stem: '#2b2540', lows: DEBRIS,
+    species: CRYSTALS, stem: '#2b2540', lows: DEBRIS, amenities: GALAXY_AMENITIES,
     pole: BEACON_STEM, poleColor: '#2b2540', lampHead: BEACON, headColor: '#4fd0e8', headNight: '#9df0ff',
     // A beacon is lit day and night, as an LED is, and burns brighter in the dark.
     // Implements: REQ-MAP-057

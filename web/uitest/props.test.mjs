@@ -53,7 +53,7 @@ describe('what stands in the galaxy', () => {
     // its head, then the three low ones (lod.js draws each kind in full and coarse).
     const drawn = group.children.filter(mesh => !mesh.userData.coarse && !mesh.userData.glow).slice(0, 7 * 2 + 3);
     for (const mesh of drawn) assert.ok(mesh.count > 0, 'a kind of prop stands nowhere');
-    const glow = group.children.filter(mesh => mesh.userData.glow && !mesh.userData.coarse);
+    const glow = group.children.filter(mesh => mesh.userData.glow && !mesh.userData.coarse && mesh.userData.amenity === undefined);
     assert.equal(glow.length, 2 + 3 + 3, 'the fungi, the pods or the beacons do not glow');
     assert.ok(glow.every(mesh => mesh.visible && mesh.count > 0), 'a glow is out by day');
     const colors = glow.map(mesh => mesh.material.color.getHex());
@@ -61,6 +61,50 @@ describe('what stands in the galaxy', () => {
     assert.ok(glow.every(mesh => mesh.visible), 'a glow is out at night');
     assert.deepEqual(glow.map(mesh => mesh.material.color.getHex()), colors, 'a glow dims after dark');
     assert.ok(glow.every(mesh => mesh.material.opacity === mesh.userData.glow * 1.5), 'a glow is no stronger at night');
+  });
+});
+
+describe('what a park holds', () => {
+  // Where each kind of amenity stands in a dressed map, by its instance matrices.
+  const placed = group => group.userData.lod.scatters
+    .filter(sc => sc.meshes.some(mesh => mesh.userData.amenity !== undefined && !mesh.userData.glow))
+    .map(sc => Array.from({ length: sc.matrices.length / 16 }, (_, i) => ({ x: sc.matrices[i * 16 + 12], z: sc.matrices[i * 16 + 14] })));
+
+  // Verifies: REQ-CITY-039
+  it('gives some squares of lawn to every kind of amenity, in every style', () => {
+    for (const style of ['city', 'circuit', 'galaxy']) {
+      const park = box('terrace', 0, 0, 60, 60, { y: 0, h: 0.28 });
+      const kinds = placed(makeProps([park], m => m, style));
+      assert.equal(kinds.length, 3, `${style} has ${kinds.length} kinds of amenity`);
+      for (const at of kinds) assert.ok(at.length > 0, `a kind of ${style} amenity stands nowhere`);
+      const all = kinds.flat();
+      assert.ok(all.length < 0.3 * (60 / 2.2) ** 2, `${all.length} amenities leave the park no lawn`);
+    }
+  });
+
+  // Verifies: REQ-CITY-039
+  it('keeps them on lawn, plants nothing on them, and puts their posts in the walker\'s way', () => {
+    const park = box('terrace', 0, 0, 40, 40, { y: 0, h: 0.28 });
+    const tower = box('building', 0, 0, 6, 6, { y: 0.28, h: 3 });
+    tower.node.parentNode = park.node;
+    const group = makeProps([park, tower], m => m, 'city');
+    const kinds = placed(group), all = kinds.flat();
+    assert.ok(all.length, 'no amenity in a park this size');
+    for (const at of all) {
+      const near = Math.max(Math.abs(at.x) - 3, Math.abs(at.z) - 3);
+      assert.ok(near > 0.94 + 0.9, `an amenity at ${at.x}, ${at.z} is on the street round the tower`);
+      assert.ok(Math.abs(at.x) < 20 - 0.94 - 0.9 && Math.abs(at.z) < 20 - 0.94 - 0.9, 'an amenity is on the ring road');
+    }
+    const { obstacles } = group.userData;
+    // The goalposts, the hoops' poles, the playground's legs and posts - and nothing
+    // else: a tree planted on one would be one more.
+    const POSTS = [4, 2, 6];
+    kinds.forEach((at, kind) => {
+      for (const { x, z } of at) {
+        const inside = obstacles.filter(o => Math.abs(o.x - x) < 0.95 && Math.abs(o.z - z) < 0.95);
+        assert.equal(inside.length, POSTS[kind], `amenity ${kind} at ${x}, ${z} has ${inside.length} things in the way`);
+      }
+    });
   });
 });
 
