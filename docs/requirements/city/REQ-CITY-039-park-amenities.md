@@ -15,21 +15,24 @@ verification:
 Park lawn (REQ-CITY-010) **shall** hold amenities of the map's style, each at
 the size it would be beside the walker - whose eye is at 0.45 units, so a unit
 is about 3.5 m: a small-sided pitch about 30 m by 20 with goals 2 m high, a
-basketball court about 18 m by 12 with the rim at 3 m, a playground about 11 m
-across with swings 2.5 m high, and the other styles' at the same scale. One
+basketball court about 18 m by 12 with the rim at 3 m, a volleyball court about
+18 m by 9 with its net 2.4 m high, a playground about 11 m across with swings
+2.5 m high, and the other styles' at the same scale. One
 **shall** stand only where its whole ground is lawn - clear of the block's edge
 and of everything standing on the block by the street's width - and clear of
 the other amenities, tried where the park's paths cross, its kind and which way
 round chosen by the place so a map dresses the same every time:
 
 - in a city, a five-a-side pitch with its goals, a basketball court with its
-  hoops, or a playground with swings, a slide and a seesaw in a sandpit;
-- on a circuit board, a pin header, a heat sink on its chip, or a coin cell in
-  its holder beside a crystal;
-- in the galaxy, a landing pad with lamps at its corners, a dish listening to
-  the sky (hinged on its mast, its feed held at the focus on struts from the
-  rim), or a ring of standing stones round a crystal; the lamps, the dish's
-  feed and the crystal **shall** glow.
+  hoops, a volleyball court with its net, or a playground (REQ-CITY-040);
+- on a circuit board, the same three games and two of the playgrounds built of
+  the board's parts (REQ-CITY-040), a pin header, a heat sink on its chip, or
+  a coin cell in its holder beside a crystal;
+- in the galaxy, the same games and playgrounds built of alloy and light, a
+  landing pad with lamps at its corners, a dish listening to the sky (hinged
+  on its mast, its feed held at the focus on struts from the rim), or a ring
+  of standing stones round a crystal; the lamps, the dish's feed and the
+  crystal **shall** glow.
 
 Nothing **shall** be planted on an amenity, and its posts - goalposts, a hoop's
 pole, a swing's legs, a stone - **shall** stand in the walker's way. An amenity

@@ -133,6 +133,7 @@ export class Scatter {
       for (const it of byCell.get(key)) {
         if (i && i % STEP === 0) yield;
         place(it, m).toArray(this.matrices, i * 16);
+        if (this.poseable) it.slot = i;
         if (tint) tint(it, c).toArray(this.colors, i * 3);
         run[2]++;
         cell.x += it.x; cell.z += it.z; cell.n++;
@@ -163,9 +164,19 @@ export class Scatter {
     this.update();
   }
 
+  /**
+   * Moves one instance of a scatter built `poseable` - a swing being ridden - to the
+   * matrix `m`, from the next update.
+   */
+  pose(item, m) {
+    m.toArray(this.matrices, item.slot * 16);
+    this.stale = true;
+  }
+
   /** Copies the instances of the cells now wanted into their levels' meshes, if that changed. */
   update() {
-    let changed = false;
+    let changed = !!this.stale;
+    this.stale = false;
     this.runs.forEach(([cell], i) => {
       const want = cell.hidden ? NONE : levelOf(this.radius * cell.pixels);
       if (want !== this.wanted[i]) { this.wanted[i] = want; changed = true; }

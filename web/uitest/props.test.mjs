@@ -66,13 +66,8 @@ describe('what stands in the galaxy', () => {
 });
 
 describe('what a park holds', () => {
-  // Where each kind of amenity stands in a dressed map, and which way round, by its
-  // instance matrices: a quarter turn leaves nothing of x along x.
-  const placed = group => group.userData.lod.scatters
-    .filter(sc => sc.meshes.some(mesh => mesh.userData.amenity !== undefined && !mesh.userData.glow))
-    .map(sc => Array.from({ length: sc.matrices.length / 16 }, (_, i) => ({
-      x: sc.matrices[i * 16 + 12], z: sc.matrices[i * 16 + 14], turn: Math.abs(sc.matrices[i * 16]) > 1e-3 ? 0 : Math.PI / 2,
-    })));
+  // Where each kind of amenity stands in a dressed map, and which way round.
+  const placed = (group, style) => amenitiesOf(style).map((_, kind) => group.userData.amenities.filter(it => it.kind === kind));
   // The ground one covers, where it stands.
   const ground = (style, kind, at) => {
     const { w, d } = amenitySpan(amenitiesOf(style)[kind], at.turn);
@@ -82,22 +77,22 @@ describe('what a park holds', () => {
   // Verifies: REQ-CITY-039
   it('makes them the size they are, beside the walker', () => {
     // A unit is about three and a half meters: the walker's eye is at 0.45.
-    const [pitch, court, playground] = amenitiesOf('city').map(a => amenitySpan(a));
+    const [pitch, court, volley, ...playgrounds] = amenitiesOf('city').map(a => amenitySpan(a));
     assert.ok(pitch.w > 7 && pitch.w < 12 && pitch.d > 4.5, `a pitch ${pitch.w} by ${pitch.d}`);
     assert.ok(court.w > 4.5 && court.w < 9, `a court ${court.w} long`);
-    assert.ok(playground.w > 2.5 && playground.w < 5, `a playground ${playground.w} across`);
+    assert.ok(volley.w > 5 && volley.w < 8 && volley.d > 3, `a volleyball court ${volley.w} by ${volley.d}`);
+    for (const playground of playgrounds) assert.ok(playground.w > 2.5 && playground.w < 5, `a playground ${playground.w} across`);
   });
 
   // Verifies: REQ-CITY-039
   it('gives some of the lawn to every kind of amenity, in every style, and leaves the rest lawn', () => {
     for (const style of ['city', 'circuit', 'galaxy']) {
-      const park = box('terrace', 0, 0, 80, 80, { y: 0, h: 0.28 });
-      const kinds = placed(makeProps([park], m => m, style));
-      assert.equal(kinds.length, 3, `${style} has ${kinds.length} kinds of amenity`);
+      const park = box('terrace', 0, 0, 120, 120, { y: 0, h: 0.28 });
+      const kinds = placed(makeProps([park], m => m, style), style);
       for (const at of kinds) assert.ok(at.length > 0, `a kind of ${style} amenity stands nowhere`);
       const covered = kinds.flatMap((at, kind) => at.map(it => ground(style, kind, it)))
         .reduce((sum, r) => sum + (r.x1 - r.x0) * (r.z1 - r.z0), 0);
-      assert.ok(covered < 0.5 * 80 * 80, `${style}'s amenities cover ${covered} of the park's ${80 * 80}`);
+      assert.ok(covered < 0.5 * 120 * 120, `${style}'s amenities cover ${covered} of the park's ${120 * 120}`);
       // ... and never one on another.
       const all = kinds.flatMap((at, kind) => at.map(it => ground(style, kind, it)));
       for (const [i, r] of all.entries()) {
@@ -115,12 +110,12 @@ describe('what a park holds', () => {
     // A goal's net is a sheet: drawn from one face only, it vanishes from behind the goal.
     const drawn = group.children.filter(mesh => mesh.userData.amenity !== undefined && !mesh.userData.glow);
     assert.ok(drawn.length && drawn.every(mesh => mesh.material.side === THREE.DoubleSide), 'an amenity is drawn from one side only');
-    const kinds = placed(group);
+    const kinds = placed(group, 'city');
     assert.ok(kinds.flat().length, 'no amenity in a park this size');
     const { obstacles } = group.userData;
     // The goalposts, the hoops' poles, the playground's legs and posts - and nothing
     // else: a tree planted on one would be one more.
-    const POSTS = [4, 2, 6];
+    const POSTS = amenitiesOf('city').map(a => a.posts.length);
     kinds.forEach((at, kind) => {
       for (const it of at) {
         const r = ground('city', kind, it);
@@ -130,6 +125,44 @@ describe('what a park holds', () => {
         assert.equal(inside.length, POSTS[kind], `amenity ${kind} at ${it.x}, ${it.z} has ${inside.length} things in the way`);
       }
     });
+  });
+});
+
+describe('playgrounds', () => {
+  const rides = a => new Set(a.play.filter(e => e.ride).map(e => e.ride));
+
+  // Verifies: REQ-CITY-040
+  it('come in three kinds in a city and two on a board and in the galaxy, beside the same three games', () => {
+    const city = amenitiesOf('city').filter(a => rides(a).size);
+    assert.equal(city.length, 3);
+    assert.equal(new Set(city.map(a => a.play.filter(e => e.ride).map(e => e.ride).sort().join())).size, 3, 'two of the city\'s playgrounds are the same');
+    for (const style of ['city', 'circuit', 'galaxy']) {
+      const all = amenitiesOf(style);
+      assert.ok(all.filter(a => rides(a).size).length >= 2, `${style} has fewer than two playgrounds`);
+      const balls = all.flatMap(a => a.play.filter(e => e.ball).map(e => e.ball)).sort();
+      assert.deepEqual(balls, ['basket', 'soccer', 'volley'], `${style} plays ${balls}`);
+      const at = all.flatMap(a => a.play);
+      assert.equal(at.filter(e => e.goal).length, 2);
+      assert.equal(at.filter(e => e.hoop).length, 2);
+      assert.equal(at.filter(e => e.net).length, 1);
+      // Every ride is on something that moves.
+      for (const a of all) for (const e of a.play) if (e.rig !== undefined) assert.ok(a.rigs[e.rig], `a ${e.ride} has no rig`);
+    }
+  });
+
+  // Verifies: REQ-CITY-040
+  it('draws what moves apart, at rest, and moves only the one posed', () => {
+    const park = box('terrace', 0, 0, 120, 120, { y: 0, h: 0.28 });
+    const group = makeProps([park], m => m, 'city');
+    const swung = group.userData.amenities.find(it => it.rigs?.length);
+    assert.ok(swung, 'nothing in a park this size moves');
+    const { scatter, item } = swung.rigs[0];
+    const before = scatter.matrices.slice();
+    const m = new THREE.Matrix4().makeTranslation(1, 2, 3);
+    scatter.pose(item, m);
+    scatter.update();
+    const changed = [...Array(before.length / 16).keys()].filter(i => before.slice(i * 16, i * 16 + 16).some((v, k) => v !== scatter.matrices[i * 16 + k]));
+    assert.deepEqual(changed, [item.slot], 'posing one rig moved others, or not it');
   });
 });
 
