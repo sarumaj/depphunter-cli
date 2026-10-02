@@ -1066,11 +1066,12 @@ function relayoutSoon() {
   if (layoutDue) return;
   layoutDue = true;
   $('map').classList.add('laying-out');
-  // The view blinks: the lids close over the city, it is laid out again while they
-  // are shut, and they open on the new one - one depth turning into another, rather
-  // than every building jumping at once.
+  // In the street the view blinks: the lids close over the city, it is laid out again
+  // while they are shut, and they open on the new one - one depth turning into
+  // another around the walker, rather than every building jumping at once. The map
+  // view is looked at, not stood in, and changes at once.
   // Implements: REQ-MAP-064
-  const blink = !reducedMotion();
+  const blink = walker.active && !reducedMotion();
   $('blink').classList.toggle('shut', blink);
   setTimeout(() => requestAnimationFrame(() => setTimeout(() => layoutDue && relayout())), blink ? BLINK_SHUT : 0);
 }
