@@ -227,7 +227,7 @@ function writeReports(directory) {
 // their pointers, and the map then draws stand-ins; the real files are fetched once
 // into the cache directory and served to `ctx` in their place.
 async function routeModels(ctx) {
-  for (const name of ['hand', 'bug', 'props', 'legs']) {
+  for (const name of ['hand', 'bug', 'props', 'legs', 'play']) {
     const file = path.join(REPO, 'web/static', `${name}.glb`);
     if (fs.readFileSync(file).subarray(0, 4).toString() === 'glTF') continue; // the real thing is embedded
     const cached = path.join(cacheDirectory(), `${name}.glb`);

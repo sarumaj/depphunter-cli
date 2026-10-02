@@ -223,22 +223,21 @@ export const play = {
 
   // Up the ladder, along the platform, down the chute and off the end.
   slideStep(r, dt) {
-    const path = r.entry.path, a = r.it.spec;
+    const e = r.entry, path = e.path, a = r.it.spec, last = path.length - 2;
     const from = onAmenity(r.it, a, path[r.stage], v1), to = onAmenity(r.it, a, path[r.stage + 1], v2);
     const length = from.distanceTo(to);
-    const chute = r.stage === 3;
-    if (chute) {
-      const slope = Math.asin(Math.min(1, (from.y - to.y) / Math.max(1e-6, length)));
+    if (r.stage >= e.sit && r.stage < last) {
+      const slope = Math.asin(Math.max(-1, Math.min(1, (from.y - to.y) / Math.max(1e-6, length))));
       r.speed = Math.max(0.3, r.speed + (REAL_G * 1.6 * (Math.sin(slope) - 0.25 * Math.cos(slope))) * dt);
-    } else r.speed = r.stage === 4 ? Math.max(0.2, r.speed - 2 * dt) : r.stage === 0 ? 0.55 : 0.8;
+    } else r.speed = r.stage === last ? Math.max(0.2, r.speed - 2 * dt) : r.stage === 0 ? 0.55 : 0.8;
     r.along += r.speed * dt;
     if (r.along >= length) {
       r.along -= length;
       r.stage++;
-      if (r.stage === 3) {
+      if (r.stage === e.sit) {
         r.speed = 0.4;
-        const next = onAmenity(r.it, a, path[4], v3);
-        this.p.yaw = Math.atan2(-(next.x - to.x), -(next.z - to.z));
+        const end = onAmenity(r.it, a, path[last], v3);
+        this.p.yaw = Math.atan2(-(end.x - to.x), -(end.z - to.z));
       }
       if (r.stage >= path.length - 1) {
         const end = onAmenity(r.it, a, path[path.length - 1], v3);
@@ -269,7 +268,7 @@ export const play = {
       if (r.stage >= path.length - 1) return;
       const from = onAmenity(it, a, path[r.stage], v1), to = onAmenity(it, a, path[r.stage + 1], v2);
       at = from.lerp(to, Math.min(1, r.along / Math.max(1e-6, from.distanceTo(to))));
-      p.feet = r.stage >= 3 ? at.y + SIT - EYE : at.y;
+      p.feet = r.stage >= e.sit ? at.y + SIT - EYE : at.y;
     }
     p.x = at.x;
     p.z = at.z;

@@ -266,6 +266,13 @@ style's outfit, colored with vertex colors. The hands are not remodeled for the
 outfits; the sleeves and gloves are painted on them by how far up the arm each
 vertex is.
 
+What the parks' play equipment is made of is mostly posts, bars and blocks, which
+are what a goal frame or a swing's legs are, and are built in
+`web/static/map/amenities.js`. The few parts that read poorly that way are
+modeled by `scripts/play.py` into `web/static/play.glb` - a swing's belt seat, a
+spring rider's horse, the basketball and goal nets - and painted by the same
+code as the rest.
+
 ## Architecture
 
 [How it works](#how-it-works) follows one run through its stages. This section

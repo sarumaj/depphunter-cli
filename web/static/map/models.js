@@ -57,3 +57,7 @@ export const plants = () => got('props');
 /** The beetle: its wing cases, its dark front end and its legs (bugs.js). */
 export const loadBugs = () => load('bug', 'bug.glb');
 export const bugParts = () => got('bug');
+
+/** The play equipment's modeled parts: a swing's belt seat, a rider's horse, nets (amenities.js). */
+export const loadPlay = () => load('play', 'play.glb');
+export const playParts = () => got('play');

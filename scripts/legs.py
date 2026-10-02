@@ -24,6 +24,7 @@ The bone and mesh names are the contract with web/static/walk/legs.js.
 # pyright: basic
 import math
 import os
+from itertools import pairwise
 
 import bpy
 
@@ -39,19 +40,19 @@ OUT: str = os.path.normpath(os.path.join(HERE, "..", "web", "static", "legs.glb"
 # Map units: the walker's eye is 0.45 over their feet, so a unit is about 3.55 m. The
 # model stands on the origin facing Blender's +y, which the glTF export turns into
 # three.js's -z: the way a walker looks.
-HIP = 0.245     # the hip joints' height
+HIP = 0.245  # the hip joints' height
 KNEE = 0.13
 ANKLE = 0.024
-WAIST = 0.29    # where the model ends at the top
-APART = 0.03    # each hip joint off the middle
-SEGMENTS = 14   # round a leg
+WAIST = 0.29  # where the model ends at the top
+APART = 0.03  # each hip joint off the middle
+SEGMENTS = 14  # round a leg
 
 SKIN = (0.88, 0.67, 0.53)
 
 
 def color(hexa: str) -> tuple[float, float, float]:
     """An sRGB hex color, as linear floats, which is what Blender stores."""
-    return tuple(((int(hexa[i:i + 2], 16) / 255) ** 2.2) for i in (1, 3, 5))  # type: ignore[return-value]
+    return tuple(((int(hexa[i : i + 2], 16) / 255) ** 2.2) for i in (1, 3, 5))  # type: ignore[return-value]
 
 
 # Each outfit: the profile of a leg from the waist down - [height, half width, half
@@ -59,56 +60,74 @@ def color(hexa: str) -> tuple[float, float, float]:
 OUTFITS: dict[str, dict] = {
     "city": {
         "leg": [
-            (WAIST, 0.050, 0.036, "#2a9d8f"),   # a T-shirt's hem
+            (WAIST, 0.050, 0.036, "#2a9d8f"),  # a T-shirt's hem
             (0.272, 0.050, 0.036, "#2a9d8f"),
-            (0.270, 0.050, 0.036, "#34455f"),   # shorts, loose
+            (0.270, 0.050, 0.036, "#34455f"),  # shorts, loose
             (HIP, 0.030, 0.029, "#34455f"),
             (0.19, 0.026, 0.026, "#34455f"),
             (0.152, 0.024, 0.024, "#2c3a52"),
-            (0.150, 0.0155, 0.0160, None),      # bare knee and shin
+            (0.150, 0.0155, 0.0160, None),  # bare knee and shin
             (KNEE, 0.0150, 0.0160, None),
             (0.085, 0.0140, 0.0155, None),
             (0.045, 0.0100, 0.0110, None),
             (0.042, 0.0105, 0.0115, "#f2f2f2"),  # socks
             (ANKLE, 0.0100, 0.0110, "#f2f2f2"),
         ],
-        "shoe": {"upper": "#f4f4f2", "sole": "#e8e8e8", "toe": "#d8433a", "height": 0.03, "wide": 1.0},
+        "shoe": {
+            "upper": "#f4f4f2",
+            "sole": "#e8e8e8",
+            "toe": "#d8433a",
+            "height": 0.03,
+            "wide": 1.0,
+        },
     },
     "circuit": {
         "leg": [
-            (WAIST, 0.050, 0.036, "#24365a"),   # the coverall, belted
+            (WAIST, 0.050, 0.036, "#24365a"),  # the coverall, belted
             (0.276, 0.050, 0.036, "#1b1d22"),
             (0.268, 0.049, 0.035, "#24365a"),
             (HIP, 0.031, 0.030, "#24365a"),
             (0.19, 0.026, 0.026, "#24365a"),
             (0.150, 0.022, 0.023, "#24365a"),
-            (0.146, 0.024, 0.026, "#202326"),    # knee pads
+            (0.146, 0.024, 0.026, "#202326"),  # knee pads
             (0.118, 0.024, 0.026, "#202326"),
             (0.114, 0.021, 0.022, "#24365a"),
             (0.075, 0.019, 0.020, "#24365a"),
-            (0.072, 0.019, 0.020, "#d8e04a"),    # a reflective band
+            (0.072, 0.019, 0.020, "#d8e04a"),  # a reflective band
             (0.062, 0.019, 0.020, "#d8e04a"),
             (0.059, 0.019, 0.020, "#24365a"),
             (0.05, 0.018, 0.019, "#24365a"),
         ],
-        "shoe": {"upper": "#2a2420", "sole": "#141210", "toe": "#8a6d45", "height": 0.05, "wide": 1.12},
+        "shoe": {
+            "upper": "#2a2420",
+            "sole": "#141210",
+            "toe": "#8a6d45",
+            "height": 0.05,
+            "wide": 1.12,
+        },
     },
     "galaxy": {
         "leg": [
-            (WAIST, 0.056, 0.042, "#eef0f4"),   # the suit, bulky
+            (WAIST, 0.056, 0.042, "#eef0f4"),  # the suit, bulky
             (0.268, 0.055, 0.041, "#9aa3b5"),
             (0.262, 0.055, 0.041, "#eef0f4"),
             (HIP, 0.036, 0.035, "#eef0f4"),
             (0.19, 0.032, 0.032, "#eef0f4"),
             (0.150, 0.029, 0.029, "#eef0f4"),
-            (0.146, 0.031, 0.031, "#9aa3b5"),    # a ring at the knee
+            (0.146, 0.031, 0.031, "#9aa3b5"),  # a ring at the knee
             (0.122, 0.031, 0.031, "#9aa3b5"),
             (0.118, 0.028, 0.028, "#eef0f4"),
-            (0.09, 0.026, 0.026, "#6ff4ff"),     # a line of light down the shin
+            (0.09, 0.026, 0.026, "#6ff4ff"),  # a line of light down the shin
             (0.086, 0.026, 0.026, "#eef0f4"),
             (0.06, 0.024, 0.024, "#eef0f4"),
         ],
-        "shoe": {"upper": "#c8ccd6", "sole": "#5a5f6b", "toe": "#9aa3b5", "height": 0.062, "wide": 1.3},
+        "shoe": {
+            "upper": "#c8ccd6",
+            "sole": "#5a5f6b",
+            "toe": "#9aa3b5",
+            "height": 0.062,
+            "wide": 1.3,
+        },
     },
 }
 
@@ -143,8 +162,15 @@ def shoe(bm, side: float, spec: dict, colors):
     upper, sole, toe = color(spec["upper"]), color(spec["sole"]), color(spec["toe"])
     cx = side * APART
     # Lengthwise sections: [y, half width, top height], heel to toe.
-    sections = [(-0.022, 0.011, top), (-0.012, 0.013, top), (0.0, 0.013, top * 0.9),
-                (0.02, 0.0135, top * 0.6), (0.04, 0.0135, 0.022), (0.055, 0.012, 0.017), (0.064, 0.008, 0.013)]
+    sections = [
+        (-0.022, 0.011, top),
+        (-0.012, 0.013, top),
+        (0.0, 0.013, top * 0.9),
+        (0.02, 0.0135, top * 0.6),
+        (0.04, 0.0135, 0.022),
+        (0.055, 0.012, 0.017),
+        (0.064, 0.008, 0.013),
+    ]
     loops = []
     for k, (y, half, height) in enumerate(sections):
         half *= wide
@@ -153,7 +179,13 @@ def shoe(bm, side: float, spec: dict, colors):
         # Round the section: up one side, over the top, down the other, along the sole.
         for i in range(10):
             a = math.pi * i / 9
-            v = bm.verts.new((cx + half * math.cos(a), y, 0.006 + (height - 0.006) * math.sin(a) ** 0.6))
+            v = bm.verts.new(
+                (
+                    cx + half * math.cos(a),
+                    y,
+                    0.006 + (height - 0.006) * math.sin(a) ** 0.6,
+                )
+            )
             colors[v] = col
             loop.append(v)
         for i in range(1, 4):
@@ -161,10 +193,16 @@ def shoe(bm, side: float, spec: dict, colors):
             colors[v] = sole
             loop.append(v)
         loops.append(loop)
-    for a, b in zip(loops, loops[1:]):
+    for a, b in pairwise(loops):
         bridge(bm, a, b)
     for loop, z in ((loops[0], 0), (loops[-1], 1)):
-        middle = bm.verts.new((cx, sum(v.co.y for v in loop) / len(loop), sum(v.co.z for v in loop) / len(loop)))
+        middle = bm.verts.new(
+            (
+                cx,
+                sum(v.co.y for v in loop) / len(loop),
+                sum(v.co.z for v in loop) / len(loop),
+            )
+        )
         colors[middle] = sole if z == 0 else toe
         for i in range(len(loop)):
             a, b = loop[i], loop[(i + 1) % len(loop)]
@@ -181,18 +219,28 @@ def mesh_for(name: str, outfit: dict):
     waist = [r for r in profile if r[0] > HIP + 1e-6]
     loops = [ring(bm, z, 0.0, rx, ry, color(col), colors) for z, rx, ry, col in waist]
     # ... down over the tops of the legs, where it is hidden in them.
-    z, rx, ry, col = waist[-1]
+    _, rx, ry, col = waist[-1]
     loops.append(ring(bm, HIP - 0.012, 0.0, rx * 0.92, ry * 0.95, color(col), colors))
-    for a, b in zip(loops, loops[1:]):
+    for a, b in pairwise(loops):
         bridge(bm, a, b)
     cap(bm, loops[0], waist[0][0], 0.0, color(waist[0][3]), colors)
     for side in (-1.0, 1.0):
-        legs = [ring(bm, z, side * APART, rx, ry, color(col) if col else SKIN, colors)
-                for z, rx, ry, col in profile if z <= HIP + 1e-6]
-        for a, b in zip(legs, legs[1:]):
+        legs = [
+            ring(bm, z, side * APART, rx, ry, color(col) if col else SKIN, colors)
+            for z, rx, ry, col in profile
+            if z <= HIP + 1e-6
+        ]
+        for a, b in pairwise(legs):
             bridge(bm, a, b)
         bottom = profile[-1]
-        cap(bm, legs[-1], bottom[0], side * APART, color(bottom[3]) if bottom[3] else SKIN, colors)
+        cap(
+            bm,
+            legs[-1],
+            bottom[0],
+            side * APART,
+            color(bottom[3]) if bottom[3] else SKIN,
+            colors,
+        )
         shoe(bm, side, outfit["shoe"], colors)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     painted = [colors[v] for v in bm.verts]
@@ -220,12 +268,24 @@ def armature():
     for side, suffix in ((-1.0, "R"), (1.0, "L")):
         x = side * APART
         thigh = bones.new(f"thigh_{suffix}")
-        thigh.head, thigh.tail, thigh.parent = Vector((x, 0, HIP)), Vector((x, 0, KNEE)), hips
+        thigh.head, thigh.tail, thigh.parent = (
+            Vector((x, 0, HIP)),
+            Vector((x, 0, KNEE)),
+            hips,
+        )
         shin = bones.new(f"shin_{suffix}")
-        shin.head, shin.tail, shin.parent = Vector((x, 0, KNEE)), Vector((x, 0, ANKLE)), thigh
+        shin.head, shin.tail, shin.parent = (
+            Vector((x, 0, KNEE)),
+            Vector((x, 0, ANKLE)),
+            thigh,
+        )
         shin.use_connect = True
         foot = bones.new(f"foot_{suffix}")
-        foot.head, foot.tail, foot.parent = Vector((x, 0, ANKLE)), Vector((x, 0.055, 0.01)), shin
+        foot.head, foot.tail, foot.parent = (
+            Vector((x, 0, ANKLE)),
+            Vector((x, 0.055, 0.01)),
+            shin,
+        )
         foot.use_connect = True
         # Every bone rolled the same way, so one axis bends every joint forward.
         for b in (thigh, shin, foot):
@@ -243,8 +303,18 @@ def blend(z: float, at: float, over: float) -> float:
 def skin(obj, rig):
     """Weights by height: the hips over the thighs, the thighs over the knees, the
     shins down to the ankles, the feet below them - each eased into the next."""
-    groups = {name: obj.vertex_groups.new(name=name) for name in
-              ("hips", "thigh_L", "shin_L", "foot_L", "thigh_R", "shin_R", "foot_R")}
+    groups = {
+        name: obj.vertex_groups.new(name=name)
+        for name in (
+            "hips",
+            "thigh_L",
+            "shin_L",
+            "foot_L",
+            "thigh_R",
+            "shin_R",
+            "foot_R",
+        )
+    }
     for v in obj.data.vertices:
         x, y, z = v.co
         suffix = "L" if x > 0 else "R"

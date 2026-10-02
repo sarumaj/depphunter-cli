@@ -13,10 +13,11 @@
 // how (swing, spin, rock, slide), where its ball is put out, and the hoops, goals and
 // nets the ball is played at (walk/play.js).
 //
-// Implements: REQ-CITY-039, REQ-CITY-040
+// Implements: REQ-CITY-039, REQ-CITY-040, REQ-CITY-041
 
 import * as THREE from '../vendor/three.module.min.js';
 import { merge, shaded, painted, patch, stripe, outline, ring, post, bar, block, lit } from './shapes.js';
+import { playParts } from './models.js';
 
 // ------------------------------------------------------------------ pieces
 
@@ -96,10 +97,28 @@ function swings(kit, { seats = [-0.13, 0.13], h = 0.32, seatY = 0.07, nest = fal
   return p;
 }
 
-// A slide down along +x: the ladder up, the platform, and the chute; `tower` puts a
-// roof over a taller platform.
+// A slide down along +x: the ladder up, the platform, and the chute - a channel that
+// leaves the platform level, is steepest halfway and runs out level along the ground;
+// `tower` puts a roof over a taller platform. The ride follows the chute's own curve.
+const CHUTE_STEPS = 10;
+const chuteAt = (h, run, t) => [0.12 + run * t, 0.02 + (h - 0.02) * (1 - (t - Math.sin(2 * Math.PI * t) / (2 * Math.PI)))];
+
+function chute(h, run, hex) {
+  const positions = [];
+  // Across the channel: up the left side, the bed, up the right side.
+  const across = [[-0.055, 0.03], [-0.05, 0], [0.05, 0], [0.055, 0.03]];
+  const at = t => { const [x, y] = chuteAt(h, run, t); return across.map(([z, up]) => [x, y + up, z]); };
+  for (let i = 0; i < CHUTE_STEPS * 2; i++) {
+    const a = at(i / (CHUTE_STEPS * 2)), b = at((i + 1) / (CHUTE_STEPS * 2));
+    for (let k = 0; k < across.length - 1; k++) positions.push(...a[k], ...b[k], ...b[k + 1], ...a[k], ...b[k + 1], ...a[k + 1]);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  return painted(geo, hex);
+}
+
 function slide(kit, { h = 0.24, run = 0.38, tower = false } = {}) {
-  const slope = Math.atan2(h - 0.02, run), long = Math.hypot(run, h - 0.02);
+  const curve = Array.from({ length: CHUTE_STEPS + 1 }, (_, i) => chuteAt(h, run, i / CHUTE_STEPS));
   const head = [
     kit.leg([-0.1, 0, -0.05], [-0.01, h, -0.05]), kit.leg([-0.1, 0, 0.05], [-0.01, h, 0.05]),
     ...Array.from({ length: Math.floor(h / 0.06) }, (_, i) => {
@@ -108,15 +127,21 @@ function slide(kit, { h = 0.24, run = 0.38, tower = false } = {}) {
     }),
     ...[[0, -0.06], [0, 0.06], [0.12, -0.06], [0.12, 0.06]].map(([x, z]) => kit.leg([x, 0, z], [x, h, z])),
     block(0.14, 0.015, 0.14, 0.06, h, 0, kit.deck),
-    painted(new THREE.BoxGeometry(long, 0.012, 0.11).rotateZ(-slope).translate(0.12 + run / 2, (h + 0.02) / 2 + 0.006, 0), kit.slide),
-    ...[-0.056, 0.056].map(z => kit.rail([0.12, h + 0.045, z], [0.12 + run, 0.06, z])),
+    kit.chute?.(h, run) || chute(h, run, kit.slide),
+    // A leg under the chute where it is still well up.
+    ...[-0.05, 0.05].map(z => kit.leg([curve[3][0], 0, z], [curve[3][0], curve[3][1], z])),
   ];
   if (tower) {
     head.push(...[[0, -0.06], [0, 0.06], [0.12, -0.06], [0.12, 0.06]].map(([x, z]) => kit.leg([x, h, z], [x, h + 0.2, z])));
     head.push(kit.roof(0.06, h + 0.2));
   }
   const p = piece(head, { posts: [[0.06, 0, 0.09]] });
-  p.play.push({ ride: 'slide', path: [[-0.14, 0, 0], [-0.03, h + 0.015, 0], [0.08, h + 0.015, 0], [0.13, h + 0.012, 0], [0.12 + run, 0.03, 0], [0.24 + run, 0, 0]] });
+  // Up the ladder, across the platform, down the chute's curve and off its end; sat on
+  // from the platform's edge (`sit`).
+  p.play.push({
+    ride: 'slide', sit: 2,
+    path: [[-0.14, 0, 0], [-0.03, h + 0.015, 0], [0.12, h + 0.012, 0], ...curve.slice(1).map(([x, y]) => [x, y + 0.004, 0]), [0.24 + run, 0, 0]],
+  });
   p.glows.push(...(kit.glowsOn?.slide?.(h, run) || []));
   return p;
 }
@@ -229,6 +254,24 @@ function volley(kit) {
   return p;
 }
 
+// ------------------------------------------------------------------ modeled parts
+
+// The parts scripts/play.py models (play.glb), while the amenities are being built
+// with them; null before they are in, and the stand-ins below are built instead.
+let parts = null;
+
+/** The modeled part `name`, placed by `place` and painted `hex`, or null without it. */
+const part = (name, place, hex) => (parts?.has(name) ? painted(place(parts.get(name).clone()), hex) : null);
+
+// A goal's net behind its line: strings, or a sheet with its edges until they are in.
+const goalNet = (side, hex) => part('goal_net', g => g.scale(side, 1, 1).translate(side * 0.85, 0, 0), hex) || merge([
+  bar([side * 0.85, 0.12, -0.13], [side * 0.95, 0, -0.13], 0.004, hex), bar([side * 0.85, 0.12, 0.13], [side * 0.95, 0, 0.13], 0.004, hex),
+  painted(new THREE.PlaneGeometry(0.26, Math.hypot(0.1, 0.12)).rotateY(Math.PI / 2)
+    .rotateZ(side * Math.atan2(0.1, 0.12)).translate(side * 0.9, 0.06, 0), hex),
+]);
+// A basketball net under a rim, or nothing.
+const hoopNet = (side, hex) => part('hoop_net', g => g.translate(side * 0.565, 0.25, 0), hex);
+
 // ------------------------------------------------------------------ the styles' kits
 
 // What each style builds them out of: the same shapes for the same games, in its own
@@ -243,23 +286,21 @@ const CITY = {
   rung: (a, b) => bar(a, b, 0.004, CITY.slide),
   rail: (a, b) => bar(a, b, 0.004, CITY.frame),
   chain: (a, b) => bar(a, b, 0.002, '#8d9196'),
-  seat: y => block(0.06, 0.012, 0.1, 0, y - 0.006, 0, CITY.seatColor),
+  seat: y => part('belt_seat', g => g.translate(0, y, 0), '#2b2b2b') || block(0.06, 0.012, 0.1, 0, y - 0.006, 0, CITY.seatColor),
   nest: y => painted(new THREE.TorusGeometry(0.06, 0.012, 6, 16).rotateX(Math.PI / 2).translate(0, y, 0), '#d8433a'),
   roof: (x, y) => painted(new THREE.ConeGeometry(0.12, 0.08, 4).rotateY(Math.PI / 4).translate(x, y + 0.04, 0), '#d8433a'),
   platform: r => painted(new THREE.CylinderGeometry(r, r, 0.035, 20).translate(0, 0.0375, 0), '#d8433a', 0.05),
   fulcrum: () => block(0.04, 0.05, 0.04, 0, 0, 0, '#3b4148'),
-  rider: () => merge([
+  rider: () => part('horse', g => g, '#e3b324') || merge([
     painted(new THREE.SphereGeometry(0.045, 10, 6).scale(1.5, 0.8, 0.8).translate(0, 0.1, 0), '#e3b324'),
     painted(new THREE.SphereGeometry(0.03, 8, 6).translate(0.06, 0.14, 0), '#e3b324'),
     bar([0.045, 0.13, -0.03], [0.045, 0.13, 0.03], 0.004, '#3b4148'),
   ]),
   goal: side => {
-    const x = side * 0.85, back = side * 0.95, white = '#f2f2ee', net = '#c9ccd0';
+    const x = side * 0.85, white = '#f2f2ee';
     return merge([
       post(x, -0.13, 0.12, 0.007, white), post(x, 0.13, 0.12, 0.007, white), bar([x, 0.12, -0.13], [x, 0.12, 0.13], 0.007, white),
-      bar([x, 0.12, -0.13], [back, 0, -0.13], 0.004, net), bar([x, 0.12, 0.13], [back, 0, 0.13], 0.004, net),
-      painted(new THREE.PlaneGeometry(0.26, Math.hypot(0.1, 0.12)).rotateY(Math.PI / 2)
-        .rotateZ(side * Math.atan2(0.1, 0.12)).translate((x + back) / 2, 0.06, 0), net),
+      goalNet(side, '#e4e6e8'),
     ]);
   },
   hoop: side => {
@@ -268,7 +309,8 @@ const CITY = {
       post(x, 0, 0.3, 0.01, '#3b4148'), bar([x, 0.28, 0], [side * 0.6, 0.28, 0], 0.007, '#3b4148'),
       block(0.012, 0.1, 0.17, side * 0.6, 0.24, 0, '#f4f4f0'),
       painted(new THREE.TorusGeometry(0.028, 0.004, 4, 14).rotateX(Math.PI / 2).translate(side * 0.565, 0.25, 0), '#e06a1c'),
-    ]);
+      hoopNet(side, '#f2f2f2'),
+    ].filter(Boolean));
   },
   pole: (z, h) => post(0, z, h, 0.008, '#e8e8e4'),
   netTop: (a, b) => bar(a, b, 0.004, '#f4f4f0'),
@@ -302,12 +344,10 @@ const CIRCUIT = {
     bar([0.05, 0.11, 0.03], [0.05, 0.13, 0.03], 0.003, '#cfd5db')]),
   // A staple of jumper wire, the net a sheet of shielding mesh.
   goal: side => {
-    const x = side * 0.85, back = side * 0.95, wire = '#cfd5db', mesh = '#7d848b';
+    const x = side * 0.85, wire = '#cfd5db';
     return merge([
       bar([x, 0, -0.13], [x, 0.12, -0.13], 0.008, wire), bar([x, 0, 0.13], [x, 0.12, 0.13], 0.008, wire), bar([x, 0.12, -0.13], [x, 0.12, 0.13], 0.008, wire),
-      painted(new THREE.PlaneGeometry(0.26, Math.hypot(0.1, 0.12)).rotateY(Math.PI / 2)
-        .rotateZ(side * Math.atan2(0.1, 0.12)).translate((x + back) / 2, 0.06, 0), mesh),
-      bar([x, 0.12, -0.13], [back, 0, -0.13], 0.004, mesh), bar([x, 0.12, 0.13], [back, 0, 0.13], 0.004, mesh),
+      goalNet(side, '#7d848b'),
     ]);
   },
   // A test point's loop for a rim, on a standoff, before a little board.
@@ -317,7 +357,8 @@ const CIRCUIT = {
       painted(hexBar([x, 0, 0], [x, 0.3, 0], 0.012), '#c8a24a'), bar([x, 0.28, 0], [side * 0.6, 0.28, 0], 0.006, '#cfd5db'),
       block(0.012, 0.1, 0.17, side * 0.6, 0.24, 0, '#1f6b3a'), block(0.013, 0.01, 0.172, side * 0.6, 0.24, 0, '#d9b04c'),
       painted(new THREE.TorusGeometry(0.028, 0.005, 4, 14).rotateX(Math.PI / 2).translate(side * 0.565, 0.25, 0), '#d23c2c'),
-    ]);
+      hoopNet(side, '#c47a3a'),
+    ].filter(Boolean));
   },
   pole: (z, h) => merge([block(0.03, 0.03, 0.03, 0, 0, z, '#1d1f22'), block(0.012, h, 0.012, 0, 0, z, '#d9b04c')]),
   // A ribbon cable strung across, its first wire red.
@@ -348,11 +389,10 @@ const GALAXY = {
     bar([0.045, 0.13, -0.03], [0.045, 0.13, 0.03], 0.004, '#6ff4ff')]),
   // An arch, its crossbar a bar of light.
   goal: side => {
-    const x = side * 0.85, back = side * 0.95;
+    const x = side * 0.85;
     return merge([
       post(x, -0.13, 0.12, 0.009, '#3a3552'), post(x, 0.13, 0.12, 0.009, '#3a3552'), bar([x, 0.12, -0.13], [x, 0.12, 0.13], 0.006, '#6ff4ff'),
-      painted(new THREE.PlaneGeometry(0.26, Math.hypot(0.1, 0.12)).rotateY(Math.PI / 2)
-        .rotateZ(side * Math.atan2(0.1, 0.12)).translate((x + back) / 2, 0.06, 0), '#2f5b77'),
+      goalNet(side, '#4fa9c4'),
     ]);
   },
   // A ring of light on a mast, before a pane of dark glass.
@@ -362,7 +402,8 @@ const GALAXY = {
       post(x, 0, 0.3, 0.011, '#3a3552'), bar([x, 0.28, 0], [side * 0.6, 0.28, 0], 0.007, '#3a3552'),
       block(0.012, 0.1, 0.17, side * 0.6, 0.24, 0, '#4a4466'),
       painted(new THREE.TorusGeometry(0.028, 0.005, 4, 14).rotateX(Math.PI / 2).translate(side * 0.565, 0.25, 0), '#6ff4ff'),
-    ]);
+      hoopNet(side, '#6ff4ff'),
+    ].filter(Boolean));
   },
   pole: (z, h) => post(0, z, h, 0.012, '#3a3552'),
   // A curtain of light across, under a bright edge.
@@ -507,12 +548,26 @@ const STANDING = {
 // Nothing on one moves or is played; seen half as often as a game.
 const still = a => ({ ...a, rigs: [], play: [], weight: 0.5 });
 
-/** Each style's amenities. */
-export const AMENITIES = {
-  city: [...sports(CITY), ...playgrounds(CITY)],
-  circuit: [...sports(CIRCUIT), ...playgrounds(CIRCUIT).slice(0, 2), ...STANDING.circuit.map(still)],
-  galaxy: [...sports(GALAXY, LIGHT), ...playgrounds(GALAXY, LIGHT).slice(0, 2), ...STANDING.galaxy.map(still)],
-};
+const built = new Map();
+
+/**
+ * Each style's amenities: built with the modeled parts once play.glb is in, and with
+ * their stand-ins until then; built once either way.
+ */
+export function amenitiesFor(style) {
+  const got = playParts(), key = `${style}${got ? '+' : ''}`;
+  if (!built.has(key)) {
+    parts = got;
+    built.set(key, {
+      city: () => [...sports(CITY), ...playgrounds(CITY)],
+      circuit: () => [...sports(CIRCUIT), ...playgrounds(CIRCUIT).slice(0, 2), ...STANDING.circuit.map(still)],
+      galaxy: () => [...sports(GALAXY, LIGHT), ...playgrounds(GALAXY, LIGHT).slice(0, 2), ...STANDING.galaxy.map(still)],
+    }[style in STYLES ? style : 'city']());
+    parts = null;
+  }
+  return built.get(key);
+}
+const STYLES = { city: 1, circuit: 1, galaxy: 1 };
 
 const UP = new THREE.Vector3(0, 1, 0);
 const _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3();

@@ -61,7 +61,7 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra m
 	// The models are binary assets the UI fetches; a page with no server to fetch
 	// from carries them inline instead.
 	models := map[string]string{}
-	for key, name := range map[string]string{"hand": "hand.glb", "props": "props.glb", "bug": "bug.glb", "legs": "legs.glb"} {
+	for key, name := range map[string]string{"hand": "hand.glb", "props": "props.glb", "bug": "bug.glb", "legs": "legs.glb", "play": "play.glb"} {
 		b, err := fs.ReadFile(assets, name)
 		if err != nil {
 			return err

@@ -12,7 +12,7 @@ import { Labels } from './map/labels.js';
 import { Walker } from './walk/walk.js';
 import { reducedMotion } from './walk/walkbase.js';
 import { loadHands } from './walk/hands.js';
-import { loadPlants, loadBugs } from './map/models.js';
+import { loadPlants, loadBugs, loadPlay } from './map/models.js';
 import { Bugs, TAKE_MS } from './hunt/bugs.js';
 import { Pins } from './hunt/pins.js';
 import { Avatar } from './walk/avatar.js';
@@ -301,6 +301,7 @@ async function main() {
   loadHands(); // the walker's hands, fetched while the map is still being looked at
   loadPlants().then(got => got && scene.redress()); // and what grows on the map
   loadBugs().then(got => got && bugs && placeBugs()); // ... and what walks it
+  loadPlay().then(got => got && scene.redress()); // ... and what is played on
   bindControls();
   drawPack();
   drawStash();

@@ -32,7 +32,7 @@ import { NOISE_GLSL } from './cityglsl.js';
 import { Scatter } from './lod.js';
 import { raised } from './buildings.js';
 import { rand, shaded, merge } from './shapes.js';
-import { AMENITIES, amenityMatrix, rigMatrix } from './amenities.js';
+import { amenitiesFor, amenityMatrix, rigMatrix } from './amenities.js';
 
 /** Box kinds as the shaders see them (attribute aKind). */
 export function kindCode(b) {
@@ -1009,7 +1009,7 @@ export function amenitySpan(a, turn = 0) {
 }
 
 /** The amenities of a style (amenitySpan's argument). */
-export const amenitiesOf = style => (PROPS[style] || PROPS.city).amenities || [];
+export const amenitiesOf = style => amenitiesFor(PROPS[style] ? style : 'city');
 
 /**
  * What stands on the map: along every shore and in every park a tall prop and a low
@@ -1546,7 +1546,7 @@ const BEACON = merge([
 // Implements: REQ-MAP-055, REQ-MAP-057
 const PROPS = {
   city: {
-    species: TREES, stem: '#5a4030', low: BUSH, lowHue: 0.25, amenities: AMENITIES.city,
+    species: TREES, stem: '#5a4030', low: BUSH, lowHue: 0.25,
     pole: POLE, poleColor: '#3a3d42', lampHead: HEAD, headColor: '#8a8d92', headNight: '#ffd28a',
     // Lit at night only, as street lamps are: a glow round the head, and its light
     // in a pool on the pavement.
@@ -1558,7 +1558,7 @@ const PROPS = {
     tint: hue => (it, c) => c.setHSL(hue + it.r * 0.07, 0.5 + 0.2 * it.r, 0.2 + it.r * 0.1),
   },
   circuit: {
-    species: PARTS, stem: '#b9bec6', lows: SMD, amenities: AMENITIES.circuit,
+    species: PARTS, stem: '#b9bec6', lows: SMD,
     pole: LED_LEGS, poleColor: '#b9bec6', lampHead: LED, headColor: '#e2513c', headNight: '#ff6a52',
     // An LED is lit whether or not the room is: the glow sits over its lens.
     glowAt: 0.52,
@@ -1568,7 +1568,7 @@ const PROPS = {
     tint: (hue, part) => (it, c) => c.setHSL(hue + (it.r - 0.5) * 0.04, hue < 0.05 ? 0.05 : 0.55, (part.light ?? 0.12) + it.r * 0.12),
   },
   galaxy: {
-    species: CRYSTALS, stem: '#2b2540', lows: DEBRIS, amenities: AMENITIES.galaxy,
+    species: CRYSTALS, stem: '#2b2540', lows: DEBRIS,
     pole: BEACON_STEM, poleColor: '#2b2540', lampHead: BEACON, headColor: '#4fd0e8', headNight: '#9df0ff',
     // A beacon is lit day and night, as an LED is, and burns brighter in the dark.
     // Implements: REQ-MAP-057
@@ -1590,7 +1590,7 @@ const MODELS = ['tree1_stem', 'tree1_head', 'tree2_stem', 'tree2_head',
   'tree3_stem', 'tree3_head', 'bush_head', 'rock_head'];
 
 function dressed(style) {
-  const set = PROPS[style] || PROPS.city;
+  const set = { ...(PROPS[style] || PROPS.city), amenities: amenitiesOf(style) };
   const got = plants();
   // A file that loaded but is missing a part would be worse than no file at all.
   if (!got || MODELS.some(name => !got.has(name))) return set;
@@ -1606,5 +1606,5 @@ function dressed(style) {
     },
     galaxy: { ...PROPS.galaxy, lows: [{ ...DEBRIS[0], head: shaded(got.get('rock_head'), 0.12) }, ...DEBRIS.slice(1)] },
   };
-  return modeled[style] || set;
+  return modeled[style] ? { ...modeled[style], amenities: set.amenities } : set;
 }

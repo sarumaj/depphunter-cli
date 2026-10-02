@@ -9,10 +9,10 @@ import { describe, it } from 'node:test';
 import './stub.mjs';
 
 const THREE = await import('../static/vendor/three.module.min.js');
-const { AMENITIES, onAmenity } = await import('../static/map/amenities.js');
+const { amenitiesFor, onAmenity } = await import('../static/map/amenities.js');
 const WALK = await import('../static/walk/walk.js');
 
-const CITY = AMENITIES.city;
+const CITY = amenitiesFor('city');
 const [PITCH, , VOLLEY, PLAYGROUND, ROUNDABOUT] = CITY;
 const FRAME = 1 / 60;
 
@@ -160,7 +160,7 @@ describe('playing in the parks', () => {
     try {
       // On a board and in the galaxy as in a city.
       for (const style of ['city', 'circuit', 'galaxy']) {
-        const court = AMENITIES[style].find(a => a.play.some(e => e.hoop));
+        const court = amenitiesFor(style).find(a => a.play.some(e => e.hoop));
         const { w, said } = walker(court, [-0.3, 0, 0], [-0.565, 0.25, 0]);
         ballAtFeet(w, 'basket');
         assert.equal(w.playClick(), true);

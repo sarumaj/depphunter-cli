@@ -128,7 +128,7 @@ const X = new THREE.Vector3(1, 0, 0), TURN = new THREE.Quaternion();
 /** Whether the walker is sitting: on a swing, a seesaw or a rider, or down a slide. */
 const seated = w => {
   const r = w.riding, ride = r?.entry.ride;
-  return ride === 'swing' || ride === 'rock' || (ride === 'slide' && r.stage >= 3);
+  return ride === 'swing' || ride === 'rock' || (ride === 'slide' && r.stage >= r.entry.sit);
 };
 
 /**
