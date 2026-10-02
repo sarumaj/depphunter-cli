@@ -287,9 +287,12 @@ main { position: relative; flex: 1; min-height: 0; }
 /* The readout is three counters and nothing else: what the walker is doing is in
    front of them, and what they can press is one keystroke away (?). Anything that
    does not change while walking was prose in the way of the map. */
+/* As wide as what is in it, up to the window less a margin: placed at left 50% it is
+   otherwise as wide as the half of the window to its right, and the counters wrapped
+   onto a second row on any window narrower than twice the row. */
 #walk-hud .w-bar {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
-  max-width: calc(100% - 32px); text-align: center; color: var(--text-2);
+  width: max-content; max-width: calc(100% - 32px); text-align: center; color: var(--text-2);
 }
 /* Wrapping rather than overflowing: the row grows a chip when the walker is flying or
    afloat, and a narrow window would otherwise push the health bar off the side. */
@@ -365,7 +368,7 @@ main { position: relative; flex: 1; min-height: 0; }
 }
 #walk-hud.dead .w-slots, #walk-hud.dead .w-radar, #walk-hud.dead .crosshair { opacity: 0.15; }
 #walk-hud.dead .w-flash { position: relative; z-index: 2; }
-#walk-hud .w-keys { font-size: 12px; margin-top: 5px; color: var(--text-2);
+#walk-hud .w-keys { font-size: 12px; margin: 5px auto 0; max-width: 560px; color: var(--text-2);
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; box-shadow: var(--shadow); }
 

@@ -27,7 +27,7 @@ the tool's speed, and the shot **shall** fly that path, following a bug that
 walks on meanwhile. A shot the air will not carry to its mark - a bubble into
 the wind - **shall** leave towards it and go where its physics take it. The
 HUD **shall** show the wind's strength, and which way it blows as the walker
-faces.
+faces, in the first row of its counters.
 
 The same wind **shall** carry the walker: by a tenth of its speed while they
 walk, a fifth while they are off their feet, and nearly half under the jet
