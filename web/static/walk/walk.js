@@ -28,6 +28,7 @@ import { EYE, STEP, WATER, REACH, reducedMotion } from './walkbase.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds, RAIL_H } from '../map/city.js';
 import { Health } from './health.js';
 import { Wind } from './wind.js';
+import { Breeze } from './ballistics.js';
 import { tracker } from './tracker.js';
 import { shots } from './shots.js';
 import { canopy } from './canopy.js';
@@ -314,6 +315,8 @@ export class Walker {
     this.home = null;      // where the walker stood when they last left the street
     this.radius = 40;
     this.shownRadius = 40; // what the planet is drawn at, on its way to radius (easeRadius)
+    this.air = new Breeze();             // the wind over the map, which shots fly through
+    this.airNow = new THREE.Vector3();   // ... as it is this frame
     this.fov = FOV;
     this.bindInput();
   }
@@ -1698,6 +1701,8 @@ export class Walker {
       if (this.p.fly || aloft(this.chute)) this.setFog();
       this.zoom(deltaTime);
       this.easeRadius(deltaTime);
+      this.air.at(now / 1000, this.airNow);
+      this.drawAir();
       this.updateDarts(deltaTime);
       this.updatePuffs(deltaTime);
       this.updateCanopies(deltaTime);
@@ -1724,6 +1729,26 @@ export class Walker {
       this.hooks.onRender();
       this.loop();
     });
+  }
+
+  /**
+   * The wind on the HUD: how hard it blows, and which way as the walker faces - the
+   * arrow points up the screen for a wind at their back. Written only when it has
+   * changed enough to see, since this runs every frame.
+   *
+   * Implements: REQ-TOOL-081
+   */
+  drawAir() {
+    const a = this.airNow, yaw = this.p.yaw;
+    const ahead = -a.x * Math.sin(yaw) - a.z * Math.cos(yaw), right = a.x * Math.cos(yaw) - a.z * Math.sin(yaw);
+    const to = Math.round(Math.atan2(right, ahead) * 180 / Math.PI / 3) * 3;
+    const speed = Math.hypot(a.x, a.z).toFixed(1);
+    if (to === this.airDrawn?.to && speed === this.airDrawn.speed) return;
+    this.airDrawn = { to, speed };
+    this.airIcon ||= this.hud.querySelector('.w-ic.air');
+    this.airSpeed ||= this.hud.querySelector('.w-air-speed');
+    this.airIcon?.style.setProperty('--to', `${to}deg`);
+    if (this.airSpeed) this.airSpeed.textContent = speed;
   }
 
   /**

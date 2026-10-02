@@ -22,6 +22,7 @@ const WALK = await import('../static/walk/walk.js');
 const SHOTS = await import('../static/walk/shots.js');
 const BASE = await import('../static/walk/walkbase.js');
 const THREE = await import('../static/vendor/three.module.min.js');
+const BALLISTICS = await import('../static/walk/ballistics.js');
 
 // How close two parts of a tool have to be to count as touching, in map units: a
 // couple of millimeters at this scale, which forgives a join drawn flush and does not
@@ -279,7 +280,14 @@ describe('the two kinds of tool', () => {
   it('makes the dart and the nail gun opposites rather than near-copies', () => {
     const dart = TOOLS.dart.flight, nail = TOOLS.nailer.flight;
     assert.ok(nail.speed > dart.speed * 2, 'a nail is not markedly faster than a dart');
-    assert.ok(dart.arc > nail.arc * 10, 'a dart is not markedly more lobbed than a nail');
+    // The lob is what their physics make of each at its own reach, not a number set
+    // on them: aimed at a mark level with the muzzle, how high each goes on the way.
+    const apex = (tool, d) => {
+      const start = new THREE.Vector3(0, 1, 0);
+      const { path } = BALLISTICS.aim(start, new THREE.Vector3(0, 1, -d), tool.flight, new THREE.Vector3());
+      return Math.max(...path.map(p => p.y)) - 1;
+    };
+    assert.ok(apex(TOOLS.dart, TOOLS.dart.reach) > 10 * apex(TOOLS.nailer, TOOLS.nailer.reach), 'a dart is not markedly more lobbed than a nail');
     assert.ok(dart.track > 0 && !nail.track, 'only the tracking dart tracks');
     assert.ok(nail.spread > 0 && !dart.spread, 'only the nail gun scatters');
     // One is a marksman's tool and the other a hose, which is the whole of the

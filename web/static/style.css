@@ -320,6 +320,11 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .w-ic.bug { border-radius: 50% 50% 46% 46%; clip-path: inset(0 round 45%); }
 #walk-hud .w-ic.globe { border-radius: 50%; background: none; border: 1.5px solid var(--text-2); }
 #walk-hud .w-ic.heart { clip-path: polygon(50% 100%, 0 38%, 12% 8%, 50% 22%, 88% 8%, 100% 38%); }
+/* The way the wind blows, turned as the walker turns (walk.js drawAir). */
+#walk-hud .w-ic.air {
+  clip-path: polygon(50% 0, 100% 52%, 66% 52%, 66% 100%, 34% 100%, 34% 52%, 0 52%);
+  transform: rotate(var(--to, 0deg)); transition: transform 0.15s linear;
+}
 /* What the walker can take, as a bar rather than a number: a share read at a glance is
    the only form of this worth having while something is biting you. */
 #walk-hud .w-health-track {

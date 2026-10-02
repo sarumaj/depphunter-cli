@@ -7,11 +7,14 @@ import * as THREE from '../vendor/three.module.min.js';
 import { clamp } from '../core/numbers.js';
 import { EYE, WATER, REACH, holds, faceOf } from './walkbase.js';
 import { hits } from './tools.js';
+import { aim, along, fly, GRAVITY } from './ballistics.js';
 
-// What a tool throws when it says nothing about how: a middling lob under ordinary
-// gravity. Every tool that throws does say (tools.js); this is here so that adding
-// one cannot make it fall through the floor of the world instead.
-const DEFAULT_FLIGHT = { speed: 24, arc: 1, gravity: 6, drag: 0 };
+// What a tool throws when it says nothing about how: something solid, thrown at a
+// middling speed. Every tool that throws does say (tools.js); this is here so that
+// adding one cannot make it fall through the floor of the world instead.
+const DEFAULT_FLIGHT = { speed: 24, gravity: GRAVITY, cd: 0.004 };
+// The air for a walker that has none (a test's): still.
+const CALM = new THREE.Vector3();
 // A line that has stuck: the longest it may pull before letting go (so a hook on
 // something that moved cannot strand anyone), how far in from a roof's edge it sets
 // the walker down, and how close a thing has to be before pulling to it is nothing.
@@ -33,9 +36,12 @@ const TRACK_REACH = 30, TRACK_AHEAD = 0.75;
 const FORWARD = new THREE.Vector3(0, 0, 1); // the dart geometry's nose
 
 export const shots = {
-  // Using the primary tool on an aimed box sends whatever it throws along a shallow
-  // arc to the aimed point, and it always arrives; used on nothing it flies ahead
-  // under its own gravity and drag until it hits something or falls into the water. A
+  // Using the primary tool on an aimed box sends whatever it throws to the aimed
+  // point along the path its physics and the wind give it (ballistics.js aim), and it
+  // arrives - unless the air will not let it, a bubble thrown into the wind, when it
+  // leaves towards the mark and goes where the wind takes it. Used on nothing it
+  // flies ahead under the same physics until it hits something or falls into the
+  // water. A
   // tool that throws nothing reaches what it is pointed at the moment it is used - as
   // far as it reaches, which for the camera is any distance and for the net is arm's
   // length.
@@ -84,7 +90,13 @@ export const shots = {
       // width of a window at the end of its reach.
       const dist = shot.start.distanceTo(to);
       if (flight.spread) scatter(to, flight.spread * dist);
-      Object.assign(shot, { to, target, bug, T: Math.max(0.12, dist / flight.speed), arc: (0.05 + dist * 0.03) * flight.arc });
+      const flown = aim(shot.start, to, flight, this.airNow || CALM);
+      if (flown) {
+        Object.assign(shot, { to, target, bug, T: flown.T, path: flown.path, end: flown.vel });
+      } else {
+        shot.vel = to.clone().sub(shot.start).setLength(flight.speed);
+        shot.from = shot.start.clone();
+      }
     } else {
       this.loose(shot);
     }
@@ -364,15 +376,20 @@ export const shots = {
     }
   },
 
-  /** Flies a cast to its mark, and lands it there; whether it is over. */
+  /** Flies a shot along the path it was aimed on, and lands it on its mark; whether it is over. */
   flyCast(dart) {
     const m = dart.mesh;
-    // A bug walks on while the cast is in the air, so the shot follows it.
-    if (dart.bug && !dart.bug.caught) dart.to.copy(dart.bug.position);
+    dart.path ||= [dart.start.clone(), dart.to.clone()];
+    dart.mark ||= dart.to.clone();
     const u = Math.min(1, dart.t / dart.T);
-    m.position.lerpVectors(dart.start, dart.to, u);
-    m.position.y += dart.arc * 4 * u * (1 - u);
+    along(dart.path, dart.T, dart.t, m.position);
+    // A bug walks on while the shot is in the air, so the shot follows it: more of
+    // the way it has walked the nearer the shot is to landing.
+    if (dart.bug && !dart.bug.caught) {
+      m.position.addScaledVector((this.following ||= new THREE.Vector3()).subVectors(dart.bug.position, dart.mark), u);
+    }
     if (u < 1) return false;
+    dart.vel ||= dart.end?.clone(); // how it struck, for a hook that glances off
     // A rod both lands the cast and hauls on it; a grapple only hauls.
     if (!dart.tool.climbs) {
       if (dart.bug) this.bugs.catch(dart.bug, dart.tool.catchAs);
@@ -397,15 +414,13 @@ export const shots = {
    */
   flyFree(dart, deltaTime) {
     const m = dart.mesh;
-    const { gravity, drag, track } = dart.flight || DEFAULT_FLIGHT;
-    dart.vel.y -= gravity * deltaTime;
-    if (drag) dart.vel.multiplyScalar(Math.max(0, 1 - drag * deltaTime));
+    const flight = dart.flight || DEFAULT_FLIGHT;
     // A tracking dart earns the name on a miss: its fins pull it round towards
     // whatever wall lies ahead of it, so a shot lobbed over a block still finds
     // one. Nothing else here steers, which is the whole of the difference between
     // it and a nail.
-    if (track) this.steer(dart, track * deltaTime);
-    m.position.addScaledVector(dart.vel, deltaTime);
+    if (flight.track) this.steer(dart, flight.track * deltaTime);
+    fly(m.position, dart.vel, flight, this.airNow || CALM, deltaTime);
     // Anything thrown catches a bug it passes through, aimed at or not - if it is
     // the kind of thing that catches bugs at all.
     const bug = hits(dart.tool, 'bugs') ? this.bugs?.at(m.position) : null;

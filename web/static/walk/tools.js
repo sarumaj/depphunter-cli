@@ -43,10 +43,12 @@
 //                     reticle dims, the shot still leaves and it falls short.
 //   auto              seconds between shots while the trigger is held down. A tool
 //                     without it fires once per click, which is most of them.
-//   flight            how what it throws behaves: speed, how much it is lobbed
-//                     (arc), what gravity does to it, and how the air holds it back.
-//                     A dart is fast and flat, a bubble slow and rising; the same
-//                     code flies both.
+//   flight            how what it throws behaves (ballistics.js): the speed it
+//                     leaves at, its gravity, and how the air holds it back - drag,
+//                     in proportion to its speed through the air, for something light
+//                     and slow, and cd, on that speed squared, for something small and
+//                     fast. A solid thing falls under GRAVITY like any other; a bubble
+//                     rises. How high a shot is lobbed is what those make of it.
 //   reel              what happens to the line once it has stuck: how fast it pulls
 //                     the walker along it, how close it brings them, how far away it
 //                     will still pull from, and whether it sets them on top of what
@@ -67,6 +69,7 @@
 
 import * as THREE from '../vendor/three.module.min.js';
 
+import { GRAVITY } from './ballistics.js';
 import { handModel, closeHand, closeFinger, setWrist, loadHands, handsReady } from './hands.js';
 import { NEUTRAL_BRAKE, FLARE_TIME } from './parachute.js';
 
@@ -535,8 +538,9 @@ const rod = {
   // A long cast, but a cast: a rod puts a bobber a good way down the street and no
   // further, and past that the line would not be worth hauling on anyway (reel.max).
   reach: 26,
-  // A weighted bobber on a line: thrown hard, dropping the way a cast does.
-  flight: { speed: 24, arc: 1.6, gravity: 6, drag: 0.1 },
+  // A weighted bobber on a line: thrown hard, dropping the way a cast does, and the
+  // line dragging on it a little.
+  flight: { speed: 24, gravity: GRAVITY, drag: 0.05, cd: 0.006 },
   // The blank goes up, the arm back out of the bottom of the frame.
   hold: { x: 0.2, y: -0.28, z: -0.52, along: [-0.05, 1, 0.3], back: [0.4, -0.3, 1] },
   grip: SWUNG,
@@ -898,8 +902,9 @@ const bubbles = {
   // mind across the map.
   reach: 7,
   // A bubble is lighter than the air it is thrown through: it slows almost at once
-  // and then climbs, which is why it is lobbed high and aimed early.
-  flight: { speed: 12, arc: 2.2, gravity: -1.1, drag: 1.5 },
+  // and then climbs, and from then on it goes where the wind takes it - so it is
+  // blown at a beetle from upwind, and against the wind it does not get there.
+  flight: { speed: 12, gravity: -1.1, drag: 1.5 },
   reticle: 'soft',
   hold: { x: 0.2, y: -0.28, z: -0.52, along: [0.05, 1, 0.32], back: [0.4, -0.3, 1] },
   grip: SWUNG,
@@ -1022,7 +1027,7 @@ const extinguisher = {
   auto: 0.12,
   // It leaves fast and is stopped almost at once by its own drag, then falls: the
   // shortest and heaviest arc in the bag, and the only one that spreads on the way.
-  flight: { speed: 15, arc: 0.5, gravity: 3.2, drag: 2.6 },
+  flight: { speed: 15, gravity: 3.2, drag: 2.6 },
   // Held higher than a rod, because what it carries hangs under the hand rather than
   // standing up out of it.
   hold: { x: 0.2, y: -0.2, z: -0.5, along: [0.06, 1, 0.24], back: [0.4, -0.3, 1] },
@@ -1127,7 +1132,7 @@ const dart = {
   // watch, heavy enough to fall, and while it falls its fins pull it round towards
   // whatever building lies ahead - so a shot lobbed over a block still lands on a
   // wall. One goes at a time, and it is aimed.
-  flight: { speed: 26, arc: 1.8, gravity: 9, drag: 0.15, track: 2.4 },
+  flight: { speed: 26, gravity: GRAVITY, cd: 0.004, track: 2.4 },
   ...PISTOL,
   viewmodel() {
     return viewmodel(g => {
@@ -1249,15 +1254,15 @@ const nailer = {
   // thing that makes it the opposite of the dart rather than a worse one. Six a second
   // is fast enough to sweep a wall and slow enough to see each nail leave.
   auto: 0.16,
-  // Fired rather than thrown, and the opposite of the dart in every term: three times
-  // the speed, no lob worth the name, barely any drop over the distance it covers, and
-  // no steering at all. What it has instead is scatter - a nail leaves a strip nailer
+  // Fired rather than thrown, and the opposite of the dart in every term: more than
+  // twice the speed, so over its short reach no lob worth the name and barely any
+  // drop, little for the air to do to it, and no steering at all. What it has instead is scatter - a nail leaves a strip nailer
   // crooked - so held down it hoses a wall rather than picking a spot on it.
   //
   // Fast, but no longer so fast that the nail is never on screen: at ninety a unit a
   // second it crossed its own reach in six frames, which for something a centimeter
   // across is a shot nobody saw leave. Fifty-five is still twice the dart's.
-  flight: { speed: 55, arc: 0.02, gravity: 1.2, drag: 0, spread: 0.045 },
+  flight: { speed: 55, gravity: GRAVITY, cd: 0.002, spread: 0.045 },
   ...PISTOL,
   viewmodel() {
     return viewmodel(g => {
@@ -1345,8 +1350,8 @@ const grapple = {
   // The longest reach in the bag, because a line is the one thing here that is meant
   // to span a street - but a line, not a rifle: it ends where the rope does.
   reach: 50,
-  // A line paid out taut: no lob and no drop worth speaking of.
-  flight: { speed: 55, arc: 0.05, gravity: 0.6, drag: 0 },
+  // Fired hard enough that a line paid out after it barely sags on the way.
+  flight: { speed: 55, gravity: GRAVITY, cd: 0.002 },
   line: '#cfd6de', // the line stays drawn, out and back
   // A winch rather than a rod: faster, right up to what it caught, from any range,
   // and it sets the walker on top of it. Catching nothing else is the point of the

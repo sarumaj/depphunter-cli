@@ -83,7 +83,7 @@ const GROUND = { kind: 'land', x: 0, y: -1, z: -5, w: 20, h: 1, d: 20 };
 /** A shot of `id` aimed at the ground ahead, which a line bites. */
 function aimed(walker, id) {
   const shot = walker.shotFrom(TOOLS[id], null);
-  Object.assign(shot, { to: new THREE.Vector3(0, 0, -5), target: GROUND, bug: null, T: 0.3, arc: 0.1 });
+  Object.assign(shot, { to: new THREE.Vector3(0, 0, -5), target: GROUND, bug: null, T: 0.3 });
   return shot;
 }
 
