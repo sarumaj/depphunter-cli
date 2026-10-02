@@ -102,3 +102,56 @@ describe('the trajectory guide', () => {
     assert.equal(held.guide.group.visible, true);
   });
 });
+
+describe('aiming help', () => {
+  // A bug standing still where it is put, and the hunt's own test for a shot that
+  // passes it (bugs.js at: within CATCH).
+  function withBug(w, at) {
+    const bug = { position: new THREE.Vector3(...at), caught: false, f: { severity: 'high', title: 't' } };
+    w.bugs = { bugs: [bug], at: (v, r = 0.42) => (!bug.caught && v.distanceTo(bug.position) < r ? bug : null), catch: b => { b.caught = true; } };
+    return bug;
+  }
+
+  // Verifies: REQ-TOOL-083
+  it('locks on to a bug the path passes near, and the shot then catches it', () => {
+    const w = walker('nailer', { pitch: 0 });
+    // Level with the muzzle, six ahead and a little more than a catch off the line.
+    const bug = withBug(w, [0.6, 0.45 - 0.08 + 0.07, -6]);
+    const at = w.predict();
+    assert.equal(at?.lock, bug, 'no lock on a bug just off the line');
+    assert.equal(at.bug, bug, 'the guide does not end on the bug it locked on to');
+    w.prediction = at;
+    w.aim = { i: -1, point: at.point, bug: bug, box: null };
+    w.swing = 0;
+    w.fire();
+    const shot = w.darts.at(-1);
+    for (let i = 0; i < 120 && !bug.caught; i++) w.flyFree(shot, 1 / 60);
+    assert.ok(bug.caught, 'the shot did not home on the bug it was locked on to');
+  });
+
+  // Verifies: REQ-TOOL-083
+  it('does not lock on to a bug well off the line', () => {
+    const w = walker('nailer', { pitch: 0 });
+    withBug(w, [2.5, 0.4, -6]);
+    assert.equal(w.predict()?.lock ?? null, null);
+  });
+
+  // Verifies: REQ-TOOL-083
+  it('draws a grapple up to the roof edge it would hold on, and says when it would not hold', () => {
+    const tower = { kind: 'building', x: 0, y: 0, z: -12, w: 4, h: 3, d: 2, i: 1 };
+    const w = walker('nailer', { boxes: [GROUND, tower] });
+    w.secondary = TOOLS.grapple;
+    // Looking at the face a little under the roof: drawn up to the edge, where it holds.
+    w.lookingAt = () => ({ box: tower, point: new THREE.Vector3(0, 1.9, -11) });
+    const up = w.planLine();
+    assert.ok(up.snapped && up.holds, 'a look just under the roof is not taken up to its edge');
+    assert.ok(Math.abs(up.point.y - (3 - 0.3)) < 1e-9);
+    // Looking at its foot from close by: the edge is far off where the walker looks.
+    const near = walker('nailer', { boxes: [GROUND, tower] });
+    near.secondary = TOOLS.grapple;
+    near.p.z = -9;
+    near.lookingAt = () => ({ box: { ...tower, h: 12 }, point: new THREE.Vector3(0, 0.2, -11) });
+    const low = near.planLine();
+    assert.ok(!low.snapped && !low.holds, 'a hook at the foot of a tall wall is said to hold');
+  });
+});

@@ -741,6 +741,22 @@ main { position: relative; flex: 1; min-height: 0; }
 /* A tool that throws is aimed by the path drawn for its shot (trajectory.js); a mark in
    the middle of the view would say the shot lands there, and one that drops does not. */
 #walk-hud.guided .crosshair { display: none; }
+/* The bug the next shot is locked on to (trajectory.js drawLock): four corners round it,
+   in the guide's own color, placed by the script and sized by how far off it is. */
+#walk-hud .w-lock {
+  position: absolute; width: var(--size, 40px); height: var(--size, 40px); transform: translate(-50%, -50%);
+  pointer-events: none; z-index: 1; --c: #ffd98a; --l: 30%;
+  background:
+    linear-gradient(var(--c), var(--c)) left top / var(--l) 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) left top / 2px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) right top / var(--l) 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) right top / 2px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) left bottom / var(--l) 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) left bottom / 2px var(--l) no-repeat,
+    linear-gradient(var(--c), var(--c)) right bottom / var(--l) 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) right bottom / 2px var(--l) no-repeat;
+  filter: drop-shadow(0 0 1.5px rgb(0 0 0 / 0.6));
+}
 #walk-hud.scoped .crosshair { width: 64px; height: 64px; } /* looking through the scope */
 
 /* The aim helper belongs to the tool in your hands, not to first-person shooters: a

@@ -19,6 +19,10 @@ const CALM = new THREE.Vector3();
 // after every one, so a nail that crosses half a unit a step cannot pass through a
 // beetle between two frames. The guide (trajectory.js) steps the same way.
 export const FLIGHT_STEP = 1 / 120;
+// How quickly a shot locked on to a bug turns on to it, as a share of the way for every
+// unit it flies: by the distance flown rather than the time, so a nail that crosses the
+// street in a tenth of a second turns on to a beetle as surely as a bubble that drifts.
+const HOMING = 0.35;
 // The fastest the walker's own motion is passed on to what they throw: past this it was
 // not motion but a jump of position - a relayout, a teleport.
 const MOST_CARRIED = 16;
@@ -85,7 +89,11 @@ export const shots = {
       else if (this.aim.far) this.flash(`Out of reach: the ${tool.label.toLowerCase()} has to be walked up to`);
       return;
     }
-    this.loose(this.shotFrom(tool, this.viewmodel));
+    const shot = this.shotFrom(tool, this.viewmodel);
+    this.loose(shot);
+    // Locked on to a bug (trajectory.js): the shot homes on it as the guide showed it
+    // would, and follows it if it walks on.
+    shot.homing = this.prediction?.lock || null;
   },
 
   /**
@@ -174,11 +182,15 @@ export const shots = {
    */
   flightStep(dart, h) {
     const position = dart.mesh.position, flight = dart.flight || DEFAULT_FLIGHT;
+    // A shot locked on to a bug turns on to it, a little at a time, wherever it has
+    // walked to (trajectory.js decides what is locked on to, and draws it).
+    // Implements: REQ-TOOL-083
+    if (dart.homing && !dart.homing.caught) this.turnTo(dart, dart.homing.position, HOMING * dart.vel.length() * h);
     // A tracking dart earns the name on a miss: its fins pull it round towards
     // whatever wall lies ahead of it, so a shot lobbed over a block still finds
     // one. Nothing else here steers, which is the whole of the difference between
     // it and a nail.
-    if (flight.track) this.steer(dart, flight.track * h);
+    else if (flight.track) this.steer(dart, flight.track * h);
     fly(position, dart.vel, flight, this.airNow || CALM, h);
     // Anything thrown catches a bug it passes through, if it is the kind of thing
     // that catches bugs at all.
@@ -519,8 +531,14 @@ export const shots = {
     if (dart.lock === undefined) dart.lock = this.wallAhead(at, going);
     if (!dart.lock) return;
     const b = dart.lock;
-    const want = (this.aimTo ||= new THREE.Vector3())
-      .set(b.x - at.x, b.y + b.h / 2 - at.y, b.z - at.z);
+    this.turnTo(dart, (this.aimTo ||= new THREE.Vector3()).set(b.x, b.y + b.h / 2, b.z), by);
+  },
+
+  /** Turns a shot in flight towards `to` by at most `by` of the way, keeping its speed. */
+  turnTo(dart, to, by) {
+    const at = dart.mesh.position;
+    const going = (this.aimAt ||= new THREE.Vector3()).copy(dart.vel).normalize();
+    const want = (this.aimWant ||= new THREE.Vector3()).subVectors(to, at);
     if (want.lengthSq() < 1e-6) return;
     const speed = dart.vel.length();
     dart.vel.copy(going.lerp(want.normalize(), Math.min(1, by)).normalize()).multiplyScalar(speed);

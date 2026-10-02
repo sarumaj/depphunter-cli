@@ -532,6 +532,8 @@ export class Walker {
     this.endShow(false);
     this.scene.scene.remove(this.beacons);
     if (this.guide) this.guide.group.visible = false;
+    if (this.lineGuide) this.lineGuide.group.visible = false;
+    this.drawLock(null);
     this.bugs?.show(false);
     this.showTarget(null);
     this.hideTool();
@@ -1738,6 +1740,7 @@ export class Walker {
       this.hangCanopy(now);
       if (!this.still && !this.arrival) this.updateAim();
       this.drawPath();
+      this.drawLine();
       this.scene.renderNow(true, this.resting(now));
       if (this.frozen && this.focus) this.drawFocus();
       else this.drawCatchFocus();
@@ -2602,18 +2605,19 @@ export class Walker {
     // to pull the walker up is the wall they are looking at, and a hook that landed
     // near it instead would be a tool nobody could use. Everything else the off hand
     // throws simply goes where the view points.
-    const seen = tool.reel ? this.lookingAt(tool.reach ?? REACH) : null;
-    if (!seen) {
+    // Where the guide drawn for it says (trajectory.js planLine): up to the roof's edge
+    // when it was drawn there, along the path its physics give it in the wind, as the
+    // right hand's shots fly; straight there when even that cannot reach.
+    // Implements: REQ-TOOL-081, REQ-TOOL-083
+    const plan = tool.reel ? this.planLine(tool) : null;
+    if (!plan) {
       this.loose(shot);
       return;
     }
-    // Along the path its physics give it in the wind, as the right hand's shots fly
-    // (shots.js fire); straight there when even that cannot reach.
-    // Implements: REQ-TOOL-081
-    const flown = aimShot(shot.start, seen.point, shot.flight, this.airNow || CALM);
-    Object.assign(shot, { to: seen.point, target: seen.box }, flown
+    const flown = plan.flown || aimShot(shot.start, plan.point, shot.flight, this.airNow || CALM);
+    Object.assign(shot, { to: plan.point, target: plan.box }, flown
       ? { T: flown.T, path: flown.path, end: flown.vel }
-      : { T: Math.max(0.12, shot.start.distanceTo(seen.point) / shot.flight.speed) });
+      : { T: Math.max(0.12, shot.start.distanceTo(plan.point) / shot.flight.speed) });
   }
 
   /**

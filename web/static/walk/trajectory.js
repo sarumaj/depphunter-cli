@@ -18,8 +18,10 @@
 // Implements: REQ-TOOL-082
 
 import * as THREE from '../vendor/three.module.min.js';
-import { EYE, WATER, REACH, faceOf } from './walkbase.js';
+import { EYE, WATER, REACH, faceOf, holds } from './walkbase.js';
+import { aim } from './ballistics.js';
 import { FLIGHT_STEP } from './shots.js';
+import { hits } from './tools.js';
 
 const MOST = 160;          // points along a drawn path at most
 const SPACING = 0.25;      // units between them
@@ -33,6 +35,13 @@ const LONGEST = 5;         // seconds of flight looked ahead at most
 const UP = new THREE.Vector3(0, 0, 1); // a ring's own normal (RingGeometry lies in xy)
 const Y = new THREE.Vector3(0, 1, 0);
 const END = '#ffd98a';     // the line's color where it lands, and the marker's
+// The tolerance a bug is locked on to within: this far off the path, plus this share of
+// the distance out, in units - a few pixels on the screen at any distance.
+const ASSIST = 0.45, ASSIST_GROW = 0.035;
+// The off hand's line: the colors of a hook that would hold and one that would glance
+// off; how far under a roof's edge a hook is drawn up to; and how far off where the
+// walker is looking that edge may be, in radians, and still be taken.
+const HOLDS = '#8ff0c4', GLANCES = '#ff8f78', EDGE_IN = 0.3, SNAP = 0.22;
 
 /** Whether a tool is aimed by its guide rather than its crosshair: one that throws, but not the extinguisher's spray. */
 export const guided = tool => !!tool?.projectile && !tool.douses;
@@ -44,17 +53,39 @@ export const trajectory = {
    * it would come down on nothing. Kept as this.prediction for the frame.
    */
   predict() {
-    const tool = this.primary, guide = this.guide ||= makeGuide(this.scene);
+    const tool = this.primary, guide = this.guide ||= makeGuide(this.scene, END);
     const start = this.muzzle(this.viewmodel, guide.start)
       || guide.start.set(this.p.x, this.p.feet + EYE - 0.08, this.p.z);
+    // Flown straight first. A bug the path passes near enough is locked on to - the
+    // shot will home on it - and the path flown again, homing, to see that it gets
+    // there: a lock that would still miss, round a corner or behind a wall, is none.
+    // Implements: REQ-TOOL-083
+    const straight = this.flyStandIn(tool, start, null);
+    if (straight?.bug) return { ...straight, lock: straight.bug };
+    const near = hits(tool, 'bugs') ? this.nearestToPath(straight?.path || guide.path, start, tool) : null;
+    if (near) {
+      const homed = this.flyStandIn(tool, start, near);
+      if (homed?.bug === near) return { ...homed, lock: near };
+    }
+    return straight && { ...straight, path: straight.path.slice(), lock: null };
+  },
+
+  /**
+   * Flies a stand-in shot of `tool` from `start` as it would be launched now, homing on
+   * `homing` (a bug) if given: { path, point, normal, bug, box }, or null when it would
+   * come down on nothing.
+   */
+  flyStandIn(tool, start, homing) {
+    const guide = this.guide;
     const shot = guide.shot;
     shot.tool = tool;
     shot.flight = tool.flight;
     shot.mesh.position.copy(start);
     this.launch(tool.flight, shot.vel);
     shot.lock = undefined;
+    shot.homing = homing;
     const reach = tool.reel ? tool.reel.max : (tool.reach ?? REACH);
-    const path = guide.path;
+    const path = homing ? guide.homed : guide.path;
     path.length = 0;
     path.push(start.clone());
     const at = shot.mesh.position, before = guide.before;
@@ -82,17 +113,130 @@ export const trajectory = {
     return null;
   },
 
+  /**
+   * The bug a shot along `path` would pass nearest, if it passes within the tolerance
+   * that far out - ASSIST plus ASSIST_GROW of the distance from `start`, as a share of
+   * a unit: a bug a few pixels off the line across the street is taken, one a body's
+   * width off it is not - or null.
+   */
+  nearestToPath(path, start, tool) {
+    const bugs = this.bugs?.bugs;
+    if (!bugs?.length || path.length < 2) return null;
+    const reach = tool.reach ?? REACH;
+    let best = null, bestMiss = Infinity;
+    const closest = new THREE.Vector3(), toBug = new THREE.Vector3(), along = new THREE.Vector3();
+    for (const bug of bugs) {
+      if (bug.caught) continue;
+      const b = bug.position;
+      if (b.distanceTo(start) > reach + 1) continue;
+      for (let i = 1; i < path.length; i++) {
+        // How near the bug the segment from the point before to this one passes.
+        const a = path[i - 1], q = path[i], seg = along.subVectors(q, a);
+        const u = Math.max(0, Math.min(1, toBug.subVectors(b, a).dot(seg) / Math.max(1e-9, seg.lengthSq())));
+        closest.copy(a).addScaledVector(seg, u);
+        const miss = closest.distanceTo(b) / (ASSIST + ASSIST_GROW * closest.distanceTo(start));
+        if (miss < 1 && miss < bestMiss) { bestMiss = miss; best = bug; }
+      }
+    }
+    return best;
+  },
+
   /** Draws, moves or hides the guide for this frame, from this.prediction (updateAim). */
   drawPath() {
     const guide = this.guide ||= makeGuide(this.scene);
     const wanted = this.active && guided(this.primary) && !this.handsOff && !this.still && !this.frozen
       && !this.showing && !this.arrival && this.dying === null && !this.wheel?.open && !this.pull;
     const at = wanted && this.prediction;
+    this.drawLock(at?.lock || null);
     if (!at) { guide.group.visible = false; return; }
     const eye = this.scene.walkCamera.position;
     // A marker on a bug faces the eye; on a surface it lies on it.
     const normal = at.normal || guide.toEye.subVectors(eye, at.point).normalize();
     guide.draw(at.path, at.point, normal, eye);
+  },
+
+  /**
+   * Brackets the bug a shot is locked on to, on the screen: four corners round it, as
+   * large near as they need to be to frame it and never smaller than a thumbnail far
+   * off - so what the next shot will catch is plain before it is taken.
+   *
+   * Implements: REQ-TOOL-083
+   */
+  drawLock(bug) {
+    const el = this.lockEl ||= this.hud?.querySelector('.w-lock');
+    if (!el) return;
+    const where = bug && this.onScreen(bug.position);
+    if (!where) { el.hidden = true; return; }
+    const distance = this.scene.walkCamera.position.distanceTo(this.scene.bend(bug.position.clone()));
+    const size = Math.max(22, Math.min(80, 300 / Math.max(0.5, distance)));
+    el.hidden = false;
+    el.style.left = `${(where.x * 100).toFixed(2)}%`;
+    el.style.top = `${(where.y * 100).toFixed(2)}%`;
+    el.style.setProperty('--size', `${size.toFixed(0)}px`);
+  },
+
+  /**
+   * Where a line from the off hand would bite, and whether it would hold: the wall the
+   * walker is looking at, as the line is aimed (walk.js useSecondary), and the path the
+   * hook would fly there. A hook that would only bite low on a wall - where a grapple
+   * gun's claw finds nothing to close on - is drawn up the wall to the edge of its roof,
+   * where it does hold, when that edge is in reach, in plain view and near enough where
+   * the walker is looking; that is where the line is then fired. Returns
+   * { start, point, box, normal, holds, snapped, path }, or null with nothing in reach.
+   *
+   * Implements: REQ-TOOL-083
+   */
+  planLine(tool = this.secondary) {
+    if (!tool?.reel) return null;
+    const reach = tool.reach ?? REACH;
+    const seen = this.lookingAt(reach);
+    if (!seen) return null;
+    const guide = this.lineGuide ||= makeGuide(this.scene, HOLDS);
+    const start = this.muzzle(this.offhand, new THREE.Vector3())
+      || new THREE.Vector3(this.p.x, this.p.feet + EYE - 0.08, this.p.z);
+    let point = seen.point, box = seen.box, snapped = false;
+    let hold = holds(tool, box, point);
+    if (!hold && tool.reel.grip !== undefined && box.kind !== 'land' && box.kind !== 'terrace') {
+      const edge = this.roofEdge(box, point, start, reach);
+      if (edge) { point = edge; snapped = true; hold = true; }
+    }
+    const flown = aim(start, point, tool.flight, this.airNow || guide.calm);
+    return { start, point, box, normal: faceOf(box, point), holds: hold, snapped, path: flown ? flown.path : [start, point], flown };
+  },
+
+  /**
+   * The point on the edge of `box`'s roof straight up the face from `point`, EDGE_IN
+   * under it, if a hook from `start` reaches it, nothing stands in the way, and it is
+   * within SNAP of where the walker is looking - or null.
+   */
+  roofEdge(box, point, start, reach) {
+    const edge = point.clone();
+    edge.y = box.y + box.h - EDGE_IN;
+    if (start.distanceTo(edge) > reach) return null;
+    const eye = new THREE.Vector3(this.p.x, this.p.feet + EYE, this.p.z);
+    const looking = point.clone().sub(eye).normalize(), wanted = edge.clone().sub(eye).normalize();
+    if (looking.angleTo(wanted) > SNAP) return null;
+    // In plain view: the first thing on the way there is this box, at the edge.
+    const v = new THREE.Vector3(), d = eye.distanceTo(edge);
+    for (let t = 0.3; t < d + 0.3; t += 0.05) {
+      v.copy(eye).addScaledVector(wanted, t);
+      const hit = this.boxAt(v);
+      if (hit) return hit === box && v.distanceTo(edge) < 0.45 ? edge : null;
+    }
+    return null;
+  },
+
+  /** Draws, moves or hides the off hand's line guide for this frame, from this.linePlan. */
+  drawLine() {
+    const tool = this.secondary;
+    const wanted = this.active && tool?.reel && !this.handsOff && !this.still && !this.frozen && !this.showing
+      && !this.arrival && this.dying === null && !this.wheel?.open && !this.pull
+      && !(tool.fuel && (this.dry.has(tool.id) || this.tank(tool) <= 0));
+    const plan = wanted ? (this.linePlan = this.planLine(tool)) : (this.linePlan = null);
+    const guide = this.lineGuide;
+    if (!plan) { if (guide) guide.group.visible = false; return; }
+    guide.tint(plan.holds ? HOLDS : GLANCES);
+    guide.draw(plan.path, plan.point, plan.normal, this.scene.walkCamera.position);
   },
 };
 
@@ -105,7 +249,7 @@ export const trajectory = {
  * of them, so the path is always there to be read and still says what is in the way.
  * Bendable like everything out there.
  */
-function makeGuide(scene) {
+function makeGuide(scene, end = END) {
   const group = new THREE.Group();
   group.visible = false;
   // Two ribbons: the faint dark edge, and the light core on it.
@@ -127,15 +271,17 @@ function makeGuide(scene) {
   // In the line's own color where it ends, so the line runs into it rather than up to it.
   const markerParts = [
     [new THREE.RingGeometry(0.72, 1.1, 48), '#06131f', 0.25], // its faint dark edge
-    [new THREE.RingGeometry(0.82, 1, 48), END, 1],
-    [new THREE.CircleGeometry(0.2, 24), END, 1],
+    [new THREE.RingGeometry(0.82, 1, 48), end, 1],
+    [new THREE.CircleGeometry(0.2, 24), end, 1],
   ];
+  const ends = []; // the marker's colored parts, which take the line's end color (tint)
   // Over the city and under it: the same geometry, once depth-tested and once not.
   const pass = (seen, opacity, order) => {
     const look = { transparent: true, depthWrite: false, depthTest: seen, side: THREE.DoubleSide };
     const lines = [edge, core].map(r => new THREE.Mesh(r.geometry, scene.bendable(new THREE.MeshBasicMaterial({ ...look, vertexColors: true, opacity }))));
     const rings = markerParts.map(([g, color, alpha]) => new THREE.Mesh(g, scene.bendable(new THREE.MeshBasicMaterial({ ...look, color, opacity: opacity * alpha * 0.75 }))));
     [...lines, ...rings].forEach((m, k) => { m.frustumCulled = false; m.renderOrder = order + (k % 3); });
+    ends.push(rings[1], rings[2]);
     group.add(...lines);
     marker.add(...rings);
     return [...lines, ...rings];
@@ -145,11 +291,18 @@ function makeGuide(scene) {
   scene.scene.add(group);
   const side = new THREE.Vector3(), along = new THREE.Vector3(), toEye = new THREE.Vector3(), q = new THREE.Vector3();
   // The line's color: a cool white, warming a little towards the far end.
-  const NEAR = new THREE.Color('#f2fbff'), FAR = new THREE.Color(END), DARK = new THREE.Color('#06131f'), c = new THREE.Color();
+  const NEAR = new THREE.Color('#f2fbff'), FAR = new THREE.Color(end), DARK = new THREE.Color('#06131f'), c = new THREE.Color();
   return {
-    group, shown, start: new THREE.Vector3(), before: new THREE.Vector3(), toEye: new THREE.Vector3(), path: [],
+    group, shown, calm: new THREE.Vector3(), start: new THREE.Vector3(), before: new THREE.Vector3(), toEye: new THREE.Vector3(), path: [], homed: [],
     // The stand-in shot the path is flown with: what flightStep needs of a shot.
-    shot: { mesh: { position: new THREE.Vector3() }, vel: new THREE.Vector3(), tool: null, flight: null, lock: undefined },
+    shot: { mesh: { position: new THREE.Vector3() }, vel: new THREE.Vector3(), tool: null, flight: null, lock: undefined, homing: null },
+    /** Colors the line's far end and the marker `hex`. */
+    tint(hex) {
+      if (this.tinted === hex) return;
+      this.tinted = hex;
+      FAR.set(hex);
+      for (const m of ends) m.material.color.set(hex);
+    },
     /** Lays the line along `path` and the marker at `landed`, facing out along `normal`, as seen from `eye`. */
     draw(path, landed, normal, eye) {
       // Resampled evenly, so the ribbon bends smoothly and its fade is even.
