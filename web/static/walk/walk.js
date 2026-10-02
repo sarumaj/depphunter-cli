@@ -28,7 +28,7 @@ import { EYE, STEP, WATER, REACH, reducedMotion } from './walkbase.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds, RAIL_H } from '../map/city.js';
 import { Health } from './health.js';
 import { Wind } from './wind.js';
-import { Breeze } from './ballistics.js';
+import { Breeze, aim as aimShot } from './ballistics.js';
 import { tracker } from './tracker.js';
 import { shots } from './shots.js';
 import { trajectory } from './trajectory.js';
@@ -2575,12 +2575,13 @@ export class Walker {
       this.loose(shot);
       return;
     }
-    const dist = shot.start.distanceTo(seen.point);
-    Object.assign(shot, {
-      to: seen.point, target: seen.box,
-      T: Math.max(0.12, dist / shot.flight.speed),
-      arc: (0.05 + dist * 0.03) * shot.flight.arc,
-    });
+    // Along the path its physics give it in the wind, as the right hand's shots fly
+    // (shots.js fire); straight there when even that cannot reach.
+    // Implements: REQ-TOOL-081
+    const flown = aimShot(shot.start, seen.point, shot.flight, this.airNow || CALM);
+    Object.assign(shot, { to: seen.point, target: seen.box }, flown
+      ? { T: flown.T, path: flown.path, end: flown.vel }
+      : { T: Math.max(0.12, shot.start.distanceTo(seen.point) / shot.flight.speed) });
   }
 
   /**
