@@ -2006,11 +2006,12 @@ export class Walker {
     const ok = h => h <= climb
       && (h > WATER || p.fly || !p.ground || wet || afloat || (step && p.feet - h <= WADE_IN));
     // The wind leans on the walker as well as on what they throw: a little while they
-    // walk, more while they are off their feet, and most under a jet, which holds
-    // them up but does not hold them still. Standing, their feet hold them.
+    // walk, more while they are off their feet, and most under a jet in the air, which
+    // holds them up but does not hold them still. Standing, their feet hold them - a jet
+    // strapped on or not.
     // Implements: REQ-TOOL-081
     const air = this.airNow || CALM;
-    const lean = p.fly ? FLY_DRIFT : !p.ground ? AIR_DRIFT : move.magnitude > 0 ? WALK_DRIFT * Math.min(1, move.magnitude) : 0;
+    const lean = !p.ground ? (p.fly ? FLY_DRIFT : AIR_DRIFT) : move.magnitude > 0 ? WALK_DRIFT * Math.min(1, move.magnitude) : 0;
     const nx = p.x + (move.x * speed + air.x * lean) * deltaTime;
     if (ok(this.height(nx, p.z, p.feet)) && !this.railed(p.x, p.z, nx, p.z)) p.x = nx;
     const nz = p.z + (move.z * speed + air.z * lean) * deltaTime;

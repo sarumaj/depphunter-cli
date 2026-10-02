@@ -1369,7 +1369,11 @@ describe('the walker in the wind', () => {
 
   // Verifies: REQ-TOOL-081
   it('leaves somebody standing where they stand, and leans on them more the less they hold on', () => {
-    const standing = walker(), walking = walker(), jumping = walker({ ground: false, feet: 0.3 }), flying = walker({ fly: true, feet: 3 });
+    const standing = walker(), walking = walker(), jumping = walker({ ground: false, feet: 0.3 }), flying = walker({ fly: true, ground: false, feet: 3 });
+    // A jet strapped on, standing on the ground: their feet hold them, not the jet.
+    const parked = walker({ fly: true });
+    parked.stride(still, 10, 1);
+    assert.equal(parked.p.x, 0, 'the wind moved somebody standing on the ground with a jet on');
     standing.stride(still, 3.2, 1);
     walking.stride(ahead, 3.2, 1);
     jumping.stride(ahead, 3.2, 1);

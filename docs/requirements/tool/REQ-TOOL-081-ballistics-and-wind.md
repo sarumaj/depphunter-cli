@@ -31,11 +31,12 @@ faces, in the first row of its counters.
 
 The same wind **shall** carry the walker: by a tenth of its speed while they
 walk, a fifth while they are off their feet, and nearly half under the jet
-backpack; somebody standing still **shall not** be moved. A canopy **shall**
-fly through the moving air - its lift, drag and bank answering to its speed
-through it - so it drifts with the wind, makes less headway into it, and lands
-slower over the ground into it than with it; a canopy cut away **shall** drift
-with the wind as well.
+backpack in the air; somebody standing on the ground, a jet strapped on or not,
+**shall not** be moved unless they walk. A canopy **shall** fly through the
+moving air - its lift, drag and bank answering to its speed through it - so it
+drifts with the wind, makes less headway into it, and lands slower over the
+ground into it than with it; a canopy cut away **shall** drift with the wind as
+well.
 
 ## Rationale
 
@@ -56,6 +57,7 @@ two winds.
 4. A shot flown at 20 frames a second ends within 0.05 of the same shot at 140.
 5. The HUD's wind arrow turns as the walker turns.
 6. Walking, in the air and under the jet the walker is carried downwind, the
-   more the less they are on their feet; standing, they are not.
+   more the less they are on their feet; standing, with a jet on or not, they
+   are not.
 7. A canopy opened in a crosswind drifts with it; landed into the wind it
    arrives slower over the ground than landed with it.
