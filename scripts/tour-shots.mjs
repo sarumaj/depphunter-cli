@@ -266,7 +266,9 @@ async function findFire(page, view) {
     let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1, n = 0;
     for (let i = 0; i < px.length; i += 4) {
       const [r, g, b] = [px[i], px[i + 1], px[i + 2]];
-      if (!(r > g && g > b && r - b > 30)) continue;
+      // Flame, not a warm facade: a wooden door or a beige blind is red over blue as
+      // well, and counted, they stretched the crop across the whole street.
+      if (!(r > 200 && g > 90 && b < 140 && r - b > 110 && r >= g)) continue;
       const at = i / 4, x = (at % image.width) / k, y = Math.floor(at / image.width) / k;
       // The HUD is warm in places (a stamina bar, a severity dot); the city is not.
       if (y < 90 || y > view.height - 120) continue;
@@ -308,30 +310,81 @@ async function shot(page, name, clip) {
 }
 
 /**
- * Puts the walker where the hottest roof is in plain view: out from the side of it
- * teleport would pick, back far enough that the roof sits well inside the frame, and
- * turned to face it. Runs in the page.
+ * Puts the walker where the hottest roof is in plain view, and turns them to it. Standing
+ * out from the side teleport picks and backing off along it ended, as often as not, with
+ * a lamp post or the next building between the walker and the fire. So places round the
+ * building are tried, from well back to nearer, and the first is taken from which the
+ * game's own sight line (walker.lookingAt) meets the roof's edge and no lamp post or tree
+ * stands in the way. Runs in the page; returns whether it found one.
  */
 function standBackFromFire() {
   const w = window.__tour.walker;
   const fire = w.burning().sort((a, b) => b.heat - a.heat)[0];
-  if (!fire) return;
+  if (!fire) return false;
   const box = w.boxes.find(b => b.node === fire.node);
-  w.teleport(box);
   const p = w.p, eye = 0.45; // walk.js EYE
-  const out = Math.hypot(p.x - box.x, p.z - box.z) || 1;
-  const [ux, uz] = [(p.x - box.x) / out, (p.z - box.z) / out];
-  const back = Math.max(6, (fire.y - p.feet - eye) * 1.4);
-  for (let step = back; step > 0; step -= 1) {
-    const x = p.x + ux * step, z = p.z + uz * step;
-    if (Math.abs(w.height(x, z) - p.feet) > 0.5) continue;
-    Object.assign(p, { x, z, feet: w.height(x, z), vy: 0 });
-    break;
+  const top = box.y + box.h;
+  const inTheWay = (e, q) => (w.scene.props?.userData.obstacles || []).some(o => {
+    const dx = q.x - e.x, dz = q.z - e.z, len = Math.hypot(dx, dz) || 1;
+    const u = ((o.x - e.x) * dx + (o.z - e.z) * dz) / (len * len);
+    if (u <= 0.02 || u >= 0.98) return false;
+    if (Math.abs((o.x - e.x) * dz - (o.z - e.z) * dx) / len > o.r + 0.12) return false;
+    return e.y + (q.y - e.y) * u < o.y + 0.75;
+  });
+  for (let r = 8; r >= 3.5; r -= 0.5) {
+    for (let k = 0; k < 24; k++) {
+      const a = k * Math.PI / 12;
+      const x = box.x + Math.sin(a) * (box.w / 2 + r), z = box.z + Math.cos(a) * (box.d / 2 + r);
+      const feet = w.height(x, z);
+      if (Math.abs(feet - box.y) > 0.35) continue;
+      const yaw = Math.atan2(-(box.x - x), -(box.z - z));
+      const pitch = Math.atan2(top - 0.15 - (feet + eye), Math.hypot(box.x - x, box.z - z));
+      w.scene.setWalker(x, feet, z, eye, yaw, pitch);
+      const hit = w.lookingAt(r + 20);
+      if (!hit || hit.box !== box || hit.point.y < top - 0.6 || inTheWay({ x, y: feet + eye, z }, hit.point)) continue;
+      // A little above the roof's edge, so the flames are in the middle of the frame,
+      // and nearer through a narrower view (walk.js eases to it): from across the
+      // street a roof alight is a few pixels of orange.
+      Object.assign(p, { x, z, feet, yaw, pitch: pitch + 0.06, vy: 0 });
+      w.fov = 34;
+      return true;
+    }
   }
-  const dx = box.x - p.x, dz = box.z - p.z;
-  p.yaw = Math.atan2(-dx, -dz);
-  p.pitch = Math.atan2(fire.y - (p.feet + eye), Math.hypot(dx, dz)) * 0.8;
+  return false;
 }
+
+/**
+ * Turns the walker, where they stand, to the longest view along the street: the first
+ * walk lands facing the building it is near, which fills the frame with one wall. Runs
+ * in the page.
+ */
+function lookDownTheStreet() {
+  const w = window.__tour.walker, p = w.p, facing = p.yaw;
+  let best = -1, yaw = facing;
+  for (let k = 0; k < 24; k++) {
+    const y = facing + k * Math.PI / 12;
+    w.scene.setWalker(p.x, p.feet, p.z, 0.45, y, -0.04);
+    const hit = w.lookingAt(40), far = hit ? hit.point.distanceTo(w.scene.walkCamera.position) : 40;
+    const score = far * (0.6 + 0.4 * Math.abs(Math.sin(y - facing)));
+    if (score > best) { best = score; yaw = y; }
+  }
+  Object.assign(p, { yaw, pitch: -0.04 });
+}
+
+/**
+ * Takes what lies over the map out of the picture: a hover card, the key list, a tip.
+ * `extra` is any other CSS the picture needs.
+ */
+async function unclutter(page, selectors, extra = '') {
+  await page.evaluate(({ selectors, extra }) => {
+    let style = document.getElementById('tour-hide');
+    if (!style) { style = document.createElement('style'); style.id = 'tour-hide'; document.head.appendChild(style); }
+    style.textContent = selectors.map(t => `${t} { display: none !important; }`).join('\n') + extra;
+  }, { selectors, extra });
+}
+// What a picture of the street never wants: the hover card, the key list, the one-line
+// tip, the flash, and the connection line along the bottom.
+const STREET_CLUTTER = ['#tooltip', '#walk-hud .w-keys', '#walk-hud .w-hint', '#walk-hud .w-flash', '#walk-hud .w-target', '#status'];
 
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
@@ -364,20 +417,39 @@ async function main() {
   const mid = { x: 180, y: 120, width: 920, height: 520 };
 
   console.log('taking the pictures...');
-  // 1. The map itself, with a module selected so the dependency arcs are drawn.
+  // 1. The map itself, with a module selected so the dependency arcs are drawn: nearer
+  // than the whole of it, and the city and its arcs rather than the furniture around
+  // them - the legend, a hover card, and the details panel, which is hidden rather than
+  // closed: closing it lets go of the selection, and the arcs go with it.
+  await page.mouse.move(VIEW.width / 2, VIEW.height * 0.45);
+  for (let i = 0; i < 3; i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(150); }
   await pick(page, 'internal/scan/scan.go');
+  await unclutter(page, ['#legend', '#tooltip', '#panel'],
+    'main.panel-open #map, main.panel-open #labels { right: 0 !important; }');
+  await page.mouse.move(VIEW.width - 20, 110); // off the map, so nothing is hovered
   await page.waitForTimeout(3000);
   await shot(page, 'map', mid);
+  // Let go of the selection: its arcs stay drawn in the street, as dark wires across
+  // the sky of every picture after this one.
+  await page.evaluate(() => document.getElementById('panel-close')?.click());
 
   // 2. The street, which is the same map from inside it.
   await page.click('#walk');
   await page.waitForTimeout(3000);
   await skipTour(page);
   await walkOn(page);
+  await unclutter(page, STREET_CLUTTER);
+  // Hands down: the street is the subject, and a tool's guide (trajectory.js) across
+  // it would be a picture of the guide. Set rather than toggled with H: what a key
+  // does depends on what the walker was doing when it landed.
+  await hands(page, false);
+  await page.evaluate(lookDownTheStreet);
   await page.waitForTimeout(4000);
   await shot(page, 'street', mid);
 
   // 3. The tool wheel, held open with the cursor on a wedge.
+  await hands(page, true); // back out: the wheel is about what is in them
+  await page.waitForTimeout(800);
   await page.keyboard.down('r');
   await page.waitForTimeout(400);
   await page.mouse.move(VIEW.width / 2, VIEW.height / 2);
@@ -397,15 +469,22 @@ async function main() {
   // stood back from the hottest one with their hands down, and the flames then found
   // in the frame rather than assumed to be in the middle of it - see findFire.
   await walkOn(page);
-  await page.keyboard.press('h');
-  await page.evaluate(standBackFromFire);
+  await hands(page, false);
+  await unclutter(page, [...STREET_CLUTTER, '#walk-hud .w-slots', '#walk-hud .w-radar', '#walk-hud .w-bar']);
+  if (!(await page.evaluate(standBackFromFire))) console.log('  (no clear view of a fire found)');
   await page.waitForTimeout(3000);
   const blaze = await findFire(page, VIEW);
   if (blaze) console.log(`  (found the fire: ${blaze.found} pixels)`);
   else console.log('  (no fire found; taking the middle of the scene)');
   await shot(page, 'fire', blaze || mid);
 
-  // 5. The tracker, which says where the rest of it is.
+  await page.evaluate(() => { window.__tour.walker.fov = 70; }); // walk.js FOV
+  await page.waitForTimeout(1500);
+
+  // 5. The tracker, which says where the rest of it is: the slots along the bottom are
+  // not what it is about.
+  await unclutter(page, [...STREET_CLUTTER, '#walk-hud .w-slots', '#walk-hud .w-bar']);
+  await page.waitForTimeout(800);
   await shot(page, 'tracker', { x: 10, y: VIEW.height - 304, width: 520, height: 294 });
 
   console.log('done; the cards name these in web/static/panels/tour.js');
@@ -441,6 +520,12 @@ async function walkOn(page) {
     if (w.arrival) w.endArrival(true);
     if (w.frozen) w.setFrozen(false);
   });
+}
+
+/** Takes the walker's tools out (`out`) or puts them away, as H does, whichever they were. */
+async function hands(page, out) {
+  await page.evaluate(out => { const w = window.__tour.walker; if (w.handsOff === out) w.setHandsOff(!out); }, out);
+  await page.waitForTimeout(300);
 }
 
 /** Waits for the map to have drawn something and gone quiet. */

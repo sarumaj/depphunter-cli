@@ -46,13 +46,24 @@
 //                               click a select open, go down its list and click value
 //   key      key                press a key
 //   cursor   hidden             hide or show the drawn pointer
+//   zoom     at, by, s          turn the mouse wheel by `by` (negative: in) over s seconds,
+//                               the pointer at `at` ([x, y], fractions of the view)
+//   fov      value              the walker's field of view, in degrees; eased to, as the
+//                               scope eases (walk.js zoom), so a bug is large enough to see
 //   hide     targets            take the overlays matching these selectors out of shot
 //   show     targets            ... and put them back
 //   walk     hide               enter walk mode, if not in it yet, with hide out of shot;
 //                               the first time, the arrival over the city is filmed
-//   catch    tool, distance, held, read
-//                               walk up to the nearest bug and catch it with tool
-//   douse    s, back            put out the nearest fire with the extinguisher
+//   catch    tool, distance, held, read, tries
+//                               walk up to the nearest bug and catch it with tool; one that
+//                               does not come into plain view is given up for the next,
+//                               tries times in all
+//   douse    s, see, far        put out the nearest fire with the extinguisher: first seen
+//                               from `far` away for `see` seconds, the roof alight in view,
+//                               then walked up to within the extinguisher's reach
+//   aim      tool, show, s      on a tall roof, the path a shot would take (trajectory.js)
+//                               swung across the city for `show` seconds onto a tower,
+//                               then fired and followed for s seconds
 //   photo    show               photograph the tallest building near, then view it
 //   grapple  hops, near, far, rise
 //                               grapple roof to roof, hops times, to towers near..far
@@ -304,6 +315,20 @@ async function findStage() {
     w.teleport(box);
     const spot = { x: w.p.x, z: w.p.z, feet: w.p.feet, yaw: w.p.yaw, pitch: 0 };
     Object.assign(w.p, keep);
+    // Facing the building it stands by, the arrival ended against a wall that filled
+    // the screen: it is turned to the longest view along the street instead, with the
+    // building at one side of it.
+    const facing = spot.yaw;
+    let best = -1;
+    for (let k = 0; k < 24; k++) {
+      const yaw = facing + k * Math.PI / 12;
+      w.scene.setWalker(spot.x, spot.feet, spot.z, 0.45, yaw, -0.04);
+      const hit = w.lookingAt(40), far = hit ? hit.point.distanceTo(w.scene.walkCamera.position) : 40;
+      // Along the facade rather than straight away from it: a side view of the street.
+      const along = Math.abs(Math.sin(yaw - facing));
+      if (far * (0.6 + 0.4 * along) > best) { best = far * (0.6 + 0.4 * along); spot.yaw = yaw; }
+    }
+    spot.pitch = -0.04;
     return { spot, box: { x: box.x, z: box.z, top: box.y + box.h }, bugs: count.get(box) };
   });
   say(`  stage: ${JSON.stringify(stage)}`);
@@ -318,12 +343,12 @@ async function findStage() {
  * the game itself finds it (walker.updateAim), rather than a building in between.
  * Returns its index and that spot, or null.
  */
-async function streetBug(from, dist) {
+async function streetBug(from, dist, skip = []) {
   return dh((d, a) => {
     const w = d.walker, p = w.p, eye = a.eye;
     const candidates = [];
     (d.bugs?.bugs || []).forEach((b, i) => {
-      if (b.caught || b.flying || b.lap.kind !== 'street') return;
+      if (b.caught || b.flying || b.lap.kind !== 'street' || a.skip.includes(i)) return;
       // Out from the building the bug circles, so the spot is in its street and not
       // inside the building across it; a spot that is not at the bug's level is not.
       const ox = b.position.x - b.box.x, oz = b.position.z - b.box.z, distance = Math.hypot(ox, oz) || 1;
@@ -347,7 +372,7 @@ async function streetBug(from, dist) {
       return true;
     };
     // Under the crosshair and in plain view, as the game draws it (window.__sight).
-    const inSight = (spot, b) => window.__sight(w, b, spot, eye)?.clear;
+    const inSight = (spot, b) => !!window.__sight(w, b, spot, eye)?.clear;
     // Walked to and seen, first; else seen, and cut to rather than walked through
     // buildings; else the nearest, as it always was.
     let walked = null, seen = null, walks = 0, sights = 0;
@@ -362,7 +387,7 @@ async function streetBug(from, dist) {
     const pick = walked || seen || candidates[0];
     return pick && { i: pick.i, spot: pick.spot, cut: !walked,
       why: `${candidates.length} in the streets, ${Math.min(60, candidates.length)} tried: ${walks} walkable, ${sights} in sight` };
-  }, { x: from.x, z: from.z, feet: from.feet, dist, eye: EYE });
+  }, { x: from.x, z: from.z, feet: from.feet, dist, eye: EYE, skip });
 }
 /**
  * Where to stand to face bug i now: `dist` out from its building, level with it.
@@ -444,6 +469,43 @@ const planHop = args => dh((d, a) => {
   w.scene.setWalker(p.x, p.feet, p.z, a.eye, p.yaw, p.pitch);
   return plan;
 }, { ...args, eye: EYE });
+/**
+ * A place on the street from which box `box` is in plain view, the view to have there,
+ * and how far out it is - tried from `from` units out down to `to`, at 24 angles round
+ * it, on the street the box stands on - or, with `any`, on whatever is there, a
+ * neighbour's roof included. The crosshair goes to the roof's edge and has to meet the
+ * box there, so the roof is in sight; with `reach`, within the reach of the tool in
+ * hand as well. What is in the way is what the game itself finds there
+ * (walker.lookingAt), and the lamp posts and trees it does not (window.__propInWay).
+ * Returns { view: {x, z, feet, yaw, pitch}, r }, or null.
+ */
+const openView = args => dh((d, a) => {
+  const w = d.walker, p = w.p, b = w.boxes[a.box], eye = a.eye;
+  const reach = w.primary.reach ?? 30;
+  const top = b.y + b.h;
+  let found = null;
+  for (let r = a.from; r >= a.to && !found; r -= 0.5) {
+    for (let k = 0; k < 24 && !found; k++) {
+      const ang = k * Math.PI / 12;
+      const x = b.x + Math.sin(ang) * (b.w / 2 + r), z = b.z + Math.cos(ang) * (b.d / 2 + r);
+      const feet = w.height(x, z);
+      if (a.any ? feet > b.y + b.h - 0.3 : Math.abs(feet - b.y) > 0.35) continue; // not on the street, or above the roof
+      const out = Math.hypot(b.x - x, b.z - z);
+      // The point aimed at: the roof's edge on this side, or up the wall within reach.
+      const fx = b.x + (x - b.x) / out * Math.min(b.w, b.d) * 0.45, fz = b.z + (z - b.z) / out * Math.min(b.w, b.d) * 0.45;
+      const flat = Math.hypot(fx - x, fz - z), y = top - 0.15;
+      const yaw = Math.atan2(-(fx - x), -(fz - z)), pitch = Math.atan2(y - (feet + eye), flat);
+      w.scene.setWalker(x, feet, z, eye, yaw, pitch);
+      const hit = w.lookingAt(a.reach ? reach * 0.95 : out + 20);
+      if (!hit || hit.box !== b || hit.point.y < top - 0.6) continue;
+      if (window.__propInWay(w, { x, y: feet + eye, z }, hit.point)) continue;
+      // Seen from afar, a little over the edge, so the flames are in the middle.
+      found = { view: { x, z, feet, yaw, pitch: a.reach ? pitch : pitch + 0.08 }, r };
+    }
+  }
+  w.scene.setWalker(p.x, p.feet, p.z, eye, p.yaw, p.pitch);
+  return found;
+}, { ...args, eye: EYE });
 const at = (sel) => (Array.isArray(sel) ? { x: VIEW.width * sel[0], y: VIEW.height * sel[1] } : center(sel));
 
 // Each action is `run` (does it) and `length` (the seconds it will take, which is
@@ -512,6 +574,18 @@ const actions = {
   hide: { length: () => 0, run: step => overlays(step.targets, true) },
   show: { length: () => 0, run: step => overlays(step.targets, false) },
   cursor: { length: () => 0, run: step => hideCursor(!!step.hidden) },
+  // The map nearer: the wheel turned a little every frame, over the map, so the map's
+  // own controls zoom it in about the pointer as they do for a person.
+  zoom: {
+    length: step => step.s ?? 1,
+    async run(step) {
+      const p = await at(step.at ?? [0.5, 0.5]);
+      await glide(p.x, p.y, 0.3);
+      const k = frames_(step.s ?? 1);
+      await hold(step.s ?? 1, () => page.mouse.wheel(0, step.by / k));
+    },
+  },
+  fov: { length: () => 0, run: step => dh((d, v) => { d.walker.fov = v; }, step.value) },
 
   // Into walk mode, with `hide` out of shot from the first frame. The first walk on
   // the page is flown in (walk.js startArrival); it is landed in the street the story
@@ -530,7 +604,7 @@ const actions = {
         if (!stage) await findStage();
         await dh((d, spot) => {
           const a = d.walker.arrival;
-          if (a && spot) { Object.assign(a.land, spot, { pitch: 0.05 }); a.t = 0; }
+          if (a && spot) { Object.assign(a.land, spot); a.t = 0; }
         }, stage?.spot);
       });
       // Filmed until it is down. It has to be: while it flies it overrides every
@@ -545,119 +619,48 @@ const actions = {
   // Walks up to the nearest bug, aims at it, uses the tool and lets the catch play
   // out. A catch opens its finding and holds the walker, as the map does; after
   // `read` seconds of it the walk goes on.
+  // Counted at one try: the next is taken only when the first could not be.
   catch: {
     length: step => APPROACH + SETTLE + AIM_WAIT + 1 / FPS + (step.held ?? 0) + TAKE + OPENS + (step.read ?? 0) + 0.4,
     async run(step) {
-      await ready();
-      // The tool first: whether a bug is in its sight depends on what it reaches.
-      await dh((d, id) => { if (d.walker.primary.id !== id) d.walker.setTool(id); }, step.tool);
-      let me = await state();
-      const found = await streetBug(me, step.distance);
-      if (!found) { say(`  ${step.tool}: no bug to be walked up to and seen from the street`); return; }
-      const { i, spot } = found;
-      if (found.cut) say(`  ${step.tool}: no bug both walkable and in sight (${found.why}); cutting to bug ${i}`);
-      if (found.cut) {
-        // A cut, not a walk through the buildings in between: there, facing it.
-        const want = lookAngles(spot, await bugAt(i));
-        await view({ ...spot, ...want });
-        me = await state();
+      const skip = [];
+      for (let k = 0; k < (step.tries ?? 3); k++) {
+        const tried = await catchOne(step, skip);
+        if (!tried || tried.fired) return;
+        skip.push(tried.i);
       }
-      const from = { ...me };
-      // Walked, roughly: a fifth of the way a second, however far, within limits.
-      const walkTime = Math.min(APPROACH, Math.max(0.8, Math.hypot(spot.x - me.x, spot.z - me.z) / 5));
-      // Toward the bug's spot as it is each frame, not as it was when chosen: a bug
-      // that rounds a corner meanwhile would leave the walker facing a wall.
-      // On the ground all the way, as walking is: the path was chosen clear of buildings.
-      await hold(walkTime, async t => {
-        const e = ease(t), to = await spotOf(i, step.distance);
-        const here = { x: lerp(from.x, to.x, e), z: lerp(from.z, to.z, e) };
-        here.feet = await groundAt(here.x, here.z);
-        const want = lookAngles(here, await bugAt(i));
-        return view({ ...here, yaw: turn(from.yaw, want.yaw, e), pitch: lerp(from.pitch, want.pitch, e) });
-      });
-      // Then stays with it, a step behind so a turn at a corner is walked, not jumped.
-      const track = async () => {
-        const to = await spotOf(i, step.distance);
-        me = await state();
-        const here = { x: lerp(me.x, to.x, 0.3), z: lerp(me.z, to.z, 0.3) };
-        here.feet = await groundAt(here.x, here.z);
-        await view({ ...here, ...lookAngles(here, await bugAt(i)) });
-        return aimOn(i);
-      };
-      await hold(SETTLE, track);
-      // Fired only with the crosshair on the bug and the bug in plain view: a lamp post
-      // or a corner that comes between them meanwhile is waited out, for a moment.
-      let on = false;
-      for (let k = 0; k < frames_(AIM_WAIT) && !on; k++) await frame(async () => { on = await track(); });
-      if (!on) {
-        // Better no shot than one into a wall after a bug nobody can see.
-        say(`  ${step.tool}: bug ${i} not fired at: it did not come into plain view`);
-        await hold(0.4);
-        return;
-      }
-      // What the crosshair was on when the tool went off, for the log if it misses.
-      const aimed = () => dh((d, i) => {
-        const w = d.walker, a = w.aim, b = d.bugs.bugs[i];
-        return { on: a.bug ? (a.bug === b ? 'the bug' : `bug ${d.bugs.bugs.indexOf(a.bug)}`) : a.box ? `the ${a.box.kind} ${a.box.node?.name ?? ''}`.trim() : 'nothing',
-          far: a.far, away: Math.hypot(b.position.x - w.p.x, b.position.y - (w.p.feet + 0.45), b.position.z - w.p.z), frozen: w.frozen, arriving: !!w.arrival };
-      }, i);
-      let shot;
-      if (step.held) {
-        // The first shot in a frame that aims first, as every one after it is.
-        await frame(async () => { await track(); shot = await aimed(); await dh(d => { d.walker.firing = true; d.walker.fire(); }); });
-        await hold(step.held, track);
-        await dh(d => { d.walker.firing = false; });
-      } else {
-        await frame(async () => { await track(); shot = await aimed(); await dh(d => d.walker.fire()); });
-      }
-      for (let k = 0; k < frames_(TAKE); k++) {
-        await frame(track);
-        if ((await bugAt(i)).caught) break;
-      }
-      const caught = (await bugAt(i)).caught;
-      say(`  ${step.tool}: bug ${i} ${caught ? 'caught' : `missed: fired at ${shot.on}${shot.far ? ' (out of reach)' : ''}, ` +
-        `the bug ${shot.away.toFixed(2)} away${shot.frozen ? ', the walker held' : ''}${shot.arriving ? ', still arriving' : ''}`}`);
-      // The finding opens once the catch has played out (TAKE_MS in bugs.js, about a
-      // second), not at once: wait for it, so it is read here rather than landing on
-      // whatever the next step is doing.
-      for (let k = 0; caught && k < frames_(OPENS) && !(await dh(d => d.walker.frozen)); k++) await frame();
-      if (await dh(d => d.walker.frozen)) {
-        await hold(step.read ?? 0);
-        await resume();
-      }
-      await hold(0.4);
     },
   },
-
   douse: {
-    length: step => (step.back != null ? 1.4 : 0) + step.s,
+    length: step => (step.see ?? 2.5) + 1.8 + step.s + 1.2,
     async run(step) {
       await ready();
       const target = await dh(d => {
         const ids = [...(d.fires?.lit?.keys() || [])];
         const box = d.walker.boxes.find(b => b.kind === 'building' && ids.includes(b.node?.id));
-        if (!box) return null;
-        const keep = { ...d.walker.p };
-        d.walker.teleport(box);
-        const spot = { x: d.walker.p.x, z: d.walker.p.z, feet: d.walker.p.feet };
-        Object.assign(d.walker.p, keep);
-        return { id: box.node.id, x: box.x, z: box.z, y: box.y, h: box.h, spot };
+        return box && { id: box.node.id, i: d.walker.boxes.indexOf(box), x: box.x, z: box.z, y: box.y, h: box.h };
       });
       if (!target) { say('  douse: nothing is burning'); return; }
-      say(`  douse: ${target.id} is alight`);
       await dh(d => { if (d.walker.primary.id !== 'extinguisher') d.walker.setTool('extinguisher'); });
-      // Back off the wall a little, so the building and its flames are in frame.
-      const away = Math.atan2(target.spot.x - target.x, target.spot.z - target.z);
-      const r0 = Math.hypot(target.spot.x - target.x, target.spot.z - target.z) + (step.back ?? 1.4);
-      const spot = { x: target.x + Math.sin(away) * r0, z: target.z + Math.cos(away) * r0 };
-      spot.feet = await groundAt(spot.x, spot.z);
-      const roof = { x: target.x, y: target.y + target.h * 0.85, z: target.z };
-      const from = await state();
-      await hold(1.4, t => {
+      const roof = { x: target.x, y: target.y + target.h, z: target.z };
+      // Where the roof is seen whole, and where the extinguisher reaches the wall.
+      const far = await openView({ box: target.i, from: step.far ?? 11, to: 6 });
+      const near = await openView({ box: target.i, reach: true, any: true, from: 4.5, to: 1 });
+      if (!far || !near) { say(`  douse: no clear view of ${target.id} (${far ? '' : 'far '}${near ? '' : 'near'})`); return; }
+      say(`  douse: ${target.id} is alight; seen from ${far.r.toFixed(1)}, put out from ${near.r.toFixed(1)}`);
+      // The roof alight, from across the street.
+      await view(far.view);
+      await hold(step.see ?? 2.5);
+      // Then up to it, looking where the foam will go - or, from a neighbour's roof, a
+      // cut there: walked, the walker would pass through the building in between.
+      const cut = Math.abs(far.view.feet - near.view.feet) > 0.3;
+      if (cut) await view(near.view);
+      await hold(1.8, t => {
+        if (cut) return null;
         const e = ease(t);
-        const here = { x: lerp(from.x, spot.x, e), z: lerp(from.z, spot.z, e), feet: lerp(from.feet, spot.feet, e) };
-        const want = lookAngles(here, roof);
-        return view({ ...here, yaw: turn(from.yaw, want.yaw, e), pitch: lerp(from.pitch, want.pitch, e) });
+        const here = { x: lerp(far.view.x, near.view.x, e), z: lerp(far.view.z, near.view.z, e) };
+        return view({ ...here, feet: lerp(far.view.feet, near.view.feet, e),
+          yaw: turn(far.view.yaw, near.view.yaw, e), pitch: lerp(far.view.pitch, near.view.pitch, e) });
       });
       await dh(d => { d.walker.firing = true; });
       for (let k = 0; k < frames_(step.s); k++) {
@@ -665,7 +668,11 @@ const actions = {
         if (k % 5 === 0 && !(await dh((d, id) => d.fires.lit.has(id), target.id))) break;
       }
       await dh(d => { d.walker.firing = false; });
-      say(`  douse: ${(await dh((d, id) => d.fires.lit.has(id), target.id)) ? 'still burning' : 'out'}`);
+      const out = !(await dh((d, id) => d.fires.lit.has(id), target.id));
+      say(`  douse: ${out ? 'out' : 'still burning'}`);
+      // Up at the roof, where the fire was.
+      const me = await state(), up = lookAngles(me, roof);
+      await hold(1.2, t => view({ yaw: turn(me.yaw, up.yaw, ease(t)), pitch: lerp(me.pitch, up.pitch, ease(t)) }));
     },
   },
 
@@ -676,12 +683,22 @@ const actions = {
     async run(step) {
       await ready();
       await dh(d => { if (d.walker.primary.id !== 'camera') d.walker.setTool('camera'); });
-      const subject = await dh(d => {
-        const p = d.walker.p;
-        const near = d.walker.boxes.filter(b => b.kind === 'building' && Math.hypot(b.x - p.x, b.z - p.z) < 14);
-        const b = near.sort((a, c) => (c.y + c.h) - (a.y + a.h))[0];
-        return b && { x: b.x, y: b.y + b.h * 0.7, z: b.z };
-      });
+      // The tallest building near that the camera sees: a lamp post or another
+      // building in front of it makes a picture of that instead.
+      const subject = await dh((d, eye) => {
+        const w = d.walker, p = w.p;
+        const near = w.boxes.filter(b => b.kind === 'building' && Math.hypot(b.x - p.x, b.z - p.z) < 14)
+          .sort((a, c) => (c.y + c.h) - (a.y + a.h));
+        let pick = null;
+        for (const b of near.slice(0, 20)) {
+          const y = b.y + b.h * 0.7, dx = b.x - p.x, dz = b.z - p.z;
+          w.scene.setWalker(p.x, p.feet, p.z, eye, Math.atan2(-dx, -dz), Math.atan2(y - (p.feet + eye), Math.hypot(dx, dz)));
+          const hit = w.lookingAt(30);
+          if (hit?.box === b && !window.__propInWay(w, { x: p.x, y: p.feet + eye, z: p.z }, hit.point)) { pick = { x: b.x, y, z: b.z }; break; }
+        }
+        w.scene.setWalker(p.x, p.feet, p.z, eye, p.yaw, p.pitch);
+        return pick;
+      }, EYE);
       const from = await state();
       const want = subject ? lookAngles(from, subject) : from;
       await hold(1.2, t => view({ yaw: turn(from.yaw, want.yaw, ease(t)), pitch: lerp(from.pitch, want.pitch, ease(t)) }));
@@ -702,6 +719,57 @@ const actions = {
       }
       await dh(d => { if (d.walker.showing) d.walker.endShow(); });
       await resume();
+    },
+  },
+
+  // The path a shot would take, shown before it is taken: on a tall roof with the dart,
+  // the view swung across the city onto a tower some way off - the line and its ring
+  // sweeping over the roofs on the way - then the shot, and the dart followed home.
+  aim: {
+    length: step => (step.show ?? 2.5) + 1 / FPS + (step.s ?? 2.5),
+    async run(step) {
+      await ready();
+      await dh((d, id) => { if (d.walker.primary.id !== id) d.walker.setTool(id); }, step.tool ?? 'dart');
+      const plan = await dh((d, a) => {
+        const w = d.walker, p = w.p, top = b => b.y + b.h;
+        const tall = w.boxes.filter(b => b.kind === 'building' && b.h > 2).sort((x, y) => top(y) - top(x));
+        let found = null;
+        for (const A of tall.slice(0, 30)) {
+          for (const B of tall) {
+            const dist = Math.hypot(A.x - B.x, A.z - B.z);
+            if (A === B || dist < a.near || dist > a.far || top(B) < top(A) - 2) continue;
+            const ux = (B.x - A.x) / dist, uz = (B.z - A.z) / dist;
+            const out = Math.min((A.w / 2 - 0.35) / (Math.abs(ux) || 1e-9), (A.d / 2 - 0.35) / (Math.abs(uz) || 1e-9));
+            const stand = { x: A.x + ux * out, z: A.z + uz * out, feet: top(A) };
+            const mark = { x: B.x, y: B.y + B.h * 0.75, z: B.z };
+            const yaw = Math.atan2(-(mark.x - stand.x), -(mark.z - stand.z));
+            const base = Math.atan2(mark.y - (stand.feet + a.eye), Math.hypot(mark.x - stand.x, mark.z - stand.z));
+            // The view is bent round the planet, so at this distance the line of sight
+            // to the tower's middle passes over it: the pitch that meets it is searched
+            // for, from level with the mark downwards, as planHop does.
+            let pitch = null;
+            for (let k = 0; k <= 60 && pitch === null; k++) {
+              w.scene.setWalker(stand.x, stand.feet, stand.z, a.eye, yaw, base - k * 0.004);
+              const hit = w.lookingAt(a.far + 10);
+              if (hit?.box === B && hit.point.y > B.y + B.h * 0.35) pitch = base - k * 0.004;
+            }
+            if (pitch === null) continue;
+            found = { stand, yaw, pitch, dist, name: B.node.name };
+            break;
+          }
+          if (found) break;
+        }
+        w.scene.setWalker(p.x, p.feet, p.z, a.eye, p.yaw, p.pitch);
+        return found;
+      }, { near: step.near ?? 18, far: step.far ?? 40, eye: EYE });
+      if (!plan) { say('  aim: no tower in plain view from a roof'); return; }
+      say(`  aim: at ${plan.name}, ${plan.dist.toFixed(1)} away`);
+      // From off to one side and lower, onto it: the line sweeps across as the aim comes round.
+      const swing = step.swing ?? 0.6;
+      await hold(step.show ?? 2.5, t => view({ ...plan.stand, yaw: plan.yaw + swing * (1 - ease(t)), pitch: plan.pitch - 0.12 * (1 - ease(t)) }));
+      await frame(() => dh(d => d.walker.fire()));
+      await hold(step.s ?? 2.5, () => view({ ...plan.stand, yaw: plan.yaw, pitch: plan.pitch }));
+      say(`  aim: ${await dh(d => d.walker.tagged.size)} tagged`);
     },
   },
 
@@ -775,6 +843,102 @@ const actions = {
     },
   },
 };
+
+/**
+ * One try at a catch for the catch action: walks up to the nearest bug not in `skip`,
+ * aims, uses the tool and lets the catch play out. Returns null when there is no bug
+ * to try, and else the bug's index and whether it was fired at - a bug that never came
+ * into plain view is not, and the next one is tried instead.
+ */
+async function catchOne(step, skip) {
+  await ready();
+  // The tool first: whether a bug is in its sight depends on what it reaches.
+  await dh((d, id) => { if (d.walker.primary.id !== id) d.walker.setTool(id); }, step.tool);
+  let me = await state();
+  const found = await streetBug(me, step.distance, skip);
+  if (!found) { say(`  ${step.tool}: no bug to be walked up to and seen from the street`); return null; }
+  const { i, spot } = found;
+  if (found.cut) say(`  ${step.tool}: no bug both walkable and in sight (${found.why}); cutting to bug ${i}`);
+  if (found.cut) {
+    // A cut, not a walk through the buildings in between: there, facing it. Placing
+    // the walker takes no frame, so a bug that is not in plain view from there is
+    // given up before anything of it is filmed.
+    const want = lookAngles(spot, await bugAt(i));
+    await view({ ...spot, ...want });
+    if (!(await aimOn(i))) {
+      await view({ x: me.x, z: me.z, feet: me.feet, yaw: me.yaw, pitch: me.pitch });
+      say(`  ${step.tool}: bug ${i} not in plain view from where it would be caught; the next instead`);
+      return { i, fired: false };
+    }
+    me = await state();
+  }
+  const from = { ...me };
+  // Walked, roughly: a fifth of the way a second, however far, within limits - and not
+  // at all after a cut, which is there already: a bug walked about on the spot for
+  // nothing rounds a corner, and the try is lost.
+  const walkTime = found.cut ? 0 : Math.min(APPROACH, Math.max(0.8, Math.hypot(spot.x - me.x, spot.z - me.z) / 5));
+  // Toward the bug's spot as it is each frame, not as it was when chosen: a bug
+  // that rounds a corner meanwhile would leave the walker facing a wall.
+  // On the ground all the way, as walking is: the path was chosen clear of buildings.
+  await hold(walkTime, async t => {
+    const e = ease(t), to = await spotOf(i, step.distance);
+    const here = { x: lerp(from.x, to.x, e), z: lerp(from.z, to.z, e) };
+    here.feet = await groundAt(here.x, here.z);
+    const want = lookAngles(here, await bugAt(i));
+    return view({ ...here, yaw: turn(from.yaw, want.yaw, e), pitch: lerp(from.pitch, want.pitch, e) });
+  });
+  // Then stays with it, a step behind so a turn at a corner is walked, not jumped.
+  const track = async () => {
+    const to = await spotOf(i, step.distance);
+    me = await state();
+    const here = { x: lerp(me.x, to.x, 0.3), z: lerp(me.z, to.z, 0.3) };
+    here.feet = await groundAt(here.x, here.z);
+    await view({ ...here, ...lookAngles(here, await bugAt(i)) });
+    return aimOn(i);
+  };
+  await hold(SETTLE, track);
+  // Fired only with the crosshair on the bug and the bug in plain view: a lamp post
+  // or a corner that comes between them meanwhile is waited out, for a moment.
+  let on = false;
+  for (let k = 0; k < frames_(AIM_WAIT) && !on; k++) await frame(async () => { on = await track(); });
+  if (!on) {
+    // Better no shot than one into a wall after a bug nobody can see.
+    say(`  ${step.tool}: bug ${i} not fired at: it did not come into plain view`);
+    return { i, fired: false };
+  }
+  // What the crosshair was on when the tool went off, for the log if it misses.
+  const aimed = () => dh((d, i) => {
+    const w = d.walker, a = w.aim, b = d.bugs.bugs[i];
+    return { on: a.bug ? (a.bug === b ? 'the bug' : `bug ${d.bugs.bugs.indexOf(a.bug)}`) : a.box ? `the ${a.box.kind} ${a.box.node?.name ?? ''}`.trim() : 'nothing',
+      far: a.far, away: Math.hypot(b.position.x - w.p.x, b.position.y - (w.p.feet + 0.45), b.position.z - w.p.z), frozen: w.frozen, arriving: !!w.arrival };
+  }, i);
+  let shot;
+  if (step.held) {
+    // The first shot in a frame that aims first, as every one after it is.
+    await frame(async () => { await track(); shot = await aimed(); await dh(d => { d.walker.firing = true; d.walker.fire(); }); });
+    await hold(step.held, track);
+    await dh(d => { d.walker.firing = false; });
+  } else {
+    await frame(async () => { await track(); shot = await aimed(); await dh(d => d.walker.fire()); });
+  }
+  for (let k = 0; k < frames_(TAKE); k++) {
+    await frame(track);
+    if ((await bugAt(i)).caught) break;
+  }
+  const caught = (await bugAt(i)).caught;
+  say(`  ${step.tool}: bug ${i} ${caught ? 'caught' : `missed: fired at ${shot.on}${shot.far ? ' (out of reach)' : ''}, ` +
+    `the bug ${shot.away.toFixed(2)} away${shot.frozen ? ', the walker held' : ''}${shot.arriving ? ', still arriving' : ''}`}`);
+  // The finding opens once the catch has played out (TAKE_MS in bugs.js, about a
+  // second), not at once: wait for it, so it is read here rather than landing on
+  // whatever the next step is doing.
+  for (let k = 0; caught && k < frames_(OPENS) && !(await dh(d => d.walker.frozen)); k++) await frame();
+  if (await dh(d => d.walker.frozen)) {
+    await hold(step.read ?? 0);
+    await resume();
+  }
+  await hold(0.4);
+  return { i, fired: true };
+}
 
 // ------------------------------------------------------------------ encoding
 
@@ -944,6 +1108,22 @@ await ctx.addInitScript(() => {
       w.scene.setWalker(at.x, at.feet, at.z, eye, best.yaw, best.pitch);
       w.updateAim();
       return { yaw: best.yaw, pitch: best.pitch, clear: best.miss < 0.12 };
+    };
+    // Whether a lamp post or a tree stands between eye `e` and point `q` ({x, y, z}):
+    // they are not boxes, so the game's own sight line (walker.lookingAt) goes through
+    // them, and a shot framed past one is a picture of a lamp post. A prop is taken to
+    // stand PROP_TALL above its foot.
+    window.__propInWay = (w, e, q) => {
+      const PROP_TALL = 0.75;
+      const dx = q.x - e.x, dz = q.z - e.z, len = Math.hypot(dx, dz) || 1;
+      for (const o of w.scene.props?.userData.obstacles || []) {
+        const u = ((o.x - e.x) * dx + (o.z - e.z) * dz) / (len * len);
+        if (u <= 0.02 || u >= 0.98) continue;
+        const off = Math.abs((o.x - e.x) * dz - (o.z - e.z) * dx) / len;
+        if (off > o.r + 0.12) continue;
+        if (e.y + (q.y - e.y) * u < o.y + PROP_TALL) return true;
+      }
+      return false;
     };
     // A crossfade: a still of the frame before, over everything but the caption and
     // the pointer, fading out on the page's clock (choose with fade).

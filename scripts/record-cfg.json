@@ -1,9 +1,12 @@
 {
-  "order": ["map", "intro", "hunt", "fire", "photo", "grapple", "night"],
+  "order": ["map", "intro", "hunt", "aim", "fire", "photo", "grapple", "night"],
   "scenes": {
     "map": [
+      { "do": "hide", "targets": ["#legend", "#tooltip"] },
       { "do": "caption", "text": "depphunter", "sub": "Your repository as a map: one command, one binary, fully offline" },
-      { "do": "hold", "s": 1 },
+      { "do": "hold", "s": 0.6 },
+      { "do": "zoom", "at": [0.5, 0.42], "by": -700, "s": 1.2 },
+      { "do": "hold", "s": 0.4 },
       { "do": "glide", "to": [0.55, 0.45], "s": 1.2 },
       { "do": "hold", "s": 0.6 },
       { "do": "glide", "to": [0.48, 0.58], "s": 1.0 },
@@ -21,8 +24,10 @@
       { "do": "click", "target": "#panel-close", "s": 0.8 },
       { "do": "caption", "text": "Color it by git history", "sub": "commits, churn, age or authors" },
       { "do": "pick", "target": "#color-by", "value": "commits" },
+      { "do": "show", "targets": ["#legend"] },
       { "do": "glide", "to": [0.6, 0.5], "s": 0.8 },
       { "do": "hold", "s": 2.2 },
+      { "do": "hide", "targets": ["#legend"] },
       { "do": "choose", "target": "#color-by", "value": "language" },
       { "do": "caption", "text": "Dress it as a city, a circuit board or a galaxy" },
       { "do": "pick", "target": "#style", "value": "circuit" },
@@ -36,37 +41,49 @@
     ],
     "intro": [
       { "do": "caption", "text": "Now step inside", "sub": "the same map, in first person" },
-      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
+      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint", "#walk-hud .w-flash"] },
       { "do": "hold", "s": 1.2 }
     ],
     "hunt": [
-      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
+      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint", "#walk-hud .w-flash"] },
       { "do": "caption", "text": "Scanner findings roam the streets as bugs", "sub": "catch them with a net, a bubble wand or a nail gun" },
+      { "do": "fov", "value": 48 },
       { "do": "catch", "tool": "net", "distance": 1.3, "read": 1.6 },
-      { "do": "catch", "tool": "bubbles", "distance": 3.0, "read": 0.3 },
-      { "do": "catch", "tool": "nailer", "distance": 4.0, "held": 0.8, "read": 0.3 }
+      { "do": "catch", "tool": "bubbles", "distance": 2.4, "read": 0.3 },
+      { "do": "catch", "tool": "nailer", "distance": 3.0, "held": 0.8, "read": 0.3 },
+      { "do": "fov", "value": 70 }
+    ],
+    "aim": [
+      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint", "#walk-hud .w-flash"] },
+      { "do": "caption", "text": "Every shot flies through the wind", "sub": "the line shows where it will land before you take it" },
+      { "do": "fov", "value": 52 },
+      { "do": "aim", "tool": "dart", "near": 22, "far": 34, "show": 3, "s": 3.5 },
+      { "do": "fov", "value": 70 },
+      { "do": "hold", "s": 0.4 }
     ],
     "fire": [
-      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
+      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint", "#walk-hud .w-flash"] },
       { "do": "caption", "text": "Code that reaches a vulnerability catches fire", "sub": "put it out before it spreads to what imports it" },
-      { "do": "douse", "s": 6, "back": 1.4 },
+      { "do": "fov", "value": 44 },
+      { "do": "douse", "s": 7, "see": 2.5, "far": 11 },
+      { "do": "fov", "value": 70 },
       { "do": "hold", "s": 1.2 }
     ],
     "photo": [
-      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
+      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint", "#walk-hud .w-flash"] },
       { "do": "caption", "text": "Photograph what you find", "sub": "and look at it again on the camera" },
       { "do": "photo", "show": 3.2 },
       { "do": "hold", "s": 0.6 }
     ],
     "grapple": [
-      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
+      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint", "#walk-hud .w-flash"] },
       { "do": "caption", "text": "Grapple from roof to roof", "sub": "the line bites, and pulls you across" },
       { "do": "grapple", "hops": 3, "near": 6, "far": 18, "rise": 3 },
       { "do": "caption", "text": "" },
       { "do": "hold", "s": 0.4 }
     ],
     "night": [
-      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
+      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint", "#walk-hud .w-flash"] },
       { "do": "caption", "text": "Or strap on the jet backpack and fly the city at night" },
       { "do": "choose", "target": "#theme", "value": "dark", "fade": 1.5 },
       { "do": "fly", "s": 9, "speed": 5, "turn": 0.35, "above": 3 },
