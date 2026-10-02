@@ -519,6 +519,27 @@ function press(u) {
   return 1 - smooth(clamp01((u - 0.42) / 0.58));
 }
 
+/**
+ * A ball held out in both hands, low in the middle of the view: `ball` is its mesh,
+ * HELD_BALL across. What play.js shows while one is carried.
+ *
+ * Implements: REQ-WALK-058
+ */
+export function ballInHands(ball) {
+  return viewmodel(g => {
+    const held = new THREE.Group();
+    held.position.set(-REST.x, 0.06, 0.1);
+    held.add(ball);
+    g.add(held);
+    for (const side of [-1, 1]) {
+      grasps(g, held, { at: [side * HELD_BALL * 0.92, -HELD_BALL * 0.3, HELD_BALL * 0.25], along: [0, 1, -0.25], back: [side * 0.45, -0.55, 1], close: 0.25 }, side);
+    }
+  });
+}
+
+/** A ball's radius as held, in the viewmodel's measure - where a hand is some 0.17 long. */
+export const HELD_BALL = 0.11;
+
 // ------------------------------------------------------------------ the tools
 
 // Implements: REQ-TOOL-014

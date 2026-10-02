@@ -523,6 +523,12 @@ export function onAmenity(it, a, local, out = new THREE.Vector3()) {
   return out.set(it.x + (local[0] * c + local[2] * s) * k, it.y + local[1] * k, it.z + (-local[0] * s + local[2] * c) * k);
 }
 
+/** The point of an amenity's model, [x, y, z], that the world point `world` is, for one placed as `it`. */
+export function inAmenity(it, a, world) {
+  const k = a.scale ?? 1, c = Math.cos(it.turn), s = Math.sin(it.turn), dx = world.x - it.x, dz = world.z - it.z;
+  return [(dx * c - dz * s) / k, (world.y - it.y) / k, (dx * s + dz * c) / k];
+}
+
 /** The matrix that stands an amenity's model where `it` is: at its place, turned, at its scale. */
 export function amenityMatrix(it, a, m = new THREE.Matrix4()) {
   return m.compose(_p.set(it.x, it.y, it.z), _q.setFromAxisAngle(UP, it.turn), _s.setScalar(a.scale ?? 1));

@@ -33,6 +33,7 @@ import { tracker } from './tracker.js';
 import { shots } from './shots.js';
 import { trajectory, guided } from './trajectory.js';
 import { canopy } from './canopy.js';
+import { play } from './play.js';
 import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee } from './tools.js';
 import { packedChute, aloft } from './parachute.js';
 import { ToolWheel, EMPTY, carriedRing, cycle, keyFor, keysFor, rowOrder, toolForKey } from './switcher.js';
@@ -318,6 +319,11 @@ export class Walker {
     this.pace = 0;              // how hard the walker is moving, for the tool's sway
     this.p = { x: 0, z: 0, feet: 0, vy: 0, yaw: 0, pitch: 0, ground: true, fly: false };
     this.handsOff = false; // H: the view with nothing held in it
+    this.riding = null;    // the ride the walker is on (play.js)
+    this.ballHeld = null;  // the ball in their hands
+    this.balls = new Map(); // the balls out on the courts near by, by their play entry
+    this.settling = [];    // rides left moving, coming to rest
+    this.flung = null;     // how fast a jump off a ride carries them across the map
     this.home = null;      // where the walker stood when they last left the street
     this.radius = 40;
     this.shownRadius = 40; // what the planet is drawn at, on its way to radius (easeRadius)
@@ -535,6 +541,8 @@ export class Walker {
     if (this.lineGuide) this.lineGuide.group.visible = false;
     this.drawLock(null);
     this.drawGrip(null);
+    this.endPlay();
+    this.drawPlay();
     this.bugs?.show(false);
     this.showTarget(null);
     this.hideTool();
@@ -1723,6 +1731,7 @@ export class Walker {
       this.updateDarts(deltaTime);
       this.updatePuffs(deltaTime);
       this.updateCanopies(deltaTime);
+      this.updatePlay(deltaTime);
       // The walker's eye, for the catches that draw a bug in towards them - and the
       // hoop of the net, for the one catch that carries a bug somewhere else.
       const hoop = this.primary.catchAs === 'net' ? this.muzzle(this.viewmodel, HOOP_AT) : null;
@@ -1896,8 +1905,11 @@ export class Walker {
     }
     // Under a canopy the canopy has the walker, until the ground has them instead.
     if (aloft(this.chute)) return this.glide(deltaTime);
+    // ... and on a ride, the ride does (play.js).
+    if (this.riding) return this.rideStep(deltaTime);
     const { move, run, speed } = this.intent(deltaTime);
     const afloat = this.stride(move, speed, deltaTime);
+    this.coast(deltaTime);
     this.paced(move.magnitude, run, deltaTime);
 
     const planted = this.scene.props?.userData.obstacles || null;
@@ -2807,7 +2819,7 @@ export class Walker {
   }
 }
 
-Object.assign(Walker.prototype, tracker, shots, trajectory, canopy);
+Object.assign(Walker.prototype, tracker, shots, trajectory, canopy, play);
 
 /**
  * Where the first arrival has the walker at t (0 to 1): from behind and to the right

@@ -62,6 +62,8 @@ export const shots = {
     // away instead, which is the obvious thing to do with a picture held in front of
     // your face and saves waiting out the rest of the timer.
     if (this.showing) return this.endShow();
+    // Empty-handed, a click near something to play with plays with it (play.js).
+    if (this.playClick()) return;
     const tool = this.primary;
     this.firedAt = performance.now();
     this.swing = 0; // the hand moves whether or not anything flies

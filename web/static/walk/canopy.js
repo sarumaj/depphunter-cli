@@ -209,7 +209,7 @@ export const canopy = {
     const cam = this.scene.walkCamera;
     if (!aloft(this.chute) || this.arrival) {
       if (this.rig?.parent) this.rig.parent.remove(this.rig);
-      if (!this.held && cam.parent === this.scene.viewScene) this.hideTool();
+      if (!this.held && !this.ballView && cam.parent === this.scene.viewScene) this.hideTool();
       return;
     }
     this.rig ||= canopyRig(litPart, (color, options) => new THREE.LineBasicMaterial({ color, ...options }));

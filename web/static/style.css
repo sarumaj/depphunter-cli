@@ -736,6 +736,12 @@ main { position: relative; flex: 1; min-height: 0; }
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   border: 1px solid var(--border); box-shadow: var(--shadow);
 }
+/* What a click would play with, empty-handed (play.js drawPlay). */
+#walk-hud .w-play:not(:empty) {
+  font-size: 12px; padding: 2px 9px; border-radius: 6px; color: var(--text);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  border: 1px solid #8ff0c4; box-shadow: var(--shadow);
+}
 #walk-hud.compact .w-keys { display: none; } /* folded away once the walker gets going */
 #walk-hud .crosshair { transition: width 0.12s, height 0.12s; }
 /* A tool that throws is aimed by the path drawn for its shot (trajectory.js); a mark in
