@@ -31,6 +31,8 @@ const FILM_W = 192, FILM_H = 144;
 // circuit's backplane carries current. A city's sea ripples too, but only close up,
 // and walk mode draws its own frames.
 const MOVES = new Set(['circuit', 'galaxy']);
+// How far the clouds go across the sky for a unit the wind blows: they are high up.
+const CLOUD_DRIFT = 0.01;
 
 export class MapScene {
   constructor(container) {
@@ -318,6 +320,11 @@ export class MapScene {
       for (const material of [object.material || []].flat()) material.needsUpdate = true;
     });
     return done;
+  }
+
+  /** Moves the clouds on with the wind (walk.js), `wind` being in units a second. */
+  driftClouds(wind, deltaTime) {
+    this.sky.material.uniforms.uCloud.value.addScaledVector({ x: wind.x, y: wind.z }, deltaTime * CLOUD_DRIFT);
   }
 
   setRadius(r) {

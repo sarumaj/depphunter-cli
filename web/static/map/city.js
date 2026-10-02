@@ -139,7 +139,7 @@ export function setRoads(u, boxes) {
  */
 export function makeSky(uniforms) {
   const mat = new THREE.ShaderMaterial({
-    uniforms: { ...uniforms, uTop: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() } },
+    uniforms: { ...uniforms, uTop: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() }, uCloud: { value: new THREE.Vector2() } },
     side: THREE.BackSide,
     depthWrite: false,
     vertexShader: `
@@ -151,6 +151,7 @@ export function makeSky(uniforms) {
       }`,
     fragmentShader: NOISE_GLSL + `
       uniform vec3 uTop, uHorizon;
+      uniform vec2 uCloud;
       uniform float uNight, uTime, uStyle;
       varying vec3 vDir;
 
@@ -269,19 +270,52 @@ export function makeSky(uniforms) {
           #include <colorspace_fragment>
           return;
         }
-        vec3 col = mix(uHorizon, uTop, pow(up, 0.5));
+        // The city's sky. By day it is air lit from one side: deepest straight up,
+        // paler and hazier towards the horizon, where the eye looks through more of it,
+        // warmer round the sun and a little deeper across the sky from it. Two layers
+        // of cloud drift across it with the wind (uCloud, walk.js): cumulus low down,
+        // lit on the side facing the sun and gray-blue in their own shadow, with a
+        // bright rim where the sun is behind one, and cirrus high up, thin streaks
+        // combed out along one way. By night the same clouds are dark against the
+        // stars.
+        // Implements: REQ-CITY-030
+        vec3 sd = normalize(vec3(-0.45, mix(0.42, 0.55, uNight), -0.78));
+        float a = dot(d, sd), toSun = max(a, 0.0), day = 1.0 - uNight;
+        float shade = 0.0; // how much cloud is in front of the sun's disc
+        vec3 col = mix(uHorizon, uTop, pow(up, 0.42));
+        col *= 1.0 + 0.07 * a * day;
+        col = mix(col, vec3(0.88, 0.92, 0.97), exp(-up * 8.0) * 0.5 * day);
+        col += vec3(1.0, 0.78, 0.5) * pow(toSun, 5.0) * (0.16 - 0.08 * up) * day;
         if (d.y > 0.0) {
-          vec2 p = d.xz / (d.y + 0.12) * 1.4 + vec2(uTime * 0.012, uTime * 0.004);
-          float c = smoothstep(0.52, 0.82, fbm(p)) * smoothstep(0.0, 0.2, d.y);
-          vec3 cloud = mix(vec3(1.0), vec3(0.05, 0.06, 0.08), uNight) * (0.85 + 0.15 * fbm(p * 3.0));
-          col = mix(col, cloud, c * mix(0.9, 0.6, uNight));
-          float star = step(0.998, hash13(floor(d * 420.0))) * uNight * (1.0 - c) * smoothstep(0.04, 0.3, d.y);
+          // Cumulus, on a layer the view is projected up onto, so they shrink and
+          // crowd towards the horizon as clouds overhead do.
+          vec2 p = d.xz / (d.y + 0.1) * 1.7 + uCloud;
+          vec2 q = p + (vec2(vnoise(p * 0.4), vnoise(p * 0.4 + 5.2)) - 0.5) * 0.45;
+          // Billows: the broad shape, its edge broken up finer.
+          float dense = fbm(q) + 0.16 * (vnoise(q * 7.0) - 0.5);
+          float cover = smoothstep(0.52, 0.6, dense) * smoothstep(0.0, 0.2, d.y);
+          // Lit where there is less cloud between it and the sun than in it.
+          float behind = fbm(q + normalize(sd.xz) * 0.14);
+          float lit = clamp(0.5 + (dense - behind) * 5.5, 0.0, 1.0);
+          vec3 cloud = mix(vec3(0.56, 0.62, 0.73), vec3(1.0, 0.985, 0.95), lit);
+          cloud *= 0.9 + 0.1 * smoothstep(0.52, 0.75, dense); // thicker is brighter on top
+          cloud += vec3(1.0, 0.88, 0.66) * (1.0 - smoothstep(0.52, 0.62, dense)) * pow(toSun, 8.0) * 1.1;
+          cloud = mix(cloud, vec3(0.05, 0.06, 0.08) * (0.75 + 0.5 * lit), uNight);
+          // Cirrus, higher and so flatter, combed out along one way.
+          vec2 c = d.xz / (d.y + 0.35) * 0.7 + uCloud * 0.6;
+          c = vec2(c.x * 0.8 - c.y * 0.6, c.x * 0.6 + c.y * 0.8) * vec2(0.5, 3.5);
+          float cirrus = smoothstep(0.58, 0.86, fbm(c)) * smoothstep(0.08, 0.45, d.y) * 0.3 * day;
+          col = mix(col, vec3(0.97, 0.98, 1.0), cirrus);
+          col = mix(col, cloud, cover * mix(0.96, 0.6, uNight));
+          shade = cover;
+          float star = step(0.998, hash13(floor(d * 420.0))) * uNight * (1.0 - cover) * smoothstep(0.04, 0.3, d.y);
           col += star * (0.4 + 0.6 * hash13(floor(d * 420.0) + 7.0));
         }
-        vec3 sd = normalize(vec3(-0.45, mix(0.42, 0.55, uNight), -0.78));
-        float a = dot(d, sd);
         vec3 light = mix(vec3(1.0, 0.92, 0.75), vec3(0.75, 0.78, 0.85), uNight);
-        col += light * (smoothstep(0.9986, 0.9991, a) + pow(max(a, 0.0), 48.0) * mix(0.4, 0.06, uNight));
+        // The disc, dimmed behind a cloud; its glow comes through thin cloud as a
+        // brighter patch of it.
+        col += light * (smoothstep(0.9986, 0.9991, a) * (1.0 - 0.8 * shade)
+          + pow(toSun, 48.0) * mix(0.4, 0.06, uNight) + pow(toSun, 600.0) * 0.6 * day);
         gl_FragColor = vec4(col, 1.0);
         #include <colorspace_fragment>
       }`,

@@ -1706,6 +1706,7 @@ export class Walker {
       this.zoom(deltaTime);
       this.easeRadius(deltaTime);
       this.air.at(now / 1000, this.airNow);
+      this.scene.driftClouds?.(this.airNow, deltaTime);
       this.drawAir();
       this.updateDarts(deltaTime);
       this.updatePuffs(deltaTime);
