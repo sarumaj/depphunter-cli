@@ -13,12 +13,12 @@ import { severityColors, rankOf } from '../core/findings.js';
 // Implements: REQ-HUNT-025
 const RADAR_MIN = 12, RADAR_MAX = 400, RADAR_MS = 85, RADAR_SIZE = 150;
 // Closing in: inside this, the sweep stops trying to hold the whole map and draws the
-// neighborhood instead, growing by up to RADAR_GROW as it does. The last few steps
-// to a bug are the ones worth seeing, and they are the ones a whole-map sweep loses.
-// 14 rather than something roomier because a city block is a few units across: any
-// wider and a map with bugs on every street is zoomed in the whole time, which is
-// the same as not zooming at all.
-const RADAR_NEAR = 14, RADAR_GROW = 0.55;
+// neighborhood instead, growing by up to RADAR_GROW as it does - most of the way
+// already a long way out (RADAR_EARLY, a power under one), so it is a help for walking
+// towards the nearest target and not only for its last few steps. A map with bugs on
+// every street is closed in on most of the time, which is what being surrounded by
+// them looks like; the sweep still holds the neighborhood around the nearest.
+const RADAR_NEAR = 40, RADAR_GROW = 0.85, RADAR_EARLY = 0.5;
 // How long a fire takes to pulse on the sweep, in milliseconds. Slow enough to read
 // as breathing rather than blinking: a blink is an alarm and there is nothing sudden
 // about a fire, which is already alight and will still be alight in a second.
@@ -125,11 +125,22 @@ export const tracker = {
     g.fill();
 
     // Close in, the nearest bug is marked as well as drawn: a ring around it, so the
-    // one being walked up to is not one dot among several.
-    if (nearest && closing > 0.25) {
+    // one being walked up to is not one dot among several, and a bearing out to it
+    // from the walker, to steer by.
+    if (nearest && closing > 0) {
       const q = place(nearest.bug.position.x, nearest.bug.position.z);
+      const color = colors[nearest.bug.f.severity] || v('--text');
+      g.strokeStyle = color;
+      g.globalAlpha = 0.35 + 0.45 * closing;
+      g.lineWidth = 1.2;
+      g.setLineDash([3, 3]);
+      g.beginPath();
+      g.moveTo(c, c);
+      g.lineTo(q.x, q.y);
+      g.stroke();
+      g.setLineDash([]);
+      g.globalAlpha = 1;
       if (q.inside) {
-        g.strokeStyle = colors[nearest.bug.f.severity] || v('--text');
         g.lineWidth = 1.5;
         g.beginPath();
         g.arc(q.x, q.y, 6.5, 0, Math.PI * 2);
@@ -159,14 +170,14 @@ export const tracker = {
       far = Math.max(far, d);
       near = Math.min(near, d);
     }
-    const closing = near < RADAR_NEAR ? 1 - near / RADAR_NEAR : 0;
+    const closing = near < RADAR_NEAR ? (1 - near / RADAR_NEAR) ** RADAR_EARLY : 0;
     this.radarNear = near; // what the sweep thinks it is closing on, for the tests
 
     // Both the range and the dial ease towards where they are going, and both ease
     // by elapsed time rather than by redraw, so the approach looks the same whatever
     // the frame rate is and whatever the throttle in drawRadar decides.
     const want = closing
-      ? clamp(Math.max(near * 2.4, RADAR_MIN), RADAR_MIN, RADAR_NEAR * 2.4)
+      ? clamp(Math.max(near * 2.2, RADAR_MIN), RADAR_MIN, RADAR_NEAR * 2.2)
       : clamp(far * 1.2, RADAR_MIN, RADAR_MAX);
     this.radarRange = ease(this.radarRange, want, RADAR_RANGE_TAU, deltaTime);
     this.radarZoom = ease(this.radarZoom, 1 + closing * RADAR_GROW, RADAR_ZOOM_TAU, deltaTime);

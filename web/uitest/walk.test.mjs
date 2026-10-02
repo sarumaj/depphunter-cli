@@ -1384,3 +1384,22 @@ describe('the walker in the wind', () => {
     assert.ok(flying.p.x < 2, 'a jet held nothing against the wind');
   });
 });
+
+describe('the tracker closing in', () => {
+  // A walker as far as the sweep's zoom concerns it: at the origin, a dial to scale.
+  function sweep() {
+    const canvas = { width: 0, height: 0, style: {} };
+    const w = Object.assign(Object.create(WALK.Walker.prototype), { p: { x: 0, z: 0 }, radarRange: 100, radarZoom: 1 });
+    return { w, at: d => { for (let i = 0; i < 200; i++) w.zoomRadar(canvas, [{ x: 0, z: -d }, { x: 0, z: -300 }], 0.05); return w; } };
+  }
+
+  // Verifies: REQ-HUNT-025
+  it('grows as soon as a target is some way off, and most the nearer it is', () => {
+    const far = sweep().at(60).radarZoom, mid = sweep().at(30).radarZoom, near = sweep().at(6).radarZoom;
+    assert.equal(far.toFixed(2), '1.00', 'the dial grew for a target a long way off');
+    assert.ok(mid > 1.35, `the dial is at ${mid.toFixed(2)} with a target thirty units off`);
+    assert.ok(near > mid && near < 1.9, `the dial is at ${near.toFixed(2)} next to a target`);
+    // And the range pulls in round the nearest rather than holding the whole map.
+    assert.ok(sweep().at(30).radarRange < 80);
+  });
+});
