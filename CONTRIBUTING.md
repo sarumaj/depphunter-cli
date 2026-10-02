@@ -260,6 +260,12 @@ finding is modeled rather than sourced, since neither pack contains an insect:
 severity's color, a dark head and thorax, and six independently animated
 legs.
 
+The walker's own legs are modeled too: `scripts/legs.py` writes
+`web/static/legs.glb`, one rig and three meshes skinned to it, one for each
+style's outfit, colored with vertex colors. The hands are not remodeled for the
+outfits; the sleeves and gloves are painted on them by how far up the arm each
+vertex is.
+
 ## Architecture
 
 [How it works](#how-it-works) follows one run through its stages. This section

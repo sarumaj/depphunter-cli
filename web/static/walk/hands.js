@@ -48,6 +48,46 @@ export function loadHands() {
 
 export const handsReady = () => model !== null;
 
+/** A bare hand's color. */
+export const SKIN = '#c98d63';
+
+// What the arms wear in each of the map's styles: bare, with a T-shirt's sleeve above
+// the elbow, in a city; an electrician's sleeves and insulating gloves on a board; a
+// spacesuit's sleeves and gloves, a ring of light at the cuff, in the galaxy. Painted
+// on by how far up the arm each vertex is in the bind pose, where scripts/hand.py
+// stands the wrist on the origin with the fingers along +z and the arm back along -z.
+// Implements: REQ-WALK-059
+const OUTFITS = {
+  city: { glove: SKIN, cuff: SKIN, sleeve: SKIN, upper: '#2a9d8f' },
+  circuit: { glove: '#d9772b', cuff: '#c46a24', sleeve: '#24365a', upper: '#24365a' },
+  galaxy: { glove: '#e3e6ee', cuff: '#6ff4ff', sleeve: '#eef0f4', upper: '#eef0f4' },
+};
+const CUFF = -0.012, SLEEVE = -0.04, ELBOW = -0.3; // where each begins, along z
+
+let worn = 'city';
+
+/** Dresses the hands made from now on for the map's `style`. */
+export function wear(style) { worn = OUTFITS[style] ? style : 'city'; }
+
+/** What an arm dressed for `style` is the color of, `z` along it from the wrist (+z the fingers). */
+export function outfitAt(style, z) {
+  const o = OUTFITS[style] || OUTFITS.city;
+  return z > CUFF ? o.glove : z > SLEEVE ? o.cuff : z > ELBOW ? o.sleeve : o.upper;
+}
+
+const dressed = new Map(); // a geometry -> its copy for each style
+function dress(geometry, style) {
+  let copies = dressed.get(geometry);
+  if (!copies) dressed.set(geometry, copies = new Map());
+  if (copies.has(style)) return copies.get(style);
+  const out = geometry.clone(), position = out.getAttribute('position');
+  const c = new THREE.Color(), colors = new Float32Array(position.count * 3);
+  for (let i = 0; i < position.count; i++) colors.set(c.set(outfitAt(style, position.getZ(i))).toArray(), i * 3);
+  out.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  copies.set(style, out);
+  return out;
+}
+
 /**
  * One hand, mirrored for the left. Returns a group whose origin is the wrist, with the
  * fingers along +z, the back of the hand up and the arm running back along -z, and
@@ -66,8 +106,11 @@ export function handModel(mirror = 1, material) {
   h.scale.x = mirror;
   if (mirror < 0) material.side = THREE.BackSide;
   const bones = new Map();
+  material.vertexColors = true;
+  material.color?.set('#ffffff');
   h.traverse(o => {
     if (o.isMesh) {
+      o.geometry = dress(o.geometry, worn);
       o.material = material;
       o.frustumCulled = false;
     }

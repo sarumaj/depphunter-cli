@@ -34,6 +34,8 @@ import { shots } from './shots.js';
 import { trajectory, guided } from './trajectory.js';
 import { canopy } from './canopy.js';
 import { play } from './play.js';
+import { Legs } from './legs.js';
+import { wear } from './hands.js';
 import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee } from './tools.js';
 import { packedChute, aloft } from './parachute.js';
 import { ToolWheel, EMPTY, carriedRing, cycle, keyFor, keysFor, rowOrder, toolForKey } from './switcher.js';
@@ -324,6 +326,7 @@ export class Walker {
     this.balls = new Map(); // the balls out on the courts near by, by their play entry
     this.settling = [];    // rides left moving, coming to rest
     this.flung = null;     // how fast a jump off a ride carries them across the map
+    this.legs = new Legs(scene);
     this.home = null;      // where the walker stood when they last left the street
     this.radius = 40;
     this.shownRadius = 40; // what the planet is drawn at, on its way to radius (easeRadius)
@@ -462,6 +465,8 @@ export class Walker {
     this.scene.setWalking(true, this.radius);
     this.scene.scene.add(this.beacons);
     this.bugs?.show(true);
+    this.dressedFor = this.scene.style;
+    wear(this.dressedFor);
     this.showTool();
     this.setFog();
     this.p.fly = this.flying();
@@ -543,6 +548,7 @@ export class Walker {
     this.drawGrip(null);
     this.endPlay();
     this.drawPlay();
+    if (this.legs) this.legs.group.visible = false;
     this.bugs?.show(false);
     this.showTarget(null);
     this.hideTool();
@@ -1748,6 +1754,14 @@ export class Walker {
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(deltaTime) + under + hang.eye,
         this.p.yaw, this.p.pitch + hang.pitch, this.roll + hang.roll);
       this.hangCanopy(now);
+      // Dressed for the map: the hands' sleeves and gloves, and the legs.
+      if (this.scene.style !== this.dressedFor) {
+        this.dressedFor = this.scene.style;
+        wear(this.dressedFor);
+        if (!this.handsOff) this.showTool();
+      }
+      this.legs.wear(this.scene.style);
+      this.legs.update(this, deltaTime);
       if (!this.still && !this.arrival) this.updateAim();
       this.drawPath();
       this.drawLine();

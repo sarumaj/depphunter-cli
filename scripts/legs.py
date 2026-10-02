@@ -1,0 +1,313 @@
+#!/usr/bin/env python3.11
+"""Models the walker's legs, in the three outfits the map's styles dress them in, and
+exports them as glTF.
+
+Run it with Blender, or with the `bpy` module on the same Python it was built for:
+
+    pip install "numpy<2" bpy
+    python3 scripts/legs.py
+
+Like the beetle (scripts/bug.py) the legs are modeled here rather than taken from a
+pack: no CC0 pack has a pair of legs with nothing above the waist, and that is all a
+first-person walker ever sees of themselves. One rig, three meshes skinned to it:
+
+  * legs_city: a T-shirt's hem, shorts to above the knee, bare shins, socks and
+    sneakers;
+  * legs_circuit: an electrician's coverall with knee pads and a reflective band,
+    and work boots with toe caps;
+  * legs_galaxy: a spacesuit's legs, bulky, ringed at the joints, in moon boots.
+
+Colors are vertex colors (COLOR_0); the map paints with flat colors and so do these.
+The bone and mesh names are the contract with web/static/walk/legs.js.
+"""
+
+# pyright: basic
+import math
+import os
+
+import bpy
+
+try:  # only importable once bpy has loaded
+    import bmesh  # type: ignore[reportMissingImports]
+    from mathutils import Vector  # type: ignore[reportMissingImports]
+except (ImportError, ModuleNotFoundError):
+    raise SystemExit("this script must be run with Blender or the bpy module")
+
+HERE: str = os.path.dirname(os.path.abspath(__file__))
+OUT: str = os.path.normpath(os.path.join(HERE, "..", "web", "static", "legs.glb"))
+
+# Map units: the walker's eye is 0.45 over their feet, so a unit is about 3.55 m. The
+# model stands on the origin facing Blender's +y, which the glTF export turns into
+# three.js's -z: the way a walker looks.
+HIP = 0.245     # the hip joints' height
+KNEE = 0.13
+ANKLE = 0.024
+WAIST = 0.29    # where the model ends at the top
+APART = 0.03    # each hip joint off the middle
+SEGMENTS = 14   # round a leg
+
+SKIN = (0.88, 0.67, 0.53)
+
+
+def color(hexa: str) -> tuple[float, float, float]:
+    """An sRGB hex color, as linear floats, which is what Blender stores."""
+    return tuple(((int(hexa[i:i + 2], 16) / 255) ** 2.2) for i in (1, 3, 5))  # type: ignore[return-value]
+
+
+# Each outfit: the profile of a leg from the waist down - [height, half width, half
+# depth, color] - and its feet.
+OUTFITS: dict[str, dict] = {
+    "city": {
+        "leg": [
+            (WAIST, 0.050, 0.036, "#2a9d8f"),   # a T-shirt's hem
+            (0.272, 0.050, 0.036, "#2a9d8f"),
+            (0.270, 0.050, 0.036, "#34455f"),   # shorts, loose
+            (HIP, 0.030, 0.029, "#34455f"),
+            (0.19, 0.026, 0.026, "#34455f"),
+            (0.152, 0.024, 0.024, "#2c3a52"),
+            (0.150, 0.0155, 0.0160, None),      # bare knee and shin
+            (KNEE, 0.0150, 0.0160, None),
+            (0.085, 0.0140, 0.0155, None),
+            (0.045, 0.0100, 0.0110, None),
+            (0.042, 0.0105, 0.0115, "#f2f2f2"),  # socks
+            (ANKLE, 0.0100, 0.0110, "#f2f2f2"),
+        ],
+        "shoe": {"upper": "#f4f4f2", "sole": "#e8e8e8", "toe": "#d8433a", "height": 0.03, "wide": 1.0},
+    },
+    "circuit": {
+        "leg": [
+            (WAIST, 0.050, 0.036, "#24365a"),   # the coverall, belted
+            (0.276, 0.050, 0.036, "#1b1d22"),
+            (0.268, 0.049, 0.035, "#24365a"),
+            (HIP, 0.031, 0.030, "#24365a"),
+            (0.19, 0.026, 0.026, "#24365a"),
+            (0.150, 0.022, 0.023, "#24365a"),
+            (0.146, 0.024, 0.026, "#202326"),    # knee pads
+            (0.118, 0.024, 0.026, "#202326"),
+            (0.114, 0.021, 0.022, "#24365a"),
+            (0.075, 0.019, 0.020, "#24365a"),
+            (0.072, 0.019, 0.020, "#d8e04a"),    # a reflective band
+            (0.062, 0.019, 0.020, "#d8e04a"),
+            (0.059, 0.019, 0.020, "#24365a"),
+            (0.05, 0.018, 0.019, "#24365a"),
+        ],
+        "shoe": {"upper": "#2a2420", "sole": "#141210", "toe": "#8a6d45", "height": 0.05, "wide": 1.12},
+    },
+    "galaxy": {
+        "leg": [
+            (WAIST, 0.056, 0.042, "#eef0f4"),   # the suit, bulky
+            (0.268, 0.055, 0.041, "#9aa3b5"),
+            (0.262, 0.055, 0.041, "#eef0f4"),
+            (HIP, 0.036, 0.035, "#eef0f4"),
+            (0.19, 0.032, 0.032, "#eef0f4"),
+            (0.150, 0.029, 0.029, "#eef0f4"),
+            (0.146, 0.031, 0.031, "#9aa3b5"),    # a ring at the knee
+            (0.122, 0.031, 0.031, "#9aa3b5"),
+            (0.118, 0.028, 0.028, "#eef0f4"),
+            (0.09, 0.026, 0.026, "#6ff4ff"),     # a line of light down the shin
+            (0.086, 0.026, 0.026, "#eef0f4"),
+            (0.06, 0.024, 0.024, "#eef0f4"),
+        ],
+        "shoe": {"upper": "#c8ccd6", "sole": "#5a5f6b", "toe": "#9aa3b5", "height": 0.062, "wide": 1.3},
+    },
+}
+
+
+def ring(bm, z: float, cx: float, rx: float, ry: float, col, colors):
+    """A ring of vertices round a leg at height z (or round the waist, cx = 0)."""
+    out = []
+    for i in range(SEGMENTS):
+        a = 2 * math.pi * i / SEGMENTS
+        v = bm.verts.new((cx + rx * math.cos(a), ry * math.sin(a), z))
+        colors[v] = col
+        out.append(v)
+    return out
+
+
+def bridge(bm, a: list, b: list):
+    for i in range(len(a)):
+        j = (i + 1) % len(a)
+        bm.faces.new((a[i], a[j], b[j], b[i]))
+
+
+def cap(bm, loop: list, z: float, cx: float, col, colors):
+    middle = bm.verts.new((cx, 0, z))
+    colors[middle] = col
+    for i in range(len(loop)):
+        bm.faces.new((middle, loop[i], loop[(i + 1) % len(loop)]))
+
+
+def shoe(bm, side: float, spec: dict, colors):
+    """A shoe or a boot: an upper round the foot from heel to toe over a sole."""
+    wide, top = spec["wide"], spec["height"]
+    upper, sole, toe = color(spec["upper"]), color(spec["sole"]), color(spec["toe"])
+    cx = side * APART
+    # Lengthwise sections: [y, half width, top height], heel to toe.
+    sections = [(-0.022, 0.011, top), (-0.012, 0.013, top), (0.0, 0.013, top * 0.9),
+                (0.02, 0.0135, top * 0.6), (0.04, 0.0135, 0.022), (0.055, 0.012, 0.017), (0.064, 0.008, 0.013)]
+    loops = []
+    for k, (y, half, height) in enumerate(sections):
+        half *= wide
+        col = toe if k >= len(sections) - 2 else upper
+        loop = []
+        # Round the section: up one side, over the top, down the other, along the sole.
+        for i in range(10):
+            a = math.pi * i / 9
+            v = bm.verts.new((cx + half * math.cos(a), y, 0.006 + (height - 0.006) * math.sin(a) ** 0.6))
+            colors[v] = col
+            loop.append(v)
+        for i in range(1, 4):
+            v = bm.verts.new((cx - half + 2 * half * i / 4, y, 0.0))
+            colors[v] = sole
+            loop.append(v)
+        loops.append(loop)
+    for a, b in zip(loops, loops[1:]):
+        bridge(bm, a, b)
+    for loop, z in ((loops[0], 0), (loops[-1], 1)):
+        middle = bm.verts.new((cx, sum(v.co.y for v in loop) / len(loop), sum(v.co.z for v in loop) / len(loop)))
+        colors[middle] = sole if z == 0 else toe
+        for i in range(len(loop)):
+            a, b = loop[i], loop[(i + 1) % len(loop)]
+            bm.faces.new((middle, b, a) if z == 0 else (middle, a, b))
+
+
+def mesh_for(name: str, outfit: dict):
+    """The outfit's mesh, its vertex colors written, as an object: one waist round both
+    hips, closed on top, and a leg out of it on each side."""
+    mesh = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    colors: dict = {}
+    profile = outfit["leg"]
+    waist = [r for r in profile if r[0] > HIP + 1e-6]
+    loops = [ring(bm, z, 0.0, rx, ry, color(col), colors) for z, rx, ry, col in waist]
+    # ... down over the tops of the legs, where it is hidden in them.
+    z, rx, ry, col = waist[-1]
+    loops.append(ring(bm, HIP - 0.012, 0.0, rx * 0.92, ry * 0.95, color(col), colors))
+    for a, b in zip(loops, loops[1:]):
+        bridge(bm, a, b)
+    cap(bm, loops[0], waist[0][0], 0.0, color(waist[0][3]), colors)
+    for side in (-1.0, 1.0):
+        legs = [ring(bm, z, side * APART, rx, ry, color(col) if col else SKIN, colors)
+                for z, rx, ry, col in profile if z <= HIP + 1e-6]
+        for a, b in zip(legs, legs[1:]):
+            bridge(bm, a, b)
+        bottom = profile[-1]
+        cap(bm, legs[-1], bottom[0], side * APART, color(bottom[3]) if bottom[3] else SKIN, colors)
+        shoe(bm, side, outfit["shoe"], colors)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    painted = [colors[v] for v in bm.verts]
+    bm.to_mesh(mesh)
+    bm.free()
+    attribute = mesh.color_attributes.new("Col", "BYTE_COLOR", "POINT")
+    for i, c in enumerate(painted):
+        attribute.data[i].color = (*c, 1.0)
+    mesh.color_attributes.active_color = attribute
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)  # type: ignore[reportAttributeAccessIssue]
+    return obj
+
+
+def armature():
+    """The rig: the hips, and for each side a thigh, a shin and a foot."""
+    data = bpy.data.armatures.new("legs_rig")
+    rig = bpy.data.objects.new("legs_rig", data)
+    bpy.context.scene.collection.objects.link(rig)  # type: ignore[reportAttributeAccessIssue]
+    bpy.context.view_layer.objects.active = rig  # type: ignore[reportAttributeAccessIssue]
+    bpy.ops.object.mode_set(mode="EDIT")  # type: ignore[reportAttributeAccessIssue]
+    bones = data.edit_bones
+    hips = bones.new("hips")
+    hips.head, hips.tail = Vector((0, 0, HIP)), Vector((0, 0, WAIST))
+    for side, suffix in ((-1.0, "R"), (1.0, "L")):
+        x = side * APART
+        thigh = bones.new(f"thigh_{suffix}")
+        thigh.head, thigh.tail, thigh.parent = Vector((x, 0, HIP)), Vector((x, 0, KNEE)), hips
+        shin = bones.new(f"shin_{suffix}")
+        shin.head, shin.tail, shin.parent = Vector((x, 0, KNEE)), Vector((x, 0, ANKLE)), thigh
+        shin.use_connect = True
+        foot = bones.new(f"foot_{suffix}")
+        foot.head, foot.tail, foot.parent = Vector((x, 0, ANKLE)), Vector((x, 0.055, 0.01)), shin
+        foot.use_connect = True
+        # Every bone rolled the same way, so one axis bends every joint forward.
+        for b in (thigh, shin, foot):
+            b.roll = 0
+    bpy.ops.object.mode_set(mode="OBJECT")  # type: ignore[reportAttributeAccessIssue]
+    return rig
+
+
+def blend(z: float, at: float, over: float) -> float:
+    """0 well above `at`, 1 well below it, eased across `over` either side."""
+    t = max(0.0, min(1.0, (at + over - z) / (2 * over)))
+    return t * t * (3 - 2 * t)
+
+
+def skin(obj, rig):
+    """Weights by height: the hips over the thighs, the thighs over the knees, the
+    shins down to the ankles, the feet below them - each eased into the next."""
+    groups = {name: obj.vertex_groups.new(name=name) for name in
+              ("hips", "thigh_L", "shin_L", "foot_L", "thigh_R", "shin_R", "foot_R")}
+    for v in obj.data.vertices:
+        x, y, z = v.co
+        suffix = "L" if x > 0 else "R"
+        below_hip = blend(z, HIP + 0.012, 0.012)
+        below_knee = blend(z, KNEE, 0.012)
+        below_ankle = blend(z, ANKLE + 0.012, 0.01) if y < 0.01 else 1.0
+        weights = {
+            "hips": 1 - below_hip,
+            f"thigh_{suffix}": below_hip * (1 - below_knee),
+            f"shin_{suffix}": below_hip * below_knee * (1 - below_ankle),
+            f"foot_{suffix}": below_hip * below_knee * below_ankle,
+        }
+        for name, w in weights.items():
+            if w > 1e-3:
+                groups[name].add([v.index], w, "REPLACE")
+    obj.parent = rig
+    modifier = obj.modifiers.new("rig", "ARMATURE")
+    modifier.object = rig
+
+
+def material():
+    """One material for all three: white, so the vertex colors are what shows."""
+    m = bpy.data.materials.new("cloth")
+    m.use_nodes = True
+    tree = m.node_tree
+    bsdf = tree.nodes.get("Principled BSDF")
+    attribute = tree.nodes.new("ShaderNodeVertexColor")
+    attribute.layer_name = "Col"
+    tree.links.new(attribute.outputs["Color"], bsdf.inputs["Base Color"])
+    bsdf.inputs["Roughness"].default_value = 0.85
+    return m
+
+
+# Implements: REQ-WALK-059
+def main():
+    bpy.ops.wm.read_factory_settings(use_empty=True)  # type: ignore[reportAttributeAccessIssue]
+    for stray in list(bpy.data.objects):  # type: ignore[reportAttributeAccessIssue]
+        bpy.data.objects.remove(stray, do_unlink=True)  # type: ignore[reportAttributeAccessIssue]
+    rig = armature()
+    cloth = material()
+    made = []
+    for style, outfit in OUTFITS.items():
+        obj = mesh_for(f"legs_{style}", outfit)
+        obj.data.materials.append(cloth)
+        skin(obj, rig)
+        made.append(obj)
+    bpy.ops.export_scene.gltf(  # type: ignore[reportAttributeAccessIssue]
+        filepath=OUT,
+        export_format="GLB",
+        export_skins=True,
+        export_animations=False,
+        export_apply=False,
+        export_yup=True,
+        use_selection=False,
+        # legs.js shades by normals it works out itself, and never reads a texture.
+        export_normals=False,
+        export_texcoords=False,
+        export_vertex_color="ACTIVE",
+    )
+    for obj in made:
+        print(f"  {obj.name}: {len(obj.data.polygons)} faces")
+    print(f"wrote {OUT}: {os.path.getsize(OUT)} bytes")
+
+
+if __name__ == "__main__":
+    main()

@@ -70,7 +70,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 
 import { GRAVITY } from './ballistics.js';
-import { handModel, closeHand, closeFinger, setWrist, loadHands, handsReady } from './hands.js';
+import { handModel, closeHand, closeFinger, setWrist, loadHands, handsReady, SKIN } from './hands.js';
 import { NEUTRAL_BRAKE, FLARE_TIME } from './parachute.js';
 
 /**
@@ -188,7 +188,6 @@ function linkPart(from, to, r, color) {
 }
 
 // Skin, and the sleeve the arm comes out of.
-const SKIN = '#c98d63';
 
 // Both faces, because a hand arrives after the viewmodel holding it has been built and
 // may by then be in the mirrored one walk.js hangs in the off hand. A closed surface

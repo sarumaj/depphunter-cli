@@ -207,3 +207,33 @@ describe('playing in the parks', () => {
     }
   });
 });
+
+const { posture } = await import('../static/walk/legs.js');
+const { outfitAt, SKIN } = await import('../static/walk/hands.js');
+
+describe('what the walker wears, and how their legs go', () => {
+  // Verifies: REQ-WALK-059
+  it('dresses the arms for the map: bare in a city, gloved and sleeved on a board and in the galaxy', () => {
+    const HAND = 0.05, FOREARM = -0.15, UPPER = -0.5;
+    assert.equal(outfitAt('city', HAND), SKIN);
+    assert.equal(outfitAt('city', FOREARM), SKIN);
+    assert.notEqual(outfitAt('city', UPPER), SKIN, 'no T-shirt sleeve in a city');
+    for (const style of ['circuit', 'galaxy']) {
+      for (const z of [HAND, FOREARM, UPPER]) assert.notEqual(outfitAt(style, z), SKIN, `bare skin on a ${style} arm at ${z}`);
+    }
+    assert.notEqual(outfitAt('circuit', HAND), outfitAt('circuit', FOREARM), 'an electrician\'s glove the color of the sleeve');
+  });
+
+  // Verifies: REQ-WALK-059
+  it('sits on a seat, strides when walking and kicks with the right leg', () => {
+    const at = (extra = {}) => ({ p: { ground: true }, riding: null, pace: 1, kicked: null, ...extra });
+    const sitting = posture(at({ riding: { entry: { ride: 'swing' }, angle: 0, stage: 0 } }), 0, 0);
+    assert.ok(sitting.thigh_L > 1.3 && sitting.thigh_R > 1.3 && sitting.shin_L < -1, 'not sitting on a swing');
+    const stride = [0.5, 0.5 + Math.PI].map(phase => posture(at(), phase, 0));
+    assert.ok(stride[0].thigh_L > 0.2 && stride[1].thigh_L < -0.2 && stride[0].thigh_R < -0.2, 'no stride');
+    assert.equal(posture(at({ pace: 0 }), 1, 0).thigh_L, 0, 'standing still strides');
+    // Through the kick: back first, then well forward, then down again.
+    const kick = [0.1, 0.28, 0.6].map(s => posture(at({ pace: 0, kicked: 0 }), 0, s * 1000).thigh_R);
+    assert.ok(kick[0] < 0 && kick[1] > 1 && kick[2] === 0, `the kick went ${kick}`);
+  });
+});
