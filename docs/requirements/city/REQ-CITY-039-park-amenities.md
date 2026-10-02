@@ -27,7 +27,8 @@ round chosen by the place so a map dresses the same every time:
 - on a circuit board, a pin header, a heat sink on its chip, or a coin cell in
   its holder beside a crystal;
 - in the galaxy, a landing pad with lamps at its corners, a dish listening to
-  the sky, or a ring of standing stones round a crystal; the lamps, the dish's
+  the sky (hinged on its mast, its feed held at the focus on struts from the
+  rim), or a ring of standing stones round a crystal; the lamps, the dish's
   feed and the crystal **shall** glow.
 
 Nothing **shall** be planted on an amenity, and its posts - goalposts, a hoop's
@@ -52,3 +53,5 @@ a pitch was a doormat at the walker's feet.
 4. The walker cannot walk through a goalpost, a hoop's pole or a standing
    stone.
 5. A goal's net shows from behind the goal as from in front of it.
+6. Nothing on an amenity floats: the dish rests on its mast, and its feed
+   on the struts.

@@ -1537,8 +1537,8 @@ const CRYSTALS = [
     hue: 0.07, // a stone with a ring round it, on a plinth
     stem: shaded(new THREE.CylinderGeometry(0.03, 0.07, 0.12, 6).translate(0, 0.06, 0)),
     head: merge([
-      shaded(new THREE.IcosahedronGeometry(0.11, 1).translate(0, 0.25, 0), 0.25),
-      shaded(new THREE.TorusGeometry(0.19, 0.012, 4, 24).rotateX(Math.PI / 2 - 0.4).rotateZ(0.3).translate(0, 0.25, 0)),
+      shaded(new THREE.IcosahedronGeometry(0.11, 1).translate(0, 0.22, 0), 0.25),
+      shaded(new THREE.TorusGeometry(0.19, 0.012, 4, 24).rotateX(Math.PI / 2 - 0.4).rotateZ(0.3).translate(0, 0.22, 0)),
     ]),
   },
   {
@@ -1553,7 +1553,7 @@ const DEBRIS = [
   { hue: 0.55, head: merge([shard(0.03, 0.14, 0, 0, 0, 0.2), shard(0.025, 0.1, 0.04, 0, 0.02, -0.4), shard(0.02, 0.08, -0.035, 0, -0.02, 0.5)]) },
   { hue: 0.03, head: merge([blob(0.05, 0, 0.03, 0, 0.6), blob(0.025, 0.06, 0.015, -0.03, 0.6)]) },
 ];
-const BEACON_STEM = shaded(new THREE.CylinderGeometry(0.008, 0.016, 0.44, 5).translate(0, 0.22, 0));
+const BEACON_STEM = shaded(new THREE.CylinderGeometry(0.008, 0.016, 0.48, 5).translate(0, 0.24, 0));
 const BEACON = merge([
   shaded(new THREE.IcosahedronGeometry(0.055, 1).translate(0, 0.52, 0)),
   shaded(new THREE.TorusGeometry(0.075, 0.006, 5, 14).rotateX(Math.PI / 2).translate(0, 0.52, 0)),
@@ -1605,6 +1605,16 @@ const block = (w, h, d, x, y, z, hex) => painted(new THREE.BoxGeometry(w, h, d).
 const lit = (points, shells) => shells.map(([r, opacity]) => [
   merge(points.map(([x, y, z]) => shaded(new THREE.SphereGeometry(r, 9, 6).translate(x, y, z)))), opacity]);
 const PAD_LAMPS = Array.from({ length: 6 }, (_, i) => [Math.cos(i * Math.PI / 3) * 0.72, 0.11, Math.sin(i * Math.PI / 3) * 0.72]);
+
+// The dish: a cap of a sphere DISH_R across, tilted DISH_TILT off the sky, its back
+// on the hinge at the mast's top and its feed at the focus, half the radius out.
+const DISH_R = 0.34, DISH_TILT = 0.7, DISH_HINGE = [0, 0.4, 0], DISH_OPEN = Math.PI * 0.3;
+const DISH_AT = new THREE.Vector3(DISH_HINGE[0] - DISH_R * Math.sin(DISH_TILT), DISH_HINGE[1] + DISH_R * Math.cos(DISH_TILT), DISH_HINGE[2]);
+const dishFrame = geo => geo.rotateZ(DISH_TILT).translate(DISH_AT.x, DISH_AT.y, DISH_AT.z);
+const dishPoint = (x, y, z) => new THREE.Vector3(x, y, z).applyAxisAngle(new THREE.Vector3(0, 0, 1), DISH_TILT).add(DISH_AT).toArray();
+const DISH_FEED = dishPoint(0, -DISH_R / 2, 0);
+const DISH_STRUTS = [0, 1, 2].map(i => dishPoint(
+  DISH_R * Math.sin(DISH_OPEN) * Math.cos(i * Math.PI * 2 / 3), -DISH_R * Math.cos(DISH_OPEN), DISH_R * Math.sin(DISH_OPEN) * Math.sin(i * Math.PI * 2 / 3)));
 
 // A goal: two posts and a crossbar on the line, the net sloping back to the ground.
 const goal = side => {
@@ -1721,16 +1731,17 @@ const GALAXY_AMENITIES = [
     posts: Array.from({ length: 6 }, (_, i) => [Math.cos(i * Math.PI / 3) * 0.72, Math.sin(i * Math.PI / 3) * 0.72, 0.03]),
     glow: { color: '#ffd27a', shells: lit(PAD_LAMPS, [[0.05, 0.5], [0.1, 0.18]]) },
   },
-  { // a dish listening to the sky
+  { // a dish listening to the sky, hinged on its mast, its feed held over the bowl
     head: merge([
-      post(0, 0, 0.05, 0.2, '#2f2b45'), post(0, 0, 0.28, 0.04, '#4a4466', 0.05),
-      painted(new THREE.SphereGeometry(0.34, 18, 6, 0, Math.PI * 2, Math.PI * 0.62, Math.PI * 0.38).rotateZ(0.7).translate(0.12, 0.5, 0), '#cfd2e6', 0.05),
-      bar([0.05, 0.4, 0], [-0.18, 0.62, 0], 0.008, '#8b86a8'),
-      painted(new THREE.IcosahedronGeometry(0.03, 0).translate(-0.18, 0.62, 0), '#6ff4ff'),
+      post(0, 0, 0.05, 0.2, '#2f2b45'), post(0, 0, 0.33, 0.04, '#4a4466', 0.05),
+      painted(new THREE.SphereGeometry(0.045, 8, 6).translate(...DISH_HINGE), '#4a4466'),
+      painted(dishFrame(new THREE.SphereGeometry(DISH_R, 18, 6, 0, Math.PI * 2, Math.PI - DISH_OPEN, DISH_OPEN)), '#cfd2e6', 0.05),
+      ...DISH_STRUTS.map(at => bar(at, DISH_FEED, 0.006, '#8b86a8')),
+      painted(new THREE.IcosahedronGeometry(0.03, 0).translate(...DISH_FEED), '#6ff4ff'),
     ]),
     size: [0.8, 0.8], scale: 3,
     posts: [[0, 0, 0.2]],
-    glow: { color: '#6ff4ff', shells: lit([[-0.18, 0.62, 0]], [[0.06, 0.45], [0.12, 0.15]]) },
+    glow: { color: '#6ff4ff', shells: lit([DISH_FEED], [[0.06, 0.45], [0.12, 0.15]]) },
   },
   { // a ring of standing stones round a lit crystal
     head: merge([
