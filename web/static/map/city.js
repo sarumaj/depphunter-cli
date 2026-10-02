@@ -992,10 +992,22 @@ const TREE_SPACING = 1.1, LAMP_SPACING = 1.6, LAMP_INSET = 0.035, SHORE_INSET = 
 // Parks: planted where the street shader draws lawn (farther than CARRIAGE + SIDEWALK
 // from every obstacle, with a margin), off the gravel paths every PARK_PATHS.
 const PARK_CLEAR = 1.14, PARK_PATHS = 2.2, PATH_CLEAR = 0.16, MAX_PARK_SAMPLES = 60000;
-// Amenities: one square of lawn between the paths (SQUARE across, inside them) and
-// LAWN clear of everything around it, as the street shader draws lawn; a square that
-// has the room gets one AMENITY_CHANCE of the time.
-const SQUARE = PARK_PATHS - 2 * PATH_CLEAR, LAWN = 0.94, AMENITY_CHANCE = 0.16;
+// Amenities: LAWN clear of everything around them, as the street shader draws lawn,
+// and AMENITY_GAP clear of each other; tried at AMENITY_CHANCE of the places the park's
+// paths cross, and placed where there is the room.
+const LAWN = 0.94, AMENITY_GAP = 1.5, AMENITY_CHANCE = 0.08;
+
+/**
+ * The ground an amenity covers in the city, {w: along x, d: along z}, turned by `turn`
+ * (0 or a quarter turn) and at its full size.
+ */
+export function amenitySpan(a, turn = 0) {
+  const k = a.scale ?? 1, [w, d] = a.size;
+  return turn ? { w: d * k, d: w * k } : { w: w * k, d: d * k };
+}
+
+/** The amenities of a style (amenitySpan's argument). */
+export const amenitiesOf = style => (PROPS[style] || PROPS.city).amenities || [];
 
 /**
  * What stands on the map: along every shore and in every park a tall prop and a low
@@ -1032,7 +1044,7 @@ export function* dressing(boxes, bendable, style = 'city') {
   const tree = (x, z, y, r) => onApproach(x, z) || trees.push({ x, z, y, r, s: 0.7 + 0.6 * r, kind: Math.floor(rand(z * 3.1, x) * set.species.length) });
   const bush = (x, z, y, r) => onApproach(x, z) || bushes.push({ x, z, y, r, s: 0.7 + 0.7 * r });
   const amenities = [];
-  const amenity = (x, z, y, r, turn) => amenities.push({ x, z, y, turn, kind: Math.floor(r * (set.amenities?.length || 1)) });
+  const amenity = (x, z, y, kind, turn) => amenities.push({ x, z, y, turn, kind });
   for (const b of boxes) {
     const top = b.y + b.h;
     if (b.kind === 'land') {
@@ -1051,7 +1063,7 @@ export function* dressing(boxes, bendable, style = 'city') {
     }
     yield;
   }
-  yield* plantParks(boxes, tree, bush, amenity);
+  yield* plantParks(boxes, tree, bush, set.amenities || [], amenity);
 
   const group = new THREE.Group();
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
@@ -1086,7 +1098,7 @@ export function* dressing(boxes, bendable, style = 'city') {
     yield* add(low.head, '#ffffff', bushes.filter(it => Math.floor(it.r * 7919) % lows.length === kind), plantAt, set.tint(low.hue, low));
   }
   // Implements: REQ-CITY-039
-  const amenityAt = (it, m) => m.compose(p.set(it.x, it.y, it.z), q.setFromAxisAngle(UP, it.turn), s.setScalar(1));
+  const amenityAt = (it, m) => m.compose(p.set(it.x, it.y, it.z), q.setFromAxisAngle(UP, it.turn), s.setScalar(set.amenities[it.kind].scale ?? 1));
   for (const [kind, a] of (set.amenities || []).entries()) {
     const these = amenities.filter(it => it.kind === kind);
     const scatter = yield* add(a.head, '#ffffff', these, amenityAt);
@@ -1133,10 +1145,13 @@ export function* dressing(boxes, bendable, style = 'city') {
     ...trees.map(it => ({ x: it.x, z: it.z, y: it.y, r: set.solid * it.s })),
     ...lamps.map(it => ({ x: it.x, z: it.z, y: it.y, r: set.post })),
     // A goalpost, a hoop's pole, a swing's legs: turned with what they belong to.
-    ...amenities.flatMap(it => (set.amenities?.[it.kind]?.posts || []).map(([px, pz, r]) => {
-      const c = Math.cos(it.turn), sn = Math.sin(it.turn);
-      return { x: it.x + px * c + pz * sn, z: it.z - px * sn + pz * c, y: it.y, r };
-    })),
+    ...amenities.flatMap(it => {
+      const a = set.amenities[it.kind], k = a.scale ?? 1;
+      return (a.posts || []).map(([px, pz, r]) => {
+        const c = Math.cos(it.turn), sn = Math.sin(it.turn);
+        return { x: it.x + (px * c + pz * sn) * k, z: it.z + (-px * sn + pz * c) * k, y: it.y, r: r * k };
+      });
+    }),
   ];
   const surfaces = [];
   if (ramps.length) surfaces.push(yield* rampGeometry(ramps));
@@ -1152,11 +1167,11 @@ export function* dressing(boxes, bendable, style = 'city') {
 
 // Samples each block's lawn (the park the street shader draws) on a jittered grid
 // and plants trees and bushes there, yielding after every row and every building
-// filed for the distance test. First, some of the squares of lawn between its paths
-// that are lawn all over are given to the style's amenities, and nothing is planted
-// on those.
+// filed for the distance test. First, some stretches of lawn that are lawn all over
+// are given to the style's amenities (`kinds`, placed with `amenity`), at their size,
+// and nothing is planted on those.
 // Implements: REQ-CITY-024, REQ-CITY-039
-function* plantParks(boxes, tree, bush, amenity) {
+function* plantParks(boxes, tree, bush, kinds, amenity) {
   const all = blocks(boxes);
   yield;
   const area = [...all.keys()].reduce((a, t) => a + t.w * t.d, 0);
@@ -1192,12 +1207,13 @@ function* plantParks(boxes, tree, bush, amenity) {
       }
       return true;
     };
-    // A square between the paths is lawn all over when it is LAWN from the block's
-    // edge and from everything standing on it, which is where the street shader stops
-    // drawing street.
-    const roomy = (cx, cz) => {
-      const r = { x0: cx - SQUARE / 2, x1: cx + SQUARE / 2, z0: cz - SQUARE / 2, z1: cz + SQUARE / 2 };
+    // A stretch of park is lawn all over when it is LAWN from the block's edge and
+    // from everything standing on it, which is where the street shader stops drawing
+    // street - and clear of the amenities already placed, by a few steps.
+    const placed = [];
+    const roomy = r => {
       if (r.x0 < t.x - t.w / 2 + LAWN || r.x1 > t.x + t.w / 2 - LAWN || r.z0 < t.z - t.d / 2 + LAWN || r.z1 > t.z + t.d / 2 - LAWN) return false;
+      if (placed.some(o => rectDist(r, o) < AMENITY_GAP)) return false;
       for (let i = Math.floor((r.x0 - LAWN) / cell); i <= Math.floor((r.x1 + LAWN) / cell); i++) {
         for (let j = Math.floor((r.z0 - LAWN) / cell); j <= Math.floor((r.z1 + LAWN) / cell); j++) {
           for (const k of grid[at(i, j)] || []) if (rectDist(r, k) < LAWN) return false;
@@ -1205,21 +1221,29 @@ function* plantParks(boxes, tree, bush, amenity) {
       }
       return true;
     };
-    const taken = new Set();
-    for (let kz = Math.ceil(z0 / PARK_PATHS); kz * PARK_PATHS <= z1; kz++) {
+    // Tried where the paths cross, each place once; which kind, and which way round,
+    // is the place's own, so a map dresses the same every time.
+    for (let kz = Math.ceil(z0 / PARK_PATHS); kinds.length && kz * PARK_PATHS <= z1; kz++) {
       for (let kx = Math.ceil(x0 / PARK_PATHS); kx * PARK_PATHS <= x1; kx++) {
         const cx = kx * PARK_PATHS, cz = kz * PARK_PATHS;
-        if (rand(cx * 0.37 + 11.3, cz * 0.53 - 7.1) >= AMENITY_CHANCE || !roomy(cx, cz)) continue;
-        amenity(cx, cz, top, rand(cx * 1.13 - 4.1, cz * 0.91 + 9.7), rand(cz + 3.7, cx) < 0.5 ? 0 : Math.PI / 2);
-        taken.add(kx + ',' + kz);
+        if (rand(cx * 0.37 + 11.3, cz * 0.53 - 7.1) >= AMENITY_CHANCE) continue;
+        const kind = Math.floor(rand(cx * 1.13 - 4.1, cz * 0.91 + 9.7) * kinds.length);
+        const turn = rand(cz + 3.7, cx) < 0.5 ? 0 : Math.PI / 2;
+        const { w, d } = amenitySpan(kinds[kind], turn);
+        const r = { x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2 };
+        if (!roomy(r)) continue;
+        amenity(cx, cz, top, kind, turn);
+        placed.push(r);
       }
     }
+    // Nothing planted on one, nor right up against it.
+    const onAmenity = (x, z) => placed.some(r => x > r.x0 - 0.3 && x < r.x1 + 0.3 && z > r.z0 - 0.3 && z < r.z1 + 0.3);
     yield;
     for (let z = z0; z <= z1; z += step) {
       for (let x = x0; x <= x1; x += step) {
         const px = x + (rand(x, z) - 0.5) * step * 0.8, pz = z + (rand(z, x) - 0.5) * step * 0.8;
         if (px < x0 || px > x1 || pz < z0 || pz > z1 || !offPath(px) || !offPath(pz) || !clear(px, pz)) continue;
-        if (taken.size && taken.has(Math.round(px / PARK_PATHS) + ',' + Math.round(pz / PARK_PATHS))) continue;
+        if (placed.length && onAmenity(px, pz)) continue;
         const r = rand(px * 1.7, pz * 2.3);
         if (r < 0.16) tree(px, pz, top, r / 0.16);
         else if (r < 0.5) bush(px, pz, top, (r - 0.16) / 0.34);
@@ -1541,7 +1565,10 @@ const BEACON = merge([
 // its crystal; in the galaxy a landing pad, a dish listening to the sky and a ring
 // of standing stones round a lit crystal. Each fills one square of lawn between the
 // park's gravel paths (plantParks), modeled along x about its middle with the
-// ground at 0, and says where it stands in the walker's way: posts, [x, z, radius].
+// ground at 0, and says how much ground it covers as modeled (size, [along x, along z]),
+// how much it is enlarged to stand true to the walker - who is about half a unit tall,
+// so a unit is some three and a half meters (scale) - and where it stands in the
+// walker's way as modeled: posts, [x, z, radius].
 // Implements: REQ-CITY-039
 const painted = (geo, hex, jitter = 0) => {
   geo = shaded(geo, jitter);
@@ -1604,6 +1631,8 @@ const CITY_AMENITIES = [
       outline(1.7, 1.1, '#f4f4ee'), stripe(0, -0.55, 0, 0.55, '#f4f4ee'), ring(0.15, '#f4f4ee'),
       outline(0.24, 0.5, '#f4f4ee', -0.73), outline(0.24, 0.5, '#f4f4ee', 0.73), goal(-1), goal(1),
     ]),
+    // Goals 2 m high: a small-sided pitch about 30 m by 20.
+    size: [1.92, 1.2], scale: 4.5,
     posts: [[-0.85, -0.13, 0.03], [-0.85, 0.13, 0.03], [0.85, -0.13, 0.03], [0.85, 0.13, 0.03]],
   },
   { // a basketball court
@@ -1614,6 +1643,8 @@ const CITY_AMENITIES = [
       ring(0.36, '#f4f4ee', -0.68, 0, -Math.PI / 2, Math.PI), ring(0.36, '#f4f4ee', 0.68, 0, Math.PI / 2, Math.PI),
       hoop(-1), hoop(1),
     ]),
+    // The rim at regulation height, 3 m: a court about 18 m by 12.
+    size: [1.5, 1.0], scale: 3.5,
     posts: [[-0.68, 0, 0.03], [0.68, 0, 0.03]],
   },
   { // a playground: swings, a slide and a seesaw, in a sandpit
@@ -1636,6 +1667,8 @@ const CITY_AMENITIES = [
       block(0.04, 0.05, 0.04, 0.35, 0, 0.32, '#3b4148'),
       painted(new THREE.BoxGeometry(0.5, 0.012, 0.05).rotateZ(0.12).translate(0.35, 0.06, 0.32), '#c23b2c'),
     ]),
+    // Swings about 2.5 m high, in a sandpit about 11 m by 10.
+    size: [1.5, 1.3], scale: 2.2,
     posts: [[-0.55, -0.42, 0.03], [-0.35, -0.42, 0.03], [-0.55, 0.12, 0.03], [-0.35, 0.12, 0.03], [0.22, -0.24, 0.08], [0.35, 0.32, 0.04]],
   },
 ];
@@ -1647,6 +1680,7 @@ const CIRCUIT_AMENITIES = [
       outline(0.5, 0.2, '#e8ecef', -0.2, 0.3, 0.012), block(0.44, 0.06, 0.14, -0.2, 0, 0.3, '#1d1f22'),
       ...Array.from({ length: 4 }, (_, i) => block(0.022, 0.14, 0.022, -0.36 + i * 0.107, 0, 0.3, '#d9b04c')),
     ]),
+    size: [1.2, 0.8], scale: 3,
     posts: [[-0.3, -0.2, 0.15], [0.3, -0.2, 0.15], [-0.2, 0.3, 0.1]],
   },
   { // a heat sink on its chip
@@ -1655,6 +1689,7 @@ const CIRCUIT_AMENITIES = [
       block(0.7, 0.04, 0.7, 0, 0.05, 0, '#a9b1b9'),
       ...Array.from({ length: 8 }, (_, i) => block(0.7, 0.22, 0.018, 0, 0.09, -0.31 + i * 0.0886, '#bcc4cc')),
     ]),
+    size: [0.86, 0.86], scale: 3.5,
     posts: [[0, 0, 0.36]],
   },
   { // a coin cell in its holder, and a crystal in its can
@@ -1665,6 +1700,7 @@ const CIRCUIT_AMENITIES = [
       outline(0.36, 0.16, '#e8ecef', 0.38, 0, 0.012),
       painted(new THREE.CylinderGeometry(0.06, 0.06, 0.26, 12).scale(1, 1, 0.45).rotateZ(Math.PI / 2).translate(0.38, 0.065, 0), '#cfd5db'),
     ]),
+    size: [1.15, 0.6], scale: 3,
     posts: [[-0.25, 0, 0.28], [0.38, 0, 0.1]],
   },
 ];
@@ -1680,6 +1716,7 @@ const GALAXY_AMENITIES = [
           painted(new THREE.IcosahedronGeometry(0.025, 0).translate(Math.cos(a) * 0.72, 0.11, Math.sin(a) * 0.72), '#ffd27a')]);
       }),
     ]),
+    size: [1.56, 1.56], scale: 3.5,
     posts: Array.from({ length: 6 }, (_, i) => [Math.cos(i * Math.PI / 3) * 0.72, Math.sin(i * Math.PI / 3) * 0.72, 0.03]),
     glow: { color: '#ffd27a', shells: lit(PAD_LAMPS, [[0.05, 0.5], [0.1, 0.18]]) },
   },
@@ -1690,6 +1727,7 @@ const GALAXY_AMENITIES = [
       bar([0.05, 0.4, 0], [-0.18, 0.62, 0], 0.008, '#8b86a8'),
       painted(new THREE.IcosahedronGeometry(0.03, 0).translate(-0.18, 0.62, 0), '#6ff4ff'),
     ]),
+    size: [0.8, 0.8], scale: 3,
     posts: [[0, 0, 0.2]],
     glow: { color: '#6ff4ff', shells: lit([[-0.18, 0.62, 0]], [[0.06, 0.45], [0.12, 0.15]]) },
   },
@@ -1703,6 +1741,7 @@ const GALAXY_AMENITIES = [
       }),
       painted(new THREE.ConeGeometry(0.07, 0.36, 5).translate(0, 0.18, 0), '#9a7cff', 0.15),
     ]),
+    size: [1.36, 1.36], scale: 3,
     posts: [...Array.from({ length: 7 }, (_, i) => [Math.cos(i * Math.PI * 2 / 7) * 0.62, Math.sin(i * Math.PI * 2 / 7) * 0.62, 0.06]), [0, 0, 0.07]],
     glow: { color: '#b49cff', shells: lit([[0, 0.22, 0]], [[0.12, 0.3], [0.24, 0.1], [0.4, 0.04]]) },
   },

@@ -10,7 +10,7 @@ import { describe, it } from 'node:test';
 
 import { box } from './stub.mjs';
 
-const { makeProps, setNight, rampsFor, rampHeight } = await import('../static/map/city.js');
+const { makeProps, setNight, rampsFor, rampHeight, amenitySpan, amenitiesOf } = await import('../static/map/city.js');
 const { raised, buildParameters } = await import('../static/map/buildings.js');
 
 describe('vegetation without the plant models', () => {
@@ -65,44 +65,65 @@ describe('what stands in the galaxy', () => {
 });
 
 describe('what a park holds', () => {
-  // Where each kind of amenity stands in a dressed map, by its instance matrices.
+  // Where each kind of amenity stands in a dressed map, and which way round, by its
+  // instance matrices: a quarter turn leaves nothing of x along x.
   const placed = group => group.userData.lod.scatters
     .filter(sc => sc.meshes.some(mesh => mesh.userData.amenity !== undefined && !mesh.userData.glow))
-    .map(sc => Array.from({ length: sc.matrices.length / 16 }, (_, i) => ({ x: sc.matrices[i * 16 + 12], z: sc.matrices[i * 16 + 14] })));
+    .map(sc => Array.from({ length: sc.matrices.length / 16 }, (_, i) => ({
+      x: sc.matrices[i * 16 + 12], z: sc.matrices[i * 16 + 14], turn: Math.abs(sc.matrices[i * 16]) > 1e-3 ? 0 : Math.PI / 2,
+    })));
+  // The ground one covers, where it stands.
+  const ground = (style, kind, at) => {
+    const { w, d } = amenitySpan(amenitiesOf(style)[kind], at.turn);
+    return { x0: at.x - w / 2, x1: at.x + w / 2, z0: at.z - d / 2, z1: at.z + d / 2 };
+  };
 
   // Verifies: REQ-CITY-039
-  it('gives some squares of lawn to every kind of amenity, in every style', () => {
+  it('makes them the size they are, beside the walker', () => {
+    // A unit is about three and a half meters: the walker's eye is at 0.45.
+    const [pitch, court, playground] = amenitiesOf('city').map(a => amenitySpan(a));
+    assert.ok(pitch.w > 7 && pitch.w < 12 && pitch.d > 4.5, `a pitch ${pitch.w} by ${pitch.d}`);
+    assert.ok(court.w > 4.5 && court.w < 9, `a court ${court.w} long`);
+    assert.ok(playground.w > 2.5 && playground.w < 5, `a playground ${playground.w} across`);
+  });
+
+  // Verifies: REQ-CITY-039
+  it('gives some of the lawn to every kind of amenity, in every style, and leaves the rest lawn', () => {
     for (const style of ['city', 'circuit', 'galaxy']) {
-      const park = box('terrace', 0, 0, 60, 60, { y: 0, h: 0.28 });
+      const park = box('terrace', 0, 0, 80, 80, { y: 0, h: 0.28 });
       const kinds = placed(makeProps([park], m => m, style));
       assert.equal(kinds.length, 3, `${style} has ${kinds.length} kinds of amenity`);
       for (const at of kinds) assert.ok(at.length > 0, `a kind of ${style} amenity stands nowhere`);
-      const all = kinds.flat();
-      assert.ok(all.length < 0.3 * (60 / 2.2) ** 2, `${all.length} amenities leave the park no lawn`);
+      const covered = kinds.flatMap((at, kind) => at.map(it => ground(style, kind, it)))
+        .reduce((sum, r) => sum + (r.x1 - r.x0) * (r.z1 - r.z0), 0);
+      assert.ok(covered < 0.5 * 80 * 80, `${style}'s amenities cover ${covered} of the park's ${80 * 80}`);
+      // ... and never one on another.
+      const all = kinds.flatMap((at, kind) => at.map(it => ground(style, kind, it)));
+      for (const [i, r] of all.entries()) {
+        for (const o of all.slice(i + 1)) assert.ok(r.x1 <= o.x0 || o.x1 <= r.x0 || r.z1 <= o.z0 || o.z1 <= r.z0, 'two amenities overlap');
+      }
     }
   });
 
   // Verifies: REQ-CITY-039
   it('keeps them on lawn, plants nothing on them, and puts their posts in the walker\'s way', () => {
-    const park = box('terrace', 0, 0, 40, 40, { y: 0, h: 0.28 });
+    const park = box('terrace', 0, 0, 60, 60, { y: 0, h: 0.28 });
     const tower = box('building', 0, 0, 6, 6, { y: 0.28, h: 3 });
     tower.node.parentNode = park.node;
     const group = makeProps([park, tower], m => m, 'city');
-    const kinds = placed(group), all = kinds.flat();
-    assert.ok(all.length, 'no amenity in a park this size');
-    for (const at of all) {
-      const near = Math.max(Math.abs(at.x) - 3, Math.abs(at.z) - 3);
-      assert.ok(near > 0.94 + 0.9, `an amenity at ${at.x}, ${at.z} is on the street round the tower`);
-      assert.ok(Math.abs(at.x) < 20 - 0.94 - 0.9 && Math.abs(at.z) < 20 - 0.94 - 0.9, 'an amenity is on the ring road');
-    }
+    const kinds = placed(group);
+    assert.ok(kinds.flat().length, 'no amenity in a park this size');
     const { obstacles } = group.userData;
     // The goalposts, the hoops' poles, the playground's legs and posts - and nothing
     // else: a tree planted on one would be one more.
     const POSTS = [4, 2, 6];
     kinds.forEach((at, kind) => {
-      for (const { x, z } of at) {
-        const inside = obstacles.filter(o => Math.abs(o.x - x) < 0.95 && Math.abs(o.z - z) < 0.95);
-        assert.equal(inside.length, POSTS[kind], `amenity ${kind} at ${x}, ${z} has ${inside.length} things in the way`);
+      for (const it of at) {
+        const r = ground('city', kind, it);
+        assert.ok(Math.max(r.x0 - 3, -3 - r.x1, r.z0 - 3, -3 - r.z1) >= 0.94, `amenity ${kind} at ${it.x}, ${it.z} is on the street round the tower`);
+        assert.ok(r.x0 >= -30 + 0.94 && r.x1 <= 30 - 0.94 && r.z0 >= -30 + 0.94 && r.z1 <= 30 - 0.94, 'an amenity is on the ring road');
+        const inside = obstacles.filter(o => o.x > r.x0 && o.x < r.x1 && o.z > r.z0 && o.z < r.z1);
+        assert.equal(inside.length, POSTS[kind], `amenity ${kind} at ${it.x}, ${it.z} has ${inside.length} things in the way`);
       }
     });
   });
