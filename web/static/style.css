@@ -757,6 +757,9 @@ main { position: relative; flex: 1; min-height: 0; }
     linear-gradient(var(--c), var(--c)) right bottom / 2px var(--l) no-repeat;
   filter: drop-shadow(0 0 1.5px rgb(0 0 0 / 0.6));
 }
+/* The roof edge a grapple's aim was helped on to (trajectory.js drawGrip): the same
+   corners, wide and low like the edge, in the color of a hook that holds. */
+#walk-hud .w-grip { --c: #8ff0c4; --l: 35%; width: 38px; height: 18px; }
 #walk-hud.scoped .crosshair { width: 64px; height: 64px; } /* looking through the scope */
 
 /* The aim helper belongs to the tool in your hands, not to first-person shooters: a

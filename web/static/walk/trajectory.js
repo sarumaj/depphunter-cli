@@ -42,6 +42,9 @@ const ASSIST = 0.45, ASSIST_GROW = 0.035;
 // off; how far under a roof's edge a hook is drawn up to; and how far off where the
 // walker is looking that edge may be, in radians, and still be taken.
 const HOLDS = '#8ff0c4', GLANCES = '#ff8f78', EDGE_IN = 0.3, SNAP = 0.22;
+// A roof the view passes over is taken within this angle under it, or this many units
+// near by; past the line's reach a wall is looked for this many reaches out, to say so.
+const CONE = 0.07, CONE_MIN = 0.25, FAR_LOOK = 1.6;
 
 /** Whether a tool is aimed by its guide rather than its crosshair: one that throws, but not the extinguisher's spray. */
 export const guided = tool => !!tool?.projectile && !tool.douses;
@@ -178,30 +181,45 @@ export const trajectory = {
   /**
    * Where a line from the off hand would bite, and whether it would hold: the wall the
    * walker is looking at, as the line is aimed (walk.js useSecondary), and the path the
-   * hook would fly there. A hook that would only bite low on a wall - where a grapple
-   * gun's claw finds nothing to close on - is drawn up the wall to the edge of its roof,
-   * where it does hold, when that edge is in reach, in plain view and near enough where
-   * the walker is looking; that is where the line is then fired. Returns
-   * { start, point, box, normal, holds, snapped, path }, or null with nothing in reach.
+   * hook would fly there. Where a grapple gun's claw would find nothing to close on, the
+   * aim is helped on to a roof's edge that does hold: up the wall it would bite too low
+   * on, or down to one the view passes just over - in reach, in plain view and near
+   * where the walker is looking. Returns { start, point, box, normal, holds, snapped,
+   * far, path, flown }: `far` for a wall seen past the line's reach, drawn but not
+   * fired at; null with nothing in sight.
    *
-   * Implements: REQ-TOOL-083
+   * Implements: REQ-TOOL-083, REQ-TOOL-084
    */
   planLine(tool = this.secondary) {
     if (!tool?.reel) return null;
     const reach = tool.reach ?? REACH;
-    const seen = this.lookingAt(reach);
-    if (!seen) return null;
     const guide = this.lineGuide ||= makeGuide(this.scene, HOLDS);
     const start = this.muzzle(this.offhand, new THREE.Vector3())
       || new THREE.Vector3(this.p.x, this.p.feet + EYE - 0.08, this.p.z);
-    let point = seen.point, box = seen.box, snapped = false;
-    let hold = holds(tool, box, point);
-    if (!hold && tool.reel.grip !== undefined && box.kind !== 'land' && box.kind !== 'terrace') {
-      const edge = this.roofEdge(box, point, start, reach);
-      if (edge) { point = edge; snapped = true; hold = true; }
+    const grips = tool.reel.grip !== undefined;
+    const seen = this.lookingAt(grips ? reach * FAR_LOOK : reach);
+    const passed = grips ? this.edgeUnderView(start, reach, seen) : null;
+    let point = seen?.point, box = seen?.box, snapped = false, far = false;
+    let hold = !!seen && holds(tool, box, point);
+    if (seen && start.distanceTo(point) > reach) {
+      if (passed) ({ point, box } = passed);
+      else far = true;
+      hold = !far;
+      snapped = !far;
+    } else if (seen && !hold && grips && box.kind !== 'land' && box.kind !== 'terrace') {
+      const edge = this.roofEdge(box, point, start, reach) || passed?.point;
+      if (edge) {
+        box = edge === passed?.point ? passed.box : box;
+        point = edge;
+        snapped = hold = true;
+      }
+    } else if (!seen && passed) {
+      ({ point, box } = passed);
+      snapped = hold = true;
     }
-    const flown = aim(start, point, tool.flight, this.airNow || guide.calm);
-    return { start, point, box, normal: faceOf(box, point), holds: hold, snapped, path: flown ? flown.path : [start, point], flown };
+    if (!point) return null;
+    const flown = far ? null : aim(start, point, tool.flight, this.airNow || guide.calm);
+    return { start, point, box, normal: faceOf(box, point), holds: hold, snapped, far, path: flown ? flown.path : [start, point], flown };
   },
 
   /**
@@ -216,14 +234,51 @@ export const trajectory = {
     const eye = new THREE.Vector3(this.p.x, this.p.feet + EYE, this.p.z);
     const looking = point.clone().sub(eye).normalize(), wanted = edge.clone().sub(eye).normalize();
     if (looking.angleTo(wanted) > SNAP) return null;
-    // In plain view: the first thing on the way there is this box, at the edge.
-    const v = new THREE.Vector3(), d = eye.distanceTo(edge);
-    for (let t = 0.3; t < d + 0.3; t += 0.05) {
-      v.copy(eye).addScaledVector(wanted, t);
-      const hit = this.boxAt(v);
-      if (hit) return hit === box && v.distanceTo(edge) < 0.45 ? edge : null;
+    return this.inPlainView(box, edge) ? edge : null;
+  },
+
+  /**
+   * The nearest roof the view passes over within CONE of it, short of `seen` (what it
+   * ends on, if anything): { box, point }, the point EDGE_IN under the middle of the
+   * roof's near edge where the view crosses it, if a hook from `start` reaches it and
+   * nothing stands in the way - or null. A far roof is a thin line on the screen, and
+   * a look a degree too high goes over it into the sky.
+   */
+  edgeUnderView(start, reach, seen) {
+    const cam = this.scene.walkCamera;
+    if (!cam.quaternion) return null;
+    const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    const eye = new THREE.Vector3(this.p.x, this.p.feet + EYE, this.p.z);
+    const v = new THREE.Vector3(), under = new THREE.Vector3();
+    const end = seen ? eye.distanceTo(seen.point) : reach * FAR_LOOK;
+    for (let t = 0.5; t < end; t += 0.05 + t * 0.01) {
+      v.copy(cam.position).addScaledVector(direction, t);
+      this.scene.unbend?.(v);
+      const drop = Math.max(CONE_MIN, eye.distanceTo(v) * Math.tan(CONE));
+      under.set(v.x, v.y - drop, v.z);
+      const box = this.boxAt(under);
+      if (!box || box.kind === 'land' || box.kind === 'terrace' || box === seen?.box) continue;
+      const top = box.y + box.h;
+      if (v.y < top) continue;
+      const point = nearEdge(box, eye, v);
+      point.y = top - EDGE_IN;
+      if (start.distanceTo(point) > reach || !this.inPlainView(box, point)) return null;
+      return { box, point };
     }
     return null;
+  },
+
+  /** Whether the first thing on the way from the eye to `point` is `box`, at the point. */
+  inPlainView(box, point) {
+    const eye = new THREE.Vector3(this.p.x, this.p.feet + EYE, this.p.z);
+    const toward = point.clone().sub(eye).normalize();
+    const v = new THREE.Vector3(), d = eye.distanceTo(point);
+    for (let t = 0.3; t < d + 0.3; t += 0.05) {
+      v.copy(eye).addScaledVector(toward, t);
+      const hit = this.boxAt(v);
+      if (hit) return hit === box && v.distanceTo(point) < 0.45;
+    }
+    return false;
   },
 
   /** Draws, moves or hides the off hand's line guide for this frame, from this.linePlan. */
@@ -234,11 +289,42 @@ export const trajectory = {
       && !(tool.fuel && (this.dry.has(tool.id) || this.tank(tool) <= 0));
     const plan = wanted ? (this.linePlan = this.planLine(tool)) : (this.linePlan = null);
     const guide = this.lineGuide;
+    this.drawGrip(plan?.snapped ? plan.point : null);
     if (!plan) { if (guide) guide.group.visible = false; return; }
     guide.tint(plan.holds ? HOLDS : GLANCES);
     guide.draw(plan.path, plan.point, plan.normal, this.scene.walkCamera.position);
   },
+
+  /** Brackets the roof edge a hook's aim was helped on to, on the screen. */
+  drawGrip(point) {
+    const el = this.gripEl ||= this.hud?.querySelector('.w-grip');
+    if (!el) return;
+    const where = point && this.onScreen(point);
+    el.hidden = !where;
+    if (!where) return;
+    el.style.left = `${(where.x * 100).toFixed(2)}%`;
+    el.style.top = `${(where.y * 100).toFixed(2)}%`;
+  },
 };
+
+// Where the horizontal line from `eye` through `v` enters `box`'s footprint, or the
+// footprint's nearest point to `v` when it misses.
+function nearEdge(box, eye, v) {
+  const x0 = box.x - box.w / 2, x1 = box.x + box.w / 2, z0 = box.z - box.d / 2, z1 = box.z + box.d / 2;
+  const dx = v.x - eye.x, dz = v.z - eye.z;
+  let enter = 0, leave = Infinity;
+  for (const [from, d, lo, hi] of [[eye.x, dx, x0, x1], [eye.z, dz, z0, z1]]) {
+    if (Math.abs(d) < 1e-9) {
+      if (from < lo || from > hi) { enter = Infinity; break; }
+      continue;
+    }
+    const a = (lo - from) / d, b = (hi - from) / d;
+    enter = Math.max(enter, Math.min(a, b));
+    leave = Math.min(leave, Math.max(a, b));
+  }
+  if (enter <= leave && Number.isFinite(enter)) return new THREE.Vector3(eye.x + dx * enter, 0, eye.z + dz * enter);
+  return new THREE.Vector3(Math.min(x1, Math.max(x0, v.x)), 0, Math.min(z1, Math.max(z0, v.z)));
+}
 
 /**
  * The guide, in the walk scene: the line, a ribbon a pixel or so wide turned to face

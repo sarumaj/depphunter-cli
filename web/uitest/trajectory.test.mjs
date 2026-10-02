@@ -154,4 +154,40 @@ describe('aiming help', () => {
     const low = near.planLine();
     assert.ok(!low.snapped && !low.holds, 'a hook at the foot of a tall wall is said to hold');
   });
+
+  // A walker who really looks: the camera at their eye, turned as they face.
+  function looking(w, pitch) {
+    const camera = new THREE.PerspectiveCamera();
+    camera.rotation.order = 'YXZ';
+    camera.position.set(w.p.x, w.p.feet + 0.45, w.p.z);
+    camera.rotation.set(pitch, w.p.yaw, 0);
+    camera.updateMatrixWorld();
+    w.scene.walkCamera = camera;
+    w.scene.unbend = v => v;
+    w.p.pitch = pitch;
+    return w;
+  }
+
+  // Verifies: REQ-TOOL-084
+  it('takes a grapple on to a far roof the view passes just over, and says when a wall is out of reach', () => {
+    const far = { kind: 'building', x: 0, y: 0, z: -30, w: 6, h: 3, d: 2, i: 1 };
+    const w = looking(walker('nailer', { boxes: [GROUND, far] }), Math.atan2(3.6 - 0.45, 29));
+    w.secondary = TOOLS.grapple;
+    const over = w.planLine();
+    assert.ok(over?.snapped && over.holds && !over.far, 'a look just over a far roof finds nothing to hold');
+    assert.ok(Math.abs(over.point.y - 2.7) < 1e-9 && Math.abs(over.point.z + 29) < 0.05, `the hook is put at ${over.point.toArray()}`);
+    // Past the line's reach: shown, red, and not fired at.
+    const beyond = { ...far, z: -70, h: 12 };
+    const v = looking(walker('nailer', { boxes: [GROUND, beyond] }), Math.atan2(4 - 0.45, 69));
+    v.secondary = TOOLS.grapple;
+    v.dry = new Set();
+    v.tank = () => 1;
+    const out = v.planLine();
+    assert.ok(out?.far && !out.holds, 'a wall past the reach is not said to be out of it');
+    let said = '';
+    v.flash = text => { said = text; };
+    v.useSecondary();
+    assert.match(said, /Out of reach/);
+    assert.equal(v.darts.at(-1)?.to, undefined, 'a hook was aimed at a wall out of its reach');
+  });
 });

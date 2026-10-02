@@ -534,6 +534,7 @@ export class Walker {
     if (this.guide) this.guide.group.visible = false;
     if (this.lineGuide) this.lineGuide.group.visible = false;
     this.drawLock(null);
+    this.drawGrip(null);
     this.bugs?.show(false);
     this.showTarget(null);
     this.hideTool();
@@ -2610,7 +2611,8 @@ export class Walker {
     // right hand's shots fly; straight there when even that cannot reach.
     // Implements: REQ-TOOL-081, REQ-TOOL-083
     const plan = tool.reel ? this.planLine(tool) : null;
-    if (!plan) {
+    if (!plan || plan.far) {
+      if (plan?.far) this.flash(`Out of reach: the ${tool.label.toLowerCase()} throws ${tool.reach ?? REACH} units`);
       this.loose(shot);
       return;
     }
