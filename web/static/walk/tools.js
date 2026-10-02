@@ -1124,15 +1124,16 @@ const dart = {
   kind: 'primary',
   targets: 'buildings',
   // The longest shot in the hunt, and the only one worth taking through a scope: a
-  // dart launcher throws a good deal further than an arm and still not as far as a
-  // rifle, which is what the reach is for - from a rooftop the crosshair finds most of
-  // the city, and tagging it all from up there would be no hunt at all.
-  reach: 34,
+  // dart launcher throws a long way - across a district, onto a building seen over
+  // the roofs between - and still not as far as a rifle; from a rooftop the
+  // crosshair finds most of the city, and tagging it all from up there would be no
+  // hunt at all. Sixty is about what it can lob into the wind (ballistics.js).
+  reach: 60,
   // What the name says: a dart that is thrown high and steers. It is slow enough to
   // watch, heavy enough to fall, and while it falls its fins pull it round towards
   // whatever building lies ahead - so a shot lobbed over a block still lands on a
   // wall. One goes at a time, and it is aimed.
-  flight: { speed: 26, gravity: GRAVITY, cd: 0.004, track: 2.4 },
+  flight: { speed: 30, gravity: GRAVITY, cd: 0.004, track: 2.4 },
   ...PISTOL,
   viewmodel() {
     return viewmodel(g => {
@@ -1261,8 +1262,8 @@ const nailer = {
   //
   // Fast, but no longer so fast that the nail is never on screen: at ninety a unit a
   // second it crossed its own reach in six frames, which for something a centimeter
-  // across is a shot nobody saw leave. Fifty-five is still twice the dart's.
-  flight: { speed: 55, gravity: GRAVITY, cd: 0.002, spread: 0.045 },
+  // across is a shot nobody saw leave. Sixty-five is still twice the dart's.
+  flight: { speed: 65, gravity: GRAVITY, cd: 0.002, spread: 0.045 },
   ...PISTOL,
   viewmodel() {
     return viewmodel(g => {

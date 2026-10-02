@@ -32,7 +32,7 @@ const PUFF_TIME = 0.35, PUFF_GROW = 5;
 // How far a dart looks for a wall to steer towards, and how nearly ahead of itself it
 // will accept one, as a cosine: about forty degrees either side, which is wide enough
 // to save a lobbed shot and narrow enough that a dart cannot turn round.
-const TRACK_REACH = 30, TRACK_AHEAD = 0.75;
+const TRACK_REACH = 50, TRACK_AHEAD = 0.75;
 const FORWARD = new THREE.Vector3(0, 0, 1); // the dart geometry's nose
 
 export const shots = {
