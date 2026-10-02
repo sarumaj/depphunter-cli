@@ -22,8 +22,14 @@ roundabout's edge, a seesaw's or spring rider's seat or a slide's ladder
 - on a roundabout they stand on its deck and turn with it, and W pushes it
   round faster, S slows it;
 - on a seesaw W pushes off from the bottom, and on a spring rider W rocks it;
-- a slide is climbed, crossed and slid down by itself, faster down the chute,
-  and left at its foot.
+- a slide is ridden in one run by itself: up the ladder facing it, across the
+  platform sitting down by its edge, down the chute's curve gathering speed,
+  along the run-out slowing, and up onto the ground off its end.
+
+Getting on **shall** carry the walker from where they stand to their place on
+the ride, and turn them the way it faces, over a moment rather than at once;
+getting off **shall** ease the eye from the seat up to standing. Nothing about
+a ride **shall** jump from one frame to the next.
 
 Space **shall** jump off, carried on at the speed the seat or the deck had: off
 a swing in full flight a long way. A ride let go of **shall** come to rest by
@@ -43,4 +49,7 @@ across one.
 2. Pumped for twelve seconds a swing goes over 0.7 radians out, and Space at
    the bottom of its arc throws the walker forward and up.
 3. A walker pushing a roundabout turns with it.
-4. A slide takes the walker up its ladder and down to its foot.
+4. A slide takes the walker up its ladder and down to its foot, and stands
+   them up on the ground, with no jump in where they are, how high their eye
+   is or which way they face.
+5. Getting off a swing leaves the eye where it was, and it rises to standing.

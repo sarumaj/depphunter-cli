@@ -13,7 +13,7 @@ const { amenitiesFor, onAmenity } = await import('../static/map/amenities.js');
 const WALK = await import('../static/walk/walk.js');
 
 const CITY = amenitiesFor('city');
-const [PITCH, , VOLLEY, PLAYGROUND, ROUNDABOUT] = CITY;
+const [PITCH, COURT, VOLLEY, PLAYGROUND, ROUNDABOUT] = CITY;
 const FRAME = 1 / 60;
 
 /** A walker by `a` (an amenity, placed at the origin `turn`ed) standing at its model point `at`, facing its model point `to`. */
@@ -127,6 +127,7 @@ describe('playing in the parks', () => {
     assert.equal(w.riding.entry.ride, 'rock');
     const at = onAmenity(it, PLAYGROUND, seat);
     assert.ok(Math.hypot(w.p.x - at.x, w.p.z - at.z) < 0.1, 'the walker is not sat on the seesaw\'s end');
+    run(w, 0.5); // sat down
     const low = w.p.feet;
     let high = low;
     for (let t = 0; t < 1.5; t += FRAME) {
@@ -155,42 +156,30 @@ describe('playing in the parks', () => {
 
   // Verifies: REQ-WALK-058
   it('puts a shot from the free-throw line through the hoop', () => {
-    const random = Math.random;
-    Math.random = () => 0.5;
-    try {
-      // On a board and in the galaxy as in a city.
-      for (const style of ['city', 'circuit', 'galaxy']) {
-        const court = amenitiesFor(style).find(a => a.play.some(e => e.hoop));
-        const { w, said } = walker(court, [-0.3, 0, 0], [-0.565, 0.25, 0]);
-        ballAtFeet(w, 'basket');
-        assert.equal(w.playClick(), true);
-        assert.ok(w.ballHeld, 'the ball was not picked up');
-        w.playClick();
-        run(w, 3);
-        assert.ok(said.some(s => /two points/.test(s)), `the shot in the ${style}: ${said}`);
-      }
-    } finally {
-      Math.random = random;
+    // On a board and in the galaxy as in a city.
+    for (const style of ['city', 'circuit', 'galaxy']) {
+      const court = amenitiesFor(style).find(a => a.play.some(e => e.hoop));
+      const { w, said } = walker(court, [-0.3, 0, 0], [-0.565, 0.25, 0]);
+      ballAtFeet(w, 'basket');
+      assert.equal(w.playClick(), true);
+      assert.ok(w.ballHeld, 'the ball was not picked up');
+      w.playClick();
+      run(w, 3);
+      assert.ok(said.some(s => /two points/.test(s)), `the shot in the ${style}: ${said}`);
     }
   });
 
   // Verifies: REQ-WALK-058
   it('kicks a penalty into the goal', () => {
-    const random = Math.random;
-    Math.random = () => 0.5;
-    try {
-      // A pitch laid either way round.
-      for (const turn of [0, Math.PI / 2]) {
-        const { w, said } = walker(PITCH, [0.55, 0, 0], [0.85, 0.05, 0], turn);
-        ballAtFeet(w, 'soccer');
-        w.playClick();
-        run(w, 3);
-        assert.ok(said.includes('Goal!'), `the kick: ${said}`);
-        const ball = [...w.balls.values()][0];
-        assert.ok(ball.vel.length() < 1, 'the net did not stop the ball');
-      }
-    } finally {
-      Math.random = random;
+    // A pitch laid either way round.
+    for (const turn of [0, Math.PI / 2]) {
+      const { w, said } = walker(PITCH, [0.55, 0, 0], [0.85, 0.05, 0], turn);
+      ballAtFeet(w, 'soccer');
+      w.playClick();
+      run(w, 3);
+      assert.ok(said.includes('Goal!'), `the kick: ${said}`);
+      const ball = [...w.balls.values()][0];
+      assert.ok(ball.vel.length() < 1, 'the net did not stop the ball');
     }
   });
 
@@ -208,7 +197,107 @@ describe('playing in the parks', () => {
   });
 });
 
+describe('balls, rides and the guide, kept honest', () => {
+  // Verifies: REQ-WALK-058
+  it('puts out a ball for every court, not one for each kind of court', () => {
+    const { w, it } = walker(COURT, [0, 0, 0], [1, 0, 0]);
+    const other = { ...it, x: 6, rigs: [] };
+    w.scene.props.userData.amenities.push(other);
+    w.updatePlay(FRAME);
+    const balls = [...w.balls.values()];
+    assert.equal(balls.length, 2);
+    assert.notEqual(balls[0].it, balls[1].it);
+  });
+
+  // Verifies: REQ-WALK-058
+  it('rests a ball on the ground under its middle, and puts one back that is lost', () => {
+    const { w } = walker(COURT, [-0.5, 0, 0.3], [1, 0, 0]);
+    // A curb at x > 0.3 the walker's corners would find, beside the ball.
+    w.height = (x, z, from, probes = [0, 0, 0.12, 0, -0.12, 0]) => {
+      let top = 0;
+      for (let i = 0; i < probes.length; i += 2) if (x + probes[i] > 0.3) top = 0.05;
+      return top;
+    };
+    w.updatePlay(FRAME);
+    const ball = [...w.balls.values()][0];
+    ball.pos.set(0.25, 0.3, 0);
+    ball.vel.set(0, 0, 0);
+    run(w, 2);
+    assert.ok(Math.abs(ball.pos.y - ball.r) < 1e-6, `a ball beside a curb rests at ${ball.pos.y.toFixed(3)}, not on the ground`);
+    // Kicked off the court, it lies there a moment and is back in the middle.
+    ball.pos.set(9, ball.r, 0);
+    run(w, 0.5);
+    assert.ok(ball.pos.distanceTo(ball.home) > 1, 'put back at once');
+    run(w, 1.5);
+    assert.ok(ball.pos.distanceTo(ball.home) < 1e-9, 'a ball off its court is never put back');
+    // Far away, it is back at once.
+    ball.pos.set(40, ball.r, 0);
+    run(w, FRAME);
+    assert.ok(ball.pos.distanceTo(ball.home) < 1e-9);
+    assert.equal(POINT.length, 2);
+  });
+
+  // Verifies: REQ-WALK-058
+  it('sends a ball down the very path its guide draws: a shot, a kick and a serve', () => {
+    for (const [court, kind, at, to] of [
+      [COURT, 'basket', [-0.3, 0, 0], [-0.565, 0.25, 0]],
+      [PITCH, 'soccer', [0.55, 0, 0], [0.85, 0.05, 0]],
+      [VOLLEY, 'volley', [-0.8, 0, 0.1], [0.5, 0, 0]],
+    ]) {
+      const { w } = walker(court, at, to);
+      const ball = ballAtFeet(w, kind);
+      if (kind !== 'soccer') w.playClick();
+      const aim = w.aiming();
+      assert.ok(aim, `no guide for a ${kind}`);
+      const { path } = w.flight(aim.ball, w.plan(aim.ball, aim.how));
+      w.playClick();
+      if (kind === 'soccer') while (w.kicking) w.updatePlay(FRAME);
+      // The guide keeps every other step; the ball, stepped frame by frame, is where it said.
+      let worst = 0;
+      for (let i = 1; i < path.length - 1; i++) {
+        w.updatePlay(FRAME);
+        worst = Math.max(worst, ball.pos.distanceTo(path[i]));
+      }
+      assert.ok(worst < 1e-6, `the ${kind} left its guide by ${worst}`);
+    }
+  });
+
+  // Verifies: REQ-WALK-057
+  it('rides a slide in one run, and gets up off its end without a jump', () => {
+    const slide = PLAYGROUND.play.find(e => e.ride === 'slide');
+    const { w } = walker(PLAYGROUND, slide.path[0], slide.path[1]);
+    w.playClick();
+    const eye = () => w.p.feet + EYE + w.eyeShift;
+    let last = { x: w.p.x, z: w.p.z, eye: eye(), yaw: w.p.yaw }, worst = { step: 0, eye: 0, yaw: 0 };
+    for (let t = 0; t < 12 && w.riding; t += FRAME) {
+      w.rideStep(FRAME);
+      w.updatePlay(FRAME);
+      const now = { x: w.p.x, z: w.p.z, eye: eye(), yaw: w.p.yaw };
+      worst.step = Math.max(worst.step, Math.hypot(now.x - last.x, now.z - last.z));
+      worst.eye = Math.max(worst.eye, Math.abs(now.eye - last.eye));
+      worst.yaw = Math.max(worst.yaw, Math.abs(Math.atan2(Math.sin(now.yaw - last.yaw), Math.cos(now.yaw - last.yaw))));
+      last = now;
+    }
+    assert.equal(w.riding, null, 'still on the slide');
+    assert.ok(worst.step < 0.06 && worst.eye < 0.03 && worst.yaw < 0.2, `a jump on the slide: ${JSON.stringify(worst)}`);
+    assert.ok(Math.abs(w.p.feet) < 1e-9 && w.p.ground, 'not stood on the ground at the end');
+  });
+
+  // Verifies: REQ-WALK-057
+  it('gets off a swing with the eye where it was, then up to standing', () => {
+    const { w } = walker(PLAYGROUND, seat, [1, 0, swing.pivot[2]]);
+    w.playClick();
+    run(w, 1);
+    const before = w.p.feet + EYE;
+    w.leaveRide(false);
+    assert.ok(Math.abs(w.p.feet + EYE + w.eyeShift - before) < 1e-9, 'the eye jumped getting off');
+    run(w, 1);
+    assert.ok(Math.abs(w.eyeShift) < 0.01, 'the eye never got up to standing');
+  });
+});
+
 const { posture } = await import('../static/walk/legs.js');
+const { EYE, POINT } = await import('../static/walk/walkbase.js');
 const { outfitAt, SKIN } = await import('../static/walk/hands.js');
 
 describe('what the walker wears, and how their legs go', () => {
@@ -227,7 +316,7 @@ describe('what the walker wears, and how their legs go', () => {
   // Verifies: REQ-WALK-059
   it('sits on a seat, strides when walking and kicks with the right leg', () => {
     const at = (extra = {}) => ({ p: { ground: true }, riding: null, pace: 1, kicked: null, ...extra });
-    const sitting = posture(at({ riding: { entry: { ride: 'swing' }, angle: 0, stage: 0 } }), 0, 0);
+    const sitting = posture(at({ riding: { entry: { ride: 'swing' }, angle: 0, blend: 1 } }), 0, 0);
     assert.ok(sitting.thigh_L > 1.3 && sitting.thigh_R > 1.3 && sitting.shin_L < -1, 'not sitting on a swing');
     const stride = [0.5, 0.5 + Math.PI].map(phase => posture(at(), phase, 0));
     assert.ok(stride[0].thigh_L > 0.2 && stride[1].thigh_L < -0.2 && stride[0].thigh_R < -0.2, 'no stride');
@@ -235,5 +324,9 @@ describe('what the walker wears, and how their legs go', () => {
     // Through the kick: back first, then well forward, then down again.
     const kick = [0.1, 0.28, 0.6].map(s => posture(at({ pace: 0, kicked: 0 }), 0, s * 1000).thigh_R);
     assert.ok(kick[0] < 0 && kick[1] > 1 && kick[2] === 0, `the kick went ${kick}`);
+    // Sat low - a seesaw's end on the ground - the feet stay clear of it.
+    const low = posture(at({ riding: { entry: { ride: 'rock' }, angle: 0, blend: 1 } }), 0, 0, 0.07);
+    const drop = 0.115 * Math.cos(low.thigh_L) + 0.13 * Math.cos(low.thigh_L + low.shin_L);
+    assert.ok(drop <= 0.07, `the feet go ${(drop - 0.07).toFixed(3)} into the ground`);
   });
 });

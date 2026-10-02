@@ -527,7 +527,7 @@ function press(u) {
 export function ballInHands(ball) {
   return viewmodel(g => {
     const held = new THREE.Group();
-    held.position.set(-REST.x, 0.06, 0.1);
+    held.position.set(-REST.x, -0.03, 0.08);
     held.add(ball);
     g.add(held);
     for (const side of [-1, 1]) {

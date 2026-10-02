@@ -14,9 +14,10 @@
 
 import * as THREE from '../vendor/three.module.min.js';
 import { onAmenity, inAmenity, rigMatrix } from '../map/amenities.js';
-import { shaded } from '../map/shapes.js';
-import { EYE, WATER } from './walkbase.js';
+import { shaded, merge } from '../map/shapes.js';
+import { EYE, WATER, POINT } from './walkbase.js';
 import { ballInHands, viewLights, HELD_BALL } from './tools.js';
+import { makeGuide } from './trajectory.js';
 
 const RIDE_REACH = 0.5;     // how near a seat, a deck or a ladder has to be to get on
 const SIT = 0.22;           // the eye over a seat
@@ -27,6 +28,12 @@ const BODY = 0.12;          // the walker's radius, as walk.js has it
 const NEAR = 14, FAR = 26;  // a court's ball is put out within NEAR, and taken in past FAR
 const STEP = 1 / 120;       // a ball's physics step
 const NET_DEPTH = 0.08;     // how far back of its line a goal's net holds a ball, as the model has it
+const BLEND = 0.3;          // seconds getting on to a ride takes
+const SETTLE = 8;           // how fast the eye settles where it is going, getting on or off a seat
+const KICK_LAG = 0.2;       // seconds from the click to the foot meeting the ball
+const LOST = 1.2;           // seconds a ball lies off its court before it is put back
+const FLIGHT = 3;           // seconds of a ball's flight the guide looks ahead at most
+const UP = new THREE.Vector3(0, 1, 0);
 
 const BALLS = {
   soccer: { r: 0.045, bounce: 0.55, roll: 0.7 },
@@ -124,9 +131,17 @@ export const play = {
       if (this.ballHeld) this.dropBall();
     }
     this.putOutBalls();
-    for (const ball of this.balls.values()) if (ball !== this.ballHeld) this.rollBall(ball, deltaTime);
+    for (const ball of this.balls.values()) if (ball !== this.ballHeld && ball !== this.kicking?.ball) this.rollBall(ball, deltaTime);
+    if (this.kicking && (this.kicking.left -= deltaTime) <= 0) {
+      this.send(this.kicking.ball, 'kick');
+      this.kicking = null;
+    }
     this.settle(deltaTime);
-    if (this.riding) this.poseRide();
+    // Off a seat, the eye rises to standing, and the legs straighten, over a moment.
+    const settling = Math.exp(-SETTLE * deltaTime);
+    this.eyeShift = Math.abs(this.eyeShift) < 1e-3 ? 0 : this.eyeShift * settling;
+    this.unseat = this.unseat < 1e-2 ? 0 : (this.unseat || 0) * settling;
+    this.drawBallGuide();
     this.drawPlay();
   },
 
@@ -149,6 +164,8 @@ export const play = {
   /** Puts everything away: off every ride, every ball taken in. */
   endPlay() {
     if (this.riding) this.leaveRide(false);
+    this.kicking = null;
+    if (this.ballGuide) this.ballGuide.group.visible = false;
     for (const ball of this.balls.values()) this.takeIn(ball);
     this.balls.clear();
     this.ballHeld = null;
@@ -159,25 +176,38 @@ export const play = {
 
   // ---------------------------------------------------------------- riding
 
-  /** Gets on a ride. */
+  /**
+   * Gets on a ride: over BLEND seconds the walker is carried from where they stand to
+   * their place on it, and turned the way it faces.
+   */
   board(it, entry) {
-    const a = it.spec, rig = a.rigs[entry.rig];
+    const a = it.spec, rig = a.rigs[entry.rig], p = this.p;
     this.settling = this.settling.filter(s => !(s.it === it && s.rig === entry.rig));
-    const ride = { it, entry, rig, angle: rig?.rest ?? 0, speed: 0, stage: 0, along: 0 };
+    const ride = {
+      it, entry, rig, angle: rig?.rest ?? 0, speed: 0, blend: 0, yawTo: null,
+      from: { x: p.x, z: p.z, eye: p.feet + EYE },
+    };
     if (entry.ride === 'spin') {
       // Where on the deck, as an angle round it in the deck's own turn.
-      const local = inAmenity(it, a, v1.set(this.p.x, this.p.feet, this.p.z));
+      const local = inAmenity(it, a, v1.set(p.x, p.feet, p.z));
       ride.spot = Math.atan2(local[2] - entry.pivot[2], local[0] - entry.pivot[0]);
       ride.angle = 0;
     }
-    if (entry.ride === 'swing') this.p.yaw = Math.atan2(-Math.cos(it.turn), Math.sin(it.turn)); // facing along the swing: its model's +x
-    if (entry.ride === 'rock') ride.angle = entry.seat[0] ? -Math.sign(entry.seat[0]) * 0.12 : 0;
+    // Facing along a swing and a rider (their model's +x), and along a seesaw to its
+    // middle.
+    if (entry.ride === 'swing' || (entry.ride === 'rock' && !entry.seat[0])) ride.yawTo = Math.atan2(-Math.cos(it.turn), Math.sin(it.turn));
+    if (entry.ride === 'rock' && entry.seat[0]) {
+      const middle = onAmenity(it, a, entry.pivot, v1), seat = onAmenity(it, a, [entry.pivot[0] + entry.seat[0], 0, entry.pivot[2]], v2);
+      ride.yawTo = Math.atan2(-(middle.x - seat.x), -(middle.z - seat.z));
+      ride.angle = -Math.sign(entry.seat[0]) * 0.12;
+    }
+    if (entry.ride === 'slide') Object.assign(ride, slideTrack(it, entry), { s: 0, sit: 0, rise: 0 });
     this.riding = ride;
-    this.p.vy = 0;
-    this.p.fly = false;
+    p.vy = 0;
+    p.fly = false;
     this.fell = null;
     this.flung = null;
-    this.poseRide();
+    this.eyeShift = 0;
   },
 
   /**
@@ -187,9 +217,10 @@ export const play = {
   rideStep(deltaTime) {
     const r = this.riding, k = this.keys, e = r.entry, a = r.it.spec;
     const push = k.has('KeyW') || k.has('ArrowUp'), brake = k.has('KeyS') || k.has('ArrowDown');
-    if (k.has('Space') && !r.jumping) return this.leaveRide(true);
+    if (k.has('Space') && !r.jumping && r.blend >= 1) return this.leaveRide(true);
     if (!k.has('Space')) r.jumping = false;
     const dt = deltaTime;
+    r.blend = Math.min(1, r.blend + dt / BLEND);
     if (e.ride === 'swing') {
       const length = e.length * a.scale;
       r.speed += (-(REAL_G / length) * Math.sin(r.angle) - 0.08 * r.speed) * dt;
@@ -217,61 +248,73 @@ export const play = {
       if (Math.abs(r.angle) > reach) { r.angle = Math.sign(r.angle) * reach; r.speed *= -0.3; }
     } else if (e.ride === 'slide') {
       this.slideStep(r, dt);
+      if (!this.riding) return;
     }
-    this.poseRide();
+    this.poseRide(dt);
   },
 
-  // Up the ladder, along the platform, down the chute and off the end.
+  /**
+   * A slide as one run: up the ladder facing it, across the platform sitting down by
+   * its edge, down the chute gathering speed as its slope gives it, along the run-out
+   * slowing, and up off the end onto the ground. Nothing is cut from one to the next.
+   */
   slideStep(r, dt) {
-    const e = r.entry, path = e.path, a = r.it.spec, last = path.length - 2;
-    const from = onAmenity(r.it, a, path[r.stage], v1), to = onAmenity(r.it, a, path[r.stage + 1], v2);
-    const length = from.distanceTo(to);
-    if (r.stage >= e.sit && r.stage < last) {
-      const slope = Math.asin(Math.max(-1, Math.min(1, (from.y - to.y) / Math.max(1e-6, length))));
-      r.speed = Math.max(0.3, r.speed + (REAL_G * 1.6 * (Math.sin(slope) - 0.25 * Math.cos(slope))) * dt);
-    } else r.speed = r.stage === last ? Math.max(0.2, r.speed - 2 * dt) : r.stage === 0 ? 0.55 : 0.8;
-    r.along += r.speed * dt;
-    if (r.along >= length) {
-      r.along -= length;
-      r.stage++;
-      if (r.stage === e.sit) {
-        r.speed = 0.4;
-        const end = onAmenity(r.it, a, path[last], v3);
-        this.p.yaw = Math.atan2(-(end.x - to.x), -(end.z - to.z));
-      }
-      if (r.stage >= path.length - 1) {
-        const end = onAmenity(r.it, a, path[path.length - 1], v3);
+    const at = r.marks, s = r.s;
+    if (s < at.top) {
+      r.speed = 0.5;
+      r.yawTo = r.ladderYaw;
+    } else if (s < at.edge) {
+      r.speed = 0.6;
+      r.yawTo = r.chuteYaw;
+    } else if (s < at.foot) {
+      const slope = r.slopeAt(s);
+      r.speed = Math.max(0.35, r.speed + REAL_G * 1.6 * (Math.sin(slope) - 0.25 * Math.cos(slope)) * dt);
+    } else r.speed = Math.max(0.15, r.speed - 2.5 * dt);
+    if (s < at.end) r.s = Math.min(at.end, s + r.speed * dt);
+    // Sat down across the platform, up again once off the end.
+    r.sit = r.s < at.top ? 0 : r.s < at.edge ? smooth((r.s - at.top) / (at.edge - at.top)) : 1;
+    if (r.s >= at.end) {
+      r.rise = Math.min(1, r.rise + dt / 0.45);
+      r.sit = 1 - smooth(r.rise);
+      if (r.rise >= 1) {
+        const p = this.p;
         this.riding = null;
-        Object.assign(this.p, { x: end.x, z: end.z, feet: this.height(end.x, end.z), vy: 0, ground: true });
+        Object.assign(p, { feet: this.height(p.x, p.z), vy: 0, ground: true });
       }
     }
   },
 
-  /** Puts the walker where the ride has them, and the rig where it has got to. */
-  poseRide() {
+  /**
+   * Puts the walker where the ride has them - eased there from where they stood while
+   * getting on - and the rig where it has got to.
+   */
+  poseRide(dt = 0) {
     const r = this.riding;
     if (!r) return;
     const e = r.entry, it = r.it, a = it.spec, p = this.p;
-    let at;
+    let at, eye;
     if (e.ride === 'swing') {
       at = rigPoint(it, a, r.rig, r.angle, [0, -e.length, 0], v1);
-      p.feet = at.y + SIT - EYE;
+      eye = at.y + SIT;
     } else if (e.ride === 'spin') {
-      const local = [Math.cos(r.spot) * e.r, e.floor, Math.sin(r.spot) * e.r];
-      at = rigPoint(it, a, r.rig, r.angle, local, v1);
-      p.feet = at.y;
+      at = rigPoint(it, a, r.rig, r.angle, [Math.cos(r.spot) * e.r, e.floor, Math.sin(r.spot) * e.r], v1);
+      eye = at.y + EYE;
     } else if (e.ride === 'rock') {
       at = rigPoint(it, a, r.rig, r.angle, e.seat, v1);
-      p.feet = at.y + SIT - EYE;
+      eye = at.y + SIT;
     } else {
-      const path = e.path;
-      if (r.stage >= path.length - 1) return;
-      const from = onAmenity(it, a, path[r.stage], v1), to = onAmenity(it, a, path[r.stage + 1], v2);
-      at = from.lerp(to, Math.min(1, r.along / Math.max(1e-6, from.distanceTo(to))));
-      p.feet = r.stage >= e.sit ? at.y + SIT - EYE : at.y;
+      at = r.pointAt(r.s, v1);
+      eye = at.y + EYE + (SIT - EYE) * r.sit;
     }
-    p.x = at.x;
-    p.z = at.z;
+    const k = smooth(r.blend);
+    p.x = r.from.x + (at.x - r.from.x) * k;
+    p.z = r.from.z + (at.z - r.from.z) * k;
+    p.feet = r.from.eye + (eye - r.from.eye) * k - EYE;
+    if (r.yawTo !== null && dt > 0) {
+      const turn = Math.atan2(Math.sin(r.yawTo - p.yaw), Math.cos(r.yawTo - p.yaw));
+      p.yaw += turn * Math.min(1, dt * 7);
+      if (Math.abs(turn) < 1e-3 && e.ride !== 'slide') r.yawTo = null;
+    }
     if (r.rig) this.poseRig(it, e.rig, r.angle);
   },
 
@@ -284,13 +327,14 @@ export const play = {
 
   /**
    * Gets off: `jump` with Space, carried on by what the ride was doing - flung off a
-   * swing at the speed of its seat - and otherwise stepped off where it stands.
+   * swing at the speed of its seat - and otherwise stepped off where it stands. The eye
+   * eases from the seat to standing rather than jumping there (eyeShift).
    */
   leaveRide(jump) {
     const r = this.riding;
     if (!r) return;
     this.riding = null;
-    const e = r.entry, a = r.it.spec, p = this.p;
+    const e = r.entry, a = r.it.spec, p = this.p, eye = p.feet + EYE;
     if (r.rig) this.settling.push({ it: r.it, rig: e.rig, angle: r.angle, speed: r.speed, rest: r.rig.rest ?? 0, kind: e.ride, entry: e });
     let vx = 0, vz = 0, vy = 0;
     if (e.ride === 'swing' && jump) {
@@ -302,10 +346,14 @@ export const play = {
       const c = onAmenity(r.it, a, e.pivot, v1), dx = p.x - c.x, dz = p.z - c.z;
       vx = -dz * r.speed; vz = dx * r.speed;
     }
-    if (e.ride !== 'spin' && e.ride !== 'slide') p.feet = Math.max(this.height(p.x, p.z), p.feet + EYE - SIT - 0.05);
+    const seated = e.ride === 'swing' || e.ride === 'rock' || (e.ride === 'slide' && r.sit > 0.5);
+    const ground = this.height(p.x, p.z, p.feet);
+    p.feet = jump ? Math.max(ground, eye - SIT - 0.05) : e.ride === 'spin' ? p.feet : ground;
+    this.eyeShift = eye - (p.feet + EYE);
+    if (seated) this.unseat = 1;
     p.vy = jump ? Math.max(vy, 0) + 2.4 : 0;
-    p.ground = false;
-    this.fell = p.feet;
+    p.ground = !jump && p.feet <= ground;
+    this.fell = jump ? p.feet : null;
     this.flung = Math.hypot(vx, vz) > 0.05 ? { x: vx, z: vz } : null;
   },
 
@@ -342,15 +390,16 @@ export const play = {
     const p = this.p;
     for (const it of this.amenitiesNear(NEAR)) {
       for (const entry of it.spec.play) {
-        if (!entry.ball || this.balls.has(entry)) continue;
-        this.balls.set(entry, this.makeBall(it, entry));
+        // One ball to each court: keyed by the court, not by what kind of court it is.
+        if (!entry.ball || this.balls.has(it)) continue;
+        this.balls.set(it, this.makeBall(it, entry));
       }
     }
-    for (const [entry, ball] of this.balls) {
+    for (const [it, ball] of this.balls) {
       if (ball === this.ballHeld) continue;
-      if (Math.hypot(ball.it.x - p.x, ball.it.z - p.z) > FAR) {
+      if (Math.hypot(it.x - p.x, it.z - p.z) > FAR) {
         this.takeIn(ball);
-        this.balls.delete(entry);
+        this.balls.delete(it);
       }
     }
   },
@@ -362,8 +411,8 @@ export const play = {
     mesh.frustumCulled = false;
     this.scene.scene.add(mesh);
     const home = onAmenity(it, it.spec, entry.at, new THREE.Vector3());
-    home.y += spec.r;
-    const ball = { kind, it, entry, ...spec, mesh, home, pos: home.clone(), vel: new THREE.Vector3(), rest: true, lost: 0, played: null };
+    home.y = this.height(home.x, home.z, home.y + 0.5, POINT) + spec.r;
+    const ball = { kind, it, entry, ...spec, mesh, home, pos: home.clone(), vel: new THREE.Vector3(), rest: true, lost: 0, played: null, lag: 0 };
     mesh.position.copy(ball.pos);
     return ball;
   },
@@ -374,26 +423,41 @@ export const play = {
     ball.mesh.material.dispose();
   },
 
-  /** A ball's flight, bounces and roll, a frame at a time, and what it does to its court. */
+  /**
+   * A ball's flight, bounces and roll, a frame at a time, and what it does to its court.
+   * Stepped STEP at a time however long the frame was, as the guide flies it, so the
+   * ball goes where the guide said.
+   */
   rollBall(ball, deltaTime) {
-    const n = Math.max(1, Math.round(deltaTime / STEP)), h = deltaTime / n;
-    for (let i = 0; i < n; i++) this.ballStep(ball, h);
+    ball.lag += deltaTime;
+    while (ball.lag >= STEP) {
+      this.ballStep(ball, STEP);
+      ball.lag -= STEP;
+    }
     this.pushedBy(ball);
     ball.mesh.position.copy(ball.pos);
     if (ball.vel.lengthSq() > 1e-6) {
       const turn = ball.vel.length() * deltaTime / ball.r;
       ball.mesh.rotateOnWorldAxis(v1.set(ball.vel.z, 0, -ball.vel.x).normalize(), turn);
     }
-    // Lost: out of the court for a while, or in the water. Back to the middle.
-    const local = inAmenity(ball.it, ball.it.spec, ball.pos), [x0, z0, x1, z1] = ball.entry.area;
-    const outside = local[0] < x0 - 0.4 || local[0] > x1 + 0.4 || local[2] < z0 - 0.4 || local[2] > z1 + 0.4;
-    ball.lost = outside && ball.rest ? ball.lost + deltaTime : 0;
-    if (ball.lost > 4 || ball.pos.y < WATER) {
-      ball.pos.copy(ball.home);
-      ball.vel.set(0, 0, 0);
-      ball.lost = 0;
-      ball.played = null;
-    }
+    // Lost - lying off its court, up on something, out over the water, or a long way
+    // off - it is put back in the middle of its court.
+    const a = ball.it.spec, local = inAmenity(ball.it, a, ball.pos), [x0, z0, x1, z1] = ball.entry.area;
+    const off = Math.max(0, x0 - local[0], local[0] - x1, z0 - local[2], local[2] - z1) * a.scale;
+    const up = ball.rest && this.height(ball.pos.x, ball.pos.z, ball.pos.y, POINT) > ball.it.y + 0.25;
+    ball.lost = (off > 0.2 && ball.rest) || up || off > 4 ? ball.lost + deltaTime : 0;
+    if (ball.lost > LOST || ball.pos.y < WATER || off > 12) this.putBack(ball);
+  },
+
+  /** A ball back in the middle of its court, still. */
+  putBack(ball) {
+    ball.pos.copy(ball.home);
+    ball.vel.set(0, 0, 0);
+    ball.lost = 0;
+    ball.played = null;
+    ball.inNet = null;
+    ball.rest = true;
+    if (this.kicking?.ball === ball) this.kicking = null;
   },
 
   ballStep(ball, h) {
@@ -423,11 +487,12 @@ export const play = {
       else if (e.goal) this.goalLine(ball, e, was, now);
       else if (e.net) this.net(ball, e, was, now, k);
     }
-    // The ground.
-    const floor = this.height(pos.x, pos.z, pos.y);
+    // The ground, under the ball's middle: a ball does not stand on a curb it is beside.
+    const floor = this.height(pos.x, pos.z, pos.y, POINT);
     if (pos.y - ball.r < floor) {
       pos.y = floor + ball.r;
       if (vel.y < 0) {
+        ball.touched = true;
         if (vel.y < -0.4) this.bounced(ball, now);
         vel.y = -vel.y * ball.bounce;
         if (vel.y < 0.15) vel.y = 0;
@@ -466,7 +531,7 @@ export const play = {
     // In: down through the ring, from above it.
     if (was[1] > e.hoop[1] && now[1] <= e.hoop[1] && Math.hypot(now[0] - e.hoop[0], now[2] - e.hoop[2]) < e.r - rl * 0.4) {
       const swish = ball.played && !ball.played.rim;
-      this.flash(swish ? 'Swish! Two points' : 'In off the rim - two points');
+      if (!ball.ghost) this.flash(swish ? 'Swish! Two points' : 'In off the rim - two points');
       if (ball.played) ball.played.scored = true;
     }
   },
@@ -476,7 +541,7 @@ export const play = {
   goalLine(ball, e, was, now) {
     const a = ball.it.spec, x = e.from[0], side = e.goal, r = ball.r / a.scale;
     if ((was[0] - x) * side < 0 && (now[0] - x) * side >= 0 && now[2] > e.from[2] + r && now[2] < e.to[2] - r && now[1] < e.to[1]) {
-      if (ball.inNet !== e) this.flash('Goal!');
+      if (ball.inNet !== e && !ball.ghost) this.flash('Goal!');
       ball.inNet = e;
     }
     if (ball.inNet !== e) return;
@@ -502,7 +567,10 @@ export const play = {
       ball.vel.x -= 1.8 * along * c;
       ball.vel.z += 1.8 * along * s;
       ball.pos.copy(onAmenity(ball.it, ball.it.spec, [Math.sign(was[0]) * (r + 0.002), now[1], now[2]], v3));
-      if (ball.played) { ball.played.net = true; this.flash('Into the net'); }
+      if (ball.played) {
+        ball.played.net = true;
+        if (!ball.ghost) this.flash('Into the net');
+      }
     } else if (ball.played) ball.played.over = Math.sign(now[0]);
   },
 
@@ -515,7 +583,7 @@ export const play = {
     const [x0, z0, x1, z1] = ball.entry.area;
     const r = ball.r / ball.it.spec.scale;
     const inside = now[0] > x0 - r && now[0] < x1 + r && now[2] > z0 - r && now[2] < z1 + r && Math.sign(now[0]) === play.over;
-    this.flash(inside ? (play.jump ? 'Ace! A jump serve in' : 'In!') : 'Out');
+    if (!ball.ghost) this.flash(inside ? (play.jump ? 'Ace! A jump serve in' : 'In!') : 'Out');
   },
 
   // Walked into, a ball is pushed ahead; a soccer ball is dribbled.
@@ -532,8 +600,13 @@ export const play = {
 
   /** A click on a ball at hand: a soccer ball is kicked, a volleyball in the air hit, the others picked up. */
   touchBall(ball) {
-    if (ball.kind === 'soccer') return this.kick(ball);
-    if (ball.kind === 'volley' && !ball.rest && ball.pos.y - this.p.feet > 0.2) return this.hit(ball, 0.8);
+    if (ball.kind === 'soccer') {
+      // The leg is drawn back first (legs.js); the ball goes when the foot meets it.
+      this.kicked = performance.now();
+      this.kicking = { ball, left: KICK_LAG };
+      return;
+    }
+    if (ball.kind === 'volley' && !ball.rest && ball.pos.y - this.p.feet > 0.2) return this.send(ball, 'hit');
     this.ballHeld = ball;
     ball.mesh.visible = false;
     ball.vel.set(0, 0, 0);
@@ -551,74 +624,115 @@ export const play = {
     ball.vel.set(0, 0, 0);
   },
 
-  /**
-   * The ball held, let go: at a hoop of its court in view a shot is put up at it, a
-   * volleyball is served over its net, and anything else is thrown where the walker
-   * looks.
-   */
+  /** The ball held, let go: shot, served or thrown (plan). */
   throwBall(ball) {
     this.ballHeld = null;
     this.hideBall();
     ball.mesh.visible = true;
-    const p = this.p, from = this.releasePoint(ball, v1);
-    ball.pos.copy(from);
-    ball.played = { rim: false, net: false, over: 0, landed: false, jump: !p.ground };
-    if (ball.kind === 'basket') {
-      const hoop = this.target(ball, e => e.hoop, e => onAmenity(ball.it, ball.it.spec, e.hoop, new THREE.Vector3()), 0.5, 7);
-      if (hoop) {
-        // Each meter out puts a little more off the middle of the rim.
-        const d = Math.hypot(hoop.x - from.x, hoop.z - from.z), spread = 0.004 + 0.009 * d;
-        hoop.x += (Math.random() - 0.5) * 2 * spread;
-        hoop.z += (Math.random() - 0.5) * 2 * spread;
-        hoop.y += ball.r * 0.4;
-        const line = Math.atan2(hoop.y - from.y, d);
-        if (this.lob(ball, from, hoop, line + (Math.PI / 2 - line) * 0.5)) return;
-      }
-    }
-    if (ball.kind === 'volley') return this.hit(ball, p.ground ? 0.5 : 0.05);
-    ball.vel.set(-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch) + 0.25, -Math.cos(p.yaw) * Math.cos(p.pitch)).normalize().multiplyScalar(2.6);
+    this.send(ball, ball.kind === 'volley' ? 'serve' : 'throw');
+  },
+
+  /** Sets `ball` off as `how` plans it: from where it leaves, at the speed the plan gives it. */
+  send(ball, how) {
+    const plan = this.plan(ball, how);
+    ball.pos.copy(plan.from);
+    ball.vel.copy(plan.vel);
+    ball.lag = 0;
+    ball.inNet = null;
+    ball.played = { rim: false, net: false, over: 0, landed: false, jump: !this.p.ground };
   },
 
   /**
-   * A volleyball hit over its net into the other half, 60% of the way into it where the
-   * walker's look crosses, on the lowest arc from `rise` radians up that clears the
-   * net; looking away from the net, it goes where they look.
+   * Where `ball` would leave from and how fast, for `how` - 'throw' (a basketball, at
+   * the hoop of its court the walker is facing, or where they look), 'serve' and 'hit'
+   * (a volleyball, over its net), or 'kick' (a football, at the goal they are facing,
+   * or where they look): { from, vel }. The same plan sends the ball and draws its
+   * guide, so it goes where the guide shows.
    */
-  hit(ball, rise) {
-    const p = this.p, a = ball.it.spec, from = this.releasePoint(ball, new THREE.Vector3());
-    ball.pos.copy(from);
-    ball.played ||= { rim: false, net: false, over: 0, landed: false, jump: !p.ground };
+  plan(ball, how) {
+    const p = this.p, from = how === 'kick'
+      ? new THREE.Vector3(ball.pos.x, this.height(ball.pos.x, ball.pos.z, ball.pos.y, POINT) + ball.r + 0.005, ball.pos.z)
+      : this.releasePoint(ball, new THREE.Vector3());
+    const vel = new THREE.Vector3(), a = ball.it.spec;
+    const ahead = (lift, speed) => vel.set(-Math.sin(p.yaw) * Math.cos(lift), Math.sin(lift), -Math.cos(p.yaw) * Math.cos(lift)).multiplyScalar(speed);
+    if (how === 'throw') {
+      const hoop = this.target(ball, e => e.hoop, e => onAmenity(ball.it, a, e.hoop, new THREE.Vector3()), 0.5, 7);
+      if (hoop) {
+        hoop.y += ball.r * 0.4;
+        const line = Math.atan2(hoop.y - from.y, Math.hypot(hoop.x - from.x, hoop.z - from.z));
+        if (lob(from, hoop, line + (Math.PI / 2 - line) * 0.5, vel)) return { from, vel };
+      }
+      return { from, vel: ahead(p.pitch + 0.25, 2.6) };
+    }
+    if (how === 'kick') {
+      const run = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+      const goal = this.target(ball, e => e.goal, e => onAmenity(ball.it, a, [e.from[0], e.to[1] * 0.4, (e.from[2] + e.to[2]) / 2], new THREE.Vector3()), 0.3, 14);
+      if (goal && lob(from, goal, run ? 0.12 : 0.25, vel)) return { from, vel };
+      return { from, vel: ahead(Math.max(0.05, Math.min(0.7, p.pitch + 0.25)), run ? 6 : 4) };
+    }
+    // A volleyball: over its net, 60% of the way into the other half where the look
+    // crosses it, on the lowest arc that clears the net - flatter jumping.
+    const rise = how === 'hit' ? 0.8 : p.ground ? 0.5 : 0.05;
     const net = a.play.find(e => e.net);
     const here = inAmenity(ball.it, a, from);
-    const ahead = inAmenity(ball.it, a, v2.set(from.x - Math.sin(p.yaw), from.y, from.z - Math.cos(p.yaw)));
-    const lx = ahead[0] - here[0], lz = ahead[2] - here[2], side = -Math.sign(here[0]) || 1;
+    const look = inAmenity(ball.it, a, v2.set(from.x - Math.sin(p.yaw), from.y, from.z - Math.cos(p.yaw)));
+    const lx = look[0] - here[0], lz = look[2] - here[2], side = -Math.sign(here[0]) || 1;
     if (net && lx * side > 0.3 * Math.hypot(lx, lz)) {
       const [, z0, x1, z1] = ball.entry.area, depth = side * x1 * 0.6;
       const z = Math.max(z0 * 0.85, Math.min(z1 * 0.85, here[2] + lz * (depth - here[0]) / lx));
       const to = onAmenity(ball.it, a, [depth, 0, z], new THREE.Vector3());
-      to.y += ball.r;
+      to.y = this.height(to.x, to.z, to.y + 0.5, POINT) + ball.r;
       const over = { at: -here[0] / (depth - here[0]), y: ball.it.y + net.to[1] * a.scale + ball.r * 1.5 };
-      for (let angle = rise; angle < 1.3; angle += 0.04) if (this.lob(ball, from, to, angle, over)) return;
+      for (let angle = rise; angle < 1.3; angle += 0.04) if (lob(from, to, angle, vel, over)) return { from, vel };
     }
-    const lift = rise + Math.max(0, p.pitch);
-    ball.vel.set(-Math.sin(p.yaw) * Math.cos(lift), Math.sin(lift), -Math.cos(p.yaw) * Math.cos(lift)).multiplyScalar(3);
+    return { from, vel: ahead(rise + Math.max(0, p.pitch), 3) };
   },
 
-  /** Kicks a soccer ball where the walker looks, or at the goal when it is near where they look. */
-  kick(ball) {
-    const p = this.p, run = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
-    this.kicked = performance.now();
-    ball.played = { rim: false, net: false, over: 0, landed: false, jump: false };
-    ball.pos.y = Math.max(ball.pos.y, this.height(ball.pos.x, ball.pos.z) + ball.r + 0.005);
-    const goal = this.target(ball, e => e.goal, e => onAmenity(ball.it, ball.it.spec, [e.from[0], e.to[1] * 0.4, (e.from[2] + e.to[2]) / 2], new THREE.Vector3()), 0.3, 14);
-    if (goal) {
-      const d = Math.hypot(goal.x - ball.pos.x, goal.z - ball.pos.z), spread = 0.01 + 0.012 * d;
-      goal.x += (Math.random() - 0.5) * 2 * spread * Math.abs(Math.cos(ball.it.turn));
-      goal.z += (Math.random() - 0.5) * 2 * spread * Math.abs(Math.sin(ball.it.turn));
-      if (this.lob(ball, ball.pos.clone(), goal, run ? 0.12 : 0.25)) return;
+  /**
+   * The path `plan` would send `ball` on, flown by the ball's own steps (ballStep) until
+   * it first comes down, or for FLIGHT seconds: { path, point }.
+   */
+  flight(ball, plan) {
+    const ghost = this.ghost ||= { pos: new THREE.Vector3(), vel: new THREE.Vector3(), ghost: true };
+    Object.assign(ghost, {
+      kind: ball.kind, it: ball.it, entry: ball.entry, r: ball.r, bounce: ball.bounce, roll: ball.roll,
+      touched: false, inNet: null, played: { rim: false, net: false, over: 0, landed: false },
+    });
+    ghost.pos.copy(plan.from);
+    ghost.vel.copy(plan.vel);
+    const path = [plan.from.clone()];
+    for (let n = 1; n * STEP <= FLIGHT && !ghost.touched; n++) {
+      this.ballStep(ghost, STEP);
+      if (n % 2 === 0 || ghost.touched) path.push(ghost.pos.clone());
     }
-    const speed = run ? 6 : 4, lift = Math.max(0.05, Math.min(0.7, p.pitch + 0.25));
-    ball.vel.set(-Math.sin(p.yaw) * Math.cos(lift), Math.sin(lift), -Math.cos(p.yaw) * Math.cos(lift)).multiplyScalar(speed);
+    return { path, point: ghost.pos.clone().addScaledVector(UP, -ball.r) };
+  },
+
+  /** What ball the walker is about to send, and how - for the guide - or null. */
+  aiming() {
+    if (!this.freeHands() || this.riding || this.still) return null;
+    if (this.kicking) return { ball: this.kicking.ball, how: 'kick' };
+    if (this.ballHeld) return { ball: this.ballHeld, how: this.ballHeld.kind === 'volley' ? 'serve' : 'throw' };
+    const what = this.playable();
+    if (what?.kind !== 'ball') return null;
+    if (what.ball.kind === 'soccer') return { ball: what.ball, how: 'kick' };
+    if (what.ball.kind === 'volley' && !what.ball.rest && what.ball.pos.y - this.p.feet > 0.2) return { ball: what.ball, how: 'hit' };
+    return null;
+  },
+
+  /**
+   * The guide for a ball about to be sent: the same line and marker the tools are
+   * aimed by (trajectory.js), along the path it would fly.
+   *
+   * Implements: REQ-WALK-058
+   */
+  drawBallGuide() {
+    const aim = this.aiming();
+    if (!aim && !this.ballGuide) return;
+    const guide = this.ballGuide ||= makeGuide(this.scene, undefined, { spacing: 0.05, fadeIn: 0.3 });
+    if (!aim) { guide.group.visible = false; return; }
+    const { path, point } = this.flight(aim.ball, this.plan(aim.ball, aim.how));
+    guide.draw(path, point, UP, this.scene.walkCamera.position);
   },
 
   /**
@@ -635,25 +749,6 @@ export const play = {
       if (off < bestOff) { bestOff = off; best = w; }
     }
     return best;
-  },
-
-  /**
-   * Sets a ball flying from `from` to land on `to`, launched `angle` radians up. With
-   * `over` ({ at, y }), only if it is above `y` at the share `at` of the way there - a
-   * net. Whether it was set flying: not when no speed it could be given gets it there.
-   */
-  lob(ball, from, to, angle, over = null) {
-    const dx = to.x - from.x, dz = to.z - from.z, d = Math.hypot(dx, dz), dy = to.y - from.y;
-    const denominator = 2 * Math.cos(angle) ** 2 * (d * Math.tan(angle) - dy);
-    if (d < 1e-3 || denominator <= 0) return false;
-    const v = Math.sqrt(BALL_G * d * d / denominator);
-    if (!Number.isFinite(v) || v > 9) return false;
-    if (over) {
-      const t = over.at * d / (v * Math.cos(angle));
-      if (from.y + v * Math.sin(angle) * t - BALL_G * t * t / 2 < over.y) return false;
-    }
-    ball.vel.set(dx / d * v * Math.cos(angle), v * Math.sin(angle), dz / d * v * Math.cos(angle));
-    return true;
   },
 
   // Where a ball leaves the hands: in front of the eye and a little under it, or over
@@ -685,6 +780,60 @@ export const play = {
   },
 };
 
+/**
+ * The speed, into `vel`, that sends a ball from `from` to land on `to` launched `angle`
+ * radians up. With `over` ({ at, y }), only if it is above `y` at the share `at` of the
+ * way there - a net. Whether there is one: not when no speed it could be given gets it
+ * there.
+ */
+function lob(from, to, angle, vel, over = null) {
+  const dx = to.x - from.x, dz = to.z - from.z, d = Math.hypot(dx, dz), dy = to.y - from.y;
+  const denominator = 2 * Math.cos(angle) ** 2 * (d * Math.tan(angle) - dy);
+  if (d < 1e-3 || denominator <= 0) return false;
+  const v = Math.sqrt(BALL_G * d * d / denominator);
+  if (!Number.isFinite(v) || v > 9) return false;
+  if (over) {
+    const t = over.at * d / (v * Math.cos(angle));
+    if (from.y + v * Math.sin(angle) * t - BALL_G * t * t / 2 < over.y) return false;
+  }
+  vel.set(dx / d * v * Math.cos(angle), v * Math.sin(angle), dz / d * v * Math.cos(angle));
+  return true;
+}
+
+const smooth = t => t * t * (3 - 2 * t);
+
+/**
+ * A slide's path in the world, for riding by distance along it: its points, where the
+ * ladder's top, the platform's edge, the chute's foot and the end are along it
+ * (marks), which way the ladder and the chute face, and the point and the slope at
+ * any distance.
+ */
+function slideTrack(it, entry) {
+  const points = entry.path.map(at => onAmenity(it, it.spec, at, new THREE.Vector3()));
+  const along = [0];
+  for (let i = 1; i < points.length; i++) along.push(along[i - 1] + points[i].distanceTo(points[i - 1]));
+  const segment = s => {
+    let i = 1;
+    while (i < points.length - 1 && along[i] < s) i++;
+    return i;
+  };
+  const facing = (a, b) => Math.atan2(-(b.x - a.x), -(b.z - a.z));
+  const last = points.length - 1;
+  return {
+    marks: { top: along[1], edge: along[entry.sit], foot: along[last - 1], end: along[last] },
+    ladderYaw: facing(points[0], points[1]),
+    chuteYaw: facing(points[entry.sit], points[last - 1]),
+    pointAt(s, out) {
+      const i = segment(s), u = (s - along[i - 1]) / Math.max(1e-6, along[i] - along[i - 1]);
+      return out.copy(points[i - 1]).lerp(points[i], Math.max(0, Math.min(1, u)));
+    },
+    slopeAt(s) {
+      const i = segment(s), a = points[i - 1], b = points[i];
+      return Math.atan2(a.y - b.y, Math.hypot(b.x - a.x, b.z - a.z));
+    },
+  };
+}
+
 // A rig's point `local` (from its pivot) where the rig is turned `angle`.
 function rigPoint(it, a, rig, angle, local, out) {
   return out.set(...local).applyMatrix4(rigMatrix(it, a, rig, angle, m1));
@@ -711,15 +860,29 @@ function ballGeometry(kind, style, r) {
       }
       c.set(near ? '#1d1f22' : '#f4f4f0');
     } else if (kind === 'basket') {
-      const seam = Math.abs(cx) < 0.035 || Math.abs(cz) < 0.035 || Math.abs(Math.abs(cy) - 0.62) < 0.03;
-      c.set(seam ? '#2a1a12' : '#d9692b');
+      c.set('#d9692b');
     } else {
       const ax = Math.abs(cx), ay = Math.abs(cy), az = Math.abs(cz);
       c.set(ax > ay && ax > az ? '#f4f4f0' : ay > az ? '#f2c230' : '#2a5db0');
     }
     for (let k = i; k < i + 3; k++) color.setXYZ(k, color.getX(k) * c.r * 1.25, color.getY(k) * c.g * 1.25, color.getZ(k) * c.b * 1.25);
   }
-  return geo;
+  if (kind !== 'basket' || style !== 'city') return geo;
+  // A basketball's seams: two great circles across each other and a ring either side.
+  const seam = (geometry) => {
+    const g = shaded(geometry), dark = g.getAttribute('color');
+    for (let k = 0; k < dark.count; k++) dark.setXYZ(k, dark.getX(k) * 0.16, dark.getY(k) * 0.1, dark.getZ(k) * 0.08);
+    return g;
+  };
+  const tube = r * 0.028;
+  const ball = merge([
+    geo,
+    seam(new THREE.TorusGeometry(r * 1.004, tube, 4, 48)),
+    seam(new THREE.TorusGeometry(r * 1.004, tube, 4, 48).rotateY(Math.PI / 2)),
+    ...[-1, 1].map(side => seam(new THREE.TorusGeometry(r * 1.004 * Math.sqrt(1 - 0.62 ** 2), tube, 4, 48).rotateX(Math.PI / 2).translate(0, side * r * 0.62, 0))),
+  ]);
+  ball.computeVertexNormals(); // the one held is lit (showBall)
+  return ball;
 }
 
 export { BALLS, ballGeometry };

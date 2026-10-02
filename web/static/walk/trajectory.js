@@ -333,9 +333,11 @@ function nearEdge(box, eye, v) {
  * It is there to be glanced at, not looked at: the view is the city. Both are drawn
  * twice: as they are where they are in view, and fainter where a building is in front
  * of them, so the path is always there to be read and still says what is in the way.
- * Bendable like everything out there.
+ * Bendable like everything out there. `spacing` is how finely the line follows the path
+ * and `fadeIn` how far from its start it comes up to full: a ball's path is a few
+ * units long, a shot's dozens.
  */
-function makeGuide(scene, end = END) {
+export function makeGuide(scene, end = END, { spacing = SPACING, fadeIn = FADE_IN } = {}) {
   const group = new THREE.Group();
   group.visible = false;
   // Two ribbons: the faint dark edge, and the light core on it.
@@ -393,25 +395,25 @@ function makeGuide(scene, end = END) {
     draw(path, landed, normal, eye) {
       // Resampled evenly, so the ribbon bends smoothly and its fade is even.
       const points = [path[0]];
-      let next = SPACING, total = 0;
+      let next = spacing, total = 0;
       for (let i = 1; i < path.length && points.length < MOST; i++) {
         const a = path[i - 1], b = path[i], step = a.distanceTo(b);
         while (next <= total + step && points.length < MOST - 1) {
           points.push(a.clone().lerp(b, (next - total) / step));
-          next += SPACING;
+          next += spacing;
         }
         total += step;
       }
       if (points.length < MOST && path.length > 1) points.push(path[path.length - 1]);
-      const n = points.length, length = Math.max(1e-6, (n - 1) * SPACING);
+      const n = points.length, length = Math.max(1e-6, (n - 1) * spacing);
       for (let i = 0; i < n; i++) {
         const p = points[i];
         along.subVectors(points[Math.min(n - 1, i + 1)], points[Math.max(0, i - 1)]);
         toEye.subVectors(eye, p);
         side.crossVectors(along, toEye).normalize().multiplyScalar(WIDTH * toEye.length());
-        const u = (i * SPACING) / length;
+        const u = (i * spacing) / length;
         // In from nothing at the muzzle, and full from there to the marker it runs into.
-        const alpha = STRENGTH * Math.min(1, i * SPACING / FADE_IN) ** 2;
+        const alpha = STRENGTH * Math.min(1, i * spacing / fadeIn) ** 2;
         c.copy(NEAR).lerp(FAR, u);
         for (const [r, k, rgb, a] of [[edge, HALO, DARK, alpha * 0.25], [core, 1, c, alpha]]) {
           r.positions.set([p.x - side.x * k, p.y - side.y * k, p.z - side.z * k, p.x + side.x * k, p.y + side.y * k, p.z + side.z * k], i * 6);

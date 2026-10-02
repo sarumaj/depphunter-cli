@@ -17,9 +17,12 @@ prepared by `scripts/legs.py` in Blender and exported to
 `web/static/legs.glb` with the script committed as its source, standing at
 their feet, turned as they face and seen when they look down:
 
-- striding as they walk, tucked in the air, a leg at a time up a ladder;
+- striding as they walk, the lower foot on the ground; tucked in the air; a
+  leg at a time up a ladder;
 - sitting on a swing, a seesaw or a rider - thighs along the seat, shins
-  hanging - and out straight down a slide;
+  hanging, never through the ground under the seat - and out straight down a
+  slide, leaning back along its slope; sitting down and getting up over a
+  moment;
 - the right leg drawn back and swung through when they kick a ball.
 
 What the walker wears **shall** follow the map's style, on the legs and on the
@@ -40,5 +43,6 @@ where the walker is as plainly as the sky does.
 1. Looking down while walking shows the feet stepping; on a swing, the
    thighs on the seat and the shins hanging off it.
 2. A kick swings the right leg back, through and forward.
-3. The city's arms are bare to the T-shirt's sleeve; the board's are gloved
+3. Sitting on a seesaw's end at the ground, the feet are above it.
+4. The city's arms are bare to the T-shirt's sleeve; the board's are gloved
    and sleeved; the galaxy's are a spacesuit's - and the legs likewise.

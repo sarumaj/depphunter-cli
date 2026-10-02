@@ -326,6 +326,7 @@ export class Walker {
     this.balls = new Map(); // the balls out on the courts near by, by their play entry
     this.settling = [];    // rides left moving, coming to rest
     this.flung = null;     // how fast a jump off a ride carries them across the map
+    this.eyeShift = 0;     // how far the eye still is from where it is going, getting on or off a seat
     this.legs = new Legs(scene);
     this.home = null;      // where the walker stood when they last left the street
     this.radius = 40;
@@ -1751,7 +1752,7 @@ export class Walker {
       this.bank(deltaTime);
       const under = this.drown(deltaTime, now);
       const hang = this.hang();
-      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(deltaTime) + under + hang.eye,
+      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(deltaTime) + under + hang.eye + this.eyeShift,
         this.p.yaw, this.p.pitch + hang.pitch, this.roll + hang.roll);
       this.hangCanopy(now);
       // Dressed for the map: the hands' sleeves and gloves, and the legs.
@@ -2433,11 +2434,11 @@ export class Walker {
    *
    * Implements: REQ-WALK-002, REQ-WALK-032, REQ-WALK-035, REQ-CITY-018, REQ-CITY-028, REQ-CITY-034, REQ-PERF-008
    */
-  height(x, z, from = Infinity) {
+  height(x, z, from = Infinity, probes = PROBES) {
     let top = WATER;
     const city = this.scene?.style === 'city';
-    for (let i = 0; i < PROBES.length; i += 2) {
-      const px = x + PROBES[i], pz = z + PROBES[i + 1];
+    for (let i = 0; i < probes.length; i += 2) {
+      const px = x + probes[i], pz = z + probes[i + 1];
       for (const b of this.cellAt(px, pz)) {
         if (Math.abs(px - b.x) <= b.w / 2 && Math.abs(pz - b.z) <= b.d / 2) {
           top = Math.max(top, b.y + (city ? massTop(b, px, pz) : b.h));
@@ -3004,6 +3005,7 @@ const inOut = t => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 // The walker's footprint, sampled at its center and four corners (height). Flat
 // pairs, so walking it allocates nothing.
 const PROBES = [0, 0, BODY, BODY, BODY, -BODY, -BODY, BODY, -BODY, -BODY];
+
 
 const EYE_AT = new THREE.Vector3();        // where the walker is, handed to the bugs
 const HOOP_AT = new THREE.Vector3();       // ... and where the net's hoop is, likewise

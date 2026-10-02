@@ -13,6 +13,8 @@ export const EYE = 0.45;    // eye height above the feet
 export const STEP = 0.15;   // highest ledge walked up without jumping
 export const WATER = -0.45; // the water surface (layout LAND_H below the mainland)
 export const REACH = 90;    // aiming distance
+/** Walker.height's probes for a point rather than a body: what a ball rests on. */
+export const POINT = [0, 0];
 
 /** Whether the page has been asked to keep still, which the ways in respect. */
 export const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
