@@ -301,9 +301,13 @@ export function makeSky(uniforms) {
           cloud *= 0.9 + 0.1 * smoothstep(0.52, 0.75, dense); // thicker is brighter on top
           cloud += vec3(1.0, 0.88, 0.66) * (1.0 - smoothstep(0.52, 0.62, dense)) * pow(toSun, 8.0) * 1.1;
           cloud = mix(cloud, vec3(0.05, 0.06, 0.08) * (0.75 + 0.5 * lit), uNight);
-          // Cirrus, higher and so flatter, combed out along one way.
+          // Cirrus, higher and so flatter, combed out along one way. The streaks are
+          // bent before they are combed, and combed no more than three to one: noise
+          // squeezed harder than that shows the square grid it is made on, as straight
+          // pale bands across the sky.
           vec2 c = d.xz / (d.y + 0.35) * 0.7 + uCloud * 0.6;
-          c = vec2(c.x * 0.8 - c.y * 0.6, c.x * 0.6 + c.y * 0.8) * vec2(0.5, 3.5);
+          c += (vec2(vnoise(c * 0.35 + 3.1), vnoise(c * 0.35 + 8.7)) - 0.5) * 1.6;
+          c = vec2(c.x * 0.8 - c.y * 0.6, c.x * 0.6 + c.y * 0.8) * vec2(0.9, 2.6);
           float cirrus = smoothstep(0.58, 0.86, fbm(c)) * smoothstep(0.08, 0.45, d.y) * 0.3 * day;
           col = mix(col, vec3(0.97, 0.98, 1.0), cirrus);
           col = mix(col, cloud, cover * mix(0.96, 0.6, uNight));
