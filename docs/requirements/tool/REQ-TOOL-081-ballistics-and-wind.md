@@ -21,22 +21,23 @@ over minutes and in strength over seconds; drag **shall** act on a shot's speed
 through that moving air. A shot **shall** be flown in steps of a fixed length,
 so it lands in the same place at any frame rate.
 
-An aimed shot **shall** be solved before it leaves: the launcher **shall** find
-the lower of the arcs, and the lead into the wind, that put it on the mark at
-the tool's speed, and the shot **shall** fly that path, following a bug that
-walks on meanwhile. A shot the air will not carry to its mark - a bubble into
-the wind - **shall** leave towards it and go where its physics take it. The
+A shot from the hunting hand **shall** leave along the view at the tool's
+speed, carried on by the walker's own motion - running, jumping, flying - and
+fly from there under its physics, catching, tagging or biting whatever it
+reaches first; it is aimed by the path drawn for it (REQ-TOOL-082). A line from
+the off hand **shall** be solved onto the wall looked at: the lower of the
+arcs, and the lead into the wind, that put it there at the tool's speed. The
 HUD **shall** show the wind's strength, and which way it blows as the walker
 faces, in the first row of its counters.
 
 The same wind **shall** carry the walker: by a tenth of its speed while they
 walk, a fifth while they are off their feet, and nearly half under the jet
 backpack in the air; somebody standing on the ground, a jet strapped on or not,
-**shall not** be moved unless they walk. A canopy **shall** fly through the
-moving air - its lift, drag and bank answering to its speed through it - so it
-drifts with the wind, makes less headway into it, and lands slower over the
-ground into it than with it; a canopy cut away **shall** drift with the wind as
-well.
+**shall not** be moved unless they walk. A canopy **shall**
+fly through the moving air - its lift, drag and bank answering to its speed
+through it - so it drifts with the wind, makes less headway into it, and lands
+slower over the ground into it than with it; a canopy cut away **shall** drift
+with the wind as well.
 
 ## Rationale
 
@@ -49,7 +50,7 @@ two winds.
 
 ## Acceptance criteria
 
-1. An aimed dart, nail, hook or bobber lands on its mark, near and at the
+1. A hook thrown from the off hand lands on the wall looked at, near and at the
    tool's reach, in still air and in a crosswind, leading into the wind.
 2. A bubble blown into a gust does not reach a mark it reaches in still air.
 3. Over the same distance a bubble drifts with the wind more than a dart, and a

@@ -31,7 +31,7 @@ import { Wind } from './wind.js';
 import { Breeze, aim as aimShot } from './ballistics.js';
 import { tracker } from './tracker.js';
 import { shots } from './shots.js';
-import { trajectory } from './trajectory.js';
+import { trajectory, guided } from './trajectory.js';
 import { canopy } from './canopy.js';
 import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee } from './tools.js';
 import { packedChute, aloft } from './parachute.js';
@@ -288,6 +288,7 @@ export class Walker {
     this.canopies = [];
     this.rig = null;    // the canopy over the walker's head, built the first time one opens
     this.drift = { x: 0, z: 0 }; // how fast the walker was last going across the map
+    this.moving = new THREE.Vector3(); // ... and up or down: what a shot leaving the hand is carried by
     // How full each carried tool's tank is, as a share, by tool id. A tank is the
     // tool's rather than the walker's, so putting the jet down and picking it up again
     // does not refill it - but time on the ground does.
@@ -722,6 +723,8 @@ export class Walker {
     // style.css keys the crosshair off it. It is the primary's, because the crosshair
     // is what the hunt is aimed with; what the off hand carries is not aimed at all.
     this.hud.dataset.tool = this.primary.reticle || 'scope';
+    // Aimed by its guide, not by a crosshair it would not land on (trajectory.js).
+    this.hud.classList?.toggle('guided', guided(this.primary));
     if (this.handsOff) return;
     // A camera draws its children only when it is itself part of a scene, and this
     // one belongs to the pass that draws the tool over the world (MapScene.renderNow).
@@ -1697,10 +1700,14 @@ export class Walker {
       if (this.arrival) this.arrive(deltaTime);
       else if (this.dying !== null) this.fade(deltaTime);
       else {
-        const x = this.p.x, z = this.p.z;
+        const x = this.p.x, z = this.p.z, feet = this.p.feet;
         this.step(deltaTime);
-        // How fast the walker is going across the map, for a canopy thrown open now.
-        if (deltaTime > 0 && !this.still) this.drift = { x: (this.p.x - x) / deltaTime, z: (this.p.z - z) / deltaTime };
+        // How fast the walker is going across the map, for a canopy thrown open now -
+        // and, with how fast they are rising or falling, for what they throw now.
+        if (deltaTime > 0 && !this.still) {
+          this.drift = { x: (this.p.x - x) / deltaTime, z: (this.p.z - z) / deltaTime };
+          this.moving.set(this.drift.x, (this.p.feet - feet) / deltaTime, this.drift.z);
+        }
       }
       if (this.showing) this.study(deltaTime);
       this.autoFire(now);
@@ -2447,6 +2454,14 @@ export class Walker {
     return null;
   }
 
+  /** Where a world point is on the canvas, as shares of its width and height, or null behind the eye. */
+  onScreen(point) {
+    if (!point) return null;
+    const v = this.scene.bend(point.clone()).project(this.scene.walkCamera);
+    if (v.z > 1) return null;
+    return { x: (v.x + 1) / 2, y: (1 - v.y) / 2 };
+  }
+
   aimed() {
     return this.aim.i >= 0 ? this.boxes[this.aim.i] : null;
   }
@@ -2470,6 +2485,22 @@ export class Walker {
   // flat map, until it enters a box or the water.
   // Implements: REQ-TOOL-022
   updateAim() {
+    // A tool that throws is aimed by where its shot would land (trajectory.js), which is
+    // where the middle of the view is only for a shot that does not drop: the bug it
+    // would catch, the building it would tag.
+    // Implements: REQ-TOOL-082
+    if (guided(this.primary)) {
+      const at = this.prediction = this.predict();
+      const on = at?.box && !this.underfoot(at.box) ? at.box : null;
+      const i = !at?.bug && on && hits(this.primary, 'buildings') ? on.i : -1;
+      this.aim = { i, point: at?.point || null, bug: at?.bug || null, far: false, box: on };
+      this.showTarget(this.aim.bug);
+      // The hover card goes by the marker, not over the middle of the path.
+      const r = this.canvasRect, where = this.onScreen(at?.point);
+      this.hooks.onAim(i, where ? r.left + where.x * r.width : r.left + r.width / 2, where ? r.top + where.y * r.height : r.top + r.height / 2);
+      return;
+    }
+    this.prediction = null;
     const cam = this.scene.walkCamera;
     const directory = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     const v = new THREE.Vector3();

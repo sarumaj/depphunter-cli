@@ -744,15 +744,18 @@ const actions = {
             const mark = { x: B.x, y: B.y + B.h * 0.75, z: B.z };
             const yaw = Math.atan2(-(mark.x - stand.x), -(mark.z - stand.z));
             const base = Math.atan2(mark.y - (stand.feet + a.eye), Math.hypot(mark.x - stand.x, mark.z - stand.z));
-            // The view is bent round the planet, so at this distance the line of sight
-            // to the tower's middle passes over it: the pitch that meets it is searched
-            // for, from level with the mark downwards, as planHop does.
+            // Aimed as a walker aims it, by the guide (trajectory.js): the lowest pitch
+            // from level with the mark upwards whose shot would land on the tower, high
+            // up its wall, with nothing in between.
             let pitch = null;
-            for (let k = 0; k <= 60 && pitch === null; k++) {
-              w.scene.setWalker(stand.x, stand.feet, stand.z, a.eye, yaw, base - k * 0.004);
-              const hit = w.lookingAt(a.far + 10);
-              if (hit?.box === B && hit.point.y > B.y + B.h * 0.35) pitch = base - k * 0.004;
+            const keep = { ...p };
+            for (let k = 0; k <= 80 && pitch === null; k++) {
+              Object.assign(p, stand, { yaw, pitch: base + k * 0.005 });
+              w.scene.setWalker(stand.x, stand.feet, stand.z, a.eye, yaw, p.pitch);
+              const at = w.predict();
+              if (at?.box === B && at.point.y > B.y + B.h * 0.35) pitch = p.pitch;
             }
+            Object.assign(p, keep);
             if (pitch === null) continue;
             found = { stand, yaw, pitch, dist, name: B.node.name };
             break;
@@ -1093,8 +1096,20 @@ await ctx.addInitScript(() => {
       let best = null;
       const look = (yaw, pitch) => {
         w.scene.setWalker(at.x, at.feet, at.z, eye, yaw, pitch);
+        // A tool that throws is aimed by its guide (trajectory.js), from the walker's own
+        // yaw and pitch: how near the predicted path passes the bug is the miss.
+        const was = { x: w.p.x, z: w.p.z, feet: w.p.feet, yaw: w.p.yaw, pitch: w.p.pitch };
+        Object.assign(w.p, { x: at.x, z: at.z, feet: at.feet, yaw, pitch });
         w.updateAim();
+        Object.assign(w.p, was);
         if (w.aim.bug !== b) return;
+        if (w.prediction) {
+          const c = { x: b.position.x, y: b.position.y + 0.05, z: b.position.z };
+          const near = w.prediction.path.slice(0, -1);
+          const miss = Math.min(...near.map(q => Math.hypot(q.x - c.x, q.y - c.y, q.z - c.z)));
+          if (!best || miss < best.miss) best = { yaw, pitch, miss };
+          return;
+        }
         const q = w.aim.point, e = { x: at.x, y: at.feet + eye, z: at.z };
         const r = { x: q.x - e.x, y: q.y - e.y, z: q.z - e.z }, c = { x: b.position.x - e.x, y: b.position.y + 0.05 - e.y, z: b.position.z - e.z };
         const rr = r.x * r.x + r.y * r.y + r.z * r.z || 1, u = (c.x * r.x + c.y * r.y + c.z * r.z) / rr;
@@ -1106,8 +1121,11 @@ await ctx.addInitScript(() => {
       const { yaw: y1, pitch: p1 } = best;
       for (let i = -5; i <= 5; i++) for (let j = -5; j <= 5; j++) look(y1 + i * 0.005, p1 + j * 0.005);
       w.scene.setWalker(at.x, at.feet, at.z, eye, best.yaw, best.pitch);
+      const was = { x: w.p.x, z: w.p.z, feet: w.p.feet, yaw: w.p.yaw, pitch: w.p.pitch };
+      Object.assign(w.p, { x: at.x, z: at.z, feet: at.feet, yaw: best.yaw, pitch: best.pitch });
       w.updateAim();
-      return { yaw: best.yaw, pitch: best.pitch, clear: best.miss < 0.12 };
+      Object.assign(w.p, was);
+      return { yaw: best.yaw, pitch: best.pitch, clear: best.miss < (w.prediction ? 0.3 : 0.12) };
     };
     // Whether a lamp post or a tree stands between eye `e` and point `q` ({x, y, z}):
     // they are not boxes, so the game's own sight line (walker.lookingAt) goes through

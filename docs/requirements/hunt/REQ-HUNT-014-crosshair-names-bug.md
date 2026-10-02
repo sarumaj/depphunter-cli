@@ -11,8 +11,9 @@ verification:
 
 ## Statement
 
-While the reticle is on a bug that the primary tool can catch, the HUD **shall**
-show that bug's severity and finding title.
+While the reticle - or, for a tool that throws, the marker where its shot would
+land (REQ-TOOL-082) - is on a bug that the primary tool can catch, the HUD
+**shall** show that bug's severity and finding title.
 
 ## Rationale
 

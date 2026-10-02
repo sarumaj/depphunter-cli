@@ -7,7 +7,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { clamp } from '../core/numbers.js';
 import { EYE, WATER, REACH, holds, faceOf } from './walkbase.js';
 import { hits } from './tools.js';
-import { aim, along, fly, GRAVITY } from './ballistics.js';
+import { along, fly, GRAVITY } from './ballistics.js';
 
 // What a tool throws when it says nothing about how: something solid, thrown at a
 // middling speed. Every tool that throws does say (tools.js); this is here so that
@@ -15,6 +15,13 @@ import { aim, along, fly, GRAVITY } from './ballistics.js';
 const DEFAULT_FLIGHT = { speed: 24, gravity: GRAVITY, cd: 0.004 };
 // The air for a walker that has none (a test's): still.
 const CALM = new THREE.Vector3();
+// The length of one step of a shot's flight, in seconds: what it hits is looked for
+// after every one, so a nail that crosses half a unit a step cannot pass through a
+// beetle between two frames. The guide (trajectory.js) steps the same way.
+export const FLIGHT_STEP = 1 / 120;
+// The fastest the walker's own motion is passed on to what they throw: past this it was
+// not motion but a jump of position - a relayout, a teleport.
+const MOST_CARRIED = 16;
 // A line that has stuck: the longest it may pull before letting go (so a hook on
 // something that moved cannot strand anyone), how far in from a roof's edge it sets
 // the walker down, and how close a thing has to be before pulling to it is nothing.
@@ -36,12 +43,11 @@ const TRACK_REACH = 50, TRACK_AHEAD = 0.75;
 const FORWARD = new THREE.Vector3(0, 0, 1); // the dart geometry's nose
 
 export const shots = {
-  // Using the primary tool on an aimed box sends whatever it throws to the aimed
-  // point along the path its physics and the wind give it (ballistics.js aim), and it
-  // arrives - unless the air will not let it, a bubble thrown into the wind, when it
-  // leaves towards the mark and goes where the wind takes it. Used on nothing it
-  // flies ahead under the same physics until it hits something or falls into the
-  // water. A
+  // Using the primary tool sends whatever it throws off along the view, carried on by
+  // the walker's own motion, under its physics in the wind, until it hits something,
+  // falls into the water or reaches the end of its reach - the path the guide drew
+  // (trajectory.js), which is how it is aimed. A tool that throws nothing reaches
+  // what the crosshair is on. A
   // tool that throws nothing reaches what it is pointed at the moment it is used - as
   // far as it reaches, which for the camera is any distance and for the net is arm's
   // length.
@@ -56,9 +62,6 @@ export const shots = {
     this.firedAt = performance.now();
     this.swing = 0; // the hand moves whether or not anything flies
     const target = this.aimed(), bug = this.aim.bug;
-    // A copy: a shot that scatters moves where it is going, and where it is going is
-    // the crosshair's own point until the next frame recomputes it.
-    const to = bug ? bug.position.clone() : this.aim.point?.clone() || null;
 
     if (!tool.projectile) {
       // A camera keeps every frame it is used on, because pressing the shutter is what
@@ -82,24 +85,7 @@ export const shots = {
       else if (this.aim.far) this.flash(`Out of reach: the ${tool.label.toLowerCase()} has to be walked up to`);
       return;
     }
-    const shot = this.shotFrom(tool, this.viewmodel);
-    const flight = shot.flight;
-    if (bug || target) {
-      // A tool that scatters does not land where it was aimed: the nail goes wide by
-      // a share of how far it has to travel, which is nothing across a room and the
-      // width of a window at the end of its reach.
-      const dist = shot.start.distanceTo(to);
-      if (flight.spread) scatter(to, flight.spread * dist);
-      const flown = aim(shot.start, to, flight, this.airNow || CALM);
-      if (flown) {
-        Object.assign(shot, { to, target, bug, T: flown.T, path: flown.path, end: flown.vel });
-      } else {
-        shot.vel = to.clone().sub(shot.start).setLength(flight.speed);
-        shot.from = shot.start.clone();
-      }
-    } else {
-      this.loose(shot);
-    }
+    this.loose(this.shotFrom(tool, this.viewmodel));
   },
 
   /**
@@ -154,13 +140,50 @@ export const shots = {
   // Implements: REQ-TOOL-038
   /** Sends a shot off along the view, to fly on under its own physics. */
   loose(shot) {
-    const p = this.p;
-    const directory = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch) + 0.04, -Math.cos(p.yaw) * Math.cos(p.pitch));
-    if (shot.flight.spread) scatter(directory, shot.flight.spread);
-    shot.vel = directory.normalize().multiplyScalar(shot.flight.speed);
+    shot.vel = this.launch(shot.flight, new THREE.Vector3(), true);
     // Where it left from, so how far it has carried can be measured against the tool's
     // reach - and against the length of a line, for the ones that pay one out.
     shot.from = shot.start.clone();
+  },
+
+  /**
+   * How fast and which way a shot leaves, into `out`: along the view at the tool's
+   * speed, a nail knocked off line by its scatter (`scatter`, which the guide leaves
+   * out), and carried on by however the walker is moving - running, falling, flying -
+   * as anything thrown from a moving hand is.
+   *
+   * Implements: REQ-TOOL-081, REQ-TOOL-082
+   */
+  launch(flight, out, scatters = false) {
+    const p = this.p;
+    out.set(-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch) + 0.04, -Math.cos(p.yaw) * Math.cos(p.pitch));
+    if (scatters && flight.spread) scatter(out, flight.spread);
+    out.normalize().multiplyScalar(flight.speed);
+    const moving = this.moving;
+    if (moving && moving.lengthSq() < MOST_CARRIED * MOST_CARRIED) out.add(moving);
+    return out;
+  },
+
+  /**
+   * One step of a shot's flight, `h` seconds long, and what it is touching after it:
+   * steered, if it steers, and flown under its physics in the wind. Changes nothing but
+   * the shot, so the guide can fly a stand-in shot down the same path (trajectory.js).
+   * Returns { bug, box }.
+   *
+   * Implements: REQ-TOOL-081, REQ-TOOL-082
+   */
+  flightStep(dart, h) {
+    const position = dart.mesh.position, flight = dart.flight || DEFAULT_FLIGHT;
+    // A tracking dart earns the name on a miss: its fins pull it round towards
+    // whatever wall lies ahead of it, so a shot lobbed over a block still finds
+    // one. Nothing else here steers, which is the whole of the difference between
+    // it and a nail.
+    if (flight.track) this.steer(dart, flight.track * h);
+    fly(position, dart.vel, flight, this.airNow || CALM, h);
+    // Anything thrown catches a bug it passes through, if it is the kind of thing
+    // that catches bugs at all.
+    const bug = hits(dart.tool, 'bugs') ? this.bugs?.at(position) ?? null : null;
+    return { bug, box: this.boxAt(position) };
   },
 
   /**
@@ -413,19 +436,22 @@ export const shots = {
    * slows to a crawl and then climbs - and ends it on what it hits; whether it is over.
    */
   flyFree(dart, deltaTime) {
+    const n = Math.max(1, Math.ceil(deltaTime / FLIGHT_STEP - 1e-9));
+    for (let k = 0; k < n; k++) {
+      const outcome = this.landed(dart, this.flightStep(dart, deltaTime / n));
+      if (outcome) return outcome === 'over';
+    }
+    return false;
+  },
+
+  /**
+   * What a step of flight came down on (flightStep): whatever it catches, tags, bites or
+   * glances off. Returns 'over' when the shot is done, 'glanced' when it has come back
+   * off a wall (rebound flies it from there), and null to fly on.
+   */
+  landed(dart, { bug, box: hit }) {
     const m = dart.mesh;
-    const flight = dart.flight || DEFAULT_FLIGHT;
-    // A tracking dart earns the name on a miss: its fins pull it round towards
-    // whatever wall lies ahead of it, so a shot lobbed over a block still finds
-    // one. Nothing else here steers, which is the whole of the difference between
-    // it and a nail.
-    if (flight.track) this.steer(dart, flight.track * deltaTime);
-    fly(m.position, dart.vel, flight, this.airNow || CALM, deltaTime);
-    // Anything thrown catches a bug it passes through, aimed at or not - if it is
-    // the kind of thing that catches bugs at all.
-    const bug = hits(dart.tool, 'bugs') ? this.bugs?.at(m.position) : null;
     if (bug) this.bugs.catch(bug, dart.tool.catchAs);
-    const hit = this.boxAt(m.position);
     // One that has already glanced off a wall is on its way down, spent: it tags
     // nothing and bites nothing on the way.
     if (hit && !dart.glanced && !dart.tool.climbs && hits(dart.tool, 'buildings')
@@ -435,23 +461,25 @@ export const shots = {
     // cast that falls short lands on the pavement, and a line that hauls the
     // walker a step across their own street is not worth having.
     const ground = hit && (hit.kind === 'land' || hit.kind === 'terrace');
-    let glanced = false;
     if (hit && dart.tool.reel && !dart.glanced && (dart.tool.climbs || !ground)) {
-      if (!holds(dart.tool, hit, m.position)) glanced = this.glance(dart, hit);
-      else if (this.hook(m.position, hit, dart)) dart.kept = true;
+      if (!holds(dart.tool, hit, m.position)) {
+        this.glance(dart, hit);
+        return 'glanced';
+      }
+      if (this.hook(m.position, hit, dart)) dart.kept = true;
     }
     // A shot that hits nothing still has a range: what a tool reaches is what it
-    // throws that far, and a nail that sails on over the next six blocks made
-    // the reticle's own "too far" a lie. A line is shorter still - fired into
-    // the sky or out over the water a hook finds nothing to stop it, and without
-    // this it would be six seconds of a rope across the view, going nowhere.
+    // throws that far, and a nail that sails on over the next six blocks would be a
+    // shot nobody aimed. A line is shorter still - fired into the sky or out over the
+    // water a hook finds nothing to stop it, and without this it would be six seconds
+    // of a rope across the view, going nowhere.
     const gone = dart.from ? m.position.distanceTo(dart.from) : 0;
     // A tool that pays out a line ends where the line does, and says so; for
     // everything else the end is the tool's reach.
     const rope = dart.tool.reel && dart.from && gone > dart.tool.reel.max;
     const spent = !dart.tool.reel && dart.from && gone > (dart.tool.reach ?? REACH);
     if (rope) this.flash('The line ran out');
-    return !glanced && (bug || hit || rope || spent || m.position.y < WATER || dart.t > 6);
+    return bug || hit || rope || spent || m.position.y < WATER || dart.t > 6 ? 'over' : null;
   },
 
   /**
