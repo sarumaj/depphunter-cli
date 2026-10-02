@@ -316,6 +316,23 @@ describe('the pack', () => {
     assert.match(w.said.at(-1), /repacked/);
   });
 
+  // Verifies: REQ-TOOL-077
+  it('comes off on landing, leaving the off hand free while it repacks', () => {
+    const W = WALK.Walker.prototype;
+    const w = {
+      ...walker(), p: { x: 0, z: 0, feet: 0.2, vy: -2 }, active: false, laid: [], lay(kind) { this.laid.push(kind); },
+      height: () => 0, health: { touchdown: () => 0, dead: false }, drawHud() {}, touchdown: W.touchdown,
+    };
+    w.touchdown({ speed: 2, open: 1, vertical: 2 });
+    assert.deepEqual(w.laid, ['landed']);
+    assert.equal(w.secondary, null, 'the parachute is still in hand after landing');
+    // ... and repacks put away as it would in hand.
+    w.spend(TOOLS.parachute);
+    w.chute.phase = 'landed';
+    for (let t = 0; t < TOOLS.parachute.fuel.fills + 1; t += 0.05) w.burn(0.05, false);
+    assert.equal(w.tank(TOOLS.parachute), 1, 'a parachute put away did not repack');
+  });
+
   // Verifies: REQ-TOOL-078
   it('cuts the canopy loose when the hands change, and the walker falls', () => {
     const W = WALK.Walker.prototype;

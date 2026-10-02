@@ -20,7 +20,9 @@ along the repacking is. A landed canopy **shall** collapse and drape forward
 onto the ground ahead of the walker, its lines going slack and lying on the
 ground between it and where the walker came down, and fade as it is repacked.
 No line of a canopy that has been let go of **shall** rise above the canopy or
-leave the space between it and the harness.
+leave the space between it and the harness. On landing the parachute **shall**
+be put away, leaving the off hand empty; it repacks put away as it would in
+hand.
 
 ## Rationale
 
@@ -36,3 +38,5 @@ jet the way up.
 4. Collapsing, draped and cut away, every line stays between the canopy and the
    harness and below the canopy's highest point; draped, the lines lie on the
    ground.
+5. After landing nothing is in the off hand, and the parachute taken out again
+   once repacked opens.

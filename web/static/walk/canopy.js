@@ -123,6 +123,17 @@ export const canopy = {
     p.ground = true;
     p.vy = 0;
     this.lay('landed');
+    // Down is done with: the harness comes off and the off hand is free, rather than
+    // still holding a pack that is lying on the ground being repacked. It repacks as
+    // well put away as in hand (burn), and is taken out again for the next jump.
+    // Implements: REQ-TOOL-077
+    if (this.secondary?.glides) {
+      this.secondary = null;
+      if (this.active) {
+        this.showTool();
+        this.drawSlots();
+      }
+    }
     const wet = this.height(p.x, p.z, p.feet) <= WATER;
     const damage = wet ? 0 : this.health.touchdown(e.speed, e.open, dropFor(e.vertical));
     if (this.health.dead) this.die(`A landing at ${Math.round(e.speed * 3.5)} meters a second`);
