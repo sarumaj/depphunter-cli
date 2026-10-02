@@ -20,12 +20,13 @@ launched as the shot would be (REQ-TOOL-081), carried by the walker's motion,
 and flown down the same steps in the wind blowing now, steering as a tracking
 dart steers, so the shot lands at the marker unless what it lands on moves or
 the wind turns meanwhile; a nail's scatter is left out. It **shall** be worked
-out again every frame. The line **shall** be thin and bright, as wide on screen
-near as far, on a soft dark edge that keeps it legible against the sky, and
-**shall** run in its own color into the marker. Where a building is in front of
-it the path and marker **shall** still show, a little under half as strongly.
-Nothing **shall** be drawn where the shot would come down on nothing - the
-water, or past its reach - nor for a tool that throws nothing, for the
+out again every frame. The line **shall** be about a pixel wide near or far, at
+most a little over half opaque, on a faint dark edge that keeps it legible
+against the sky, coming up out of nothing over its first three units from the
+muzzle, and **shall** run in its own color into the marker. Where a building is
+in front of it the path and marker **shall** still show, at under a third of
+that. Nothing **shall** be drawn where the shot would come down on nothing -
+the water, or past its reach - nor for a tool that throws nothing, for the
 extinguisher, with the hands put away (H), while the walker is held, the wheel
 is open or a line is pulling them. A tool that has the guide **shall** have no
 crosshair: what it would catch or tag is what the guide's marker is on.
@@ -38,7 +39,8 @@ the shot drifted from it - the shot was solved onto the crosshair's point and
 the guide drawn along the view, the walker's motion and a dart's steering left
 out - and a crosshair in the middle of the view said a shot that drops would
 land where it does not. Flown by the shot's own steps, the guide is the
-path.
+path. Drawn solid and bright, it was the first thing in the view rather than
+a guide over it.
 
 ## Acceptance criteria
 
@@ -49,3 +51,5 @@ path.
 3. Nothing is drawn for a shot out over the water, for the net, the camera and
    the extinguisher, or while the walker is held.
 4. A tool with the guide shows no crosshair.
+5. The guide does not cover the view: the city reads through it, and nearest
+   the walker, where it would be widest on screen, it is not drawn at all.

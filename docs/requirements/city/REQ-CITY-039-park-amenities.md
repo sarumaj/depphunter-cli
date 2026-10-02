@@ -32,7 +32,8 @@ round chosen by the place so a map dresses the same every time:
 
 Nothing **shall** be planted on an amenity, and its posts - goalposts, a hoop's
 pole, a swing's legs, a stone - **shall** stand in the walker's way. An amenity
-lies over the park's gravel paths.
+lies over the park's gravel paths, and is seen from every side: a goal's net
+from in front of it and from behind.
 
 ## Rationale
 
@@ -50,3 +51,4 @@ a pitch was a doormat at the walker's feet.
 3. No amenity stands on a street, and no tree or bush stands on an amenity.
 4. The walker cannot walk through a goalpost, a hoop's pole or a standing
    stone.
+5. A goal's net shows from behind the goal as from in front of it.

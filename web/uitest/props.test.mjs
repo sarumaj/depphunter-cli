@@ -10,6 +10,7 @@ import { describe, it } from 'node:test';
 
 import { box } from './stub.mjs';
 
+const THREE = await import('../static/vendor/three.module.min.js');
 const { makeProps, setNight, rampsFor, rampHeight, amenitySpan, amenitiesOf } = await import('../static/map/city.js');
 const { raised, buildParameters } = await import('../static/map/buildings.js');
 
@@ -111,6 +112,9 @@ describe('what a park holds', () => {
     const tower = box('building', 0, 0, 6, 6, { y: 0.28, h: 3 });
     tower.node.parentNode = park.node;
     const group = makeProps([park, tower], m => m, 'city');
+    // A goal's net is a sheet: drawn from one face only, it vanishes from behind the goal.
+    const drawn = group.children.filter(mesh => mesh.userData.amenity !== undefined && !mesh.userData.glow);
+    assert.ok(drawn.length && drawn.every(mesh => mesh.material.side === THREE.DoubleSide), 'an amenity is drawn from one side only');
     const kinds = placed(group);
     assert.ok(kinds.flat().length, 'no amenity in a park this size');
     const { obstacles } = group.userData;

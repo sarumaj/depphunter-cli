@@ -23,9 +23,12 @@ import { FLIGHT_STEP } from './shots.js';
 
 const MOST = 160;          // points along a drawn path at most
 const SPACING = 0.25;      // units between them
-const WIDTH = 0.0022;      // the line's width, as a share of its distance: about two pixels
-const HALO = 3.2;          // how much wider the dark edge under it is, so it reads on a pale sky too
-const HIDDEN = 0.45;       // how strongly the part behind a building shows, of the rest
+const WIDTH = 0.0012;      // the line's width, as a share of its distance: about a pixel
+const HALO = 2.6;          // how much wider the faint dark edge under it is, so it reads on a pale sky too
+const HIDDEN = 0.3;        // how strongly the part behind a building shows, of the rest
+const STRENGTH = 0.6;      // the line at its strongest: a guide over the view, not a part of it
+const FADE_IN = 3;         // units from the muzzle it takes to come up to that: the near end is the
+                           // largest on screen, and the least use
 const LONGEST = 5;         // seconds of flight looked ahead at most
 const UP = new THREE.Vector3(0, 0, 1); // a ring's own normal (RingGeometry lies in xy)
 const Y = new THREE.Vector3(0, 1, 0);
@@ -89,23 +92,23 @@ export const trajectory = {
     const eye = this.scene.walkCamera.position;
     // A marker on a bug faces the eye; on a surface it lies on it.
     const normal = at.normal || guide.toEye.subVectors(eye, at.point).normalize();
-    guide.draw(at.path, at.point, normal, eye, performance.now() / 1000);
+    guide.draw(at.path, at.point, normal, eye);
   },
 };
 
 /**
- * The guide, in the walk scene: the line, a ribbon turned to face the eye and as wide
- * on screen near as far, brightening out of the muzzle and fading towards the end of
- * a shot that lands nowhere; and the marker, a ring with a dot in it, lying on what
- * the shot would strike and breathing slowly so it reads as a mark rather than a part
- * of the city. Both are drawn twice: fully where they are in view, and faintly where
- * a building is in front of them, so the path is always there to be read and still
- * says what is in the way. Bendable like everything out there.
+ * The guide, in the walk scene: the line, a ribbon a pixel or so wide turned to face
+ * the eye, half see-through, coming up out of nothing over the first few units from the
+ * muzzle; and the marker, a ring with a dot in it, lying on what the shot would strike.
+ * It is there to be glanced at, not looked at: the view is the city. Both are drawn
+ * twice: as they are where they are in view, and fainter where a building is in front
+ * of them, so the path is always there to be read and still says what is in the way.
+ * Bendable like everything out there.
  */
 function makeGuide(scene) {
   const group = new THREE.Group();
   group.visible = false;
-  // Two ribbons: the dark edge, wide and soft, and the bright core on it.
+  // Two ribbons: the faint dark edge, and the light core on it.
   const ribbon = () => {
     const positions = new Float32Array(MOST * 2 * 3), colors = new Float32Array(MOST * 2 * 4);
     const index = [];
@@ -123,7 +126,7 @@ function makeGuide(scene) {
   const marker = new THREE.Group();
   // In the line's own color where it ends, so the line runs into it rather than up to it.
   const markerParts = [
-    [new THREE.RingGeometry(0.7, 1.15, 48), '#06131f', 0.45], // its dark edge
+    [new THREE.RingGeometry(0.72, 1.1, 48), '#06131f', 0.25], // its faint dark edge
     [new THREE.RingGeometry(0.82, 1, 48), END, 1],
     [new THREE.CircleGeometry(0.2, 24), END, 1],
   ];
@@ -131,7 +134,7 @@ function makeGuide(scene) {
   const pass = (seen, opacity, order) => {
     const look = { transparent: true, depthWrite: false, depthTest: seen, side: THREE.DoubleSide };
     const lines = [edge, core].map(r => new THREE.Mesh(r.geometry, scene.bendable(new THREE.MeshBasicMaterial({ ...look, vertexColors: true, opacity }))));
-    const rings = markerParts.map(([g, color, alpha]) => new THREE.Mesh(g, scene.bendable(new THREE.MeshBasicMaterial({ ...look, color, opacity: opacity * alpha }))));
+    const rings = markerParts.map(([g, color, alpha]) => new THREE.Mesh(g, scene.bendable(new THREE.MeshBasicMaterial({ ...look, color, opacity: opacity * alpha * 0.75 }))));
     [...lines, ...rings].forEach((m, k) => { m.frustumCulled = false; m.renderOrder = order + (k % 3); });
     group.add(...lines);
     marker.add(...rings);
@@ -147,8 +150,8 @@ function makeGuide(scene) {
     group, shown, start: new THREE.Vector3(), before: new THREE.Vector3(), toEye: new THREE.Vector3(), path: [],
     // The stand-in shot the path is flown with: what flightStep needs of a shot.
     shot: { mesh: { position: new THREE.Vector3() }, vel: new THREE.Vector3(), tool: null, flight: null, lock: undefined },
-    /** Lays the line along `path` and the marker at `landed`, facing out along `normal`, as seen from `eye` at `time`. */
-    draw(path, landed, normal, eye, time) {
+    /** Lays the line along `path` and the marker at `landed`, facing out along `normal`, as seen from `eye`. */
+    draw(path, landed, normal, eye) {
       // Resampled evenly, so the ribbon bends smoothly and its fade is even.
       const points = [path[0]];
       let next = SPACING, total = 0;
@@ -169,9 +172,9 @@ function makeGuide(scene) {
         side.crossVectors(along, toEye).normalize().multiplyScalar(WIDTH * toEye.length());
         const u = (i * SPACING) / length;
         // In from nothing at the muzzle, and full from there to the marker it runs into.
-        const alpha = Math.min(1, i * SPACING / 0.5);
+        const alpha = STRENGTH * Math.min(1, i * SPACING / FADE_IN) ** 2;
         c.copy(NEAR).lerp(FAR, u);
-        for (const [r, k, rgb, a] of [[edge, HALO, DARK, alpha * 0.42], [core, 1, c, alpha]]) {
+        for (const [r, k, rgb, a] of [[edge, HALO, DARK, alpha * 0.25], [core, 1, c, alpha]]) {
           r.positions.set([p.x - side.x * k, p.y - side.y * k, p.z - side.z * k, p.x + side.x * k, p.y + side.y * k, p.z + side.z * k], i * 6);
           r.colors.set([rgb.r, rgb.g, rgb.b, a, rgb.r, rgb.g, rgb.b, a], i * 8);
         }
@@ -187,8 +190,8 @@ function makeGuide(scene) {
         marker.position.copy(landed);
         if (normal) marker.position.addScaledVector(normal, 0.015);
         marker.quaternion.setFromUnitVectors(UP, normal || Y);
-        // As large on screen near as far, and breathing a little.
-        marker.scale.setScalar(Math.max(0.07, distance * 0.026) * (1 + 0.08 * Math.sin(time * 4)));
+        // As large on screen near as far.
+        marker.scale.setScalar(Math.max(0.05, distance * 0.017));
       }
       group.visible = true;
     },

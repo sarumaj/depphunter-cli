@@ -1101,7 +1101,8 @@ export function* dressing(boxes, bendable, style = 'city') {
   const amenityAt = (it, m) => m.compose(p.set(it.x, it.y, it.z), q.setFromAxisAngle(UP, it.turn), s.setScalar(set.amenities[it.kind].scale ?? 1));
   for (const [kind, a] of (set.amenities || []).entries()) {
     const these = amenities.filter(it => it.kind === kind);
-    const scatter = yield* add(a.head, '#ffffff', these, amenityAt);
+    // Both faces: a goal's net is a sheet seen from in front of the goal and behind it.
+    const scatter = yield* add(a.head, '#ffffff', these, amenityAt, null, { side: THREE.DoubleSide });
     for (const mesh of scatter.meshes) mesh.userData.amenity = kind;
     for (const [shell, opacity] of a.glow?.shells || []) {
       const glow = yield* add(shell, a.glow.color, these, amenityAt, null, {
