@@ -31,6 +31,7 @@ import { Wind } from './wind.js';
 import { Breeze } from './ballistics.js';
 import { tracker } from './tracker.js';
 import { shots } from './shots.js';
+import { trajectory } from './trajectory.js';
 import { canopy } from './canopy.js';
 import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee } from './tools.js';
 import { packedChute, aloft } from './parachute.js';
@@ -529,6 +530,7 @@ export class Walker {
     if (this.rig?.parent) this.rig.parent.remove(this.rig);
     this.endShow(false);
     this.scene.scene.remove(this.beacons);
+    if (this.guide) this.guide.group.visible = false;
     this.bugs?.show(false);
     this.showTarget(null);
     this.hideTool();
@@ -1728,6 +1730,7 @@ export class Walker {
         this.p.yaw, this.p.pitch + hang.pitch, this.roll + hang.roll);
       this.hangCanopy(now);
       if (!this.still && !this.arrival) this.updateAim();
+      this.drawPath();
       this.scene.renderNow(true, this.resting(now));
       if (this.frozen && this.focus) this.drawFocus();
       else this.drawCatchFocus();
@@ -2765,7 +2768,7 @@ export class Walker {
   }
 }
 
-Object.assign(Walker.prototype, tracker, shots, canopy);
+Object.assign(Walker.prototype, tracker, shots, trajectory, canopy);
 
 /**
  * Where the first arrival has the walker at t (0 to 1): from behind and to the right
