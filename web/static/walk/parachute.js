@@ -256,17 +256,21 @@ function substep(chute, input, ground, climb, events) {
 
   const open = opennessOf(chute);
   const flying = liftShare(open);
+  // The canopy flies through the air, and the air moves (ballistics.js Breeze): lift
+  // and drag answer to the speed through it, and the canopy is carried over the
+  // ground by the wind on top of that - so it drifts, it makes no headway into a
+  // strong one, and a landing into the wind is a slower one over the ground.
+  // Implements: REQ-TOOL-081
+  const wind = chute.wind;
+  AIR.set(chute.vx - (wind?.x || 0), chute.vy, chute.vz - (wind?.z || 0));
+  const speed = AIR.length();
   // The heading only answers the toggles once the canopy is a wing, and a bank is
-  // what a turn at this speed needs: the lift tilted just enough to carry it round.
+  // what a turn at this airspeed needs: the lift tilted just enough to carry it round.
   chute.turnRate += (TURN_RATE * chute.turn * flying - chute.turnRate) * (1 - Math.exp(-h / TURN_TAU));
   chute.heading += chute.turnRate * h;
-  const level = Math.hypot(chute.vx, chute.vz);
+  const level = Math.hypot(AIR.x, AIR.z);
   const bank = Math.atan2(level * chute.turnRate, CHUTE_GRAVITY);
   chute.bank += (bank - chute.bank) * (1 - Math.exp(-h / BANK_TAU));
-
-  // The air goes by at the walker's own velocity; there is no wind on the map.
-  AIR.set(chute.vx, chute.vy, chute.vz);
-  const speed = AIR.length();
   const trim = trimAt(flaring ? NEUTRAL_BRAKE : Math.min(chute.brake, DEEP_BRAKE));
   const [flareLift, flareDrag] = flareAt(chute.flare);
   // An opening canopy is a drogue: drag in proportion to how much of it has filled,
@@ -886,6 +890,7 @@ const DRAPE_TIME = 1.6, FADE_FROM = 0.65;
 // drifting - forward on what is left of its trim, and down - how quickly it turns
 // and how far it empties.
 const DRIFT_TIME = 6, DRIFT_TAU = 1.2, DRIFT_SPEED = 1.4, DRIFT_SINK = 1.1, DRIFT_SPIN = 0.35;
+const DRIFTING = new THREE.Vector3();
 
 /**
  * A canopy the walker has let go of: landed and lying in the street, or cut away and
@@ -935,8 +940,8 @@ export class LooseCanopy {
     this.update(0);
   }
 
-  /** One frame of it; returns false once it is gone and has been taken off the map. */
-  update(deltaTime) {
+  /** One frame of it, in a wind of `wind` ({x, z}); returns false once it is gone and has been taken off the map. */
+  update(deltaTime, wind = null) {
     this.t += deltaTime;
     const look = this.look, rig = this.rig;
     look.time = this.time + this.t;
@@ -956,7 +961,10 @@ export class LooseCanopy {
     } else {
       // Empty and flying itself: it slows into a drift, sinks, turns slowly away and
       // empties, trailing its lines and risers from where the walker was.
-      this.velocity.lerp(this.drift, 1 - Math.exp(-deltaTime / DRIFT_TAU));
+      // An empty canopy goes where the wind takes it.
+      DRIFTING.copy(this.drift);
+      if (wind) { DRIFTING.x += wind.x; DRIFTING.z += wind.z; }
+      this.velocity.lerp(DRIFTING, 1 - Math.exp(-deltaTime / DRIFT_TAU));
       rig.position.addScaledVector(this.velocity, deltaTime);
       rig.rotateY(DRIFT_SPIN * deltaTime);
       look.deflate = Math.min(0.55, this.t / 5);

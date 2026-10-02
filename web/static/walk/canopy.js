@@ -72,7 +72,7 @@ export const canopy = {
     const turn = (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0);
     // Wherever something else has put the walker since the last frame - a relayout,
     // the edge of the map - is where the canopy is.
-    Object.assign(chute, { x: p.x, z: p.z, feet: p.feet });
+    Object.assign(chute, { x: p.x, z: p.z, feet: p.feet, wind: this.airNow });
     const heading = chute.heading;
     const events = stepChute(chute, { forward, turn, flare: k.has('Space') }, deltaTime,
       (x, z, from) => this.height(x, z, from), STEP);
@@ -241,7 +241,7 @@ export const canopy = {
 
   /** One frame of every canopy left lying about or drifting off. */
   updateCanopies(deltaTime) {
-    if (this.canopies.length) this.canopies = this.canopies.filter(c => c.update(deltaTime));
+    if (this.canopies.length) this.canopies = this.canopies.filter(c => c.update(deltaTime, this.airNow));
   },
 
   /** Takes every canopy that was left behind off the map. */

@@ -70,6 +70,10 @@ const TURN = 2.2;           // radians per second with the arrow keys
 // into a bank and back out of it (per second).
 const BANK_PER_TURN = 0.22, BANK_SIDE = 0.16, BANK_MAX = 0.42, BANK_EASE = 4;
 const MIN_R = 6, MAX_R = 2000;
+// How much of the wind's speed the walker is carried by (stride): walking, in the
+// air on their own, and under a jet.
+const WALK_DRIFT = 0.1, AIR_DRIFT = 0.2, FLY_DRIFT = 0.45;
+const CALM = new THREE.Vector3();
 const RADIUS_EASE = 9; // per second: a change of radius is nineteen-twentieths done in a third of a second
 // Implements: REQ-WALK-011
 const MAX_LOOK_STEP = 250;  // pixels; larger pointer movements are glitches, not looks
@@ -1997,9 +2001,15 @@ export class Walker {
     // Implements: REQ-WALK-041
     const ok = h => h <= climb
       && (h > WATER || p.fly || !p.ground || wet || afloat || (step && p.feet - h <= WADE_IN));
-    const nx = p.x + move.x * speed * deltaTime;
+    // The wind leans on the walker as well as on what they throw: a little while they
+    // walk, more while they are off their feet, and most under a jet, which holds
+    // them up but does not hold them still. Standing, their feet hold them.
+    // Implements: REQ-TOOL-081
+    const air = this.airNow || CALM;
+    const lean = p.fly ? FLY_DRIFT : !p.ground ? AIR_DRIFT : move.magnitude > 0 ? WALK_DRIFT * Math.min(1, move.magnitude) : 0;
+    const nx = p.x + (move.x * speed + air.x * lean) * deltaTime;
     if (ok(this.height(nx, p.z, p.feet)) && !this.railed(p.x, p.z, nx, p.z)) p.x = nx;
-    const nz = p.z + move.z * speed * deltaTime;
+    const nz = p.z + (move.z * speed + air.z * lean) * deltaTime;
     if (ok(this.height(p.x, nz, p.feet)) && !this.railed(p.x, p.z, p.x, nz)) p.z = nz;
     return afloat;
   }

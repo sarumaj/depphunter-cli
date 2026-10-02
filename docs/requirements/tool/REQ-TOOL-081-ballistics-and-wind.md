@@ -1,6 +1,6 @@
 ---
 id: REQ-TOOL-081
-title: Shots fly by their physics, through the wind
+title: Shots, the walker and the canopy in the wind
 scope: tool
 type: functional
 priority: should
@@ -29,13 +29,22 @@ the wind - **shall** leave towards it and go where its physics take it. The
 HUD **shall** show the wind's strength, and which way it blows as the walker
 faces.
 
+The same wind **shall** carry the walker: by a tenth of its speed while they
+walk, a fifth while they are off their feet, and nearly half under the jet
+backpack; somebody standing still **shall not** be moved. A canopy **shall**
+fly through the moving air - its lift, drag and bank answering to its speed
+through it - so it drifts with the wind, makes less headway into it, and lands
+slower over the ground into it than with it; a canopy cut away **shall** drift
+with the wind as well.
+
 ## Rationale
 
 An aimed shot slid from the muzzle to the mark along a curve drawn to fit, and
 a miss was moved a frame at a time, so its drop and drag depended on the frame
 rate; nothing blew. A dart's lob, a nail's flatness and a bubble that drifts are
 what their physics make of them, and a wind is what makes a long lob a shot to
-judge.
+judge. A wind that moved bubbles and left a parachute hanging still would be
+two winds.
 
 ## Acceptance criteria
 
@@ -46,3 +55,7 @@ judge.
    dart more than a nail.
 4. A shot flown at 20 frames a second ends within 0.05 of the same shot at 140.
 5. The HUD's wind arrow turns as the walker turns.
+6. Walking, in the air and under the jet the walker is carried downwind, the
+   more the less they are on their feet; standing, they are not.
+7. A canopy opened in a crosswind drifts with it; landed into the wind it
+   arrives slower over the ground than landed with it.

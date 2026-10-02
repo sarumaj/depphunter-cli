@@ -1356,3 +1356,27 @@ describe('the planet changing size', () => {
     assert.equal(w.shownRadius, 80);
   });
 });
+
+describe('the walker in the wind', () => {
+  // A walker as far as a stride concerns it, on flat open ground.
+  function walker(p) {
+    return Object.assign(Object.create(WALK.Walker.prototype), {
+      p: { x: 0, z: 0, feet: 0, ground: true, fly: false, ...p }, airNow: new THREE.Vector3(2, 0, 0),
+      height: () => 0, railed: () => false, spans: new Map(), secondary: null, dry: new Set(),
+    });
+  }
+  const still = { x: 0, y: 0, z: 0, magnitude: 0 }, ahead = { x: 0, y: 0, z: -1, magnitude: 1 };
+
+  // Verifies: REQ-TOOL-081
+  it('leaves somebody standing where they stand, and leans on them more the less they hold on', () => {
+    const standing = walker(), walking = walker(), jumping = walker({ ground: false, feet: 0.3 }), flying = walker({ fly: true, feet: 3 });
+    standing.stride(still, 3.2, 1);
+    walking.stride(ahead, 3.2, 1);
+    jumping.stride(ahead, 3.2, 1);
+    flying.stride(ahead, 10, 1);
+    assert.equal(standing.p.x, 0, 'the wind moved somebody standing still');
+    assert.ok(walking.p.x > 0 && walking.p.x < jumping.p.x && jumping.p.x < flying.p.x,
+      `carried ${walking.p.x} walking, ${jumping.p.x} in the air, ${flying.p.x} under a jet`);
+    assert.ok(flying.p.x < 2, 'a jet held nothing against the wind');
+  });
+});

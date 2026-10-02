@@ -516,3 +516,24 @@ describe('the canopy as drawn', () => {
     assert.ok(canopies().every(o => !o.visible), 'a canopy over a walker standing in the street');
   });
 });
+
+describe('a canopy in the wind', () => {
+  // Verifies: REQ-TOOL-081
+  it('is carried over the ground by the wind, at its own airspeed', () => {
+    const still = thrown(60), blown = Object.assign(thrown(60), { wind: { x: 2, z: 0 } });
+    fly(still, 12);
+    fly(blown, 12);
+    // Thrown open with no way on, it is carried for the whole of it, opening included.
+    const drift = blown.x - still.x;
+    assert.ok(Math.abs(drift - 24) < 3, `a canopy in a crosswind of 2 drifted ${drift} in 12 seconds`);
+    assert.ok(Math.abs(blown.z - still.z) < 1, 'a crosswind changed how far it flew along its heading');
+  });
+
+  // Verifies: REQ-TOOL-081
+  it('comes down slower over the ground into the wind than with it', () => {
+    const into = landing(Object.assign(glidingAt(10), { wind: { x: 0, z: 2 } }));
+    const downwind = landing(Object.assign(glidingAt(10), { wind: { x: 0, z: -2 } }));
+    assert.ok(into.horizontal < downwind.horizontal - 3, `${into.horizontal} into the wind, ${downwind.horizontal} with it`);
+    assert.ok(into.speed < downwind.speed, 'a landing into the wind was no softer');
+  });
+});
