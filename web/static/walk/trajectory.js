@@ -147,7 +147,7 @@ export const trajectory = {
   /** Draws, moves or hides the guide for this frame, from this.prediction (updateAim). */
   drawPath() {
     const guide = this.guide ||= makeGuide(this.scene);
-    const wanted = this.active && guided(this.primary) && !this.handsOff && !this.still && !this.frozen
+    const wanted = this.active && guided(this.primary) && !this.bare && !this.still && !this.frozen
       && !this.showing && !this.arrival && this.dying === null && !this.wheel?.open && !this.pull;
     const at = wanted && this.prediction;
     this.drawLock(at?.lock || null);
@@ -284,7 +284,7 @@ export const trajectory = {
   /** Draws, moves or hides the off hand's line guide for this frame, from this.linePlan. */
   drawLine() {
     const tool = this.secondary;
-    const wanted = this.active && tool?.reel && !this.handsOff && !this.still && !this.frozen && !this.showing
+    const wanted = this.active && tool?.reel && !this.still && !this.frozen && !this.showing
       && !this.arrival && this.dying === null && !this.wheel?.open && !this.pull
       && !(tool.fuel && (this.dry.has(tool.id) || this.tank(tool) <= 0));
     const plan = wanted ? (this.linePlan = this.planLine(tool)) : (this.linePlan = null);

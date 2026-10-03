@@ -357,3 +357,41 @@ describe('clothes as layers', () => {
     assert.ok([...sleeve.getAttribute('cloth').array].every(k => k === CLOTH.knit));
   });
 });
+
+const { TOOLS } = await import('../static/walk/tools.js');
+
+describe('empty hands', () => {
+  const holding = () => Object.assign(Object.create(WALK.Walker.prototype), {
+    active: false, primary: TOOLS.nailer, secondary: TOOLS.grapple, bare: false, stowed: null, showing: null,
+    dry: new Set(), p: { fly: false }, hooks: {}, keys: new Set(), darts: [], firing: false, scene: {},
+  });
+
+  // Verifies: REQ-TOOL-032
+  it('puts both tools down with H, so a click uses none, and takes them out again', () => {
+    const w = holding();
+    w.setHandsOff(true);
+    assert.equal(w.secondary, null, 'the left hand still holds its tool');
+    assert.ok(w.bare && w.handsOff && w.freeHands());
+    let used = false;
+    w.playClick = () => false;
+    w.shotFrom = () => { used = true; return {}; };
+    w.frozen = false;
+    w.wheel = { open: false };
+    w.dying = null;
+    w.fire();
+    assert.equal(used, false, 'a click with empty hands used the tool put down');
+    w.setHandsOff(false);
+    assert.equal(w.secondary, TOOLS.grapple, 'the left hand\'s tool did not come back');
+    assert.ok(!w.bare && w.primary === TOOLS.nailer);
+  });
+
+  // Verifies: REQ-TOOL-032
+  it('puts the right hand\'s tool down on its own key, and its key takes it out', () => {
+    const w = holding();
+    w.secondary = null;
+    w.putDown();
+    assert.ok(w.bare && w.freeHands());
+    w.setTool('nailer');
+    assert.ok(!w.bare);
+  });
+});

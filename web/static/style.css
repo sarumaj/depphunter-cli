@@ -747,6 +747,8 @@ main { position: relative; flex: 1; min-height: 0; }
 /* A tool that throws is aimed by the path drawn for its shot (trajectory.js); a mark in
    the middle of the view would say the shot lands there, and one that drops does not. */
 #walk-hud.guided .crosshair { display: none; }
+/* Nothing in the right hand: a dot where the walker is looking, for what to play with. */
+#walk-hud[data-tool="bare"] .crosshair { width: 5px; height: 5px; border: 0; background: var(--text); opacity: 0.8; }
 /* The bug the next shot is locked on to (trajectory.js drawLock): four corners round it,
    in the guide's own color, placed by the script and sized by how far off it is. */
 #walk-hud .w-lock {

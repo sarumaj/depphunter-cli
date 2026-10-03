@@ -320,7 +320,8 @@ export class Walker {
     this.offSwing = -1;         // ... and the left hand's
     this.pace = 0;              // how hard the walker is moving, for the tool's sway
     this.p = { x: 0, z: 0, feet: 0, vy: 0, yaw: 0, pitch: 0, ground: true, fly: false };
-    this.handsOff = false; // H: the view with nothing held in it
+    this.bare = false;     // the right hand holding nothing: its tool put down
+    this.stowed = null;    // what the left hand held before H put everything down
     this.riding = null;    // the ride the walker is on (play.js)
     this.ballHeld = null;  // the ball in their hands
     this.balls = new Map(); // the balls out on the courts near by, by their play entry
@@ -716,22 +717,45 @@ export class Walker {
   // ------------------------------------------------------------------ the tool
 
   /** Put the hand and its tool in front of the camera. */
+  /** Whether both hands are empty: the right hand's tool put down and nothing in the left. */
+  get handsOff() { return this.bare && !this.secondary; }
+  set handsOff(off) { this.bare = off; }
+
   /**
-   * Whether anything is held. An empty view is worth having - a hand and a rod take
-   * up the lower right of the screen, and a screenshot or a look straight down at a
-   * street wants neither - so H puts the tool away and takes it out again. It is only
-   * the drawing: the tool still works, and a shot with nothing in hand leaves from
-   * the walker's eye, which is where it left from before any of them had a muzzle.
+   * H: both hands' tools put down, or taken out again. Put down is put down - nothing
+   * in hand works, as with the left hand when its key puts its tool away - and an empty
+   * view is worth having: a hand and a rod take up the lower right of the screen, and a
+   * screenshot or a look straight down at a street wants neither. What was in the left
+   * hand comes back with the right.
    *
    * Implements: REQ-TOOL-032
    */
   setHandsOff(off) {
-    this.handsOff = off;
+    if (off) {
+      this.stowed = this.secondary?.id ?? null;
+      if (this.secondary) this.setTool(this.secondary.id); // puts it down, as its key does
+      this.bare = true;
+    } else {
+      this.bare = false;
+      if (this.stowed && !this.secondary) this.setTool(this.stowed);
+      this.stowed = null;
+    }
     if (!this.active) return;
-    if (off) this.hideTool(); else this.showTool();
+    this.showTool();
+    this.drawSlots();
     const back = this.secondary ? `${this.primary.label} and ${this.secondary.label.toLowerCase()}` : this.primary.label;
-    this.flash(off ? 'Empty-handed - H takes them out again' : `${back} back in hand`);
+    this.flash(off ? 'Both hands empty - H takes the tools out again' : `${back} back in hand`);
     this.drawHud();
+  }
+
+  /** The right hand's tool put down, and nothing in it - its own key, pressed again. */
+  putDown() {
+    this.bare = true;
+    this.firing = false;
+    if (!this.active) return;
+    this.showTool();
+    this.drawSlots();
+    this.flash(`${this.primary.label} put down - its key takes it out again`);
   }
 
   // Implements: REQ-TOOL-001, REQ-TOOL-006, REQ-TOOL-028
@@ -740,9 +764,9 @@ export class Walker {
     // The reticle is the tool's, not the tool's name: several tools share one, and
     // style.css keys the crosshair off it. It is the primary's, because the crosshair
     // is what the hunt is aimed with; what the off hand carries is not aimed at all.
-    this.hud.dataset.tool = this.primary.reticle || 'scope';
+    this.hud.dataset.tool = this.bare ? 'bare' : this.primary.reticle || 'scope';
     // Aimed by its guide, not by a crosshair it would not land on (trajectory.js).
-    this.hud.classList?.toggle('guided', guided(this.primary));
+    this.hud.classList?.toggle('guided', !this.bare && guided(this.primary));
     if (this.handsOff) return;
     // A camera draws its children only when it is itself part of a scene, and this
     // one belongs to the pass that draws the tool over the world (MapScene.renderNow).
@@ -757,7 +781,7 @@ export class Walker {
     // same amount, the picture is identical and nothing can reach it.
     this.held = new THREE.Group();
     this.held.scale.setScalar(VIEW_NEAR);
-    this.viewmodel = this.take(this.primary);
+    this.viewmodel = this.bare ? null : this.take(this.primary);
     if (this.secondary) this.offhand = this.take(this.secondary, true);
     this.scene.walkCamera.add(this.held);
   }
@@ -823,6 +847,7 @@ export class Walker {
       if (was?.glides && this.secondary !== was) cut = this.cutAwayCanopy();
     } else {
       this.primary = tool;
+      this.bare = false;
       this.swing = -1;
     }
     // Flight is a thing you are carrying, not a mode you are in: putting the jet
@@ -896,7 +921,7 @@ export class Walker {
     }
     // Two of them are in hand at once now, so two of them are lit.
     for (const el of row.querySelectorAll('.w-slot')) {
-      const out = el.dataset.tool === this.primary.id || el.dataset.tool === this.secondary?.id;
+      const out = (!this.bare && el.dataset.tool === this.primary.id) || el.dataset.tool === this.secondary?.id;
       el.setAttribute('aria-selected', String(out));
     }
   }
@@ -1568,7 +1593,8 @@ export class Walker {
     // Implements: REQ-TOOL-033, REQ-TOOL-054
     const digit = toolForKey(e.code);
     if (digit) {
-      if (digit !== this.primary.id) this.setTool(digit);
+      if (digit !== this.primary.id || this.bare) this.setTool(digit);
+      else this.putDown();
       return;
     }
     switch (e.code) {
@@ -1804,7 +1830,7 @@ export class Walker {
    */
   autoFire(now) {
     const every = this.primary.auto;
-    if (!every || !this.firing || this.still || this.dying !== null) return;
+    if (!every || this.bare || !this.firing || this.still || this.dying !== null) return;
     if (now - this.firedAt < every * 1000) return;
     this.fire(); // which is what sets the clock for the next one
   }

@@ -64,6 +64,7 @@ export const shots = {
     if (this.showing) return this.endShow();
     // Empty-handed, a click near something to play with plays with it (play.js).
     if (this.playClick()) return;
+    if (this.bare) return; // nothing in the right hand to use
     const tool = this.primary;
     this.firedAt = performance.now();
     this.swing = 0; // the hand moves whether or not anything flies
