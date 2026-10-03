@@ -349,7 +349,7 @@ describe('balls, rides and the guide, kept honest', () => {
   });
 });
 
-const { posture } = await import('../static/walk/legs.js');
+const { posture, CONTACT } = await import('../static/walk/legs.js');
 const { EYE, POINT } = await import('../static/walk/walkbase.js');
 const { outfitAt, SKIN } = await import('../static/walk/hands.js');
 
@@ -374,9 +374,23 @@ describe('what the walker wears, and how their legs go', () => {
     const stride = [0.5, 0.5 + Math.PI].map(phase => posture(at(), phase, 0));
     assert.ok(stride[0].thigh_L > 0.2 && stride[1].thigh_L < -0.2 && stride[0].thigh_R < -0.2, 'no stride');
     assert.equal(posture(at({ pace: 0 }), 1, 0).thigh_L, 0, 'standing still strides');
-    // Through the kick: back first, then well forward, then down again.
-    const kick = [0.1, 0.28, 0.6].map(s => posture(at({ pace: 0, kicked: 0 }), 0, s * 1000).thigh_R);
-    assert.ok(kick[0] < 0 && kick[1] > 1 && kick[2] === 0, `the kick went ${kick}`);
+    // Through the kick: drawn back with the heel up, the knee whipped straight as the
+    // foot meets the ball under the hips, swung on up, and stood again; the other knee
+    // giving all the while.
+    const kick = s => posture(at({ pace: 0, kicked: 0 }), 0, s * 1000);
+    const back = kick(0.12), strike = kick(CONTACT), up = kick(0.36), done = kick(0.7);
+    assert.ok(back.thigh_R < -0.4 && back.shin_R < -1.2, `drawn back ${back.thigh_R}, ${back.shin_R}`);
+    assert.ok(Math.abs(strike.thigh_R) < 0.5 && strike.shin_R > -0.6 && strike.foot_R < -0.3, `at the ball ${JSON.stringify(strike)}`);
+    assert.ok(up.thigh_R > 1 && up.shin_R > -0.3, `followed through ${up.thigh_R}`);
+    assert.ok(back.shin_L < -0.2 && strike.shin_L < -0.2, 'the standing leg is stiff');
+    assert.ok(done.thigh_R === 0, `still kicking: ${done.thigh_R}`);
+    // Eased: no joint jumps from one frame to the next.
+    let worst = 0;
+    for (let t = 0; t < 0.7; t += 1 / 60) {
+      const [a, b] = [kick(t), kick(t + 1 / 60)];
+      for (const joint of ['thigh_R', 'shin_R', 'foot_R', 'thigh_L', 'shin_L']) worst = Math.max(worst, Math.abs((b[joint] || 0) - (a[joint] || 0)));
+    }
+    assert.ok(worst < 0.45, `a joint turns ${worst.toFixed(2)} in a frame`);
     // Sat low - a seesaw's end on the ground - the feet stay clear of it.
     const low = posture(at({ riding: { entry: { ride: 'rock' }, angle: 0, blend: 1 } }), 0, 0, 0.07);
     const drop = 0.115 * Math.cos(low.thigh_L) + 0.13 * Math.cos(low.thigh_L + low.shin_L);

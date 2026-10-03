@@ -20,11 +20,27 @@ import { fabric } from './cloth.js';
 const HIP = 0.245;   // the hips over the feet, as the model has them
 const SIT = 0.22;    // the eye over a seat (play.js)
 const BEHIND = 0.03;  // the hips behind the eye
-const KICK = 0.45;   // seconds a kick takes
 const SOLE = 0.024;  // from the ankle down to the sole
 const THIGH = 0.115, SHIN = 0.13; // hip to knee, and knee to sole
 const SEATED = 1.5;  // how far forward a seated thigh is turned
 const SEAT_UP = 0.03; // the hips over a seat: the thighs' thickness, sat on
+
+/** Seconds into a kick that the foot meets the ball. */
+export const CONTACT = 0.26;
+
+// A kick, as keys through which it is eased: seconds in; the right thigh, shin and
+// foot; the left thigh and shin, the planted leg giving at the knee. Drawn back with
+// the heel up, whipped through at the knee into the ball, swung on up and let down.
+const KICK_KEYS = [
+  [0, 0, 0, 0, 0, 0],
+  [0.12, -0.55, -1.5, -0.3, 0.12, -0.3],
+  [0.21, -0.15, -1.35, -0.5, 0.16, -0.36],
+  [CONTACT, 0.3, -0.4, -0.55, 0.16, -0.36],
+  [0.36, 1.05, -0.1, -0.4, 0.12, -0.3],
+  [0.46, 0.85, -0.45, -0.1, 0.08, -0.2],
+  [0.66, 0, 0, 0, 0, 0],
+];
+const KICK_JOINTS = ['thigh_R', 'shin_R', 'foot_R', 'thigh_L', 'shin_L'];
 
 let model = null, loading = null;
 
@@ -212,12 +228,22 @@ export function posture(w, phase, now, room = Infinity) {
       pose[joint] = (pose[joint] || 0) + (to - (pose[joint] || 0)) * sit;
     }
   }
-  // A kick: the right leg drawn back, then through and up.
   const since = (now - (w.kicked ?? -Infinity)) / 1000;
-  if (since < KICK) {
-    const u = since / KICK;
-    pose.thigh_R = u < 0.35 ? -0.6 * (u / 0.35) : -0.6 + 1.9 * Math.min(1, (u - 0.35) / 0.3) - 1.3 * Math.max(0, (u - 0.65) / 0.35);
-    pose.shin_R = u < 0.35 ? -1.2 * (u / 0.35) : -1.2 * Math.max(0, 1 - (u - 0.35) / 0.25);
-  }
+  if (since >= 0 && since < KICK_KEYS.at(-1)[0]) Object.assign(pose, kickPose(since));
+  return pose;
+}
+
+// The kick `since` seconds in, eased through its keys as a Catmull-Rom spline: no
+// stop at any of them.
+function kickPose(since) {
+  let i = 1;
+  while (KICK_KEYS[i][0] < since) i++;
+  const k0 = KICK_KEYS[Math.max(0, i - 2)], k1 = KICK_KEYS[i - 1], k2 = KICK_KEYS[i], k3 = KICK_KEYS[Math.min(KICK_KEYS.length - 1, i + 1)];
+  const t = (since - k1[0]) / (k2[0] - k1[0]), t2 = t * t, t3 = t2 * t;
+  const pose = {};
+  KICK_JOINTS.forEach((joint, j) => {
+    const [a, b, c, d] = [k0[j + 1], k1[j + 1], k2[j + 1], k3[j + 1]];
+    pose[joint] = 0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (3 * b - a - 3 * c + d) * t3);
+  });
   return pose;
 }

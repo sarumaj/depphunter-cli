@@ -18,6 +18,7 @@ import { shaded, merge } from '../map/shapes.js';
 import { EYE, WATER, POINT } from './walkbase.js';
 import { ballInHands, viewLights, HELD_BALL } from './tools.js';
 import { makeGuide } from './trajectory.js';
+import { CONTACT } from './legs.js';
 
 const RIDE_REACH = 0.5;     // how near a seat, a deck or a ladder has to be to get on
 const SIT = 0.22;           // the eye over a seat
@@ -31,7 +32,6 @@ const STEP = 1 / 120;       // a ball's physics step
 const NET_DEPTH = 0.08;     // how far back of its line a goal's net holds a ball, as the model has it
 const BLEND = 0.3;          // seconds getting on to a ride takes
 const SETTLE = 8;           // how fast the eye settles where it is going, getting on or off a seat
-const KICK_LAG = 0.2;       // seconds from the click to the foot meeting the ball
 const LOST = 1.2;           // seconds a ball lies off its court before it is put back
 const FLIGHT = 3;           // seconds of a ball's flight the guide looks ahead at most
 const FLOOR_CELL = 4;        // the grid the amenities' floors are found by
@@ -636,7 +636,7 @@ export const play = {
     if (ball.kind === 'soccer') {
       // The leg is drawn back first (legs.js); the ball goes when the foot meets it.
       this.kicked = performance.now();
-      this.kicking = { ball, left: KICK_LAG };
+      this.kicking = { ball, left: CONTACT };
       return;
     }
     if (ball.kind === 'volley' && !ball.rest && ball.pos.y - this.p.feet > 0.2) return this.send(ball, 'hit');

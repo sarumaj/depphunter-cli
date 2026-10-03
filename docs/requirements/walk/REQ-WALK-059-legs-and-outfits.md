@@ -23,7 +23,9 @@ their feet, turned as they face and seen when they look down:
   shins hanging - and out straight down a slide, leaning back along its slope;
   sitting down and getting up over a moment. Sat anywhere, no leg **shall** go
   through the seat, the chute ahead or the ground under it;
-- the right leg drawn back and swung through when they kick a ball.
+- kicking a ball, the right leg drawn back with the heel up, whipped through at
+  the knee to meet the ball under the hips as it leaves, and swung on up and
+  down again, eased all the way, while the standing knee gives.
 
 What the walker wears **shall** follow the map's style, on the legs and on the
 hands and arms alike: in a city a T-shirt, shorts and sneakers, the arms bare
@@ -49,7 +51,8 @@ where the walker is as plainly as the sky does.
 
 1. Looking down while walking shows the feet stepping; on a swing, the
    thighs on the seat and the shins hanging off it.
-2. A kick swings the right leg back, through and forward.
+2. A kick draws the right leg back, strikes the ball with it under the hips,
+   and follows through high, with no joint jumping between frames.
 3. Sitting on a seesaw's end at the ground, the feet are above it; all the
    way down a slide and along its run-out, the legs are on the chute and the
    ground, not in them.
