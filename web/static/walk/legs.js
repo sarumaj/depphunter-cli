@@ -24,6 +24,7 @@ const STOOP = 0.035;  // ... and further behind it looking straight down: the he
 const SOLE = 0.024;  // from the ankle down to the sole
 const THIGH = 0.115, SHIN = 0.13; // hip to knee, and knee to sole
 const SEATED = 1.5;  // how far forward a seated thigh is turned
+const STRADDLE = 0.75; // how far a thigh is turned out astride a car
 const SEAT_UP = 0.03; // the hips over a seat: the thighs' thickness, sat on
 
 /** Seconds into a kick that the foot meets the ball. */
@@ -128,15 +129,17 @@ export class Legs {
     const room = seat - w.height(p.x, p.z, seat);
     // Down a chute, the legs out ahead along half its slope, as a rider holds them -
     // turned about the hips, which stay on the seat.
+    // Sat, the body faces the seat's way, not where the walker looks.
+    const look = w.rideYaw?.() ?? p.yaw, yaw = p.yaw + Math.atan2(Math.sin(look - p.yaw), Math.cos(look - p.yaw)) * sit;
     const r = w.riding, slide = r?.entry.ride === 'slide' ? r : null;
     const slope = slide && r.s > r.marks.edge && r.s < r.marks.foot ? r.slopeAt(r.s) : 0;
     this.lean = (this.lean || 0) + (slope * 0.5 * sit - (this.lean || 0)) * Math.min(1, deltaTime * 8);
     const behind = BEHIND + STOOP * Math.min(1, Math.max(0, -p.pitch) / (Math.PI / 2));
-    const hipsAt = HIPS.set(p.x + Math.sin(p.yaw) * behind, y + HIP, p.z + Math.cos(p.yaw) * behind);
-    this.tilt(this.lean, p.yaw, hipsAt);
+    const hipsAt = HIPS.set(p.x + Math.sin(yaw) * behind, y + HIP, p.z + Math.cos(yaw) * behind);
+    this.tilt(this.lean, yaw, hipsAt);
     this.phase = (this.phase + deltaTime * 7.5 * Math.max(0.5, w.pace || 0)) % (Math.PI * 2);
     const pose = posture(w, this.phase, performance.now(), room);
-    for (const name of ['thigh_L', 'thigh_R', 'shin_L', 'shin_R', 'foot_L', 'foot_R']) this.turn(name, pose[name] || 0);
+    for (const name of ['thigh_L', 'thigh_R', 'shin_L', 'shin_R', 'foot_L', 'foot_R']) this.turn(name, pose[name] || 0, pose[`${name}_out`] || 0);
     // Sat, no foot goes under what is beneath it - the chute ahead, the ground: the
     // legs are lifted about the hips until the lower one clears it.
     if (sit > 0) {
@@ -153,7 +156,7 @@ export class Legs {
       }
       if (short > 0 && reach > 0.05) {
         this.lean -= Math.asin(Math.min(1, short / reach));
-        this.tilt(this.lean, p.yaw, hipsAt);
+        this.tilt(this.lean, yaw, hipsAt);
       }
     }
     // The legs lean about the hips; the torso stays upright under the eye.
@@ -174,11 +177,12 @@ export class Legs {
     this.group.updateMatrixWorld(true);
   }
 
-  // Bends one joint forward by `angle` from its rest.
-  turn(name, angle) {
+  // Bends one joint forward by `angle` from its rest, and turns it `out` about its own
+  // length: a thigh turned out, its knee bent, straddles.
+  turn(name, angle, out = 0) {
     const joint = this.bones?.get(name);
     if (!joint) return;
-    joint.bone.quaternion.copy(joint.rest).multiply(TURN.setFromAxisAngle(X, angle));
+    joint.bone.quaternion.copy(joint.rest).multiply(OUT.setFromAxisAngle(Y, out)).multiply(TURN.setFromAxisAngle(X, angle));
   }
 
   dispose() {
@@ -186,7 +190,7 @@ export class Legs {
   }
 }
 
-const X = new THREE.Vector3(1, 0, 0), TURN = new THREE.Quaternion(), AT = new THREE.Vector3(), HIPS = new THREE.Vector3(), ON = new THREE.Vector3();
+const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), TURN = new THREE.Quaternion(), OUT = new THREE.Quaternion(), AT = new THREE.Vector3(), HIPS = new THREE.Vector3(), ON = new THREE.Vector3();
 
 /**
  * How far the walker is sat down, 0 to 1: on a swing, a seesaw, a rider or a car once on it,
@@ -225,12 +229,14 @@ export function posture(w, phase, now, room = Infinity) {
   if (sit > 0) {
     // Thighs out along the seat; shins hanging - no lower than the room under the seat
     // allows - or out straight down a slide.
-    let down = ride === 'slide' ? 0.1 : ride === 'swing' ? 1.25 + 0.4 * Math.sin(r.angle * 2) : ride === 'drive' ? 0.9 : 1.4;
+    let down = ride === 'slide' ? 0.1 : ride === 'swing' ? 1.25 + 0.4 * Math.sin(r.angle * 2) : ride === 'drive' ? 1.2 : 1.4;
     const reach = Math.max(-1, Math.min(1, (room - 0.01 - THIGH * Math.cos(SEATED)) / SHIN));
     down = Math.min(down, SEATED - Math.acos(reach));
     for (const [joint, to] of [['thigh_L', SEATED], ['thigh_R', SEATED], ['shin_L', -down], ['shin_R', -down]]) {
       pose[joint] = (pose[joint] || 0) + (to - (pose[joint] || 0)) * sit;
     }
+    // Astride a car, the thighs turned out round its body and the feet down beside it.
+    if (ride === 'drive') Object.assign(pose, { thigh_L_out: STRADDLE * sit, thigh_R_out: -STRADDLE * sit });
   }
   const since = (now - (w.kicked ?? -Infinity)) / 1000;
   if (since >= 0 && since < KICK_KEYS.at(-1)[0]) Object.assign(pose, kickPose(since));

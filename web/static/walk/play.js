@@ -248,9 +248,9 @@ export const play = {
     if (entry.ride === 'slide') Object.assign(ride, slideTrack(it, entry), { s: 0, sit: 0, rise: 0 });
     if (entry.ride === 'drive') {
       ride.car = this.carOf(it, entry);
-      const t = it.turn + ride.car.yaw;
-      ride.yawTo = Math.atan2(-Math.cos(t), Math.sin(t));
+      ride.yawTo = this.carYaw(it, ride.car);
     }
+    ride.facing = ride.yawTo ?? p.yaw;
     this.riding = ride;
     p.vy = 0;
     p.fly = false;
@@ -341,6 +341,24 @@ export const play = {
       bumped = true;
     }
     if (bumped) car.speed *= -0.25;
+  },
+
+  /** The yaw, as the walker's, of an amenity's car's heading. */
+  carYaw(it, car) {
+    const t = it.turn + car.yaw;
+    return Math.atan2(-Math.cos(t), Math.sin(t));
+  },
+
+  /**
+   * Which way the walker's body faces on a ride, whichever way they look: along a seat,
+   * a car's heading, a slide's ladder and chute; on a roundabout's deck, as they look.
+   */
+  rideYaw() {
+    const r = this.riding;
+    if (!r || r.entry.ride === 'spin') return this.p.yaw;
+    if (r.entry.ride === 'drive') return this.carYaw(r.it, r.car);
+    if (r.entry.ride === 'slide') return r.s < r.marks.top ? r.ladderYaw : r.s < r.marks.edge ? r.chuteYaw : r.headingAt(r.s);
+    return r.facing;
   },
 
   /** Where an amenity's car is: off its spot once driven - { x, z, yaw, speed }, as its model has them. */

@@ -24,7 +24,10 @@ slide. The legs **shall** be posed:
 - striding as they walk, the lower foot on the ground; tucked in the air; a
   leg at a time up a ladder;
 - sitting on a swing, a seesaw or a rider - on the seat, thighs along it,
-  shins hanging - and out straight down a slide, leaning back along its slope;
+  shins hanging - astride a bobby car, the thighs turned out round its body and
+  the feet down beside it, and out straight down a slide, leaning back along
+  its slope; sat, the body faces the way the seat or the car does, whichever
+  way the walker looks;
   sitting down and getting up over a moment. Sat anywhere, no leg **shall** go
   through the seat, the chute ahead or the ground under it;
 - kicking a ball, the right leg drawn back with the heel up, whipped through at

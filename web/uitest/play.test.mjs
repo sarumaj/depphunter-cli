@@ -225,6 +225,10 @@ describe('playing in the parks', () => {
     run(w, 1, ['KeyW', 'KeyA']);
     assert.ok(car.yaw - yaw > 0.5, 'A did not steer');
     assert.ok(Math.abs(w.p.yaw - view - (car.yaw - yaw)) < 1e-9, 'the view did not turn with the car');
+    // Looking aside, the body stays facing the way the car goes.
+    w.p.yaw += 1.2;
+    assert.ok(Math.abs(w.rideYaw() - w.carYaw(it, car)) < 1e-9, 'the body turned with the look');
+    w.p.yaw -= 1.2;
     // Held at full speed a long while, it stays on the playground's ground.
     run(w, 8, ['KeyW']);
     const [x0, z0, x1, z1] = SPACE_PARK.floors[0];
@@ -463,6 +467,9 @@ describe('what the walker wears, and how their legs go', () => {
       for (const joint of ['thigh_R', 'shin_R', 'foot_R', 'thigh_L', 'shin_L']) worst = Math.max(worst, Math.abs((b[joint] || 0) - (a[joint] || 0)));
     }
     assert.ok(worst < 0.45, `a joint turns ${worst.toFixed(2)} in a frame`);
+    // Astride a car, the thighs turned out round it, one each way.
+    const astride = posture(at({ riding: { entry: { ride: 'drive' }, blend: 1 } }), 0, 0);
+    assert.ok(astride.thigh_L_out > 0.5 && astride.thigh_R_out < -0.5 && astride.thigh_L > 1.3, `astride a car ${JSON.stringify(astride)}`);
     // Sat low - a seesaw's end on the ground - the feet stay clear of it.
     const low = posture(at({ riding: { entry: { ride: 'rock' }, angle: 0, blend: 1 } }), 0, 0, 0.07);
     const drop = 0.115 * Math.cos(low.thigh_L) + 0.13 * Math.cos(low.thigh_L + low.shin_L);
