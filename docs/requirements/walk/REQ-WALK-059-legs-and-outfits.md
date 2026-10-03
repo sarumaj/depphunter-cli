@@ -15,6 +15,10 @@ verification:
 Walk mode **shall** draw the walker's whole body - the legs, the torso, the
 arms and a head with a face - a model prepared by `scripts/body.py` in Blender
 and exported to `web/static/body.glb` with the script committed as its source,
+the body a real person's: MakeHuman's CC0 base mesh, rig and skin weights, fetched
+pinned by tag and checksum by `scripts/human.py`, shaped as MakeHuman's default
+young man and stood as the walk poses a body, the clothes painted on it and stood
+off it where cloth is, their edges straight and sharp,
 standing at their feet, turned as they face and seen when they look down. The
 chest **shall** be seen only from outside, never cut through: the eye is over
 it and a little ahead, the further ahead the further down they look, as a head
@@ -102,3 +106,5 @@ where the walker is as plainly as the sky does.
 10. On a swing, a seesaw, a spring rider, a roundabout and a bobby car the hands
     are on its chains, handles, handlebar, bar or wheel, one each side; on a
     roundabout the walker stands beside the bar they hold.
+11. The body is a person's - a face, shoulders, elbows and knees as a body has
+    them - in every style, and the edges of what is worn run straight round it.

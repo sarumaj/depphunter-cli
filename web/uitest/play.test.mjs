@@ -627,7 +627,7 @@ describe('what the walker wears, and how their legs go', () => {
     assert.ok(midKick.upperarm_L[0] > 0.5 && midKick.upperarm_R[0] < 0, 'the arms do not answer a kick');
     // Sat low - a seesaw's end on the ground - the feet stay clear of it.
     const low = posture(at({ riding: { entry: { ride: 'rock' }, angle: 0, blend: 1 } }), 0, 0, 0.07);
-    const drop = 0.115 * Math.cos(low.thigh_L) + 0.13 * Math.cos(low.thigh_L + low.shin_L);
+    const drop = 0.115 * Math.cos(low.thigh_L) + 0.14 * Math.cos(low.thigh_L + low.shin_L);
     assert.ok(drop <= 0.07, `the feet go ${(drop - 0.07).toFixed(3)} into the ground`);
   });
 });

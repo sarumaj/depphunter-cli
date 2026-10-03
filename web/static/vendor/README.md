@@ -28,6 +28,13 @@ the model, adds the forearm it has no use for and rebuilds its rig, and
 `scripts/body.py` exports it with the body, whose hands are the same; the hand
 itself is theirs.
 
+The body in `../body.glb` is MakeHuman's: `scripts/human.py` takes its base mesh,
+default rig and skin weights (`makehumancommunity/makehuman` at `v1.2.0`) and the
+targets that shape its default young man (`makehumancommunity/mpfb2` at `v2.0.8`),
+all CC0 - `makehuman.LICENSE`. The script stands the body as the walk poses it and
+folds its rig into the walk's few bones, and `scripts/body.py` dresses it and puts
+the hand above on its forearms; the body is theirs.
+
 `../bug.glb` is not from anywhere: `scripts/bug.py` models the beetle in Blender
 out of spheres and cones, because neither pack has an insect in it and a beetle
 is simple enough to say out loud.

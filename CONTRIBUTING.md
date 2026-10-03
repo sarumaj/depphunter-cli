@@ -262,13 +262,18 @@ finding is modeled rather than sourced, since neither pack contains an insect:
 severity's color, a dark head and thorax, and six independently animated
 legs.
 
-The walker's whole body is modeled too, in the same file: `scripts/body.py`
-writes `web/static/body.glb` with the hand rig as it is (`hand_rig`) and the
-body's rig (`body_rig`) with three meshes skinned to it, one for each style's
-outfit, colored with vertex colors and marked with the fabric each vertex is
-(`_CLOTH`). The body's forearms and hands are the same hand, cut at the elbow
-and scaled down, its finger bones copied with their names, so the hands seen on
-the body are the ones held before the eye. The first-person hand is not
+The walker's whole body is in the same file. It is not modeled here either:
+`scripts/human.py` takes MakeHuman's CC0 base mesh, rig and skin weights, pinned
+by tag and checksum, shapes it as MakeHuman's default young man, stands it as the
+walk poses a body and folds its rig into the walk's few bones. `scripts/body.py`
+dresses it - each outfit painted on it face by face, cut along its edges so they
+are straight, and stood off the skin where cloth is - and writes
+`web/static/body.glb` with the hand rig as it is (`hand_rig`) and the body's rig
+(`body_rig`) with three meshes skinned to it, one for each style's outfit, colored
+with vertex colors and marked with the fabric each corner is (`_CLOTH`). The
+body's forearms end in the same hand, cut part way up the forearm and scaled to
+the body, its finger bones copied with their names, so the hands seen on the body
+are the ones held before the eye. The first-person hand is not
 remodeled for the outfits; its sleeves and gloves are layers cut from the arm's
 own mesh at load time (`web/static/walk/cloth.js`), which also shades every
 fabric with its weave.

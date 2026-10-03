@@ -25,12 +25,13 @@ import { closeHand, closeFinger } from './hands.js';
 import { viewLights, skinMaterial } from './tools.js';
 import { EYE } from './walkbase.js';
 
-const HIP = 0.245;   // the hips over the feet, as the model has them
+// The body as scripts/body.py builds it, on MakeHuman's joints (scripts/human.py).
+const HIP = 0.256;   // the hips over the feet
 const SIT = 0.22;    // the eye over a seat (play.js)
-const BEHIND = 0.03;  // the hips behind the eye
+const BEHIND = 0.037;  // the hips behind the eye
 const STOOP = 0.035;  // ... and further behind it looking straight down: the head bent forward over the chest
-const SOLE = 0.024;  // from the ankle down to the sole
-const THIGH = 0.115, SHIN = 0.13; // hip to knee, and knee to sole
+const SOLE = 0.02;   // from the ankle down to the sole
+const THIGH = 0.115, SHIN = 0.14; // hip to knee, and knee to sole
 const SEATED = 1.5;  // how far forward a seated thigh is turned
 const STRADDLE = 0.75; // how far a thigh is turned out astride a car
 const SEAT_UP = 0.03; // the hips over a seat: the thighs' thickness, sat on
@@ -54,13 +55,14 @@ const KICK_JOINTS = ['thigh_R', 'shin_R', 'foot_R', 'thigh_L', 'shin_L'];
 
 let model = null;
 
-// The model's geometry ready to draw: its normals, which the fabric is lit by
-// (cloth.js), and which fabric each vertex is (_CLOTH, from scripts/body.py).
+// The model's geometry ready to draw: which fabric each vertex is (_CLOTH, from
+// scripts/body.py), as cloth.js reads it. Its normals are the file's, smooth across
+// where one color meets another and the vertices are split.
 const prepared = new Map();
 function prepare(geometry) {
   if (prepared.has(geometry)) return prepared.get(geometry);
   const out = geometry.clone();
-  out.computeVertexNormals();
+  if (!out.getAttribute('normal')) out.computeVertexNormals();
   const kinds = out.getAttribute('_cloth');
   out.setAttribute('cloth', kinds || new THREE.Float32BufferAttribute(new Array(out.getAttribute('position').count).fill(0), 1));
   out.deleteAttribute('_cloth');
@@ -447,7 +449,7 @@ export function posture(w, phase, now, room = Infinity) {
 // How each arm is held, ride by ride: the upper arm forward, the forearm bent up from the
 // elbow and the arm out from the side - holding a swing's chains, the handles of a
 // seesaw or a rider, a car's wheel, a roundabout's rail, the sides of a chute.
-const REST_ARM = [0.3, 0.55, 0.1];
+const REST_ARM = [0.3, 0.55, -0.04];
 const HOLDS = {
   swing: [0.35, 1.7, 0.12],
   rock: [0.8, 0.9, -0.05],
@@ -465,7 +467,7 @@ const HOLDS = {
  */
 function arms(pose, w, phase, sit, kick) {
   const p = w.p, r = w.riding, ride = r?.entry.ride, pace = Math.min(1.6, w.pace || 0);
-  const set = (side, forward, bend, out = 0.06) => {
+  const set = (side, forward, bend, out = -0.04) => {
     pose[`upperarm_${side}`] = [forward, out];
     pose[`forearm_${side}`] = [bend, 0];
     pose[`hand_${side}`] = [0, 0];
