@@ -34,8 +34,8 @@ const BLEND = 0.3;          // seconds getting on to a ride takes
 const SETTLE = 8;           // how fast the eye settles where it is going, getting on or off a seat
 const LOST = 1.2;           // seconds a ball lies off its court before it is put back
 const FLIGHT = 3;           // seconds of a ball's flight the guide looks ahead at most
-const SWAY = 0.525;         // how far a held button swings a ball's strength either side of ...
-const MID = 0.975;          // ... its middle, from soft (0.45) to hard (1.5)
+/** How hard a held button sends a ball, as a share of its usual speed: from soft, up to hard and down again, every cycle seconds. */
+export const STRENGTH = { soft: 0.4, hard: 1.6, cycle: 3.2 };
 const FINE = 0.15;          // the share of the walker's pace left at a ball, or with one in the hands ...
 const CLOSE = 1.6;          // ... and how far off a ball their full pace comes back
 const SEEN = 6;             // how near a bobby car is noticed
@@ -64,11 +64,12 @@ const m1 = new THREE.Matrix4();
 
 /**
  * How hard a ball is sent, as a share of its usual speed, after the button has been held
- * `held` seconds: a tap sends it as usual; held, it swings up to hard, down to soft and
- * back, every two seconds, so letting go when it is right is the knack.
+ * `held` seconds: a tap sends it soft; held, it grows steadily to hard, falls back to
+ * soft, and again, for as long as it is held - letting go when it is right is the knack.
  */
 export function strength(held) {
-  return MID + SWAY * Math.sin(Math.PI * held + Math.asin((1 - MID) / SWAY));
+  const { soft, hard, cycle } = STRENGTH, u = (held / cycle) % 1;
+  return soft + (hard - soft) * (1 - Math.abs(2 * u - 1));
 }
 
 export const play = {
@@ -217,7 +218,7 @@ export const play = {
 
   /** How hard a ball would go now: as the button has been held, or as a kick under way was. */
   strengthNow() {
-    return this.charging ? strength(this.charging.held) : this.kicking ? this.kicking.strength : 1;
+    return this.charging ? strength(this.charging.held) : this.kicking ? this.kicking.strength : strength(0);
   },
 
   /** Every frame: the balls, the rides settling back, and the line saying what a click would do. */
@@ -277,7 +278,7 @@ export const play = {
       const what = this.playable();
       if (this.charging) {
         // How hard it would go, as a bar from soft to hard.
-        const { kind, ball } = this.charging.what, filled = Math.round((strength(this.charging.held) - (MID - SWAY)) / (2 * SWAY) * 10);
+        const { kind, ball } = this.charging.what, filled = Math.round((strength(this.charging.held) - STRENGTH.soft) / (STRENGTH.hard - STRENGTH.soft) * 10);
         const verb = kind === 'held' ? (ball.kind === 'basket' ? 'shoot' : 'serve') : ball.kind === 'soccer' ? 'kick' : 'hit';
         text = `Let go to ${verb} · ${'▮'.repeat(filled)}${'▯'.repeat(10 - filled)}`;
       } else if (what && !this.freeHands()) text = this.secondary ? 'Put down what is in your left hand to play' : 'H puts your tools away to play';

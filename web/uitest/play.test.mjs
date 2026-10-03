@@ -12,7 +12,7 @@ const THREE = await import('../static/vendor/three.module.min.js');
 const { amenitiesFor, onAmenity, inAmenity } = await import('../static/map/amenities.js');
 const { PAINT } = await import('../static/map/shapes.js');
 const WALK = await import('../static/walk/walk.js');
-const { strength } = await import('../static/walk/play.js');
+const { strength, STRENGTH } = await import('../static/walk/play.js');
 
 const CITY = amenitiesFor('city');
 const [PITCH, COURT, VOLLEY, PLAYGROUND, ROUNDABOUT] = CITY;
@@ -77,6 +77,13 @@ function aimFor(w, ball, how, wanted) {
   }
   assert.ok(good.length, `nowhere to look sends the ${ball.kind} where it should go`);
   w.p.pitch = good[good.length >> 1];
+}
+
+/** Presses the button to send a ball and holds it until the ball would go `hard` times its usual speed (STRENGTH). */
+function windUp(w, hard) {
+  w.playClick();
+  assert.ok(w.charging, 'the button wound nothing up');
+  run(w, (hard - STRENGTH.soft) / (STRENGTH.hard - STRENGTH.soft) * STRENGTH.cycle / 2);
 }
 
 const swing = PLAYGROUND.play.find(e => e.ride === 'swing');
@@ -255,6 +262,7 @@ describe('playing in the parks', () => {
       const ball = ballAtFeet(w, 'basket');
       assert.equal(w.playClick(), true);
       assert.ok(w.ballHeld, 'the ball was not picked up');
+      windUp(w, 1);
       aimFor(w, ball, 'throw', f => f.played.scored);
       // Shot as usual from the line, the hoop is in view - a little under the middle of it
       // - and the guide ends in the ring, where the ball drops through the rim's height.
@@ -263,7 +271,6 @@ describe('playing in the parks', () => {
       assert.ok(w.p.pitch - look > 0 && w.p.pitch - look < 0.4, `the shot wants the eye ${(w.p.pitch - look).toFixed(2)} over the rim`);
       const end = w.rimCrossing(ball, w.flight(ball, w.plan(ball, 'throw')).path).point;
       assert.ok(Math.abs(end.y - rim.y) < 1e-9 && Math.hypot(end.x - rim.x, end.z - rim.z) < 0.028 * court.scale, `the guide ends at ${end.toArray()}`);
-      w.playClick();
       w.playRelease();
       run(w, 3);
       assert.ok(said.some(s => /two points/.test(s)), `the shot in the ${style}: ${said}`);
@@ -276,8 +283,8 @@ describe('playing in the parks', () => {
     for (const turn of [0, Math.PI / 2]) {
       const { w, said } = walker(PITCH, [0.55, 0, 0], [0.85, 0.05, 0], turn);
       const ball = ballAtFeet(w, 'soccer');
+      windUp(w, 1);
       aimFor(w, ball, 'kick', f => f.played.goal);
-      w.playClick();
       w.playRelease();
       run(w, 3);
       assert.ok(said.includes('Goal!'), `the kick: ${said}`);
@@ -291,13 +298,13 @@ describe('playing in the parks', () => {
       const { w, it, said } = walker(VOLLEY, [-0.8, 0, 0.1], [0.5, 0, 0], jump ? Math.PI / 2 : 0);
       const ball = ballAtFeet(w, 'volley');
       w.playClick();
+      windUp(w, 1);
       if (jump) Object.assign(w.p, { feet: 0.3, ground: false });
       // Over the net and down well inside the far half.
       aimFor(w, ball, 'serve', ({ played, point }) => {
         const [x, , z] = inAmenity(it, VOLLEY, point);
         return !played.net && played.over === 1 && x > 0.2 && x < 0.7 && Math.abs(z) < 0.3;
       });
-      w.playClick();
       w.playRelease();
       run(w, 4);
       assert.ok(said.includes(jump ? 'Ace! A jump serve in' : 'In!'), `the ${jump ? 'jump ' : ''}serve: ${said}`);
@@ -363,24 +370,33 @@ describe('balls, rides and the guide, kept honest', () => {
   });
 
   // Verifies: REQ-WALK-058
-  it('winds a shot up while the button is held, harder then softer, and a tap sends it as usual', () => {
-    assert.ok(Math.abs(strength(0) - 1) < 1e-9, 'a tap is not the usual strength');
+  it('winds a shot up from soft while the button is held, to hard and back, over and over', () => {
+    const { soft, hard, cycle } = STRENGTH;
+    assert.equal(strength(0), soft, 'a tap is not the softest');
     const { w, play } = walker(COURT, [-0.3, 0, 0], [-0.565, 0.25, 0]);
     const ball = ballAtFeet(w, 'basket');
     w.playClick();
     assert.ok(w.ballHeld && !w.charging, 'picking a ball up waited for the button');
-    const speed = () => w.plan(ball, 'throw').vel.length(), usual = speed();
+    const speed = () => w.plan(ball, 'throw').vel.length(), base = speed() / soft;
+    // Held: steadily harder for half the cycle, softer for the other half, and again.
     w.playClick();
+    const felt = [];
+    for (let k = 0; k < 16; k++) {
+      w.charging.held = k * cycle / 8;
+      felt.push(speed() / base);
+    }
     run(w, 0.5);
-    assert.ok(speed() > usual * 1.4, `held half a second, the shot goes ${(speed() / usual).toFixed(2)} as hard`);
-    run(w, 1);
-    assert.ok(speed() < usual * 0.5, `held a second and a half, it goes ${(speed() / usual).toFixed(2)} as hard`);
+    assert.ok(w.charging.held > cycle * 15 / 8, 'holding the button does not wind it up');
+    const up = felt.slice(0, 5), down = felt.slice(4, 9);
+    assert.ok(up.every((v, i) => !i || v > up[i - 1]) && down.every((v, i) => !i || v < down[i - 1]), `the strength went ${felt.map(v => v.toFixed(2))}`);
+    assert.ok(Math.abs(felt[4] - hard) < 0.05 && Math.abs(felt[8] - soft) < 0.05 && Math.abs(felt[12] - hard) < 0.05, `not soft to hard and back, twice over: ${felt.map(v => v.toFixed(2))}`);
+    assert.ok(cycle / 2 >= 1.5, 'it swings too fast to let go when it is right');
     assert.ok(w.ballHeld, 'the ball went before the button came up');
     assert.match(play.textContent, /^Let go to shoot · [▮▯]{10}$/);
-    const soft = speed();
+    const now = speed();
     w.playRelease();
     assert.equal(w.ballHeld, null);
-    assert.ok(Math.abs(ball.vel.length() - soft) < 1e-9, 'the ball went other than as the guide had it');
+    assert.ok(Math.abs(ball.vel.length() - now) < 1e-9, 'the ball went other than as the guide had it');
   });
 
   // Verifies: REQ-WALK-058
