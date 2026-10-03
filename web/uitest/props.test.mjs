@@ -132,13 +132,11 @@ describe('playgrounds', () => {
   const rides = a => new Set(a.play.filter(e => e.ride).map(e => e.ride));
 
   // Verifies: REQ-CITY-040
-  it('come in three kinds in a city and two on a board and in the galaxy, beside the same three games', () => {
-    const city = amenitiesOf('city').filter(a => rides(a).size);
-    assert.equal(city.length, 3);
-    assert.equal(new Set(city.map(a => a.play.filter(e => e.ride).map(e => e.ride).sort().join())).size, 3, 'two of the city\'s playgrounds are the same');
+  it('come in four kinds in every style, beside the same three games', () => {
     for (const style of ['city', 'circuit', 'galaxy']) {
-      const all = amenitiesOf(style);
-      assert.ok(all.filter(a => rides(a).size).length >= 2, `${style} has fewer than two playgrounds`);
+      const all = amenitiesOf(style), parks = all.filter(a => rides(a).size);
+      assert.equal(parks.length, 4, `${style} has ${parks.length} playgrounds`);
+      assert.equal(new Set(parks.map(a => a.play.filter(e => e.ride).map(e => e.ride).sort().join())).size, 4, `two of the ${style}'s playgrounds are the same`);
       const balls = all.flatMap(a => a.play.filter(e => e.ball).map(e => e.ball)).sort();
       assert.deepEqual(balls, ['basket', 'soccer', 'volley'], `${style} plays ${balls}`);
       const at = all.flatMap(a => a.play);

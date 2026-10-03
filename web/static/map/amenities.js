@@ -245,8 +245,9 @@ function pipeSlide(kit) {
   return p;
 }
 
-// A bobby car, from a galaxy: driven round its playground and left where it stops. It
-// is modeled facing +x and parked facing -x; `seat` is where on it the driver sits.
+// A bobby car - with fins, in a galaxy: driven round its playground and left where it
+// stops. It is modeled facing +x and parked facing -x; `seat` is where on it the driver
+// sits.
 function bobbyCar(kit) {
   const wheel = (x, z) => merge([
     painted(new THREE.CylinderGeometry(0.018, 0.018, 0.012, 14).rotateX(Math.PI / 2).translate(x, 0.018, z), '#1e1b30', 0, true),
@@ -259,7 +260,7 @@ function bobbyCar(kit) {
     block(0.12, 0.002, 0.012, 0.0, 0.057, 0, kit.band),
     bar([0.05, 0.05, 0], [0.035, 0.085, 0], 0.004, '#2a2740'),
     painted(new THREE.TorusGeometry(0.018, 0.0035, 4, 16).rotateY(Math.PI / 2).rotateZ(-0.5).translate(0.035, 0.085, 0), '#2a2740'),
-    ...[-1, 1].map(s => painted(new THREE.ConeGeometry(0.012, 0.045, 4).rotateZ(Math.PI / 2 + 0.6).translate(-0.078, 0.07, s * 0.03), kit.band, 0.1)),
+    ...(kit.fins ? [-1, 1].map(s => painted(new THREE.ConeGeometry(0.012, 0.045, 4).rotateZ(Math.PI / 2 + 0.6).translate(-0.078, 0.07, s * 0.03), kit.band, 0.1)) : []),
     painted(new THREE.SphereGeometry(0.009, 8, 6).translate(0.092, 0.04, 0), '#ffd27a'),
     ...[[0.058, 0.05], [0.058, -0.05], [-0.058, 0.05], [-0.058, -0.05]].map(([x, z]) => wheel(x, z)),
   ]);
@@ -352,6 +353,7 @@ const CITY = {
   frame: '#2f6fb3', base: '#7d848b', deck: '#c23b2c', slide: '#e3b324', spring: '#3b4148', seatColor: '#c23b2c',
   ground: '#d9c28c', edge: '#8a6d45', line: '#f4f4ee',
   turf: '#4c9a42', turfLight: '#57a64b', court: '#b4573c', key: '#d07a52', sand: '#e2cf9a', tape: '#2f6fb3', net: '#2b2b2b', antenna: '#d8433a',
+  pipe: '#e3b324', band: '#2f6fb3', car: '#d8433a',
   leg: (a, b) => bar(a, b, 0.009, CITY.frame),
   beam: (a, b) => bar(a, b, 0.009, CITY.frame),
   rung: (a, b) => bar(a, b, 0.004, CITY.slide),
@@ -391,6 +393,8 @@ const CIRCUIT = {
   frame: '#c8a24a', base: '#1d1f22', deck: '#1f6b3a', slide: '#a9afb5', spring: '#c47a3a', seatColor: '#c0392b',
   ground: '#c58a4a', edge: '#e8ecef', line: '#e8ecef',
   turf: '#b9783f', turfLight: '#c58a4a', court: '#25603f', key: '#2e7a4f', sand: '#1f5c38', tape: '#e8ecef', net: '#8d939a', antenna: '#c0392b',
+  // A pipe of heat-shrink sleeving banded in copper, and cars in solder mask.
+  pipe: '#2a2d31', band: '#c8a24a', car: '#1f6b3a',
   leg: (a, b) => painted(hexBar(a, b, 0.011), CIRCUIT.frame),
   beam: (a, b) => bar(a, b, 0.007, '#cfd5db'),
   rung: (a, b) => bar(a, b, 0.004, '#d9b04c'),
@@ -455,7 +459,7 @@ const GALAXY = {
   frame: '#3a3552', base: '#2a2740', deck: '#4a4466', slide: '#4fd0e8', spring: '#8b86a8', seatColor: '#9a7cff',
   ground: '#1e1b30', edge: '#6ff4ff', line: '#6ff4ff', domeColor: '#6ff4ff',
   turf: '#2a2740', turfLight: '#302c4a', court: '#26233a', key: '#332e50', sand: '#231f36', tape: '#6ff4ff', net: '#6ff4ff', antenna: '#ffd27a',
-  pipe: '#5b5390', band: '#6ff4ff', car: '#9a7cff',
+  pipe: '#5b5390', band: '#6ff4ff', car: '#9a7cff', fins: true,
   leg: (a, b) => bar(a, b, 0.011, GALAXY.frame),
   beam: (a, b) => bar(a, b, 0.009, '#6ff4ff'),
   rung: (a, b) => bar(a, b, 0.004, '#6ff4ff'),
@@ -531,8 +535,8 @@ const playgrounds = (kit, glow = null) => [
     { size: [1.5, 1.3], scale: 2.2, weight: 0.5, glow }),
 ];
 
-// The galaxy's own: a pipe to slide down and two bobby cars to drive round it.
-const spacePark = (kit, glow = null) => amenity([[ground(kit, 1.5, 1.3)], [pipeSlide(kit), -0.17, -0.25], [bobbyCar(kit), 0.5, 0.42], [bobbyCar(kit), 0.5, 0.14]],
+// A pipe to slide down and two bobby cars to drive round it.
+const pipePark = (kit, glow = null) => amenity([[ground(kit, 1.5, 1.3)], [pipeSlide(kit), -0.17, -0.25], [bobbyCar(kit), 0.5, 0.42], [bobbyCar(kit), 0.5, 0.14]],
   { size: [1.5, 1.3], scale: 2.2, weight: 0.5, glow });
 
 // Pitch 30 m by 20 with goals 2 m high; court 18 m by 12 with the rim at 3 m; a
@@ -650,9 +654,9 @@ export function amenitiesFor(style) {
   if (!built.has(key)) {
     parts = got;
     built.set(key, {
-      city: () => [...sports(CITY), ...playgrounds(CITY)],
-      circuit: () => [...sports(CIRCUIT), ...playgrounds(CIRCUIT).slice(0, 2), ...STANDING.circuit.map(still)],
-      galaxy: () => [...sports(GALAXY, LIGHT), ...playgrounds(GALAXY, LIGHT).slice(0, 2), spacePark(GALAXY, LIGHT), ...STANDING.galaxy.map(still)],
+      city: () => [...sports(CITY), ...playgrounds(CITY), pipePark(CITY)],
+      circuit: () => [...sports(CIRCUIT), ...playgrounds(CIRCUIT), pipePark(CIRCUIT), ...STANDING.circuit.map(still)],
+      galaxy: () => [...sports(GALAXY, LIGHT), ...playgrounds(GALAXY, LIGHT), pipePark(GALAXY, LIGHT), ...STANDING.galaxy.map(still)],
     }[style in STYLES ? style : 'city']());
     parts = null;
   }

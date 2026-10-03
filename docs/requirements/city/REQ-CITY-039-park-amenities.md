@@ -25,15 +25,14 @@ round chosen by the place so a map dresses the same every time:
 
 - in a city, a five-a-side pitch with its goals, a basketball court with its
   hoops, a volleyball court with its net, or a playground (REQ-CITY-040);
-- on a circuit board, the same three games and two of the playgrounds built of
-  the board's parts (REQ-CITY-040), a pin header, a heat sink on its chip, or
-  a coin cell in its holder beside a crystal;
-- in the galaxy, the same games and playgrounds built of alloy and light, a
-  playground of its own with a pipe slide and bobby cars (REQ-CITY-040), a
-  landing pad with lamps at its corners, a dish listening to the sky (hinged
-  on its mast, its feed held at the focus on struts from the rim), or a ring
-  of standing stones round a crystal; the lamps, the dish's feed and the
-  crystal **shall** glow.
+- on a circuit board, the same three games and four playgrounds built of the
+  board's parts (REQ-CITY-040), a pin header, a heat sink on its chip, or a
+  coin cell in its holder beside a crystal;
+- in the galaxy, the same games and playgrounds built of alloy and light
+  (REQ-CITY-040), a landing pad with lamps at its corners, a dish listening
+  to the sky (hinged on its mast, its feed held at the focus on struts from
+  the rim), or a ring of standing stones round a crystal; the lamps, the
+  dish's feed and the crystal **shall** glow.
 
 Nothing **shall** be planted on an amenity, and its posts - goalposts, a hoop's
 pole, a swing's legs, a stone - **shall** stand in the walker's way. An amenity

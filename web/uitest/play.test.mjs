@@ -306,6 +306,23 @@ describe('playing in the parks', () => {
 });
 
 describe('balls, rides and the guide, kept honest', () => {
+  // Verifies: REQ-CITY-040
+  it('has every playground, court and ride in every style, each a style\'s own', () => {
+    // What can be played on each amenity, and how: its rides and games.
+    const plays = style => amenitiesFor(style).filter(a => a.play.length).map(a => a.play
+      .map(e => e.ride ? `${e.ride}${e.slick ? ' down a pipe' : ''}` : e.ball ? `${e.ball} ball` : e.hoop ? 'hoop' : e.goal ? 'goal' : 'net')
+      .sort().join(', ')).sort();
+    const city = plays('city');
+    assert.equal(city.length, 7);
+    for (const style of ['circuit', 'galaxy']) assert.deepEqual(plays(style), city, `the ${style} plays otherwise than a city`);
+    // Built of the style's own parts, not a city's.
+    const cars = ['city', 'circuit', 'galaxy'].map(style => {
+      const park = amenitiesFor(style).find(a => a.play.some(e => e.ride === 'drive'));
+      return park.rigs[park.play.find(e => e.ride === 'drive').rig].geo.getAttribute('color').array.slice(0, 3).join();
+    });
+    assert.equal(new Set(cars).size, 3, 'a bobby car looks the same in two styles');
+  });
+
   // Verifies: REQ-WALK-058
   it('puts out a ball for every court, not one for each kind of court', () => {
     const { w, it } = walker(COURT, [0, 0, 0], [1, 0, 0]);
