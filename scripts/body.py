@@ -40,12 +40,13 @@ without being identical.
 import math
 import os
 import sys
+from itertools import pairwise
 
 import bpy
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hand import build as build_hand  # noqa: E402
-from human import build as build_human  # noqa: E402
+from hand import build as build_hand
+from human import build as build_human
 
 try:  # only importable once bpy has loaded
     import bmesh  # type: ignore[reportMissingImports]
@@ -402,9 +403,12 @@ def worn_on_hand(style: str, along: float):
     layer of HAND_LAYERS over it, or bare skin."""
     top = None
     for start, end, stand, hexa, kind in HAND_LAYERS[style]:
-        if (start is None or along >= start) and (end is None or along <= end):
-            if top is None or stand > top[0]:
-                top = (stand, hexa, kind)
+        if (
+            (start is None or along >= start)
+            and (end is None or along <= end)
+            and (top is None or stand > top[0])
+        ):
+            top = (stand, hexa, kind)
     return color(top[1], top[2]) if top else SKIN
 
 
@@ -465,7 +469,7 @@ def mesh_for(name: str, style: str, hand, human: dict, hands: Hands, bones: list
         for v in f.verts:
             for k, w in v[deform].items():
                 weights[k] = weights.get(k, 0.0) + w
-        bone = bones[max(weights, key=weights.get)] if weights else "spine"
+        bone = bones[max(weights, key=weights.get)] if weights else "spine"  # type: ignore[reportArgumentType, reportCallIssue]
         worn = dress(Point(bone, middle, f.normal, at))
         if worn is None:
             lay(f, SKIN)
@@ -526,12 +530,12 @@ def mesh_for(name: str, style: str, hand, human: dict, hands: Hands, bones: list
                 loop[paint] = (*col[:3], 1.0)
                 loop[fabric] = round(col[3] * 8)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    mesh = bpy.data.meshes.new(name)
+    mesh = bpy.data.meshes.new(name)  # type: ignore[reportAttributeAccessIssue]
     bm.to_mesh(mesh)
     bm.free()
     mesh.shade_smooth()
     mesh.color_attributes.active_color = mesh.color_attributes["Col"]
-    obj = bpy.data.objects.new(name, mesh)
+    obj = bpy.data.objects.new(name, mesh)  # type: ignore[reportAttributeAccessIssue]
     for b in bones:
         obj.vertex_groups.new(name=b)
     bpy.context.scene.collection.objects.link(obj)  # type: ignore[reportAttributeAccessIssue]
@@ -631,7 +635,7 @@ def headwear(bm, style: str, human: dict, at: dict, colors: dict) -> list:
         radii = smooth([(r + stand) if r else q * 0.85 for r, q in zip(radii, last)])
         rings.append(ring(z, radii, 1 - share))
         last = radii
-    for a, b in zip(rings, rings[1:]):
+    for a, b in pairwise(rings):
         for s in range(segments):
             t = (s + 1) % segments
             bm.faces.new((a[s], a[t], b[t], b[s]))
@@ -655,8 +659,8 @@ def armature(hand, human: dict, hands: Hands):
     the hand model's hand with its fingers."""
     j = {n: Vector(p) for n, p in human["joints"].items()}
     hand = hand.parent
-    data = bpy.data.armatures.new("body_rig")
-    rig = bpy.data.objects.new("body_rig", data)
+    data = bpy.data.armatures.new("body_rig")  # type: ignore[reportAttributeAccessIssue]
+    rig = bpy.data.objects.new("body_rig", data)  # type: ignore[reportAttributeAccessIssue]
     bpy.context.scene.collection.objects.link(rig)  # type: ignore[reportAttributeAccessIssue]
     bpy.context.view_layer.objects.active = rig  # type: ignore[reportAttributeAccessIssue]
     bpy.ops.object.mode_set(mode="EDIT")  # type: ignore[reportAttributeAccessIssue]
@@ -732,7 +736,7 @@ def skin(obj, rig):
 
 def material():
     """One material for all three: white, so the vertex colors are what shows."""
-    m = bpy.data.materials.new("cloth")
+    m = bpy.data.materials.new("cloth")  # type: ignore[reportAttributeAccessIssue]
     m.use_nodes = True
     tree = m.node_tree
     bsdf = tree.nodes.get("Principled BSDF")

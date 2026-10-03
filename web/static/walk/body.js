@@ -210,10 +210,14 @@ export class Body {
         this.eased[side] = null;
         continue;
       }
-      // Eased to a new hold - the next rung up - rather than jumping there.
-      const eased = (this.eased[side] ||= grip.at.clone());
-      eased.lerp(grip.at, Math.min(1, deltaTime * 14));
-      this.grip(side, eased, grip.along, holding);
+      // With what it holds as that moves - a seesaw going up, a swing swinging - and
+      // eased to a new hold, the next rung up, rather than jumping there.
+      const held = (this.eased[side] ||= { at: grip.at.clone(), was: grip.at.clone() });
+      const moved = MOVED.subVectors(grip.at, held.was);
+      if (moved.length() < NEW_HOLD) held.at.add(moved);
+      held.was.copy(grip.at);
+      held.at.lerp(grip.at, Math.min(1, deltaTime * 14));
+      this.grip(side, held.at, grip.along, holding);
     }
     // Seen from behind, the tools are in the body's hands, which close round them;
     // otherwise the hands are as the pose has them.
@@ -397,6 +401,9 @@ const GOAL = new THREE.Matrix4(), BONE_GOAL = new THREE.Matrix4(), SCALED = new 
 const EYE_AT = new THREE.Vector3(), EYE_TURN = new THREE.Quaternion(), LOOK = new THREE.Euler(), ONE = new THREE.Vector3(1, 1, 1);
 const TARGET = new THREE.Vector3(), TURNED = new THREE.Quaternion(), SIZE = new THREE.Vector3(), POLE = new THREE.Vector3();
 const SHOULDER = new THREE.Vector3(), ELBOW = new THREE.Vector3();
+// How far what a hand holds goes in a frame before it is a new hold to reach for.
+const NEW_HOLD = 0.15;
+const MOVED = new THREE.Vector3();
 const POSED = new THREE.Vector3(), FIST_AT = new THREE.Vector3(), PALM = new THREE.Vector3(), GRIP_GOAL = new THREE.Vector3();
 const ACROSS = new THREE.Vector3(), BAR = new THREE.Vector3(), NO_TURN = new THREE.Quaternion();
 // How far in from the knuckles toward the palm a fist's middle is, in the hand model's

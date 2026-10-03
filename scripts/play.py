@@ -195,13 +195,13 @@ def main():
         bpy.data.objects.remove(stray, do_unlink=True)  # type: ignore[reportAttributeAccessIssue]
     made = []
     for name, build in PARTS.items():
-        mesh = bpy.data.meshes.new(name)
+        mesh = bpy.data.meshes.new(name)  # type: ignore[reportAttributeAccessIssue]
         bm = bmesh.new()
         build(bm)
         bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
         bm.to_mesh(mesh)
         bm.free()
-        obj = bpy.data.objects.new(name, mesh)
+        obj = bpy.data.objects.new(name, mesh)  # type: ignore[reportAttributeAccessIssue]
         bpy.context.scene.collection.objects.link(obj)  # type: ignore[reportAttributeAccessIssue]
         made.append(obj)
     bpy.ops.export_scene.gltf(  # type: ignore[reportAttributeAccessIssue]
