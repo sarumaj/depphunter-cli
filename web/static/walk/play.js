@@ -35,8 +35,8 @@ const BLEND = 0.3;          // seconds getting on to a ride takes
 const SETTLE = 8;           // how fast the eye settles where it is going, getting on or off a seat
 const LOST = 1.2;           // seconds a ball lies off its court before it is put back
 const FLIGHT = 3;           // seconds of a ball's flight the guide looks ahead at most
-/** How hard a held button sends a ball, as a share of its usual speed: from soft, up to hard and down again, every cycle seconds. */
-export const STRENGTH = { soft: 0.4, hard: 1.6, cycle: 3.2 };
+/** How hard a held button sends a ball, as a share of its usual speed: from soft, a level at a time up to hard and down again, each level `dwell` seconds. */
+export const STRENGTH = { soft: 0.4, hard: 1.6, levels: 5, dwell: 0.6 };
 const FINE = 0.15;          // the share of the walker's pace left at a ball, or with one in the hands ...
 const CLOSE = 1.6;          // ... and how far off a ball their full pace comes back
 const LOOK_AROUND = 1.4;    // how far either side of the way a seated body faces the head turns
@@ -66,13 +66,21 @@ const m1 = new THREE.Matrix4();
 const GRIPS = [new THREE.Vector3(), new THREE.Vector3()];
 
 /**
- * How hard a ball is sent, as a share of its usual speed, after the button has been held
- * `held` seconds: a tap sends it soft; held, it grows steadily to hard, falls back to
- * soft, and again, for as long as it is held - letting go when it is right is the knack.
+ * Which of the STRENGTH levels a ball is sent at after the button has been held `held`
+ * seconds, 0 the softest: a tap sends it soft; held, it steps up a level at a time to
+ * the hardest and back down, and again, for as long as it is held, each level staying
+ * a moment - letting go on the right one is the knack.
  */
+export function level(held) {
+  const { levels, dwell } = STRENGTH, steps = 2 * (levels - 1);
+  const step = Math.floor(held / dwell) % steps;
+  return step < levels ? step : steps - step;
+}
+
+/** How hard a ball is sent, as a share of its usual speed, after `held` seconds (level). */
 export function strength(held) {
-  const { soft, hard, cycle } = STRENGTH, u = (held / cycle) % 1;
-  return soft + (hard - soft) * (1 - Math.abs(2 * u - 1));
+  const { soft, hard, levels } = STRENGTH;
+  return soft + (hard - soft) * level(held) / (levels - 1);
 }
 
 export const play = {
@@ -280,10 +288,10 @@ export const play = {
     else {
       const what = this.playable();
       if (this.charging) {
-        // How hard it would go, as a bar from soft to hard.
-        const { kind, ball } = this.charging.what, filled = Math.round((strength(this.charging.held) - STRENGTH.soft) / (STRENGTH.hard - STRENGTH.soft) * 10);
+        // How hard it would go, as a bar of its levels, soft to hard.
+        const { kind, ball } = this.charging.what, filled = level(this.charging.held) + 1;
         const verb = kind === 'held' ? (ball.kind === 'basket' ? 'shoot' : 'serve') : ball.kind === 'soccer' ? 'kick' : 'hit';
-        text = `Let go to ${verb} · ${'▮'.repeat(filled)}${'▯'.repeat(10 - filled)}`;
+        text = `Let go to ${verb} · ${'▮'.repeat(filled)}${'▯'.repeat(STRENGTH.levels - filled)}`;
       } else if (what && !this.freeHands()) text = this.secondary ? 'Put down what is in your left hand to play' : 'H puts your tools away to play';
       else if (what?.kind === 'held') text = `Click: ${what.ball.kind === 'basket' ? 'shoot' : what.ball.kind === 'volley' ? (this.p.ground ? 'serve - jump first for a jump serve' : 'jump serve') : 'throw'}`;
       else if (what?.kind === 'ball') text = `Click: ${what.ball.kind === 'volley' && !what.ball.rest ? 'hit the ball' : SAYS[what.ball.kind]}`;

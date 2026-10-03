@@ -12,7 +12,7 @@ const THREE = await import('../static/vendor/three.module.min.js');
 const { amenitiesFor, onAmenity, inAmenity } = await import('../static/map/amenities.js');
 const { PAINT } = await import('../static/map/shapes.js');
 const WALK = await import('../static/walk/walk.js');
-const { strength, STRENGTH } = await import('../static/walk/play.js');
+const { strength, level, STRENGTH } = await import('../static/walk/play.js');
 const { EYE, POINT } = await import('../static/walk/walkbase.js');
 
 const CITY = amenitiesFor('city');
@@ -96,7 +96,9 @@ function aimFor(w, ball, how, wanted) {
 function windUp(w, hard) {
   w.playClick();
   assert.ok(w.charging, 'the button wound nothing up');
-  run(w, (hard - STRENGTH.soft) / (STRENGTH.hard - STRENGTH.soft) * STRENGTH.cycle / 2);
+  // Held to halfway through the level that hard is.
+  const { soft, levels, dwell } = STRENGTH, at = Math.round((hard - soft) / (STRENGTH.hard - soft) * (levels - 1));
+  run(w, (at + 0.5) * dwell);
 }
 
 const swing = PLAYGROUND.play.find(e => e.ride === 'swing');
@@ -419,29 +421,34 @@ describe('balls, rides and the guide, kept honest', () => {
   });
 
   // Verifies: REQ-WALK-058
-  it('winds a shot up from soft while the button is held, to hard and back, over and over', () => {
-    const { soft, hard, cycle } = STRENGTH;
+  it('winds a shot up from soft while the button is held, a level at a time to hard and back, over and over', () => {
+    const { soft, hard, levels, dwell } = STRENGTH;
     assert.equal(strength(0), soft, 'a tap is not the softest');
     const { w, play } = walker(COURT, [-0.3, 0, 0], [-0.565, 0.25, 0]);
     const ball = ballAtFeet(w, 'basket');
     w.playClick();
     assert.ok(w.ballHeld && !w.charging, 'picking a ball up waited for the button');
     const speed = () => w.plan(ball, 'throw').vel.length(), base = speed() / soft;
-    // Held: steadily harder for half the cycle, softer for the other half, and again.
+    // Held: a level harder each moment up to hard, a level softer back down, and again;
+    // each level the same from the moment it comes to the moment it goes.
     w.playClick();
     const felt = [];
     for (let k = 0; k < 16; k++) {
-      w.charging.held = k * cycle / 8;
-      felt.push(speed() / base);
+      w.charging.held = k * dwell + 0.02;
+      const first = speed() / base;
+      w.charging.held = (k + 1) * dwell - 0.02;
+      assert.ok(Math.abs(speed() / base - first) < 1e-9, `level ${k} changed before its moment was up`);
+      felt.push(first);
     }
     run(w, 0.5);
-    assert.ok(w.charging.held > cycle * 15 / 8, 'holding the button does not wind it up');
-    const up = felt.slice(0, 5), down = felt.slice(4, 9);
+    assert.ok(w.charging.held > dwell * 15, 'holding the button does not wind it up');
+    const top = levels - 1, up = felt.slice(0, levels), down = felt.slice(top, 2 * top + 1);
     assert.ok(up.every((v, i) => !i || v > up[i - 1]) && down.every((v, i) => !i || v < down[i - 1]), `the strength went ${felt.map(v => v.toFixed(2))}`);
-    assert.ok(Math.abs(felt[4] - hard) < 0.05 && Math.abs(felt[8] - soft) < 0.05 && Math.abs(felt[12] - hard) < 0.05, `not soft to hard and back, twice over: ${felt.map(v => v.toFixed(2))}`);
-    assert.ok(cycle / 2 >= 1.5, 'it swings too fast to let go when it is right');
+    assert.ok(Math.abs(felt[top] - hard) < 0.05 && Math.abs(felt[2 * top] - soft) < 0.05 && Math.abs(felt[3 * top] - hard) < 0.05, `not soft to hard and back, twice over: ${felt.map(v => v.toFixed(2))}`);
+    assert.ok(dwell >= 0.5, 'a level goes before it can be let go on');
+    assert.equal(level(0), 0);
     assert.ok(w.ballHeld, 'the ball went before the button came up');
-    assert.match(play.textContent, /^Let go to shoot · [▮▯]{10}$/);
+    assert.match(play.textContent, new RegExp(`^Let go to shoot · [▮▯]{${levels}}$`));
     const now = speed();
     w.playRelease();
     assert.equal(w.ballHeld, null);

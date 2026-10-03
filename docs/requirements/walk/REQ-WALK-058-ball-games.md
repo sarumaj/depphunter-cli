@@ -41,10 +41,11 @@ the serve, and at its own speed: nothing **shall** aim it at a hoop, a goal or
 a court, and the way it leaves **shall** follow the view smoothly, not in steps.
 The click that sends one **shall** send it as the button comes up, as hard as
 the button was held for: a tap sends it soft, under half its usual speed, and
-held down it **shall** grow steadily harder for a second and a half or so, up
-to half as hard again as usual, then steadily softer back to where it began,
-and again, for as long as it is held, shown in the line saying what a click
-does, so that letting go at the right moment sends it as hard as wanted.
+held down it **shall** grow harder a level at a time - five levels, each
+staying a moment, over half a second, before the next - up to half as hard again
+as usual, then a level softer at a time back to where it began, and again, for
+as long as it is held, shown as a bar of the levels in the line saying what a
+click does, so that letting go on the right level sends it as hard as wanted.
 Picking a ball up **shall** not wait for the button. Near a ball, with the
 hands free, the walker's steps **shall** shorten - to a sixth or so of their
 pace at the ball or with one in the hands, coming back over a few strides off
@@ -81,9 +82,10 @@ and took the game out of playing.
    the ground; one kicked off its court is back in the middle a second after
    it stops.
 5. A shot, a kick and a serve each follow their guide exactly.
-6. A tap shoots soft; held, the shot grows harder for over a second and a
-   half up to half as hard again as usual, then softer back to soft, and over
-   again, and it goes as the guide showed when the button comes up.
+6. A tap shoots soft; held, the shot steps up a level every moment - each
+   level the same from when it comes to when it goes - to half as hard again
+   as usual, then back down to soft, and over again, and it goes as the guide
+   showed when the button comes up.
 7. At a ball the walker keeps under a quarter of their pace and turns at
    under 0.7 of their rate; a couple of strides off, more of each; well away,
    all of it.
