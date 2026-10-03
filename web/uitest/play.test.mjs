@@ -258,6 +258,24 @@ describe('balls, rides and the guide, kept honest', () => {
   });
 
   // Verifies: REQ-WALK-058
+  it('leaves a ball where it lies when walked into, or clicked without looking at it', () => {
+    const { w } = walker(PITCH, [0.3, 0, 0], [0.85, 0, 0]);
+    const ball = ballAtFeet(w, 'soccer'), at = ball.pos.clone();
+    // Walked straight at, the walker stops against it.
+    for (let t = 0; t < 1; t += FRAME) {
+      w.p.x -= Math.sin(w.p.yaw) * 0.8 * FRAME;
+      w.p.z -= Math.cos(w.p.yaw) * 0.8 * FRAME;
+      w.updatePlay(FRAME);
+    }
+    assert.ok(ball.pos.distanceTo(at) < 1e-9, `walked into, the ball moved ${ball.pos.distanceTo(at).toFixed(3)}`);
+    assert.ok(Math.hypot(w.p.x - at.x, w.p.z - at.z) >= 0.12 + ball.r - 1e-9, 'the walker walked through the ball');
+    // Turned well away from it, a click kicks nothing.
+    w.p.yaw += 1.2;
+    assert.equal(w.playClick(), false, 'a ball off to the side was kicked');
+    assert.ok(!w.kicking);
+  });
+
+  // Verifies: REQ-WALK-058
   it('sends a ball down the very path its guide draws: a shot, a kick and a serve', () => {
     for (const [court, kind, at, to] of [
       [COURT, 'basket', [-0.3, 0, 0], [-0.565, 0.25, 0]],

@@ -7,8 +7,8 @@
 //
 // A ride moves the walker and the one rig being ridden (map/lod.js pose); everything
 // else in the park stays as it is drawn. A ball is the one thing out there with
-// physics of its own: it falls, bounces, rolls and is pushed about by whoever walks
-// into it, and it knows the hoops, goals and net of its own court.
+// physics of its own: it falls, bounces and rolls once played - walked into, it stays
+// put - and it knows the hoops, goals and net of its own court.
 //
 // Implements: REQ-WALK-057, REQ-WALK-058
 
@@ -24,6 +24,7 @@ const SIT = 0.22;           // the eye over a seat
 const REAL_G = 2.76;        // gravity in units, a unit being 3.55 m: what a swing swings by
 const BALL_G = 4;           // ... and a ball falls by, a little brisker than the truth
 const PICK = 0.45;          // how near a ball has to be to pick up, or to kick
+const LOOKED_AT = 0.85;     // how square on (facing) a ball has to be looked at to be played
 const BODY = 0.12;          // the walker's radius, as walk.js has it
 const NEAR = 14, FAR = 26;  // a court's ball is put out within NEAR, and taken in past FAR
 const STEP = 1 / 120;       // a ball's physics step
@@ -74,7 +75,7 @@ export const play = {
     for (const ball of this.balls.values()) {
       const d = Math.hypot(ball.pos.x - p.x, ball.pos.z - p.z);
       const low = ball.pos.y - p.feet < EYE + 0.2, inAir = ball.pos.distanceTo(eye) < 0.55 && ball.kind === 'volley';
-      if ((d < PICK && low && this.facing(ball.pos) > 0.2) || inAir) {
+      if ((d < PICK && low || inAir) && this.facing(ball.pos) > LOOKED_AT) {
         if (d < nearest) { nearest = d; best = { kind: 'ball', ball }; }
       }
     }
@@ -434,7 +435,7 @@ export const play = {
       this.ballStep(ball, STEP);
       ball.lag -= STEP;
     }
-    this.pushedBy(ball);
+    this.standOff(ball);
     ball.mesh.position.copy(ball.pos);
     if (ball.vel.lengthSq() > 1e-6) {
       const turn = ball.vel.length() * deltaTime / ball.r;
@@ -586,16 +587,14 @@ export const play = {
     if (!ball.ghost) this.flash(inside ? (play.jump ? 'Ace! A jump serve in' : 'In!') : 'Out');
   },
 
-  // Walked into, a ball is pushed ahead; a soccer ball is dribbled.
-  pushedBy(ball) {
-    const p = this.p, dx = ball.pos.x - p.x, dz = ball.pos.z - p.z, d = Math.hypot(dx, dz), want = BODY + ball.r;
+  // Walked into, a ball stays where it is and the walker stops against it: a ball
+  // moves only when it is played.
+  standOff(ball) {
+    const p = this.p, dx = p.x - ball.pos.x, dz = p.z - ball.pos.z, d = Math.hypot(dx, dz), want = BODY + ball.r;
     if (d >= want || ball.pos.y - p.feet > 0.25 || this.riding) return;
-    const nx = d > 1e-6 ? dx / d : -Math.sin(p.yaw), nz = d > 1e-6 ? dz / d : -Math.cos(p.yaw);
-    ball.pos.x = p.x + nx * want;
-    ball.pos.z = p.z + nz * want;
-    const speed = Math.max(0.6, Math.hypot(this.moving.x, this.moving.z) * 1.15);
-    ball.vel.x = nx * speed;
-    ball.vel.z = nz * speed;
+    const nx = d > 1e-6 ? dx / d : Math.sin(p.yaw), nz = d > 1e-6 ? dz / d : Math.cos(p.yaw);
+    p.x = ball.pos.x + nx * want;
+    p.z = ball.pos.z + nz * want;
   },
 
   /** A click on a ball at hand: a soccer ball is kicked, a volleyball in the air hit, the others picked up. */
