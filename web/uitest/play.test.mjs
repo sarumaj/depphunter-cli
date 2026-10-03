@@ -12,6 +12,7 @@ const THREE = await import('../static/vendor/three.module.min.js');
 const { amenitiesFor, onAmenity, inAmenity } = await import('../static/map/amenities.js');
 const { PAINT } = await import('../static/map/shapes.js');
 const WALK = await import('../static/walk/walk.js');
+const { strength } = await import('../static/walk/play.js');
 
 const CITY = amenitiesFor('city');
 const [PITCH, COURT, VOLLEY, PLAYGROUND, ROUNDABOUT] = CITY;
@@ -256,6 +257,7 @@ describe('playing in the parks', () => {
       assert.ok(w.ballHeld, 'the ball was not picked up');
       aimFor(w, ball, 'throw', f => f.played.scored);
       w.playClick();
+      w.playRelease();
       run(w, 3);
       assert.ok(said.some(s => /two points/.test(s)), `the shot in the ${style}: ${said}`);
     }
@@ -269,6 +271,7 @@ describe('playing in the parks', () => {
       const ball = ballAtFeet(w, 'soccer');
       aimFor(w, ball, 'kick', f => f.played.goal);
       w.playClick();
+      w.playRelease();
       run(w, 3);
       assert.ok(said.includes('Goal!'), `the kick: ${said}`);
       assert.ok(ball.vel.length() < 1, 'the net did not stop the ball');
@@ -288,6 +291,7 @@ describe('playing in the parks', () => {
         return !played.net && played.over === 1 && x > 0.2 && x < 0.7 && Math.abs(z) < 0.3;
       });
       w.playClick();
+      w.playRelease();
       run(w, 4);
       assert.ok(said.includes(jump ? 'Ace! A jump serve in' : 'In!'), `the ${jump ? 'jump ' : ''}serve: ${said}`);
     }
@@ -332,6 +336,27 @@ describe('balls, rides and the guide, kept honest', () => {
     run(w, FRAME);
     assert.ok(ball.pos.distanceTo(ball.home) < 1e-9);
     assert.equal(POINT.length, 2);
+  });
+
+  // Verifies: REQ-WALK-058
+  it('winds a shot up while the button is held, harder then softer, and a tap sends it as usual', () => {
+    assert.ok(Math.abs(strength(0) - 1) < 1e-9, 'a tap is not the usual strength');
+    const { w, play } = walker(COURT, [-0.3, 0, 0], [-0.565, 0.25, 0]);
+    const ball = ballAtFeet(w, 'basket');
+    w.playClick();
+    assert.ok(w.ballHeld && !w.charging, 'picking a ball up waited for the button');
+    const speed = () => w.plan(ball, 'throw').vel.length(), usual = speed();
+    w.playClick();
+    run(w, 0.5);
+    assert.ok(speed() > usual * 1.4, `held half a second, the shot goes ${(speed() / usual).toFixed(2)} as hard`);
+    run(w, 1);
+    assert.ok(speed() < usual * 0.5, `held a second and a half, it goes ${(speed() / usual).toFixed(2)} as hard`);
+    assert.ok(w.ballHeld, 'the ball went before the button came up');
+    assert.match(play.textContent, /^Let go to shoot · [▮▯]{10}$/);
+    const soft = speed();
+    w.playRelease();
+    assert.equal(w.ballHeld, null);
+    assert.ok(Math.abs(ball.vel.length() - soft) < 1e-9, 'the ball went other than as the guide had it');
   });
 
   // Verifies: REQ-WALK-058
@@ -380,6 +405,7 @@ describe('balls, rides and the guide, kept honest', () => {
       assert.ok(aim, `no guide for a ${kind}`);
       const { path } = w.flight(aim.ball, w.plan(aim.ball, aim.how));
       w.playClick();
+      w.playRelease();
       if (kind === 'soccer') while (w.kicking) w.updatePlay(FRAME);
       // The guide keeps every other step; the ball, stepped frame by frame, is where it said.
       let worst = 0;

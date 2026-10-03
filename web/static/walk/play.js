@@ -34,6 +34,8 @@ const BLEND = 0.3;          // seconds getting on to a ride takes
 const SETTLE = 8;           // how fast the eye settles where it is going, getting on or off a seat
 const LOST = 1.2;           // seconds a ball lies off its court before it is put back
 const FLIGHT = 3;           // seconds of a ball's flight the guide looks ahead at most
+const SWAY = 0.525;         // how far a held button swings a ball's strength either side of ...
+const MID = 0.975;          // ... its middle, from soft (0.45) to hard (1.5)
 const CAR_TOP = 1.1;        // a bobby car's top speed, units a second
 const CAR = 0.09;           // its reach round its middle, as its model has it
 const FLOOR_CELL = 4;        // the grid the amenities' floors are found by
@@ -55,6 +57,15 @@ const floorKey = (gx, gz) => (gx + 32768) * 65536 + (gz + 32768);
 
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), v4 = new THREE.Vector3();
 const m1 = new THREE.Matrix4();
+
+/**
+ * How hard a ball is sent, as a share of its usual speed, after the button has been held
+ * `held` seconds: a tap sends it as usual; held, it swings up to hard, down to soft and
+ * back, every two seconds, so letting go when it is right is the knack.
+ */
+export function strength(held) {
+  return MID + SWAY * Math.sin(Math.PI * held + Math.asin((1 - MID) / SWAY));
+}
 
 export const play = {
   /** Whether both hands are free to play with: the tools put away and nothing carried. */
@@ -153,13 +164,38 @@ export const play = {
   /** A click, with empty hands: whatever playable() found is played, and the click taken. */
   playClick() {
     if (!this.freeHands()) return false;
-    if (this.riding) return true;
+    if (this.riding || this.charging) return true;
     const what = this.playable();
     if (!what) return false;
-    if (what.kind === 'held') this.throwBall(what.ball);
+    // Sending a ball waits for the button to come up (playRelease), as hard as it was
+    // held for; picking one up, or getting on a ride, is done at once.
+    if (what.kind === 'held' || (what.kind === 'ball' && this.sends(what.ball))) this.charging = { what, held: 0 };
     else if (what.kind === 'ball') this.touchBall(what.ball);
     else this.board(what.it, what.entry);
     return true;
+  },
+
+  /** The button let go: a ball being wound up is sent, as hard as the hold made it. */
+  playRelease() {
+    const charge = this.charging;
+    if (!charge) return false;
+    this.charging = null;
+    const { what } = charge, hard = strength(charge.held);
+    if (!this.freeHands() || this.riding) return false;
+    if (what.kind === 'held') {
+      if (this.ballHeld === what.ball) this.throwBall(what.ball, hard);
+    } else if (this.playable()?.ball === what.ball) this.touchBall(what.ball, hard);
+    return true;
+  },
+
+  /** Whether touching `ball` sends it - a kick, a volley hit in the air - rather than picking it up. */
+  sends(ball) {
+    return ball.kind === 'soccer' || (ball.kind === 'volley' && !ball.rest && ball.pos.y - this.p.feet > 0.2);
+  },
+
+  /** How hard a ball would go now: as the button has been held, or as a kick under way was. */
+  strengthNow() {
+    return this.charging ? strength(this.charging.held) : this.kicking ? this.kicking.strength : 1;
   },
 
   /** Every frame: the balls, the rides settling back, and the line saying what a click would do. */
@@ -173,8 +209,9 @@ export const play = {
     }
     this.putOutBalls();
     for (const ball of this.balls.values()) if (ball !== this.ballHeld && ball !== this.kicking?.ball) this.rollBall(ball, deltaTime);
+    if (this.charging) this.charging.held += deltaTime;
     if (this.kicking && (this.kicking.left -= deltaTime) <= 0) {
-      this.send(this.kicking.ball, 'kick');
+      this.send(this.kicking.ball, 'kick', this.kicking.strength);
       this.kicking = null;
     }
     this.settle(deltaTime);
@@ -197,7 +234,12 @@ export const play = {
     }
     else {
       const what = this.playable();
-      if (what && !this.freeHands()) text = this.secondary ? 'Put down what is in your left hand to play' : 'H puts your tools away to play';
+      if (this.charging) {
+        // How hard it would go, as a bar from soft to hard.
+        const { kind, ball } = this.charging.what, filled = Math.round((strength(this.charging.held) - (MID - SWAY)) / (2 * SWAY) * 10);
+        const verb = kind === 'held' ? (ball.kind === 'basket' ? 'shoot' : 'serve') : ball.kind === 'soccer' ? 'kick' : 'hit';
+        text = `Let go to ${verb} · ${'▮'.repeat(filled)}${'▯'.repeat(10 - filled)}`;
+      } else if (what && !this.freeHands()) text = this.secondary ? 'Put down what is in your left hand to play' : 'H puts your tools away to play';
       else if (what?.kind === 'held') text = `Click: ${what.ball.kind === 'basket' ? 'shoot' : what.ball.kind === 'volley' ? (this.p.ground ? 'serve - jump first for a jump serve' : 'jump serve') : 'throw'}`;
       else if (what?.kind === 'ball') text = `Click: ${what.ball.kind === 'volley' && !what.ball.rest ? 'hit the ball' : SAYS[what.ball.kind]}`;
       else if (what) text = `Click: ${SAYS[what.entry.ride]}`;
@@ -209,6 +251,7 @@ export const play = {
   endPlay() {
     if (this.riding) this.leaveRide(false);
     this.kicking = null;
+    this.charging = null;
     if (this.ballGuide) this.ballGuide.group.visible = false;
     for (const ball of this.balls.values()) this.takeIn(ball);
     this.balls.clear();
@@ -734,15 +777,18 @@ export const play = {
     p.z = ball.pos.z + nz * want;
   },
 
-  /** A click on a ball at hand: a soccer ball is kicked, a volleyball in the air hit, the others picked up. */
-  touchBall(ball) {
+  /**
+   * A ball at hand played: a soccer ball is kicked, a volleyball in the air hit - `hard`
+   * as strength() has it - and the others picked up.
+   */
+  touchBall(ball, hard = 1) {
     if (ball.kind === 'soccer') {
       // The leg is drawn back first (legs.js); the ball goes when the foot meets it.
       this.kicked = performance.now();
-      this.kicking = { ball, left: CONTACT };
+      this.kicking = { ball, left: CONTACT, strength: hard };
       return;
     }
-    if (ball.kind === 'volley' && !ball.rest && ball.pos.y - this.p.feet > 0.2) return this.send(ball, 'hit');
+    if (this.sends(ball)) return this.send(ball, 'hit', hard);
     this.ballHeld = ball;
     ball.mesh.visible = false;
     ball.vel.set(0, 0, 0);
@@ -760,17 +806,17 @@ export const play = {
     ball.vel.set(0, 0, 0);
   },
 
-  /** The ball held, let go: shot, served or thrown (plan). */
-  throwBall(ball) {
+  /** The ball held, let go: shot, served or thrown (plan), `hard` as strength() has it. */
+  throwBall(ball, hard = 1) {
     this.ballHeld = null;
     this.hideBall();
     ball.mesh.visible = true;
-    this.send(ball, ball.kind === 'volley' ? 'serve' : 'throw');
+    this.send(ball, ball.kind === 'volley' ? 'serve' : 'throw', hard);
   },
 
   /** Sets `ball` off as `how` plans it: from where it leaves, at the speed the plan gives it. */
-  send(ball, how) {
-    const plan = this.plan(ball, how);
+  send(ball, how, hard = 1) {
+    const plan = this.plan(ball, how, hard);
     ball.pos.copy(plan.from);
     ball.vel.copy(plan.vel);
     ball.lag = 0;
@@ -782,10 +828,11 @@ export const play = {
    * Where `ball` would leave from and how fast, for `how`: straight on from where the
    * walker looks, lifted by the throw - 'throw' (a basketball's shot), 'serve' (a
    * volleyball, standing or, flatter and harder, jumping), 'hit' (a volleyball in the
-   * air) or 'kick' (a football, harder running): { from, vel }. Nothing is aimed for
-   * them; the guide shows where it goes (drawBallGuide), and it goes there.
+   * air) or 'kick' (a football, harder running) - at `hard` times its usual speed:
+   * { from, vel }. Nothing is aimed for them; the guide shows where it goes
+   * (drawBallGuide), and it goes there.
    */
-  plan(ball, how) {
+  plan(ball, how, hard = this.strengthNow()) {
     const p = this.p, from = how === 'kick'
       ? new THREE.Vector3(ball.pos.x, this.height(ball.pos.x, ball.pos.z, ball.pos.y, POINT) + ball.r + 0.005, ball.pos.z)
       : this.releasePoint(ball, new THREE.Vector3());
@@ -795,7 +842,7 @@ export const play = {
         : how === 'hit' ? [0.8, 2.6]
           : p.ground ? [0.5, 3.6] : [0.15, 5];
     const up = Math.max(-0.4, Math.min(1.35, p.pitch + lift));
-    const vel = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(up), Math.sin(up), -Math.cos(p.yaw) * Math.cos(up)).multiplyScalar(speed);
+    const vel = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(up), Math.sin(up), -Math.cos(p.yaw) * Math.cos(up)).multiplyScalar(speed * hard);
     return { from, vel };
   },
 

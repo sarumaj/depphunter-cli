@@ -323,6 +323,7 @@ export class Walker {
     this.bare = false;     // the right hand holding nothing: its tool put down
     this.stowed = null;    // what the left hand held before H put everything down
     this.riding = null;    // the ride the walker is on (play.js)
+    this.charging = null;  // a ball being wound up by the held button (play.js)
     this.ballHeld = null;  // the ball in their hands
     this.balls = new Map(); // the balls out on the courts near by, by their play entry
     this.settling = [];    // rides left moving, coming to rest
@@ -1473,7 +1474,12 @@ export class Walker {
       if (this.active && drag && !drag.moved && e.button === 0) {
         this.clicked();
       }
-      if (e.button === 0) drag = null;
+      // A ball wound up by holding the button goes as it comes up (play.js); a click
+      // that never held it - with the pointer free, it lands here - goes as usual.
+      if (e.button === 0) {
+        drag = null;
+        this.playRelease();
+      }
     });
     // Implements: REQ-WALK-011, REQ-WALK-047
     window.addEventListener('pointermove', e => {

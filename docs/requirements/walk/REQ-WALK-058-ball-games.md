@@ -39,6 +39,12 @@ With both hands empty (REQ-WALK-057):
 Each **shall** leave the way the walker looks, lifted by the throw, the kick or
 the serve, and at its own speed: nothing **shall** aim it at a hoop, a goal or
 a court, and the way it leaves **shall** follow the view smoothly, not in steps.
+The click that sends one **shall** send it as the button comes up: a tap at its
+usual speed, and a button held down swinging how hard it goes up to half as
+hard again, down to under half as hard and back, every two seconds, shown in
+the line saying what a click does, so that letting go at the right moment
+sends it as hard as wanted. Picking a ball up **shall** not wait for the
+button.
 While a ball is held, or one is at the walker's feet to kick or in the air to
 hit, the guide the tools are aimed by (REQ-TOOL-082) **shall** show the path it
 would take, flown by the ball's own physics, to where it would first come down;
@@ -63,3 +69,6 @@ and took the game out of playing.
    the ground; one kicked off its court is back in the middle a second after
    it stops.
 5. A shot, a kick and a serve each follow their guide exactly.
+6. A tap shoots at the usual speed; held half a second the shot goes about
+   half as hard again, held a second and a half under half as hard, and it
+   goes as the guide showed when the button comes up.
