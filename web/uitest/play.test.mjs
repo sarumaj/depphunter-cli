@@ -202,7 +202,7 @@ describe('playing in the parks', () => {
           assert.ok(g.at.y > w.p.feet && g.at.y <= w.p.feet + 0.43, `a hand on a rung ${(g.at.y - w.p.feet).toFixed(2)} over the feet`);
           assert.ok(Math.abs(g.along.y) < 0.1, 'a rung that is not across the ladder');
         }
-        assert.ok(Math.abs(left.at.y - right.at.y) > 0.05, 'both hands on the one rung');
+        assert.ok(Math.abs(left.at.y - right.at.y) > 0.01, 'both hands on the one rung');
         held++;
       }
     }
@@ -643,6 +643,11 @@ describe('what the walker wears, and how their legs go', () => {
     // Astride a car, the thighs turned out round it, one each way.
     const astride = posture(at({ riding: { entry: { ride: 'drive' }, blend: 1 } }), 0, 0);
     assert.ok(astride.thigh_L_out < -0.5 && astride.thigh_R_out > 0.5 && astride.thigh_L > 1.3, `astride a car ${JSON.stringify(astride)}`);
+    // ... and a seesaw's plank and a spring rider, the feet beside them and not through.
+    for (const seat of [[0.2, 0, 0], [0, 0.115, 0]]) {
+      const plank = posture(at({ riding: { entry: { ride: 'rock', seat }, angle: 0, blend: 1 } }), 0, 0);
+      assert.ok(plank.thigh_L_out < -0.5 && plank.thigh_R_out > 0.5, `not astride a ${seat[0] ? 'seesaw' : 'rider'}`);
+    }
     // The arms swing against the legs walking, hold on to a ride, and are thrown
     // forward and back against a kick.
     // Running, the knees come higher, the heels kick up further, the body leans

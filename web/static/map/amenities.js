@@ -156,7 +156,8 @@ function slide(kit, { h = 0.24, run = 0.38, tower = false } = {}) {
   p.play.push({
     ride: 'slide', sit: 2,
     path: [[-0.14, 0, 0], [-0.03, h + 0.015, 0], [0.12, h + 0.012, 0], ...curve.slice(1).map(([x, y]) => [x, y + 0.004, 0]), [0.24 + run, PAINT, 0]],
-    rungs: ladder(h, -0.1, 0.09, 0), rungHalf: 0.05,
+    // Held by its rungs climbing, and last by the platform's edge.
+    rungs: [...ladder(h, -0.1, 0.09, 0), [-0.01, h + 0.008, 0]], rungHalf: 0.05,
   });
   p.glows.push(...(kit.glowsOn?.slide?.(h, run) || []));
   return p;
@@ -255,7 +256,7 @@ function pipeSlide(kit) {
   p.play.push({
     ride: 'slide', sit: 2, slick: true,
     path: [[-0.56, 0, z], [-0.43, h + 0.015, z], [-0.01, h + 0.012, z], ...bed.map(([x, y, bz]) => [x, y + 0.004, bz]), [0.38, PAINT, z]],
-    rungs: ladder(h, -0.53, 0.1, z), rungHalf: 0.045,
+    rungs: [...ladder(h, -0.53, 0.1, z), [-0.43, h + 0.008, z]], rungHalf: 0.045,
   });
   return p;
 }

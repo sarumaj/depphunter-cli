@@ -33,7 +33,7 @@ const STOOP = 0.035;  // ... and further behind it looking straight down: the he
 const SOLE = 0.02;   // from the ankle down to the sole
 const THIGH = 0.115, SHIN = 0.14; // hip to knee, and knee to sole
 const SEATED = 1.5;  // how far forward a seated thigh is turned
-const STRADDLE = 0.75; // how far a thigh is turned out astride a car
+const STRADDLE = 0.75; // how far a thigh is turned out astride a car, a seesaw's plank or a rider
 const SEAT_UP = 0.03; // the hips over a seat: the thighs' thickness, sat on
 
 /** Seconds into a kick that the foot meets the ball. */
@@ -506,8 +506,9 @@ export function posture(w, phase, now, room = Infinity) {
     for (const [joint, to] of [['thigh_L', SEATED], ['thigh_R', SEATED], ['shin_L', -down], ['shin_R', -down]]) {
       pose[joint] = (pose[joint] || 0) + (to - (pose[joint] || 0)) * sit;
     }
-    // Astride a car, the thighs turned out round its body and the feet down beside it.
-    if (ride === 'drive') Object.assign(pose, { thigh_L_out: -STRADDLE * sit, thigh_R_out: STRADDLE * sit });
+    // Astride a car, a seesaw's plank or a spring rider, the thighs turned out round it
+    // and the feet down beside it, not through it.
+    if (ride === 'drive' || ride === 'rock') Object.assign(pose, { thigh_L_out: -STRADDLE * sit, thigh_R_out: STRADDLE * sit });
   }
   const since = (now - (w.kicked ?? -Infinity)) / 1000;
   const kicking = since >= 0 && since < KICK_KEYS.at(-1)[0];
@@ -559,9 +560,11 @@ function arms(pose, w, phase, sit, kick) {
     set('L', 0.35, 0.5, 0.5);
     set('R', 0.35, 0.5, 0.5);
   } else if (ride === 'slide' && r.s < r.marks.top) {
+    // Reaching up the ladder, until the hands have a rung (rideGrips) - and at its top,
+    // where there is none left, no higher than the shoulders.
     const up = Math.sin(phase * 1.3);
-    set('L', 2.3 + up * 0.3, 0.5);
-    set('R', 2.3 - up * 0.3, 0.5);
+    set('L', 1.3 + up * 0.2, 0.5);
+    set('R', 1.3 - up * 0.2, 0.5);
   }
   const hold = HOLDS[ride], k = ride === 'spin' ? 1 : sit;
   if (hold && k > 0) {

@@ -32,9 +32,9 @@ The legs **shall** be posed:
   longer, the knee driven up ahead, the heel tucked up behind as the leg comes
   through and the body leaning into it, the head kept level; tucked in the
   air; a leg at a time up a ladder;
-- sitting on a swing, a seesaw or a rider - on the seat, thighs along it,
-  shins hanging - astride a bobby car, the thighs turned out round its body and
-  the feet down beside it, and out straight down a slide, leaning back along
+- sitting on a swing - on the seat, thighs along it, shins hanging - astride a
+  seesaw's plank, a spring rider or a bobby car, the thighs turned out round it
+  and the feet down beside it, never through it, and out straight down a slide, leaning back along
   its slope; sat, the body faces the way the seat or the car does, whichever
   way the walker looks;
   sitting down and getting up over a moment. Sat anywhere, no leg **shall** go
@@ -111,7 +111,8 @@ where the walker is as plainly as the sky does.
 10. On a swing, a seesaw, a spring rider and a bobby car the hands are on its
     chains, handles, handlebar or wheel, one each side; on a roundabout the walker
     stands beside the bar they hold, with the hand on that side; up a slide's
-    ladder, hand over hand on its rungs. Each fist is closed round what it holds,
+    ladder, hand over hand on its rungs and last on the platform's edge, never
+    reaching over a ladder's top for a rail it does not have. Each fist is closed round what it holds,
     the chain, bar or rung running across the palm, not the wrist on it and the
     fingers in the air.
 11. The body is a person's - a face, shoulders, elbows and knees as a body has
