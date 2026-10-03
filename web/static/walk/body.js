@@ -186,9 +186,10 @@ export class Body {
       }
       this.bones.get(`upperarm_${side}`)?.bone.scale.setScalar(arms ? 1 : 1e-4);
     }
-    // Sat on a ride, the hands on what it has to hold on to (play.js rideGrips).
-    const grips = sit > 0 && w.rideGrips?.();
-    if (grips) for (const [i, side] of ['L', 'R'].entries()) this.armTo(side, grips[i], sit);
+    // On a ride, the hands on what it has to hold on to (play.js rideGrips): as far as
+    // the walker is sat on it, or at once on a roundabout, which is stood on.
+    const holding = r?.entry.ride === 'spin' ? r.blend : sit, grips = holding > 0 && w.rideGrips?.();
+    if (grips) for (const [i, side] of ['L', 'R'].entries()) this.armTo(side, grips[i], holding);
     // Seen from behind, the tools are in the body's hands, which close round them;
     // otherwise the hands are as the pose has them.
     const third = w.thirdPerson && !w.riding && !w.ballHeld;

@@ -13,6 +13,7 @@ const { amenitiesFor, onAmenity, inAmenity } = await import('../static/map/ameni
 const { PAINT } = await import('../static/map/shapes.js');
 const WALK = await import('../static/walk/walk.js');
 const { strength, STRENGTH } = await import('../static/walk/play.js');
+const { EYE, POINT } = await import('../static/walk/walkbase.js');
 
 const CITY = amenitiesFor('city');
 const [PITCH, COURT, VOLLEY, PLAYGROUND, ROUNDABOUT] = CITY;
@@ -46,6 +47,18 @@ function walker(a, at, to, turn = 0) {
 }
 
 /** Steps the walker's play for `seconds`, the keys in `keys` held. */
+/** That the walker on a ride has something to hold on to within reach, left hand on the left: `what` names it. */
+function holdsOn(w, what) {
+  const grips = w.rideGrips();
+  assert.ok(grips, `nothing to hold on to on ${what}`);
+  const facing = w.rideYaw(), across = v => (v.x - w.p.x) * Math.cos(facing) - (v.z - w.p.z) * Math.sin(facing);
+  assert.ok(across(grips[0]) <= across(grips[1]) + 1e-9, `the hands cross on ${what}`);
+  for (const g of grips) {
+    const off = Math.hypot(g.x - w.p.x, g.z - w.p.z), up = g.y - w.p.feet;
+    assert.ok(off < 0.4 && up > 0.1 && up < EYE, `a hand on ${what} ${off.toFixed(2)} away and ${up.toFixed(2)} up`);
+  }
+}
+
 function run(w, seconds, keys = []) {
   for (const k of keys) w.keys.add(k);
   for (let t = 0; t < seconds; t += FRAME) {
@@ -140,6 +153,7 @@ describe('playing in the parks', () => {
     run(r, 2, ['KeyW']);
     assert.ok(r.riding.speed > 2, `pushed for two seconds the roundabout turns at ${r.riding.speed}`);
     assert.ok(Math.abs(r.p.yaw - yaw) > 1, 'the walker on a roundabout is not turned with it');
+    holdsOn(r, 'a roundabout');
   });
 
   // Verifies: REQ-WALK-057
@@ -152,6 +166,7 @@ describe('playing in the parks', () => {
     const at = onAmenity(it, PLAYGROUND, seat);
     assert.ok(Math.hypot(w.p.x - at.x, w.p.z - at.z) < 0.1, 'the walker is not sat on the seesaw\'s end');
     run(w, 0.5); // sat down
+    holdsOn(w, 'a seesaw');
     const low = w.p.feet;
     let high = low;
     for (let t = 0; t < 1.5; t += FRAME) {
@@ -186,6 +201,7 @@ describe('playing in the parks', () => {
     assert.equal(turner.playClick(), true);
     run(turner, 1.5, ['KeyW']);
     assert.ok(turner.riding.speed > 2, `the capacitor turns at ${turner.riding.speed}`);
+    holdsOn(turner, 'a capacitor');
     const rock = park.play.find(e => e.ride === 'rock');
     const at = [rock.pivot[0], 0, rock.pivot[2]];
     const { w } = walker(park, at, [at[0] + 1, 0, at[2]]);
@@ -198,6 +214,7 @@ describe('playing in the parks', () => {
       most = Math.max(most, Math.abs(w.riding.angle));
     }
     assert.ok(most > 0.1, `the transistor rocked ${most.toFixed(2)}`);
+    holdsOn(w, 'a transistor');
   });
 
   // Verifies: REQ-WALK-057
@@ -542,7 +559,6 @@ describe('balls, rides and the guide, kept honest', () => {
 });
 
 const { posture, CONTACT } = await import('../static/walk/body.js');
-const { EYE, POINT } = await import('../static/walk/walkbase.js');
 const { outfitAt, SKIN, closeHand } = await import('../static/walk/hands.js');
 
 describe('what the walker wears, and how their legs go', () => {

@@ -173,7 +173,8 @@ function carousel(kit, { r = 0.22 } = {}) {
   ]);
   const p = piece(head, { posts: [[0, 0, 0.03]] });
   p.rigs.push({ geo: turning, at: [0, 0, 0], axis: 'y' });
-  p.play.push({ ride: 'spin', rig: 0, pivot: [0, 0, 0], r: r * 0.68, floor: 0.055 });
+  // Held by the nearest of the bars, which run out from the pole every quarter turn.
+  p.play.push({ ride: 'spin', rig: 0, pivot: [0, 0, 0], r: r * 0.68, floor: 0.055, bars: { y: 0.15, to: r * 0.85, every: Math.PI / 2 } });
   p.glows.push(...(kit.glowsOn?.carousel?.() || []));
   return p;
 }
@@ -202,7 +203,10 @@ function springRider(kit) {
   const coil = kit.stem?.() || merge(Array.from({ length: 6 }, (_, i) => painted(new THREE.TorusGeometry(0.025, 0.005, 4, 10).rotateX(Math.PI / 2).translate(0, 0.012 + i * 0.012, 0), kit.spring)));
   const p = piece([kit.pad?.() || painted(new THREE.CylinderGeometry(0.05, 0.05, 0.008, 12).translate(0, 0.004, 0), kit.frame)], { posts: [[0, 0, 0.03]] });
   p.rigs.push({ geo: merge([coil, kit.rider()]), at: [0, 0, 0], axis: 'z' });
-  p.play.push({ ride: 'rock', rig: 0, pivot: [0, 0, 0], seat: [0, kit.saddle ?? 0.115, 0], reach: 0.3 });
+  // Held by the handlebar, at each end of it.
+  const [x, y, half] = kit.handlebar ?? [0.045, 0.13, 0.03];
+  const grips = [[x, y, -half * 0.8], [x, y, half * 0.8]];
+  p.play.push({ ride: 'rock', rig: 0, pivot: [0, 0, 0], seat: [0, kit.saddle ?? 0.115, 0], reach: 0.3, grips });
   return p;
 }
 
@@ -373,6 +377,7 @@ const CITY = {
   roof: (x, y) => painted(new THREE.ConeGeometry(0.12, 0.08, 4).rotateY(Math.PI / 4).translate(x, y + 0.04, 0), '#d8433a'),
   platform: r => painted(new THREE.CylinderGeometry(r, r, 0.035, 20).translate(0, 0.0375, 0), '#d8433a', 0.05),
   fulcrum: () => block(0.04, 0.05, 0.04, 0, 0, 0, '#3b4148'),
+  handlebar: [0.075, 0.17, 0.032], // the horse's (scripts/play.py)
   rider: () => part('horse', g => g, '#e3b324') || merge([
     painted(new THREE.SphereGeometry(0.045, 10, 6).scale(1.5, 0.8, 0.8).translate(0, 0.1, 0), '#e3b324'),
     painted(new THREE.SphereGeometry(0.03, 8, 6).translate(0.06, 0.14, 0), '#e3b324'),
@@ -436,6 +441,7 @@ const CIRCUIT = {
     bar([-0.05, 0.09, 0], [-0.09, 0.07, 0], 0.005, '#cfd5db'), bar([-0.09, 0.07, 0], [-0.13, 0.13, 0], 0.005, '#cfd5db'),
   ]),
   saddle: 0.13,
+  handlebar: [0.11, 0.19, 0.035],
   stem: () => bar([0, 0, 0], [0, 0.09, 0], 0.007, '#cfd5db'),
   pad: () => merge([
     painted(new THREE.CylinderGeometry(0.05, 0.05, 0.004, 16).translate(0, 0.002, 0), '#c8a24a'),

@@ -22,6 +22,7 @@ import { CONTACT } from './body.js';
 
 const RIDE_REACH = 0.5;     // how near a seat, a deck or a ladder has to be to get on
 const SIT = 0.22;           // the eye over a seat
+const BESIDE_BAR = 0.04;    // a roundabout's rider from the bar they hold on to
 const REAL_G = 2.76;        // gravity in units, a unit being 3.55 m: what a swing swings by
 const BALL_G = 4;           // ... and a ball falls by, a little brisker than the truth
 const PICK = 0.45;          // how near a ball has to be to pick up, or to kick
@@ -322,6 +323,11 @@ export const play = {
       // Where on the deck, as an angle round it in the deck's own turn.
       const local = inAmenity(it, a, v1.set(p.x, p.feet, p.z));
       ride.spot = Math.atan2(local[2] - entry.pivot[2], local[0] - entry.pivot[0]);
+      // Beside the nearest of its bars, on the side stepped on, to hold on to it.
+      if (entry.bars) {
+        const bar = Math.round(ride.spot / entry.bars.every) * entry.bars.every;
+        ride.spot = bar + (ride.spot >= bar ? 1 : -1) * Math.asin(Math.min(1, BESIDE_BAR / entry.r));
+      }
       ride.angle = 0;
     }
     // Facing along a swing and a rider (their model's +x), and along a seesaw to its
@@ -462,14 +468,24 @@ export const play = {
   },
 
   /**
-   * What the hands hold on to sat on a ride - a swing's chains, a seesaw's handles, a
-   * car's wheel - as world points, the left hand's first; null for a ride with none.
+   * What the hands hold on to on a ride - a swing's chains, a seesaw's or a spring
+   * rider's handles, a car's wheel, the bar of a roundabout nearest where the walker
+   * stands - as world points, the left hand's first; null for a ride with none.
    */
   rideGrips() {
     const r = this.riding, e = r?.entry;
-    if (!e?.grips) return null;
+    let grips = e?.grips;
+    if (e?.bars) {
+      // Along the nearest bar, either side of the point on it nearest the walker.
+      const bar = Math.round(r.spot / e.bars.every) * e.bars.every, out = e.r * Math.cos(r.spot - bar);
+      grips = [-1, 1].map(s => {
+        const along = Math.min(e.bars.to, Math.max(0.03, out + s * 0.025));
+        return [Math.cos(bar) * along, e.bars.y, Math.sin(bar) * along];
+      });
+    }
+    if (!grips) return null;
     const at = (local, out) => (e.ride === 'drive' ? this.carPoint(r.it, e, local, out) : rigPoint(r.it, r.it.spec, r.rig, r.angle, local, out));
-    const [a, b] = e.grips.map((local, i) => at(local, GRIPS[i]));
+    const [a, b] = grips.map((local, i) => at(local, GRIPS[i]));
     // The left hand's is the one further to the body's left.
     const yaw = this.rideYaw(), right = (v) => v.x * Math.cos(yaw) - v.z * Math.sin(yaw);
     return right(a) <= right(b) ? GRIPS : [b, a];
