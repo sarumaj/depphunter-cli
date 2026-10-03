@@ -1,7 +1,7 @@
-// The walker's legs, as a model (scripts/legs.py) in the outfit of the map's style: a
-// T-shirt, shorts and sneakers in a city, an electrician's coverall and boots on a
-// board, a spacesuit in the galaxy. Seen looking down, sitting on a swing, sliding,
-// kicking a ball.
+// The walker's body below the head - legs, and a torso up to the shoulders - as a
+// model (scripts/legs.py) in the outfit of the map's style: a T-shirt, shorts and
+// sneakers in a city, an electrician's coverall and boots on a board, a spacesuit in
+// the galaxy. Seen looking down, sitting on a swing, sliding, kicking a ball.
 //
 // They stand in the walk scene at the walker's feet - where the planet's bend is
 // nothing, so they are drawn flat - turned the way the walker faces, a little behind
@@ -20,6 +20,7 @@ import { fabric } from './cloth.js';
 const HIP = 0.245;   // the hips over the feet, as the model has them
 const SIT = 0.22;    // the eye over a seat (play.js)
 const BEHIND = 0.03;  // the hips behind the eye
+const STOOP = 0.035;  // ... and further behind it looking straight down: the head bent forward over the chest
 const SOLE = 0.024;  // from the ankle down to the sole
 const THIGH = 0.115, SHIN = 0.13; // hip to knee, and knee to sole
 const SEATED = 1.5;  // how far forward a seated thigh is turned
@@ -130,7 +131,8 @@ export class Legs {
     const r = w.riding, slide = r?.entry.ride === 'slide' ? r : null;
     const slope = slide && r.s > r.marks.edge && r.s < r.marks.foot ? r.slopeAt(r.s) : 0;
     this.lean = (this.lean || 0) + (slope * 0.5 * sit - (this.lean || 0)) * Math.min(1, deltaTime * 8);
-    const hipsAt = HIPS.set(p.x + Math.sin(p.yaw) * BEHIND, y + HIP, p.z + Math.cos(p.yaw) * BEHIND);
+    const behind = BEHIND + STOOP * Math.min(1, Math.max(0, -p.pitch) / (Math.PI / 2));
+    const hipsAt = HIPS.set(p.x + Math.sin(p.yaw) * behind, y + HIP, p.z + Math.cos(p.yaw) * behind);
     this.tilt(this.lean, p.yaw, hipsAt);
     this.phase = (this.phase + deltaTime * 7.5 * Math.max(0.5, w.pace || 0)) % (Math.PI * 2);
     const pose = posture(w, this.phase, performance.now(), room);
@@ -154,6 +156,8 @@ export class Legs {
         this.tilt(this.lean, p.yaw, hipsAt);
       }
     }
+    // The legs lean about the hips; the torso stays upright under the eye.
+    this.turn('spine', this.lean);
     // Standing or walking, the lower foot planted on the ground.
     if (p.ground && sit < 1) {
       this.rig.updateMatrixWorld(true);

@@ -1,21 +1,22 @@
 #!/usr/bin/env python3.11
-"""Models the walker's legs, in the three outfits the map's styles dress them in, and
-exports them as glTF.
+"""Models the walker's body below the head - the legs and the torso up to the shoulders
+- in the three outfits the map's styles dress them in, and exports them as glTF.
 
 Run it with Blender, or with the `bpy` module on the same Python it was built for:
 
     pip install "numpy<2" bpy
     python3 scripts/legs.py
 
-Like the beetle (scripts/bug.py) the legs are modeled here rather than taken from a
-pack: no CC0 pack has a pair of legs with nothing above the waist, and that is all a
-first-person walker ever sees of themselves. One rig, three meshes skinned to it:
+Like the beetle (scripts/bug.py) the body is modeled here rather than taken from a
+pack: no CC0 pack has a body with no head, and that is all a first-person walker ever
+sees of themselves - looking down, their chest, legs and feet. One rig, three meshes
+skinned to it:
 
-  * legs_city: a T-shirt's hem, shorts to above the knee, bare shins, socks and
-    sneakers;
-  * legs_circuit: an electrician's coverall with knee pads and a reflective band,
-    and work boots with toe caps;
-  * legs_galaxy: a spacesuit's legs, bulky, ringed at the joints, in moon boots.
+  * legs_city: a T-shirt, shorts to above the knee, bare shins, socks and sneakers;
+  * legs_circuit: an electrician's coverall with a chest pocket, knee pads and
+    reflective bands, and work boots with toe caps;
+  * legs_galaxy: a spacesuit, bulky, ringed at the joints and the neck, with a
+    control panel on the chest, in moon boots.
 
 Colors are vertex colors (COLOR_0); the map paints with flat colors and so do these.
 The bone and mesh names are the contract with web/static/walk/legs.js.
@@ -43,7 +44,8 @@ OUT: str = os.path.normpath(os.path.join(HERE, "..", "web", "static", "legs.glb"
 HIP = 0.245  # the hip joints' height
 KNEE = 0.13
 ANKLE = 0.024
-WAIST = 0.29  # where the model ends at the top
+WAIST = 0.29
+SHOULDER = 0.41  # under the eye at 0.45; the neck goes on up behind it
 APART = 0.03  # each hip joint off the middle
 SEGMENTS = 14  # round a leg
 
@@ -72,7 +74,15 @@ def fabric(outfit: dict, hexa: str) -> str:
 OUTFITS: dict[str, dict] = {
     "city": {
         "leg": [
-            (WAIST, 0.050, 0.036, "#2a9d8f"),  # a T-shirt's hem
+            (0.428, 0.014, 0.014, None),  # the neck
+            (0.415, 0.016, 0.016, None),
+            (0.411, 0.021, 0.019, "#2a9d8f"),  # a T-shirt, from its collar
+            (0.405, 0.045, 0.028, "#2a9d8f"),
+            (0.395, 0.062, 0.034, "#2a9d8f"),
+            (0.370, 0.060, 0.040, "#2a9d8f"),
+            (0.335, 0.054, 0.038, "#2a9d8f"),
+            (0.305, 0.050, 0.036, "#2a9d8f"),
+            (WAIST, 0.050, 0.036, "#2a9d8f"),
             (0.272, 0.050, 0.036, "#2a9d8f"),
             (0.270, 0.050, 0.036, "#34455f"),  # shorts, loose
             (HIP, 0.030, 0.029, "#34455f"),
@@ -98,7 +108,17 @@ OUTFITS: dict[str, dict] = {
     },
     "circuit": {
         "leg": [
-            (WAIST, 0.050, 0.036, "#24365a"),  # the coverall, belted
+            (0.428, 0.014, 0.014, None),  # the neck
+            (0.415, 0.016, 0.016, None),
+            (0.413, 0.023, 0.021, "#24365a"),  # the coverall, from its collar
+            (0.405, 0.047, 0.030, "#24365a"),
+            (0.395, 0.063, 0.035, "#24365a"),
+            (0.372, 0.061, 0.040, "#24365a"),
+            (0.362, 0.060, 0.040, "#d8e04a"),  # a reflective band round the chest
+            (0.352, 0.059, 0.040, "#d8e04a"),
+            (0.349, 0.058, 0.040, "#24365a"),
+            (0.315, 0.053, 0.037, "#24365a"),
+            (WAIST, 0.050, 0.036, "#24365a"),  # belted
             (0.276, 0.050, 0.036, "#1b1d22"),
             (0.268, 0.049, 0.035, "#24365a"),
             (HIP, 0.031, 0.030, "#24365a"),
@@ -123,10 +143,20 @@ OUTFITS: dict[str, dict] = {
         },
         "cloth": "twill",
         "fabrics": {"#1b1d22": "leather", "#202326": "rubber", "#d8e04a": "rubber"},
+        # Boxes on the chest - [middle, half sizes, color]: a pocket.
+        "chest": [((0.028, 0.036, 0.382), (0.012, 0.0025, 0.009), "#1e2d4c")],
     },
     "galaxy": {
         "leg": [
-            (WAIST, 0.056, 0.042, "#eef0f4"),  # the suit, bulky
+            (0.430, 0.026, 0.026, "#2a2f3a"),  # the inside of the neck ring
+            (0.430, 0.030, 0.030, "#9aa3b5"),  # the ring the helmet locks on
+            (0.414, 0.030, 0.030, "#9aa3b5"),
+            (0.412, 0.050, 0.036, "#eef0f4"),  # the suit, bulky
+            (0.398, 0.070, 0.042, "#eef0f4"),
+            (0.372, 0.068, 0.047, "#eef0f4"),
+            (0.335, 0.060, 0.045, "#eef0f4"),
+            (0.305, 0.056, 0.042, "#eef0f4"),
+            (WAIST, 0.056, 0.042, "#eef0f4"),
             (0.268, 0.055, 0.041, "#9aa3b5"),
             (0.262, 0.055, 0.041, "#eef0f4"),
             (HIP, 0.036, 0.035, "#eef0f4"),
@@ -148,7 +178,12 @@ OUTFITS: dict[str, dict] = {
             "fabrics": {"upper": "suit", "sole": "rubber", "toe": "rubber"},
         },
         "cloth": "suit",
-        "fabrics": {"#9aa3b5": "rubber", "#6ff4ff": "rubber"},
+        "fabrics": {"#9aa3b5": "rubber", "#6ff4ff": "rubber", "#2a2f3a": "rubber", "#5a5f6b": "rubber"},
+        "chest": [
+            ((0.0, 0.046, 0.368), (0.022, 0.006, 0.014), "#5a5f6b"),  # a control panel
+            ((-0.008, 0.052, 0.372), (0.004, 0.0015, 0.004), "#6ff4ff"),  # its lights
+            ((0.008, 0.052, 0.372), (0.004, 0.0015, 0.004), "#d8433a"),
+        ],
     },
 }
 
@@ -230,9 +265,31 @@ def shoe(bm, side: float, spec: dict, colors):
             bm.faces.new((middle, b, a) if z == 0 else (middle, a, b))
 
 
+def box(bm, middle: tuple, half: tuple, col, colors):
+    """A box at `middle`, `half` its size each way."""
+    vertices = [
+        bm.verts.new(tuple(m + h * s for m, h, s in zip(middle, half, signs, strict=True)))
+        for signs in (
+            (-1, -1, -1),
+            (1, -1, -1),
+            (1, 1, -1),
+            (-1, 1, -1),
+            (-1, -1, 1),
+            (1, -1, 1),
+            (1, 1, 1),
+            (-1, 1, 1),
+        )
+    ]
+    for v in vertices:
+        colors[v] = col
+    for face in ((0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)):
+        bm.faces.new([vertices[i] for i in face])
+
+
 def mesh_for(name: str, outfit: dict):
-    """The outfit's mesh, its vertex colors written, as an object: one waist round both
-    hips, closed on top, and a leg out of it on each side."""
+    """The outfit's mesh, its vertex colors written, as an object: a torso from the
+    neck down round both hips, closed on top, a leg out of it on each side, and what
+    is on its chest."""
     mesh = bpy.data.meshes.new(name)
     bm = bmesh.new()
     colors: dict = {}
@@ -264,6 +321,8 @@ def mesh_for(name: str, outfit: dict):
             colors,
         )
         shoe(bm, side, outfit["shoe"], colors)
+    for middle, half, hexa in outfit.get("chest", []):
+        box(bm, middle, half, paint(hexa), colors)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     painted = [colors[v] for v in bm.verts]
     bm.to_mesh(mesh)
@@ -281,7 +340,8 @@ def mesh_for(name: str, outfit: dict):
 
 
 def armature():
-    """The rig: the hips, and for each side a thigh, a shin and a foot."""
+    """The rig: the hips, the spine up from them, and for each side a thigh, a shin and
+    a foot."""
     data = bpy.data.armatures.new("legs_rig")
     rig = bpy.data.objects.new("legs_rig", data)
     bpy.context.scene.collection.objects.link(rig)  # type: ignore[reportAttributeAccessIssue]
@@ -290,6 +350,9 @@ def armature():
     bones = data.edit_bones
     hips = bones.new("hips")
     hips.head, hips.tail = Vector((0, 0, HIP)), Vector((0, 0, WAIST))
+    spine = bones.new("spine")
+    spine.head, spine.tail, spine.parent = Vector((0, 0, WAIST)), Vector((0, 0, SHOULDER)), hips
+    spine.roll = 0
     for side, suffix in ((-1.0, "R"), (1.0, "L")):
         x = side * APART
         thigh = bones.new(f"thigh_{suffix}")
@@ -326,11 +389,13 @@ def blend(z: float, at: float, over: float) -> float:
 
 
 def skin(obj, rig):
-    """Weights by height: the hips over the thighs, the thighs over the knees, the
-    shins down to the ankles, the feet below them - each eased into the next."""
+    """Weights by height: the spine over the waist, the hips over the thighs, the thighs
+    over the knees, the shins down to the ankles, the feet below them - each eased
+    into the next."""
     groups = {
         name: obj.vertex_groups.new(name=name)
         for name in (
+            "spine",
             "hips",
             "thigh_L",
             "shin_L",
@@ -343,11 +408,13 @@ def skin(obj, rig):
     for v in obj.data.vertices:
         x, y, z = v.co
         suffix = "L" if x > 0 else "R"
+        below_waist = blend(z, WAIST + 0.01, 0.01)
         below_hip = blend(z, HIP + 0.012, 0.012)
         below_knee = blend(z, KNEE, 0.012)
         below_ankle = blend(z, ANKLE + 0.012, 0.01) if y < 0.01 else 1.0
         weights = {
-            "hips": 1 - below_hip,
+            "spine": 1 - below_waist,
+            "hips": below_waist * (1 - below_hip),
             f"thigh_{suffix}": below_hip * (1 - below_knee),
             f"shin_{suffix}": below_hip * below_knee * (1 - below_ankle),
             f"foot_{suffix}": below_hip * below_knee * below_ankle,
