@@ -34,6 +34,8 @@ const BLEND = 0.3;          // seconds getting on to a ride takes
 const SETTLE = 8;           // how fast the eye settles where it is going, getting on or off a seat
 const LOST = 1.2;           // seconds a ball lies off its court before it is put back
 const FLIGHT = 3;           // seconds of a ball's flight the guide looks ahead at most
+const CAR_TOP = 1.1;        // a bobby car's top speed, units a second
+const CAR = 0.09;           // its reach round its middle, as its model has it
 const FLOOR_CELL = 4;        // the grid the amenities' floors are found by
 const UP = new THREE.Vector3(0, 1, 0);
 const NO_FLOORS = [];
@@ -45,7 +47,7 @@ const BALLS = {
 };
 
 const SAYS = {
-  swing: 'ride the swing', spin: 'ride the roundabout', rock: 'ride it', slide: 'go down the slide',
+  swing: 'ride the swing', spin: 'ride the roundabout', rock: 'ride it', slide: 'go down the slide', drive: 'drive the car',
   soccer: 'kick the ball', basket: 'pick up the ball', volley: 'pick up the ball',
 };
 
@@ -137,6 +139,10 @@ export const play = {
       const c = onAmenity(it, a, entry.pivot, v2);
       return Math.abs(Math.hypot(p.x - c.x, p.z - c.z) - entry.r * a.scale);
     }
+    if (entry.ride === 'drive') {
+      const seat = this.carPoint(it, entry, entry.seat, v2);
+      return Math.abs(seat.y - p.feet) > 0.6 ? Infinity : Math.hypot(p.x - seat.x, p.z - seat.z);
+    }
     const at = entry.ride === 'slide' ? entry.path[0]
       : entry.ride === 'swing' ? [entry.pivot[0], entry.pivot[1] - entry.length, entry.pivot[2]]
         : [entry.pivot[0] + entry.seat[0], entry.pivot[1] + entry.seat[1], entry.pivot[2] + entry.seat[2]];
@@ -185,7 +191,10 @@ export const play = {
     const el = this.playEl ||= this.hud?.querySelector('.w-play');
     if (!el) return;
     let text = '';
-    if (this.riding) text = this.riding.entry.ride === 'slide' ? 'Space: jump off' : 'W: push · Space: jump off';
+    if (this.riding) {
+      text = { slide: 'Space: jump off', drive: 'W: drive · S: brake, back up · A, D: steer · Space: get off' }[this.riding.entry.ride]
+        || 'W: push · Space: jump off';
+    }
     else {
       const what = this.playable();
       if (what && !this.freeHands()) text = this.secondary ? 'Put down what is in your left hand to play' : 'H puts your tools away to play';
@@ -237,6 +246,11 @@ export const play = {
       ride.angle = -Math.sign(entry.seat[0]) * 0.12;
     }
     if (entry.ride === 'slide') Object.assign(ride, slideTrack(it, entry), { s: 0, sit: 0, rise: 0 });
+    if (entry.ride === 'drive') {
+      ride.car = this.carOf(it, entry);
+      const t = it.turn + ride.car.yaw;
+      ride.yawTo = Math.atan2(-Math.cos(t), Math.sin(t));
+    }
     this.riding = ride;
     p.vy = 0;
     p.fly = false;
@@ -247,7 +261,7 @@ export const play = {
 
   /**
    * A frame on a ride, in place of walking (walk.js step): W pumps a swing, pushes a
-   * roundabout, bounces a seesaw or a rider; S brakes; Space jumps off.
+   * roundabout, bounces a seesaw or a rider, drives a car; S brakes; Space jumps off.
    */
   rideStep(deltaTime) {
     const r = this.riding, k = this.keys, e = r.entry, a = r.it.spec;
@@ -284,8 +298,61 @@ export const play = {
     } else if (e.ride === 'slide') {
       this.slideStep(r, dt);
       if (!this.riding) return;
-    }
+    } else if (e.ride === 'drive') this.driveStep(r, dt);
     this.poseRide(dt);
+  },
+
+  /**
+   * A car driven round its playground: W goes, S brakes and then backs up, A and D
+   * steer - the harder the faster it goes - and the view turns with it. It stays on the
+   * playground's ground, and bumps off what stands on it and the other cars.
+   */
+  driveStep(r, dt) {
+    const k = this.keys, car = r.car, it = r.it, a = it.spec;
+    const go = k.has('KeyW') || k.has('ArrowUp'), back = k.has('KeyS') || k.has('ArrowDown');
+    const steer = (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) - (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0);
+    if (go) car.speed = Math.min(CAR_TOP, car.speed + 1.2 * dt);
+    else if (back) car.speed = Math.max(-0.4 * CAR_TOP, car.speed - 1.6 * dt);
+    else car.speed *= Math.exp(-1.5 * dt);
+    const turn = steer * car.speed * 2.5 * dt * r.blend;
+    car.yaw += turn;
+    this.p.yaw += turn;
+    if (r.yawTo !== null) r.yawTo += turn;
+    const step = car.speed * dt / (a.scale ?? 1);
+    car.x += Math.cos(car.yaw) * step;
+    car.z -= Math.sin(car.yaw) * step;
+    let bumped = false;
+    const x0 = Math.min(...a.floors.map(f => f[0])) + CAR, x1 = Math.max(...a.floors.map(f => f[2])) - CAR;
+    const z0 = Math.min(...a.floors.map(f => f[1])) + CAR, z1 = Math.max(...a.floors.map(f => f[3])) - CAR;
+    if (car.x < x0 || car.x > x1 || car.z < z0 || car.z > z1) {
+      car.x = Math.max(x0, Math.min(x1, car.x));
+      car.z = Math.max(z0, Math.min(z1, car.z));
+      bumped = true;
+    }
+    const others = a.play.filter(e => e.ride === 'drive' && e !== r.entry).map(e => {
+      const other = this.carOf(it, e);
+      return [other.x, other.z, CAR];
+    });
+    for (const [x, z, reach] of [...a.posts, ...others]) {
+      const dx = car.x - x, dz = car.z - z, d = Math.hypot(dx, dz), want = reach + CAR;
+      if (d >= want || d < 1e-9) continue;
+      car.x = x + dx / d * want;
+      car.z = z + dz / d * want;
+      bumped = true;
+    }
+    if (bumped) car.speed *= -0.25;
+  },
+
+  /** Where an amenity's car is: off its spot once driven - { x, z, yaw, speed }, as its model has them. */
+  carOf(it, entry) {
+    const rig = it.spec.rigs[entry.rig];
+    return ((it.cars ||= [])[entry.rig] ||= { x: rig.at[0], z: rig.at[2], yaw: rig.rest ?? 0, speed: 0 });
+  },
+
+  /** The point `local` of an amenity's car, where the car is now. */
+  carPoint(it, entry, local, out) {
+    const car = this.carOf(it, entry), rig = it.spec.rigs[entry.rig];
+    return out.set(local[0], local[1], local[2]).applyMatrix4(rigMatrix(it, it.spec, rig, car.yaw, m1, [car.x, rig.at[1], car.z]));
   },
 
   /**
@@ -302,8 +369,10 @@ export const play = {
       r.speed = 0.6;
       r.yawTo = r.chuteYaw;
     } else if (s < at.foot) {
-      const slope = r.slopeAt(s);
-      r.speed = Math.max(0.35, r.speed + REAL_G * 1.6 * (Math.sin(slope) - 0.25 * Math.cos(slope)) * dt);
+      // Down the chute, faced along it - round and round, down a pipe.
+      const slope = r.slopeAt(s), rub = r.entry.slick ? 0.1 : 0.25;
+      r.speed = Math.max(0.35, r.speed + REAL_G * 1.6 * (Math.sin(slope) - rub * Math.cos(slope)) * dt);
+      r.yawTo = r.headingAt(s);
     } else r.speed = Math.max(0.15, r.speed - 2.5 * dt);
     if (s < at.end) r.s = Math.min(at.end, s + r.speed * dt);
     // Sat down across the platform, up again once off the end.
@@ -337,6 +406,9 @@ export const play = {
     } else if (e.ride === 'rock') {
       at = rigPoint(it, a, r.rig, r.angle, e.seat, v1);
       eye = at.y + SIT;
+    } else if (e.ride === 'drive') {
+      at = this.carPoint(it, e, e.seat, v1);
+      eye = at.y + SIT;
     } else {
       at = r.pointAt(r.s, v1);
       eye = at.y + EYE + (SIT - EYE) * r.sit;
@@ -350,7 +422,14 @@ export const play = {
       p.yaw += turn * Math.min(1, dt * 7);
       if (Math.abs(turn) < 1e-3 && e.ride !== 'slide') r.yawTo = null;
     }
-    if (r.rig) this.poseRig(it, e.rig, r.angle);
+    if (e.ride === 'drive') this.poseCar(it, e);
+    else if (r.rig) this.poseRig(it, e.rig, r.angle);
+  },
+
+  /** Poses an amenity's car where it has been driven. */
+  poseCar(it, entry) {
+    const drawn = it.rigs?.[entry.rig], car = this.carOf(it, entry), rig = it.spec.rigs[entry.rig];
+    if (drawn) drawn.scatter.pose(drawn.item, rigMatrix(it, it.spec, rig, car.yaw, m1, [car.x, rig.at[1], car.z]));
   },
 
   /** Poses one rig of an amenity at `angle`. */
@@ -370,7 +449,13 @@ export const play = {
     if (!r) return;
     this.riding = null;
     const e = r.entry, a = r.it.spec, p = this.p, eye = p.feet + EYE;
-    if (r.rig) this.settling.push({ it: r.it, rig: e.rig, angle: r.angle, speed: r.speed, rest: r.rig.rest ?? 0, kind: e.ride, entry: e });
+    if (e.ride === 'drive') {
+      // The car stops where it is; the driver steps off to its left.
+      r.car.speed = 0;
+      const beside = this.carPoint(r.it, e, [e.seat[0], 0, -0.1], v1);
+      p.x = beside.x;
+      p.z = beside.z;
+    } else if (r.rig) this.settling.push({ it: r.it, rig: e.rig, angle: r.angle, speed: r.speed, rest: r.rig.rest ?? 0, kind: e.ride, entry: e });
     let vx = 0, vz = 0, vy = 0;
     if (e.ride === 'swing' && jump) {
       // The seat's speed, along the swing's x as the model has it.
@@ -381,7 +466,7 @@ export const play = {
       const c = onAmenity(r.it, a, e.pivot, v1), dx = p.x - c.x, dz = p.z - c.z;
       vx = -dz * r.speed; vz = dx * r.speed;
     }
-    const seated = e.ride === 'swing' || e.ride === 'rock' || (e.ride === 'slide' && r.sit > 0.5);
+    const seated = e.ride === 'swing' || e.ride === 'rock' || e.ride === 'drive' || (e.ride === 'slide' && r.sit > 0.5);
     const ground = this.height(p.x, p.z, p.feet);
     p.feet = jump ? Math.max(ground, eye - SIT - 0.05) : e.ride === 'spin' ? p.feet : ground;
     this.eyeShift = eye - (p.feet + EYE);
@@ -803,6 +888,10 @@ function slideTrack(it, entry) {
     slopeAt(s) {
       const i = segment(s), a = points[i - 1], b = points[i];
       return Math.atan2(a.y - b.y, Math.hypot(b.x - a.x, b.z - a.z));
+    },
+    headingAt(s) {
+      const i = segment(s);
+      return facing(points[i - 1], points[i]);
     },
   };
 }

@@ -29,6 +29,7 @@ round chosen by the place so a map dresses the same every time:
   the board's parts (REQ-CITY-040), a pin header, a heat sink on its chip, or
   a coin cell in its holder beside a crystal;
 - in the galaxy, the same games and playgrounds built of alloy and light, a
+  playground of its own with a pipe slide and bobby cars (REQ-CITY-040), a
   landing pad with lamps at its corners, a dish listening to the sky (hinged
   on its mast, its feed held at the focus on struts from the rim), or a ring
   of standing stones round a crystal; the lamps, the dish's feed and the

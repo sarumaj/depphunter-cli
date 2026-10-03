@@ -188,12 +188,13 @@ function seesaw(kit, { length = 0.5 } = {}) {
   return p;
 }
 
-// A rider on a spring, rocking back and forth along x.
+// A rider on a spring - or whatever the kit stands it on (stem, pad) - rocking back
+// and forth along x.
 function springRider(kit) {
-  const coil = merge(Array.from({ length: 6 }, (_, i) => painted(new THREE.TorusGeometry(0.025, 0.005, 4, 10).rotateX(Math.PI / 2).translate(0, 0.012 + i * 0.012, 0), kit.spring)));
-  const p = piece([painted(new THREE.CylinderGeometry(0.05, 0.05, 0.008, 12).translate(0, 0.004, 0), kit.frame)], { posts: [[0, 0, 0.03]] });
+  const coil = kit.stem?.() || merge(Array.from({ length: 6 }, (_, i) => painted(new THREE.TorusGeometry(0.025, 0.005, 4, 10).rotateX(Math.PI / 2).translate(0, 0.012 + i * 0.012, 0), kit.spring)));
+  const p = piece([kit.pad?.() || painted(new THREE.CylinderGeometry(0.05, 0.05, 0.008, 12).translate(0, 0.004, 0), kit.frame)], { posts: [[0, 0, 0.03]] });
   p.rigs.push({ geo: merge([coil, kit.rider()]), at: [0, 0, 0], axis: 'z' });
-  p.play.push({ ride: 'rock', rig: 0, pivot: [0, 0, 0], seat: [0, 0.115, 0], reach: 0.3 });
+  p.play.push({ ride: 'rock', rig: 0, pivot: [0, 0, 0], seat: [0, kit.saddle ?? 0.115, 0], reach: 0.3 });
   return p;
 }
 
@@ -201,6 +202,70 @@ function springRider(kit) {
 function dome(kit, { r = 0.2 } = {}) {
   const p = piece(domeEdges(r).map(([a, b]) => bar(a, b, 0.006, kit.domeColor || kit.frame)), { posts: [[0, 0, r * 0.95]] });
   p.glows.push(...(kit.glowsOn?.dome?.(r) || []));
+  return p;
+}
+
+// A slide down a pipe: a tower climbed by a ladder up its back, a bridge out to the
+// pipe's mouth, and the pipe wound once round its own axis down to the ground, ringed
+// with light. The ride follows the pipe's bed (pipeBed), sat on from the bridge.
+const PIPE_H = 0.42, PIPE_R = 0.12, PIPE_AXIS = [0.05, 0], PIPE_WIND = 0.19, PIPE_STEPS = 32;
+function pipeBed(t) {
+  const a = Math.PI / 2 - 2 * Math.PI * t, eased = t - Math.sin(2 * Math.PI * t) / (2 * Math.PI);
+  return [PIPE_AXIS[0] + PIPE_WIND * Math.cos(a), 0.03 + (PIPE_H - 0.03) * (1 - eased), PIPE_AXIS[1] + PIPE_WIND * Math.sin(a)];
+}
+function pipeSlide(kit) {
+  const z = PIPE_AXIS[1] + PIPE_WIND, h = PIPE_H;
+  const bed = Array.from({ length: PIPE_STEPS + 1 }, (_, i) => pipeBed(i / PIPE_STEPS));
+  const curve = new THREE.CatmullRomCurve3(bed.map(([x, y, bz]) => new THREE.Vector3(x, y + PIPE_R - 0.004, bz)));
+  const bands = Array.from({ length: 9 }, (_, i) => {
+    const t = (i + 0.5) / 9, at = curve.getPointAt(t), along = curve.getTangentAt(t);
+    return painted(new THREE.TorusGeometry(PIPE_R + 0.003, 0.005, 4, 20)
+      .applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), along)).translate(at.x, at.y, at.z), kit.band);
+  });
+  const head = [
+    painted(new THREE.TubeGeometry(curve, 64, PIPE_R, 14), kit.pipe, 0, true), ...bands,
+    // The tower and its ladder, behind the pipe.
+    ...[[-0.43, z - 0.06], [-0.43, z + 0.06], [-0.31, z - 0.06], [-0.31, z + 0.06]].map(([x, lz]) => kit.leg([x, 0, lz], [x, h, lz])),
+    block(0.14, 0.015, 0.14, -0.37, h, z, kit.deck),
+    ...[-0.045, 0.045].map(dz => kit.leg([-0.53, 0, z + dz], [-0.43, h, z + dz])),
+    ...Array.from({ length: Math.floor(h / 0.06) }, (_, i) => {
+      const y = 0.06 * (i + 1), x = -0.53 + 0.1 * y / h;
+      return kit.rung([x, y, z - 0.045], [x, y, z + 0.045]);
+    }),
+    // The bridge to the pipe's mouth, railed.
+    block(0.36, 0.015, 0.1, -0.12, h, z, kit.deck),
+    ...[-0.05, 0.05].flatMap(dz => [kit.rail([-0.3, h + 0.07, z + dz], [0.04, h + 0.07, z + dz]),
+      ...[-0.3, -0.13, 0.04].map(x => kit.rail([x, h, z + dz], [x, h + 0.07, z + dz]))]),
+  ];
+  const p = piece(head, { posts: [[-0.37, z, 0.09], [PIPE_AXIS[0], PIPE_AXIS[1], PIPE_WIND + PIPE_R]] });
+  p.play.push({
+    ride: 'slide', sit: 2, slick: true,
+    path: [[-0.56, 0, z], [-0.43, h + 0.015, z], [-0.01, h + 0.012, z], ...bed.map(([x, y, bz]) => [x, y + 0.004, bz]), [0.38, PAINT, z]],
+  });
+  return p;
+}
+
+// A bobby car, from a galaxy: driven round its playground and left where it stops. It
+// is modeled facing +x and parked facing -x; `seat` is where on it the driver sits.
+function bobbyCar(kit) {
+  const wheel = (x, z) => merge([
+    painted(new THREE.CylinderGeometry(0.018, 0.018, 0.012, 14).rotateX(Math.PI / 2).translate(x, 0.018, z), '#1e1b30', 0, true),
+    painted(new THREE.TorusGeometry(0.009, 0.0025, 4, 12).translate(x, 0.018, z + Math.sign(z) * 0.0065), kit.band),
+  ]);
+  const car = merge([
+    painted(new THREE.CapsuleGeometry(0.026, 0.13, 4, 12).rotateZ(Math.PI / 2).scale(1, 0.8, 1.6).translate(0, 0.036, 0), kit.car, 0, true),
+    block(0.05, 0.006, 0.06, -0.03, 0.05, 0, '#2a2740'),
+    block(0.01, 0.035, 0.064, -0.06, 0.05, 0, kit.car),
+    block(0.12, 0.002, 0.012, 0.0, 0.057, 0, kit.band),
+    bar([0.05, 0.05, 0], [0.035, 0.085, 0], 0.004, '#2a2740'),
+    painted(new THREE.TorusGeometry(0.018, 0.0035, 4, 16).rotateY(Math.PI / 2).rotateZ(-0.5).translate(0.035, 0.085, 0), '#2a2740'),
+    ...[-1, 1].map(s => painted(new THREE.ConeGeometry(0.012, 0.045, 4).rotateZ(Math.PI / 2 + 0.6).translate(-0.078, 0.07, s * 0.03), kit.band, 0.1)),
+    painted(new THREE.SphereGeometry(0.009, 8, 6).translate(0.092, 0.04, 0), '#ffd27a'),
+    ...[[0.058, 0.05], [0.058, -0.05], [-0.058, 0.05], [-0.058, -0.05]].map(([x, z]) => wheel(x, z)),
+  ]);
+  const p = piece([]);
+  p.rigs.push({ geo: car, at: [0, 0, 0], axis: 'y', rest: Math.PI });
+  p.play.push({ ride: 'drive', rig: 0, seat: [-0.03, 0.056, 0] });
   return p;
 }
 
@@ -336,18 +401,33 @@ const CIRCUIT = {
     ...[-0.03, -0.01, 0.01, 0.03].flatMap(z => [-1, 1].map(s => block(0.008, 0.004, 0.006, s * 0.033, y - 0.004, z, '#cfd5db')))]),
   nest: y => painted(new THREE.TorusGeometry(0.06, 0.012, 6, 16).rotateX(Math.PI / 2).translate(0, y, 0), '#1d1f22'),
   roof: (x, y) => block(0.16, 0.03, 0.16, x, y, 0, '#1d1f22'),
-  // A fan: its blades are the deck.
+  // An electrolytic capacitor, its can the deck: the sleeve with its stripe marking the
+  // minus lead, the can's top scored with its vent.
   platform: r => merge([
-    painted(new THREE.CylinderGeometry(0.06, 0.06, 0.04, 16).translate(0, 0.035, 0), '#2a2d31'),
-    ...Array.from({ length: 7 }, (_, i) => painted(new THREE.BoxGeometry(r - 0.05, 0.01, 0.07)
-      .rotateX(0.35).translate((r + 0.05) / 2, 0.045, 0).rotateY(i * Math.PI * 2 / 7), '#3a3f45')),
-    painted(new THREE.CylinderGeometry(0.045, 0.045, 0.005, 16).translate(0, 0.057, 0), '#c8ced4'),
+    painted(new THREE.CylinderGeometry(r, r, 0.035, 28).translate(0, 0.0375, 0), '#1f4f8a'),
+    painted(new THREE.CylinderGeometry(r * 1.005, r * 1.005, 0.033, 8, 1, true, 0, 0.7).translate(0, 0.0375, 0), '#e8ecef'),
+    painted(new THREE.CylinderGeometry(r * 0.94, r * 0.94, 0.004, 28).translate(0, 0.057, 0), '#c8ced4'),
+    block(r * 1.5, 0.002, 0.008, 0, 0.058, 0, '#7d848b'), block(0.008, 0.002, r * 1.5, 0, 0.058, 0, '#7d848b'),
   ]),
   fulcrum: () => merge([block(0.08, 0.04, 0.06, 0, 0, 0, '#1d1f22'), ...[-0.025, 0.025].map(x => block(0.008, 0.012, 0.07, x, 0, 0, '#cfd5db'))]),
-  // A coil on a chip: an inductor ridden as a spring.
-  rider: () => merge([block(0.14, 0.03, 0.08, 0, 0.08, 0, '#1d1f22'), block(0.016, 0.008, 0.016, 0.05, 0.11, 0, '#d9b04c'),
-    bar([0.05, 0.13, -0.03], [0.05, 0.13, 0.03], 0.004, '#cfd5db'), bar([0.05, 0.11, -0.03], [0.05, 0.13, -0.03], 0.003, '#cfd5db'),
-    bar([0.05, 0.11, 0.03], [0.05, 0.13, 0.03], 0.003, '#cfd5db')]),
+  // A transistor for a horse: its black body the barrel, sat on; one lead bent up and
+  // forward for a neck with a bar to hold, one back for a tail, and the middle one down
+  // into a solder pad (stem, pad), on which it rocks.
+  rider: () => merge([
+    painted(new THREE.CylinderGeometry(0.04, 0.04, 0.15, 14, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).translate(0, 0.09, 0), '#1d1f22', 0, true),
+    block(0.15, 0.002, 0.08, 0, 0.089, 0, '#2a2d31'),
+    block(0.002, 0.012, 0.03, 0.0755, 0.1, 0, '#cfd5db'),
+    bar([0.05, 0.09, 0], [0.09, 0.07, 0], 0.005, '#cfd5db'), bar([0.09, 0.07, 0], [0.11, 0.19, 0], 0.005, '#cfd5db'),
+    bar([0.11, 0.19, -0.035], [0.11, 0.19, 0.035], 0.005, '#cfd5db'),
+    painted(new THREE.SphereGeometry(0.012, 8, 6).translate(0.11, 0.19, 0), '#a9afb5'),
+    bar([-0.05, 0.09, 0], [-0.09, 0.07, 0], 0.005, '#cfd5db'), bar([-0.09, 0.07, 0], [-0.13, 0.13, 0], 0.005, '#cfd5db'),
+  ]),
+  saddle: 0.13,
+  stem: () => bar([0, 0, 0], [0, 0.09, 0], 0.007, '#cfd5db'),
+  pad: () => merge([
+    painted(new THREE.CylinderGeometry(0.05, 0.05, 0.004, 16).translate(0, 0.002, 0), '#c8a24a'),
+    painted(new THREE.ConeGeometry(0.022, 0.02, 12).translate(0, 0.01, 0), '#d6dadf'),
+  ]),
   // A staple of jumper wire, the net a sheet of shielding mesh.
   goal: side => {
     const x = side * 0.85, wire = '#cfd5db';
@@ -375,6 +455,7 @@ const GALAXY = {
   frame: '#3a3552', base: '#2a2740', deck: '#4a4466', slide: '#4fd0e8', spring: '#8b86a8', seatColor: '#9a7cff',
   ground: '#1e1b30', edge: '#6ff4ff', line: '#6ff4ff', domeColor: '#6ff4ff',
   turf: '#2a2740', turfLight: '#302c4a', court: '#26233a', key: '#332e50', sand: '#231f36', tape: '#6ff4ff', net: '#6ff4ff', antenna: '#ffd27a',
+  pipe: '#5b5390', band: '#6ff4ff', car: '#9a7cff',
   leg: (a, b) => bar(a, b, 0.011, GALAXY.frame),
   beam: (a, b) => bar(a, b, 0.009, '#6ff4ff'),
   rung: (a, b) => bar(a, b, 0.004, '#6ff4ff'),
@@ -449,6 +530,10 @@ const playgrounds = (kit, glow = null) => [
   amenity([[ground(kit, 1.5, 1.3)], [slide(kit, { h: 0.34, run: 0.5, tower: true }), -0.5, -0.32], [swings(kit, { seats: [0], h: 0.34, seatY: 0.08, nest: true }), 0.42, 0.15], [seesaw(kit), -0.25, 0.38]],
     { size: [1.5, 1.3], scale: 2.2, weight: 0.5, glow }),
 ];
+
+// The galaxy's own: a pipe to slide down and two bobby cars to drive round it.
+const spacePark = (kit, glow = null) => amenity([[ground(kit, 1.5, 1.3)], [pipeSlide(kit), -0.17, -0.25], [bobbyCar(kit), 0.5, 0.42], [bobbyCar(kit), 0.5, 0.14]],
+  { size: [1.5, 1.3], scale: 2.2, weight: 0.5, glow });
 
 // Pitch 30 m by 20 with goals 2 m high; court 18 m by 12 with the rim at 3 m; a
 // volleyball court 18 m by 9, its net 2.4 m.
@@ -567,7 +652,7 @@ export function amenitiesFor(style) {
     built.set(key, {
       city: () => [...sports(CITY), ...playgrounds(CITY)],
       circuit: () => [...sports(CIRCUIT), ...playgrounds(CIRCUIT).slice(0, 2), ...STANDING.circuit.map(still)],
-      galaxy: () => [...sports(GALAXY, LIGHT), ...playgrounds(GALAXY, LIGHT).slice(0, 2), ...STANDING.galaxy.map(still)],
+      galaxy: () => [...sports(GALAXY, LIGHT), ...playgrounds(GALAXY, LIGHT).slice(0, 2), spacePark(GALAXY, LIGHT), ...STANDING.galaxy.map(still)],
     }[style in STYLES ? style : 'city']());
     parts = null;
   }
@@ -610,9 +695,12 @@ export function amenityMatrix(it, a, m = new THREE.Matrix4()) {
 const _turn = new THREE.Matrix4(), _at = new THREE.Matrix4();
 const AXES = { x: new THREE.Vector3(1, 0, 0), y: UP, z: new THREE.Vector3(0, 0, 1) };
 
-/** The matrix for a rig of an amenity placed as `it`, turned `angle` about its axis at its pivot. */
-export function rigMatrix(it, a, rig, angle = rig.rest ?? 0, m = new THREE.Matrix4()) {
+/**
+ * The matrix for a rig of an amenity placed as `it`, turned `angle` about its axis at
+ * its pivot - or at `at`, for one moved off it (a car driven away).
+ */
+export function rigMatrix(it, a, rig, angle = rig.rest ?? 0, m = new THREE.Matrix4(), at = rig.at) {
   amenityMatrix(it, a, m);
-  m.multiply(_at.makeTranslation(rig.at[0], rig.at[1], rig.at[2]));
+  m.multiply(_at.makeTranslation(at[0], at[1], at[2]));
   return m.multiply(_turn.makeRotationAxis(AXES[rig.axis], angle));
 }

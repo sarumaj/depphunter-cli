@@ -15,6 +15,7 @@ const WALK = await import('../static/walk/walk.js');
 
 const CITY = amenitiesFor('city');
 const [PITCH, COURT, VOLLEY, PLAYGROUND, ROUNDABOUT] = CITY;
+const SPACE_PARK = amenitiesFor('galaxy').find(a => a.play.some(e => e.ride === 'drive'));
 const FRAME = 1 / 60;
 
 /** A walker by `a` (an amenity, placed at the origin `turn`ed) standing at its model point `at`, facing its model point `to`. */
@@ -167,6 +168,77 @@ describe('playing in the parks', () => {
     assert.ok(top > 0.4, `the walker climbed to ${top.toFixed(2)}`);
     const end = onAmenity({ x: 0, y: 0, z: 0, turn: 0 }, PLAYGROUND, slide.path.at(-1));
     assert.ok(Math.hypot(w.p.x - end.x, w.p.z - end.z) < 0.05, 'the walker did not come off the end of the slide');
+  });
+
+  // Verifies: REQ-WALK-057
+  it('turns a capacitor and rocks a transistor on its lead, on a board', () => {
+    const park = amenitiesFor('circuit').find(a => a.play.some(e => e.ride === 'spin'));
+    const spin = park.play.find(e => e.ride === 'spin');
+    const turner = walker(park, [spin.pivot[0] + spin.r, 0, spin.pivot[2]], spin.pivot).w;
+    assert.equal(turner.playClick(), true);
+    run(turner, 1.5, ['KeyW']);
+    assert.ok(turner.riding.speed > 2, `the capacitor turns at ${turner.riding.speed}`);
+    const rock = park.play.find(e => e.ride === 'rock');
+    const at = [rock.pivot[0], 0, rock.pivot[2]];
+    const { w } = walker(park, at, [at[0] + 1, 0, at[2]]);
+    assert.equal(w.playClick(), true);
+    assert.equal(w.riding.entry.ride, 'rock');
+    let most = 0;
+    for (let t = 0; t < 1.5; t += FRAME) {
+      if (t < 0.1) w.keys.add('KeyW'); else w.keys.delete('KeyW');
+      w.rideStep(FRAME);
+      most = Math.max(most, Math.abs(w.riding.angle));
+    }
+    assert.ok(most > 0.1, `the transistor rocked ${most.toFixed(2)}`);
+  });
+
+  // Verifies: REQ-WALK-057
+  it('slides down a pipe, round and round, and out of its end', () => {
+    const pipe = SPACE_PARK.play.find(e => e.ride === 'slide');
+    const { w, it } = walker(SPACE_PARK, pipe.path[0], pipe.path[1]);
+    assert.equal(w.playClick(), true);
+    let turned = 0, last = w.p.yaw, t = 0;
+    for (; t < 15 && w.riding; t += FRAME) {
+      w.rideStep(FRAME);
+      turned += Math.atan2(Math.sin(w.p.yaw - last), Math.cos(w.p.yaw - last));
+      last = w.p.yaw;
+    }
+    assert.equal(w.riding, null, 'still in the pipe after fifteen seconds');
+    assert.ok(t < 10, `the ride took ${t.toFixed(1)} seconds`);
+    assert.ok(Math.abs(turned) > 5, `turned ${turned.toFixed(1)} going down`);
+    const end = onAmenity(it, SPACE_PARK, pipe.path.at(-1));
+    assert.ok(Math.hypot(w.p.x - end.x, w.p.z - end.z) < 0.05, 'the walker did not come out of the pipe');
+  });
+
+  // Verifies: REQ-WALK-057
+  it('drives a bobby car round its playground, steered, and leaves it where it stopped', () => {
+    const drive = SPACE_PARK.play.find(e => e.ride === 'drive'), rig = SPACE_PARK.rigs[drive.rig];
+    const seat = [rig.at[0] + drive.seat[0], 0, rig.at[2] + drive.seat[2]];
+    const { w, it } = walker(SPACE_PARK, [rig.at[0] + 0.03, 0, rig.at[2] + 0.15], rig.at);
+    assert.equal(w.playClick(), true);
+    assert.equal(w.riding.entry.ride, 'drive');
+    const home = onAmenity(it, SPACE_PARK, rig.at), car = it.cars[drive.rig];
+    run(w, 1.5, ['KeyW']);
+    const moved = onAmenity(it, SPACE_PARK, [car.x, 0, car.z]).distanceTo(home);
+    assert.ok(moved > 0.5, `the car went ${moved.toFixed(2)}`);
+    const yaw = car.yaw, view = w.p.yaw;
+    run(w, 1, ['KeyW', 'KeyA']);
+    assert.ok(car.yaw - yaw > 0.5, 'A did not steer');
+    assert.ok(Math.abs(w.p.yaw - view - (car.yaw - yaw)) < 1e-9, 'the view did not turn with the car');
+    // Held at full speed a long while, it stays on the playground's ground.
+    run(w, 8, ['KeyW']);
+    const [x0, z0, x1, z1] = SPACE_PARK.floors[0];
+    assert.ok(car.x > x0 && car.x < x1 && car.z > z0 && car.z < z1, 'the car left the playground');
+    // Off, the car stays where it stopped, and the walker steps out beside it.
+    w.keys.add('Space');
+    w.rideStep(FRAME);
+    w.keys.delete('Space');
+    assert.equal(w.riding, null);
+    const left = { x: car.x, z: car.z };
+    run(w, 1);
+    assert.deepEqual({ x: car.x, z: car.z }, left);
+    const now = w.carPoint(it, drive, drive.seat, new THREE.Vector3());
+    assert.ok(Math.hypot(w.p.x - now.x, w.p.z - now.z) > 0.15, 'the walker is left in the car');
   });
 
   // Verifies: REQ-WALK-058

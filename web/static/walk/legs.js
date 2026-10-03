@@ -189,12 +189,12 @@ export class Legs {
 const X = new THREE.Vector3(1, 0, 0), TURN = new THREE.Quaternion(), AT = new THREE.Vector3(), HIPS = new THREE.Vector3(), ON = new THREE.Vector3();
 
 /**
- * How far the walker is sat down, 0 to 1: on a swing, a seesaw or a rider once on it,
+ * How far the walker is sat down, 0 to 1: on a swing, a seesaw, a rider or a car once on it,
  * down a slide as far as it has them sitting, and getting up again after either.
  */
 export function sitting(w) {
   const r = w.riding, ride = r?.entry.ride;
-  if (ride === 'swing' || ride === 'rock') return r.blend * r.blend * (3 - 2 * r.blend);
+  if (ride === 'swing' || ride === 'rock' || ride === 'drive') return r.blend * r.blend * (3 - 2 * r.blend);
   if (ride === 'slide') return r.sit;
   return r ? 0 : w.unseat || 0;
 }
@@ -225,7 +225,7 @@ export function posture(w, phase, now, room = Infinity) {
   if (sit > 0) {
     // Thighs out along the seat; shins hanging - no lower than the room under the seat
     // allows - or out straight down a slide.
-    let down = ride === 'slide' ? 0.1 : ride === 'swing' ? 1.25 + 0.4 * Math.sin(r.angle * 2) : 1.4;
+    let down = ride === 'slide' ? 0.1 : ride === 'swing' ? 1.25 + 0.4 * Math.sin(r.angle * 2) : ride === 'drive' ? 0.9 : 1.4;
     const reach = Math.max(-1, Math.min(1, (room - 0.01 - THIGH * Math.cos(SEATED)) / SHIN));
     down = Math.min(down, SEATED - Math.acos(reach));
     for (const [joint, to] of [['thigh_L', SEATED], ['thigh_R', SEATED], ['shin_L', -down], ['shin_R', -down]]) {
