@@ -36,6 +36,7 @@ const LOST = 1.2;           // seconds a ball lies off its court before it is pu
 const FLIGHT = 3;           // seconds of a ball's flight the guide looks ahead at most
 const SWAY = 0.525;         // how far a held button swings a ball's strength either side of ...
 const MID = 0.975;          // ... its middle, from soft (0.45) to hard (1.5)
+const SHOOTING_HAND = 0.035; // a shot leaves this far right of the eye, so its arc is seen as one
 const CAR_TOP = 1.1;        // a bobby car's top speed, units a second
 const CAR = 0.09;           // its reach round its middle, as its model has it
 const FLOOR_CELL = 4;        // the grid the amenities' floors are found by
@@ -837,7 +838,7 @@ export const play = {
       ? new THREE.Vector3(ball.pos.x, this.height(ball.pos.x, ball.pos.z, ball.pos.y, POINT) + ball.r + 0.005, ball.pos.z)
       : this.releasePoint(ball, new THREE.Vector3());
     const run = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
-    const [lift, speed] = how === 'throw' ? [0.45, 3]
+    const [lift, speed] = how === 'throw' ? [0.55, 2.5]
       : how === 'kick' ? [0.3, run ? 6 : 4.2]
         : how === 'hit' ? [0.8, 2.6]
           : p.ground ? [0.5, 3.6] : [0.15, 5];
@@ -891,14 +892,37 @@ export const play = {
     const guide = this.ballGuide ||= makeGuide(this.scene, undefined, { spacing: 0.05, fadeIn: 0.3 });
     if (!aim) { guide.group.visible = false; return; }
     const { path, point } = this.flight(aim.ball, this.plan(aim.ball, aim.how));
-    guide.draw(path, point, UP, this.scene.walkCamera.position);
+    const rim = aim.how === 'throw' ? this.rimCrossing(aim.ball, path) : null;
+    if (rim) guide.draw(rim.path, rim.point, UP, this.scene.walkCamera.position);
+    else guide.draw(path, point, UP, this.scene.walkCamera.position);
   },
 
-  // Where a ball leaves the hands: in front of the eye and a little under it, or over
-  // the head for a jump serve.
+  /**
+   * A shot's path up to where it comes back down through the height of its court's
+   * rims, and that point: from behind the ball, an arc is a line straight up the view
+   * and where it lands is out of sight past the hoop, but where it drops through the
+   * rim's height is right at the hoop, where it is seen to go in or not. Null for a
+   * shot that never gets up there.
+   */
+  rimCrossing(ball, path) {
+    const hoop = ball.entry && ball.it.spec.play.find(e => e.hoop);
+    if (!hoop) return null;
+    const y = onAmenity(ball.it, ball.it.spec, hoop.hoop, v4).y;
+    for (let i = 1; i < path.length; i++) {
+      const a = path[i - 1], b = path[i];
+      if (b.y < a.y && a.y >= y && b.y < y) {
+        const point = a.clone().lerp(b, (a.y - y) / (a.y - b.y));
+        return { path: [...path.slice(0, i), point], point };
+      }
+    }
+    return null;
+  },
+
+  // Where a ball leaves the hands: in front of the eye and a little under it - a shot
+  // off to the right, from the shooting hand - or over the head for a jump serve.
   releasePoint(ball, out) {
-    const p = this.p, up = ball.kind === 'volley' && !p.ground ? 0.12 : -0.08;
-    return out.set(p.x - Math.sin(p.yaw) * 0.18, p.feet + EYE + up, p.z - Math.cos(p.yaw) * 0.18);
+    const p = this.p, up = ball.kind === 'volley' && !p.ground ? 0.12 : -0.08, right = ball.kind === 'basket' ? SHOOTING_HAND : 0;
+    return out.set(p.x - Math.sin(p.yaw) * 0.18 + Math.cos(p.yaw) * right, p.feet + EYE + up, p.z - Math.cos(p.yaw) * 0.18 - Math.sin(p.yaw) * right);
   },
 
   /** The ball held, in both hands, in front of the camera. */

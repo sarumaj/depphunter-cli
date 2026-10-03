@@ -256,6 +256,13 @@ describe('playing in the parks', () => {
       assert.equal(w.playClick(), true);
       assert.ok(w.ballHeld, 'the ball was not picked up');
       aimFor(w, ball, 'throw', f => f.played.scored);
+      // Shot as usual from the line, the hoop is in view - a little under the middle of it
+      // - and the guide ends in the ring, where the ball drops through the rim's height.
+      const rim = onAmenity({ x: 0, y: 0, z: 0, turn: 0 }, court, [-0.565, 0.25, 0]);
+      const look = Math.atan2(rim.y - EYE, Math.hypot(rim.x - w.p.x, rim.z - w.p.z));
+      assert.ok(w.p.pitch - look > 0 && w.p.pitch - look < 0.4, `the shot wants the eye ${(w.p.pitch - look).toFixed(2)} over the rim`);
+      const end = w.rimCrossing(ball, w.flight(ball, w.plan(ball, 'throw')).path).point;
+      assert.ok(Math.abs(end.y - rim.y) < 1e-9 && Math.hypot(end.x - rim.x, end.z - rim.z) < 0.028 * court.scale, `the guide ends at ${end.toArray()}`);
       w.playClick();
       w.playRelease();
       run(w, 3);

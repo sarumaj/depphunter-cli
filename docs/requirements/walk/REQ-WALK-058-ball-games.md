@@ -48,7 +48,13 @@ button.
 While a ball is held, or one is at the walker's feet to kick or in the air to
 hit, the guide the tools are aimed by (REQ-TOOL-082) **shall** show the path it
 would take, flown by the ball's own physics, to where it would first come down;
-and the ball, sent, **shall** go down that path.
+and the ball, sent, **shall** go down that path. A shot's guide **shall** end
+instead where it comes back down through the height of its court's rims, its
+marker there, so that whether it drops through the ring is seen at the hoop;
+a shot **shall** leave from the shooting hand, a little right of the eye, so
+that its arc is seen as an arc and not as a line up the middle of the view;
+and a shot from the free-throw line at the usual strength **shall** go in with
+the hoop in view, the eye a little above the rim.
 
 ## Rationale
 
@@ -59,8 +65,8 @@ and took the game out of playing.
 
 ## Acceptance criteria
 
-1. From the free-throw line, looking where the guide runs through the hoop, a
-   shot goes in.
+1. From the free-throw line, looking a little over the rim with the hoop in
+   view, a tapped shot goes in, its guide ending in the ring.
 2. A kick from the penalty spot, its guide into the goal, is a goal, and the
    net stops it.
 3. A serve from behind the baseline, its guide down in the far half, lands
