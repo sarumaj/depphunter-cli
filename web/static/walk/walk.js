@@ -1674,7 +1674,7 @@ export class Walker {
     if (this.frozen) return;
     // Steadier through the scope, and lining up a ball (play.js footwork).
     const k = LOOK * this.scene.walkCamera.fov / FOV * this.fineTurn();
-    this.p.yaw -= dx * k;
+    this.p.yaw = this.withinReach(this.p.yaw - dx * k);
     this.p.pitch = clamp(this.p.pitch - dy * k, -1.5, 1.5);
   }
 

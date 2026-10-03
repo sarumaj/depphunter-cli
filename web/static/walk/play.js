@@ -38,6 +38,7 @@ const FLIGHT = 3;           // seconds of a ball's flight the guide looks ahead 
 export const STRENGTH = { soft: 0.4, hard: 1.6, cycle: 3.2 };
 const FINE = 0.15;          // the share of the walker's pace left at a ball, or with one in the hands ...
 const CLOSE = 1.6;          // ... and how far off a ball their full pace comes back
+const LOOK_AROUND = 1.4;    // how far either side of the way a seated body faces the head turns
 const SEEN = 6;             // how near a bobby car is noticed
 const SHOOTING_HAND = 0.035; // a shot leaves this far right of the eye, so its arc is seen as one
 const CAR_TOP = 1.1;        // a bobby car's top speed, units a second
@@ -447,6 +448,17 @@ export const play = {
     return r.facing;
   },
 
+  /**
+   * `yaw`, kept within a head's turn of the way the body faces while sat on a ride, so
+   * the view never turns round to the back of one's own neck; as it is otherwise.
+   */
+  withinReach(yaw) {
+    const r = this.riding;
+    if (!r || r.blend < 1 || r.entry.ride === 'spin' || (r.entry.ride === 'slide' && r.sit < 0.5)) return yaw;
+    const body = this.rideYaw(), off = Math.atan2(Math.sin(yaw - body), Math.cos(yaw - body));
+    return Math.abs(off) <= LOOK_AROUND ? yaw : body + Math.sign(off) * LOOK_AROUND;
+  },
+
   /** Where an amenity's car is: off its spot once driven - { x, z, yaw, speed }, as its model has them. */
   carOf(it, entry) {
     const rig = it.spec.rigs[entry.rig];
@@ -528,6 +540,7 @@ export const play = {
     }
     if (e.ride === 'drive') this.poseCar(it, e);
     else if (r.rig) this.poseRig(it, e.rig, r.angle);
+    p.yaw = this.withinReach(p.yaw);
   },
 
   /** Poses an amenity's car where it has been driven. */

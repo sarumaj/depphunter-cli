@@ -34,7 +34,10 @@ get them on:
   stay where it stops when the walker gets off beside it.
 
 Getting on **shall** carry the walker from where they stand to their place on
-the ride, and turn them the way it faces, over a moment rather than at once;
+the ride, and turn them the way it faces, over a moment rather than at once.
+Sat on it, they **shall** look round no further than a head turns - about 80
+degrees either side of the way the seat, the car or the chute faces - so the
+view never turns to the back of their own neck;
 getting off **shall** ease the eye from the seat up to standing. Nothing about
 a ride **shall** jump from one frame to the next.
 

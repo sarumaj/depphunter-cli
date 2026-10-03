@@ -252,10 +252,17 @@ describe('playing in the parks', () => {
     run(w, 1, ['KeyW', 'KeyA']);
     assert.ok(car.yaw - yaw > 0.5, 'A did not steer');
     assert.ok(Math.abs(w.p.yaw - view - (car.yaw - yaw)) < 1e-9, 'the view did not turn with the car');
-    // Looking aside, the body stays facing the way the car goes.
+    // Looking aside, the body stays facing the way the car goes - and the head turns
+    // only so far: never round to the back of one's own neck.
     w.p.yaw += 1.2;
     assert.ok(Math.abs(w.rideYaw() - w.carYaw(it, car)) < 1e-9, 'the body turned with the look');
     w.p.yaw -= 1.2;
+    for (const way of [-1, 1]) {
+      for (let n = 0; n < 100; n++) w.look(way * 30, 0);
+      const off = Math.atan2(Math.sin(w.p.yaw - w.rideYaw()), Math.cos(w.p.yaw - w.rideYaw()));
+      assert.ok(Math.abs(off) <= 1.4 + 1e-9 && Math.abs(off) > 1.3, `looked ${off.toFixed(2)} away from the way the car faces`);
+    }
+    w.p.yaw = w.rideYaw();
     // Held at full speed a long while, it stays on the playground's ground.
     run(w, 8, ['KeyW']);
     const [x0, z0, x1, z1] = SPACE_PARK.floors[0];
