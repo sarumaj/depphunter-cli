@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.11
-"""Models the walker's body below the head - the legs and the torso up to the shoulders
-- in the three outfits the map's styles dress them in, and exports them as glTF.
+"""Models the walker's whole body - legs, torso, arms and a head with a face - in the
+three outfits the map's styles dress them in, and exports them as glTF.
 
 Run it with Blender, or with the `bpy` module on the same Python it was built for:
 
@@ -8,15 +8,17 @@ Run it with Blender, or with the `bpy` module on the same Python it was built fo
     python3 scripts/legs.py
 
 Like the beetle (scripts/bug.py) the body is modeled here rather than taken from a
-pack: no CC0 pack has a body with no head, and that is all a first-person walker ever
-sees of themselves - looking down, their chest, legs and feet. One rig, three meshes
+pack, to dress it per style and rig it as the walk poses it. A first-person walker
+sees their chest, arms, legs and feet looking down; the head is the camera's, drawn
+only for a view from outside it (web/static/walk/legs.js). One rig, three meshes
 skinned to it:
 
-  * legs_city: a T-shirt, shorts to above the knee, bare shins, socks and sneakers;
+  * legs_city: a T-shirt with short sleeves over bare arms, shorts to above the
+    knee, bare shins, socks and sneakers;
   * legs_circuit: an electrician's coverall with a chest pocket, knee pads and
-    reflective bands, and work boots with toe caps;
+    reflective bands, insulating gloves, and work boots with toe caps;
   * legs_galaxy: a spacesuit, bulky, ringed at the joints and the neck, with a
-    control panel on the chest, in moon boots.
+    control panel on the chest and a ring of light at the cuffs, in moon boots.
 
 Colors are vertex colors (COLOR_0); the map paints with flat colors and so do these.
 The bone and mesh names are the contract with web/static/walk/legs.js.
@@ -36,6 +38,10 @@ except (ImportError, ModuleNotFoundError):
     raise SystemExit("this script must be run with Blender or the bpy module")
 
 HERE: str = os.path.dirname(os.path.abspath(__file__))
+# Which vertices of each mesh are an arm's, and which side: mesh_for to skin.
+ARMS: dict[str, dict[int, float]] = {}
+# ... and which are the head's.
+HEADS: dict[str, set[int]] = {}
 OUT: str = os.path.normpath(os.path.join(HERE, "..", "web", "static", "legs.glb"))
 
 # Map units: the walker's eye is 0.45 over their feet, so a unit is about 3.55 m. The
@@ -46,6 +52,71 @@ KNEE = 0.13
 ANKLE = 0.024
 WAIST = 0.29
 SHOULDER = 0.41  # under the eye at 0.45; the neck goes on up behind it
+# The arms, hanging at the sides: each turns at the shoulder, bends at the elbow and
+# the wrist.
+ARM_X = 0.08  # the shoulder joints off the middle
+ARM_TOP = 0.395
+ELBOW = 0.305
+WRIST = 0.228
+NECK = 0.428  # where the head sits on the neck; the eye is at 0.45, inside it
+HAIR = "#4a3426"
+EYES = "#1b1d22"
+LIPS = "#b5655a"
+
+# The head - [height, half width, half depth, color or None for skin] - from the chin
+# to the crown, as each outfit wears it: hair, a hard hat, a helmet. A face on the
+# front of it, but for the helmet's visor.
+HEADS_WORN: dict[str, list] = {
+    "city": [
+        (NECK, 0.015, 0.016, None),
+        (0.436, 0.022, 0.026, None),
+        (0.450, 0.027, 0.031, None),
+        (0.466, 0.028, 0.032, None),
+        (0.478, 0.028, 0.032, HAIR),
+        (0.490, 0.024, 0.028, HAIR),
+        (0.498, 0.015, 0.018, HAIR),
+    ],
+    "circuit": [
+        (NECK, 0.015, 0.016, None),
+        (0.436, 0.022, 0.026, None),
+        (0.450, 0.027, 0.031, None),
+        (0.466, 0.028, 0.032, None),
+        (0.472, 0.036, 0.040, "#f2c230"),  # a hard hat, its brim
+        (0.476, 0.030, 0.034, "#f2c230"),
+        (0.492, 0.026, 0.030, "#f2c230"),
+        (0.502, 0.016, 0.019, "#f2c230"),
+    ],
+    "galaxy": [
+        (NECK, 0.031, 0.031, "#9aa3b5"),  # the helmet, locked on the neck ring
+        (0.440, 0.040, 0.042, "#eef0f4"),
+        (0.462, 0.043, 0.045, "#eef0f4"),
+        (0.486, 0.038, 0.040, "#eef0f4"),
+        (0.504, 0.024, 0.026, "#eef0f4"),
+        (0.510, 0.010, 0.011, "#eef0f4"),
+    ],
+}
+# Boxes on the front of the head - [middle, half sizes, color] - for a face, or a visor.
+FACES: dict[str, list] = {
+    "city": [
+        ((-0.011, 0.030, 0.459), (0.004, 0.002, 0.0025), EYES),
+        ((0.011, 0.030, 0.459), (0.004, 0.002, 0.0025), EYES),
+        ((0.0, 0.033, 0.451), (0.003, 0.004, 0.005), "#d8a083"),  # the nose
+        ((0.0, 0.029, 0.441), (0.008, 0.002, 0.0015), LIPS),
+        ((-0.011, 0.031, 0.465), (0.006, 0.0015, 0.0012), HAIR),  # brows
+        ((0.011, 0.031, 0.465), (0.006, 0.0015, 0.0012), HAIR),
+    ],
+    "circuit": [
+        ((-0.011, 0.030, 0.459), (0.004, 0.002, 0.0025), EYES),
+        ((0.011, 0.030, 0.459), (0.004, 0.002, 0.0025), EYES),
+        ((0.0, 0.033, 0.451), (0.003, 0.004, 0.005), "#d8a083"),
+        ((0.0, 0.029, 0.441), (0.008, 0.002, 0.0015), LIPS),
+        ((0.0, 0.040, 0.481), (0.008, 0.002, 0.004), "#1b1d22"),  # the hat's badge
+    ],
+    "galaxy": [
+        ((0.0, 0.040, 0.465), (0.030, 0.006, 0.017), "#1b2a40"),  # the visor
+        ((0.0, 0.046, 0.472), (0.020, 0.002, 0.004), "#6ff4ff"),  # a light along it
+    ],
+}
 APART = 0.03  # each hip joint off the middle
 SEGMENTS = 14  # round a leg
 
@@ -110,6 +181,22 @@ OUTFITS: dict[str, dict] = {
             "wide": 1.0,
             "fabrics": {"upper": "knit", "sole": "rubber", "toe": "rubber"},
         },
+        # An arm from the shoulder down - [height, half width, half depth, color] -
+        # round its own middle `arm_x` off the body's: here a T-shirt's sleeve over a
+        # bare arm and hand.
+        "arm_x": 0.075,
+        "arm": [
+            (0.405, 0.020, 0.020, "#2a9d8f"),
+            (0.390, 0.021, 0.021, "#2a9d8f"),
+            (0.360, 0.019, 0.019, "#2a9d8f"),
+            (0.358, 0.0145, 0.0145, None),
+            (ELBOW, 0.013, 0.013, None),
+            (0.270, 0.012, 0.012, None),
+            (0.232, 0.0095, 0.0105, None),
+            (0.225, 0.008, 0.016, None),
+            (0.195, 0.008, 0.017, None),
+            (0.178, 0.007, 0.012, None),
+        ],
         "cloth": "twill",
         "fabrics": {"#2a9d8f": "knit", "#f2f2f2": "knit"},
     },
@@ -148,8 +235,27 @@ OUTFITS: dict[str, dict] = {
             "wide": 1.12,
             "fabrics": {"upper": "leather", "sole": "rubber", "toe": "leather"},
         },
+        # The coverall's sleeve to the wrist, and an insulating glove over it.
+        "arm_x": 0.076,
+        "arm": [
+            (0.405, 0.021, 0.021, "#24365a"),
+            (0.390, 0.022, 0.022, "#24365a"),
+            (ELBOW, 0.016, 0.016, "#24365a"),
+            (0.245, 0.013, 0.013, "#24365a"),
+            (0.243, 0.015, 0.015, "#c46a24"),
+            (0.224, 0.014, 0.016, "#c46a24"),
+            (0.222, 0.009, 0.017, "#d9772b"),
+            (0.195, 0.009, 0.018, "#d9772b"),
+            (0.178, 0.008, 0.013, "#d9772b"),
+        ],
         "cloth": "twill",
-        "fabrics": {"#1b1d22": "leather", "#202326": "rubber", "#d8e04a": "rubber"},
+        "fabrics": {
+            "#1b1d22": "leather",
+            "#202326": "rubber",
+            "#d8e04a": "rubber",
+            "#c46a24": "rubber",
+            "#d9772b": "rubber",
+        },
         # Boxes on the chest - [middle, half sizes, color]: a pocket.
         "chest": [((0.028, 0.036, 0.382), (0.012, 0.0025, 0.009), "#1e2d4c")],
     },
@@ -184,8 +290,26 @@ OUTFITS: dict[str, dict] = {
             "wide": 1.3,
             "fabrics": {"upper": "suit", "sole": "rubber", "toe": "rubber"},
         },
+        # The suit's sleeve, ringed at the elbow, a ring of light at the cuff, and the
+        # glove.
+        "arm_x": 0.088,
+        "arm": [
+            (0.405, 0.026, 0.026, "#eef0f4"),
+            (0.390, 0.027, 0.027, "#eef0f4"),
+            (0.312, 0.021, 0.021, "#eef0f4"),
+            (0.310, 0.023, 0.023, "#9aa3b5"),
+            (0.298, 0.023, 0.023, "#9aa3b5"),
+            (0.296, 0.020, 0.020, "#eef0f4"),
+            (0.246, 0.017, 0.017, "#eef0f4"),
+            (0.244, 0.019, 0.019, "#6ff4ff"),
+            (0.234, 0.019, 0.019, "#6ff4ff"),
+            (0.232, 0.011, 0.019, "#d6d9e2"),
+            (0.195, 0.011, 0.020, "#d6d9e2"),
+            (0.176, 0.009, 0.014, "#d6d9e2"),
+        ],
         "cloth": "suit",
         "fabrics": {
+            "#d6d9e2": "rubber",
             "#9aa3b5": "rubber",
             "#6ff4ff": "rubber",
             "#2a2f3a": "rubber",
@@ -346,7 +470,40 @@ def mesh_for(name: str, outfit: dict):
         shoe(bm, side, outfit["shoe"], colors)
     for middle, half, hexa in outfit.get("chest", []):
         box(bm, middle, half, paint(hexa), colors)
+    # The arms, out of the shoulders: closed at the top inside them and at the
+    # fingertips. Their vertices are weighted to the arm bones (skin), not by height.
+    arms = {}
+    for side in (-1.0, 1.0):
+        before = len(bm.verts)
+        rows, x = outfit["arm"], side * outfit["arm_x"]
+        loops = [ring(bm, z, x, rx, ry, paint(col), colors) for z, rx, ry, col in rows]
+        for a, b in pairwise(loops):
+            bridge(bm, a, b)
+        for loop, (z, _, _, col) in ((loops[0], rows[0]), (loops[-1], rows[-1])):
+            cap(bm, loop, z, x, paint(col), colors)
+        arms.update({v: side for v in list(bm.verts)[before:]})
+    # The head, closed at the crown and down inside the neck.
+    before = len(bm.verts)
+    style = name.removeprefix("legs_")
+    rows = HEADS_WORN[style]
+    loops = [ring(bm, z, 0.0, rx, ry, paint(col), colors) for z, rx, ry, col in rows]
+    for a, b in pairwise(loops):
+        bridge(bm, a, b)
+    for loop, (z, _, _, col) in ((loops[0], rows[0]), (loops[-1], rows[-1])):
+        cap(bm, loop, z, 0.0, paint(col), colors)
+    for middle, half, hexa in FACES[style]:
+        box(
+            bm,
+            middle,
+            half,
+            color(hexa, "skin") if hexa != HAIR else paint(hexa),
+            colors,
+        )
+    head = set(list(bm.verts)[before:])
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.verts.index_update()
+    ARMS[name] = {v.index: side for v, side in arms.items()}
+    HEADS[name] = {v.index for v in head}
     painted = [colors[v] for v in bm.verts]
     bm.to_mesh(mesh)
     bm.free()
@@ -364,7 +521,8 @@ def mesh_for(name: str, outfit: dict):
 
 def armature():
     """The rig: the hips, the spine up from them, and for each side a thigh, a shin and
-    a foot."""
+    a foot, and an upper arm off the spine, a forearm and a hand; and the head on the
+    spine."""
     data = bpy.data.armatures.new("legs_rig")
     rig = bpy.data.objects.new("legs_rig", data)
     bpy.context.scene.collection.objects.link(rig)  # type: ignore[reportAttributeAccessIssue]
@@ -402,9 +560,36 @@ def armature():
             shin,
         )
         foot.use_connect = True
+        upper = bones.new(f"upperarm_{suffix}")
+        upper.head, upper.tail, upper.parent = (
+            Vector((side * ARM_X, 0, ARM_TOP)),
+            Vector((side * ARM_X, 0, ELBOW)),
+            spine,
+        )
+        forearm = bones.new(f"forearm_{suffix}")
+        forearm.head, forearm.tail, forearm.parent = (
+            Vector((side * ARM_X, 0, ELBOW)),
+            Vector((side * ARM_X, 0, WRIST)),
+            upper,
+        )
+        forearm.use_connect = True
+        hand = bones.new(f"hand_{suffix}")
+        hand.head, hand.tail, hand.parent = (
+            Vector((side * ARM_X, 0, WRIST)),
+            Vector((side * ARM_X, 0, 0.17)),
+            forearm,
+        )
+        hand.use_connect = True
         # Every bone rolled the same way, so one axis bends every joint forward.
-        for b in (thigh, shin, foot):
+        for b in (thigh, shin, foot, upper, forearm, hand):
             b.roll = 0
+    head = bones.new("head")
+    head.head, head.tail, head.parent = (
+        Vector((0, 0, NECK)),
+        Vector((0, 0, 0.51)),
+        spine,
+    )
+    head.roll = 0
     bpy.ops.object.mode_set(mode="OBJECT")  # type: ignore[reportAttributeAccessIssue]
     return rig
 
@@ -418,7 +603,7 @@ def blend(z: float, at: float, over: float) -> float:
 def skin(obj, rig):
     """Weights by height: the spine over the waist, the hips over the thighs, the thighs
     over the knees, the shins down to the ankles, the feet below them - each eased
-    into the next."""
+    into the next. An arm's vertices go to its own bones, by height along it."""
     groups = {
         name: obj.vertex_groups.new(name=name)
         for name in (
@@ -430,10 +615,33 @@ def skin(obj, rig):
             "thigh_R",
             "shin_R",
             "foot_R",
+            "upperarm_L",
+            "forearm_L",
+            "hand_L",
+            "upperarm_R",
+            "forearm_R",
+            "hand_R",
+            "head",
         )
     }
+    arms, heads = ARMS.get(obj.name, {}), HEADS.get(obj.name, set())
     for v in obj.data.vertices:
         x, y, z = v.co
+        if v.index in heads:
+            groups["head"].add([v.index], 1.0, "REPLACE")
+            continue
+        if v.index in arms:
+            suffix = "L" if arms[v.index] > 0 else "R"
+            below_elbow = blend(z, ELBOW, 0.012)
+            below_wrist = blend(z, WRIST, 0.006)
+            for name, w in (
+                (f"upperarm_{suffix}", 1 - below_elbow),
+                (f"forearm_{suffix}", below_elbow * (1 - below_wrist)),
+                (f"hand_{suffix}", below_elbow * below_wrist),
+            ):
+                if w > 1e-3:
+                    groups[name].add([v.index], w, "REPLACE")
+            continue
         suffix = "L" if x > 0 else "R"
         below_waist = blend(z, WAIST + 0.01, 0.01)
         below_hip = blend(z, HIP + 0.012, 0.012)

@@ -580,6 +580,14 @@ describe('what the walker wears, and how their legs go', () => {
     // Astride a car, the thighs turned out round it, one each way.
     const astride = posture(at({ riding: { entry: { ride: 'drive' }, blend: 1 } }), 0, 0);
     assert.ok(astride.thigh_L_out > 0.5 && astride.thigh_R_out < -0.5 && astride.thigh_L > 1.3, `astride a car ${JSON.stringify(astride)}`);
+    // The arms swing against the legs walking, hold on to a ride, and are thrown
+    // forward and back against a kick.
+    const walking = posture(at(), 0.5, 0);
+    assert.ok(walking.thigh_L > 0 && walking.upperarm_L[0] < walking.upperarm_R[0], 'the left arm swings with the left leg');
+    const seated = posture(at({ riding: { entry: { ride: 'drive' }, blend: 1 } }), 0, 0);
+    assert.ok(seated.upperarm_L[0] > 0.9 && seated.upperarm_R[0] > 0.9, 'hands off the wheel of a car');
+    const midKick = posture(at({ pace: 0, kicked: 0 }), 0, CONTACT * 1000);
+    assert.ok(midKick.upperarm_L[0] > 0.5 && midKick.upperarm_R[0] < 0, 'the arms do not answer a kick');
     // Sat low - a seesaw's end on the ground - the feet stay clear of it.
     const low = posture(at({ riding: { entry: { ride: 'rock' }, angle: 0, blend: 1 } }), 0, 0, 0.07);
     const drop = 0.115 * Math.cos(low.thigh_L) + 0.13 * Math.cos(low.thigh_L + low.shin_L);
@@ -656,6 +664,29 @@ describe('empty hands', () => {
     assert.ok(!camera.children.some(o => o.isGroup && o.children.length), 'something is still held before the camera');
     w.setHandsOff(false);
     assert.ok(w.held && w.viewmodel, 'H again did not take the tools out');
+  });
+
+  // Verifies: REQ-WALK-059
+  it('shows one pair of hands: what is held before the eye, or the body\'s own arms looking down', () => {
+    const w = holding();
+    const camera = new THREE.PerspectiveCamera();
+    Object.assign(w, {
+      active: true, hud: { dataset: {}, classList: { toggle() {} }, querySelector: () => null },
+      scene: { walkCamera: camera, viewScene: new THREE.Scene(), scene: new THREE.Scene(), style: 'city' }, drawSlots() {}, drawHud() {}, flash() {}, setFog() {},
+    });
+    w.secondary = null;
+    w.showTool();
+    for (const [pitch, held] of [[0, true], [-0.7, true], [-1.2, false]]) {
+      w.p.pitch = pitch;
+      w.lowerArms();
+      assert.equal(w.held.visible, held, `looking ${pitch} down, the tool is ${w.held.visible ? '' : 'not '}in view`);
+      assert.equal(w.bodyArms(), !held, 'two pairs of hands, or none');
+    }
+    w.p.pitch = -0.7;
+    w.lowerArms();
+    assert.ok(w.held.position.y < 0, 'the tool does not sink as the eye looks down');
+    w.setHandsOff(true);
+    assert.ok(w.bodyArms(), 'empty-handed, no arms at all');
   });
 
   // Verifies: REQ-TOOL-032

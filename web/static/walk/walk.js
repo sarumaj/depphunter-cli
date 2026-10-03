@@ -97,6 +97,8 @@ const REFILLED = 0.25;
 const FOV = 70, MIN_FOV = 30, MAX_FOV = 90, SCOPE_FOV = 22;
 // How far in the held tool sits, as a fraction of where it is modeled. See showTool.
 const VIEW_NEAR = 0.5;
+const ARMS_DOWN = [0.55, 0.9]; // looking this far down, what is held before the eye sinks out of view ...
+const SUNK = 0.3;              // ... this far, in the camera's units
 const SWING = 0.45;         // seconds a tool takes to swing and settle
 // How far the view rides up and down, and how fast, for each of the two things that
 // carry the walker: the long slow heave of a jet holding them up, and the swell of
@@ -1156,6 +1158,26 @@ export class Walker {
   // The two hands keep their own gestures, so netting a bug while the jet is running
   // is one hand doing each.
   // Implements: REQ-TOOL-031
+  /**
+   * Looking down past ARMS_DOWN, what is held before the eye - a tool, a ball - sinks
+   * out of the view, and once it is gone the body's own arms are the ones drawn
+   * (legs.js): one pair of hands at a time, and always on the shoulders.
+   */
+  lowerArms() {
+    const t = clamp((-this.p.pitch - ARMS_DOWN[0]) / (ARMS_DOWN[1] - ARMS_DOWN[0]), 0, 1), down = t * t * (3 - 2 * t);
+    for (const held of [this.held, this.ballView]) {
+      if (!held) continue;
+      held.position.y = -down * SUNK;
+      held.visible = down < 1;
+    }
+  }
+
+  /** Whether the body's arms are the hands to draw: nothing held before the eye, or what is held sunk out of sight. */
+  bodyArms() {
+    const tool = this.held?.visible && (this.viewmodel || this.offhand);
+    return !tool && !this.ballView?.visible;
+  }
+
   poseTool(deltaTime, now) {
     // A tool with something live on it gets its frame here. Every other frame is
     // enough for a screen this size, and halves what it costs.
@@ -1786,6 +1808,7 @@ export class Walker {
       this.health.draw(now); // the wash a hit leaves has to come off by itself
       this.drawFuel();
       this.poseTool(deltaTime, now);
+      this.lowerArms();
       if (this.offhand && this.secondary?.steer) this.secondary.steer(this.offhand, this.chute);
       this.bank(deltaTime);
       const under = this.drown(deltaTime, now);
