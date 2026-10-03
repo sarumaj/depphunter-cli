@@ -7,14 +7,24 @@
 // per world unit, so dividing by it holds a marker still while the map is pulled
 // about). It is drawn twice - once solid, once faintly with the depth test off - so a
 // walker in a street between two towers is still visible through the one in front.
+//
+// And it pulses, so it is found at a glance on a busy map: rings in its color spread
+// over the ground from its feet and fade, one after another, seen through whatever
+// stands in front of it. A pulse is a redraw, so the map keeps drawing (setAnimated)
+// only while the figure is shown; with reduced motion the ring stands still.
+//
+// Implements: REQ-MAP-065
 
 import * as THREE from '../vendor/three.module.min.js';
 import { mergeGeometries } from '../vendor/BufferGeometryUtils.js';
+import { reducedMotion } from './walkbase.js';
 
 const PX = 34;     // how tall the figure tries to be on the screen
 const MIN = 0.06;  // never smaller than this in map units
 const MAX = 5;     // nor bigger, however far the map is pulled away
 const GHOST = 0.3; // how strongly it shows through what stands in front of it
+const PULSE = 1.6; // seconds a ring takes to spread from the feet and fade
+const SPREAD = [0.45, 2.2]; // from and to what radius, as the figure is tall
 
 let parts = null;
 let canopyParts = null;
@@ -24,6 +34,7 @@ export class Avatar {
     this.scene = scene;
     this.group = new THREE.Group();
     this.group.visible = false;
+    this.pulse = [];    // the rings spreading from the feet
     this.stance = null; // {x, z, feet, yaw, canopy}
     this.canopy = [];   // the canopy over the figure, for a walker who left under one
     this.zoom = 0;      // the zoom the current scale was worked out for
@@ -39,6 +50,7 @@ export class Avatar {
     this.stance = stance;
     if (!stance) {
       this.group.visible = false;
+      this.scene.setAnimated(false, 'avatar');
       this.scene.requestRender();
       return;
     }
@@ -54,6 +66,7 @@ export class Avatar {
   show(on) {
     this.group.visible = on && !!this.stance;
     if (this.group.visible) this.follow();
+    this.scene.setAnimated(this.group.visible && !reducedMotion(), 'avatar');
     this.scene.requestRender();
   }
 
@@ -96,6 +109,25 @@ export class Avatar {
       this.canopy.push(canopy);
       this.group.add(canopy);
     }
+    // The pulse: two rings half a beat apart, posed as they are drawn, from the clock,
+    // so they need nothing but redraws.
+    this.pulse = [0, 0.5].map(phase => {
+      const material = this.scene.bendable(new THREE.MeshBasicMaterial({
+        color, transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+      }));
+      this.materials.push(material);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 40).rotateX(-Math.PI / 2).translate(0, 0.02, 0), material);
+      ring.frustumCulled = false;
+      ring.renderOrder = 7;
+      ring.onBeforeRender = () => {
+        const t = reducedMotion() ? 0.35 + phase * 0.3 : (performance.now() / 1000 / PULSE + phase) % 1;
+        ring.scale.setScalar(SPREAD[0] + (SPREAD[1] - SPREAD[0]) * t);
+        material.opacity = 0.9 * (1 - t) ** 1.5;
+        ring.updateMatrixWorld();
+      };
+      this.group.add(ring);
+      return ring;
+    });
   }
 
   paint(color) {
@@ -107,10 +139,12 @@ export class Avatar {
     for (const m of this.materials) m.dispose();
     this.materials = [];
     this.canopy = [];
+    this.pulse = [];
     this.group.clear();
   }
 
   dispose() {
+    this.scene.setAnimated(false, 'avatar');
     this.clear();
     this.scene.scene.remove(this.group);
   }

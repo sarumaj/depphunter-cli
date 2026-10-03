@@ -524,13 +524,39 @@ describe('the canopy as drawn', () => {
 
   // Verifies: REQ-TOOL-079
   it('shows the figure on the map under a canopy when the walker left under one', () => {
-    const scene = { scene: { add() {}, remove() {} }, bendable: m => m, requestRender() {}, camera: { zoom: 20 } };
+    const scene = { scene: { add() {}, remove() {} }, bendable: m => m, requestRender() {}, setAnimated() {}, camera: { zoom: 20 } };
     const figure = new Avatar(scene);
     const canopies = () => figure.group.children.filter(o => figure.canopy.includes(o));
     figure.set({ x: 0, z: 0, feet: 3, yaw: 0, canopy: true }, '#ff8a1f');
     assert.ok(canopies().length && canopies().every(o => o.visible), 'no canopy over a walker who left under one');
     figure.set({ x: 0, z: 0, feet: 0, yaw: 0 }, '#ff8a1f');
     assert.ok(canopies().every(o => !o.visible), 'a canopy over a walker standing in the street');
+  });
+});
+
+describe('the walker on the map', () => {
+  // Verifies: REQ-MAP-065
+  it('pulses a ring out from the figure while it is shown, and keeps the map drawing only then', () => {
+    const asked = new Map();
+    const scene = { scene: { add() {}, remove() {} }, bendable: m => m, requestRender() {}, camera: { zoom: 20 }, setAnimated(on, why) { asked.set(why, on); } };
+    const figure = new Avatar(scene);
+    figure.set({ x: 0, z: 0, feet: 0, yaw: 0 }, '#ff8a1f');
+    figure.show(true);
+    assert.equal(asked.get('avatar'), true, 'the map is not kept drawing for the pulse');
+    const [ring] = figure.pulse, seen = [];
+    const now = performance.now;
+    try {
+      for (const t of [0, 250, 500, 750]) {
+        performance.now = () => t;
+        ring.onBeforeRender();
+        seen.push([ring.scale.x, ring.material.opacity]);
+      }
+    } finally {
+      performance.now = now;
+    }
+    for (let i = 1; i < seen.length; i++) assert.ok(seen[i][0] > seen[i - 1][0] && seen[i][1] < seen[i - 1][1], `the ring does not spread and fade: ${seen}`);
+    figure.show(false);
+    assert.equal(asked.get('avatar'), false, 'the map keeps drawing for a figure not shown');
   });
 });
 
