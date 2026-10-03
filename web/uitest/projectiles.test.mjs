@@ -62,7 +62,7 @@ function thrower() {
     boxes: [], bugs: null, fell: null, viewmodel: null, offhand: null,
     scene: { scene, bendable: material => material, unbend() {} },
     muzzle: () => null, boxAt: () => null, height: () => 0, flying: () => false,
-    flash() {}, tag() {}, drawHud() {},
+    flash() {}, quip() {}, tag() {}, drawHud() {},
     shotFrom: W.shotFrom, loose: W.loose, updateDarts: W.updateDarts, dropDarts: W.dropDarts, dropPuff: W.dropPuff,
     flyCast: W.flyCast, flyFree: W.flyFree, flightStep: W.flightStep, landed: W.landed, launch: W.launch, dressDart: W.dressDart,
     cutLine: W.cutLine, hook: W.hook, glance: W.glance, rebound: W.rebound, puff: W.puff,

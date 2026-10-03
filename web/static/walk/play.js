@@ -38,6 +38,7 @@ const SWAY = 0.525;         // how far a held button swings a ball's strength ei
 const MID = 0.975;          // ... its middle, from soft (0.45) to hard (1.5)
 const FINE = 0.15;          // the share of the walker's pace left at a ball, or with one in the hands ...
 const CLOSE = 1.6;          // ... and how far off a ball their full pace comes back
+const SEEN = 6;             // how near a bobby car is noticed
 const SHOOTING_HAND = 0.035; // a shot leaves this far right of the eye, so its arc is seen as one
 const CAR_TOP = 1.1;        // a bobby car's top speed, units a second
 const CAR = 0.09;           // its reach round its middle, as its model has it
@@ -242,6 +243,24 @@ export const play = {
     this.unseat = this.unseat < 1e-2 ? 0 : (this.unseat || 0) * settling;
     this.drawBallGuide();
     this.drawPlay();
+    this.noticeCars(deltaTime);
+  },
+
+  /** A bobby car come into view close by, remarked on - the first time each is seen. */
+  noticeCars(deltaTime) {
+    if ((this.carsLooked = (this.carsLooked || 0) + deltaTime) < 0.5 || this.riding) return;
+    this.carsLooked = 0;
+    for (const it of this.amenitiesNear(SEEN)) {
+      if (it.carSeen) continue;
+      for (const e of it.spec.play) {
+        if (e.ride !== 'drive') continue;
+        const at = this.carPoint(it, e, [0, 0, 0], v3);
+        if (Math.hypot(at.x - this.p.x, at.z - this.p.z) < SEEN && this.facing(at) > 0.9) {
+          it.carSeen = !!this.quip('car');
+          return;
+        }
+      }
+    }
   },
 
   /** Says what a click would play, or how to get both hands free for it. */
@@ -316,6 +335,7 @@ export const play = {
     }
     ride.facing = ride.yawTo ?? p.yaw;
     this.riding = ride;
+    this.quip(entry.slick ? 'pipe' : entry.ride);
     p.vy = 0;
     p.fly = false;
     this.fell = null;
@@ -733,7 +753,10 @@ export const play = {
     // In: down through the ring, from above it.
     if (was[1] > e.hoop[1] && now[1] <= e.hoop[1] && Math.hypot(now[0] - e.hoop[0], now[2] - e.hoop[2]) < e.r - rl * 0.4) {
       const swish = ball.played && !ball.played.rim;
-      if (!ball.ghost) this.flash(swish ? 'Swish! Two points' : 'In off the rim - two points');
+      if (!ball.ghost) {
+        this.flash(swish ? 'Swish! Two points' : 'In off the rim - two points');
+        this.quip('score');
+      }
       if (ball.played) ball.played.scored = true;
     }
   },
@@ -743,7 +766,10 @@ export const play = {
   goalLine(ball, e, was, now) {
     const a = ball.it.spec, x = e.from[0], side = e.goal, r = ball.r / a.scale;
     if ((was[0] - x) * side < 0 && (now[0] - x) * side >= 0 && now[2] > e.from[2] + r && now[2] < e.to[2] - r && now[1] < e.to[1]) {
-      if (ball.inNet !== e && !ball.ghost) this.flash('Goal!');
+      if (ball.inNet !== e && !ball.ghost) {
+        this.flash('Goal!');
+        this.quip('score');
+      }
       ball.inNet = e;
     }
     if (ball.inNet !== e) return;
@@ -771,7 +797,10 @@ export const play = {
       ball.pos.copy(onAmenity(ball.it, ball.it.spec, [Math.sign(was[0]) * (r + 0.002), now[1], now[2]], v3));
       if (ball.played) {
         ball.played.net = true;
-        if (!ball.ghost) this.flash('Into the net');
+        if (!ball.ghost) {
+          this.flash('Into the net');
+          this.quip('miss');
+        }
       }
     } else if (ball.played) ball.played.over = Math.sign(now[0]);
   },
@@ -781,11 +810,15 @@ export const play = {
     const play = ball.played;
     if (!play || play.landed) return;
     play.landed = true;
+    if (ball.kind === 'basket' && !play.scored && !ball.ghost) this.quip('miss');
     if (ball.kind !== 'volley' || play.net || !play.over) return;
     const [x0, z0, x1, z1] = ball.entry.area;
     const r = ball.r / ball.it.spec.scale;
     const inside = now[0] > x0 - r && now[0] < x1 + r && now[2] > z0 - r && now[2] < z1 + r && Math.sign(now[0]) === play.over;
-    if (!ball.ghost) this.flash(inside ? (play.jump ? 'Ace! A jump serve in' : 'In!') : 'Out');
+    if (!ball.ghost) {
+      this.flash(inside ? (play.jump ? 'Ace! A jump serve in' : 'In!') : 'Out');
+      this.quip(inside ? 'score' : 'miss');
+    }
   },
 
   // Walked into, a ball stays where it is and the walker stops against it: a ball

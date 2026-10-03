@@ -694,7 +694,7 @@ describe('what the tools reach and how long they last', () => {
     /** Seconds of use a full tank gives, burned a frame at a time the way walk.js does. */
     const lasts = id => {
       const walker = {
-        tanks: new Map(), dry: new Set(), secondary: TOOLS[id], flash() {},
+        tanks: new Map(), dry: new Set(), secondary: TOOLS[id], flash() {}, quip() {},
         tank: WALK.Walker.prototype.tank,
       };
       let t = 0;
@@ -711,7 +711,7 @@ describe('what the tools reach and how long they last', () => {
     const said = [];
     const walker = {
       tanks: new Map([['jetpack', 0]]), dry: new Set(['jetpack']), secondary: TOOLS.jetpack,
-      flash: t => said.push(t), tank: WALK.Walker.prototype.tank,
+      flash: t => said.push(t), quip() {}, tank: WALK.Walker.prototype.tank,
     };
     const burn = () => WALK.Walker.prototype.burn.call(walker, 0.05, false); // held, not flying
     let t = 0;

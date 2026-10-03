@@ -87,8 +87,10 @@ export const shots = {
       if (keeping) {
         this.hooks.onPhoto?.(bug ? `${bug.f.severity}: ${bug.f.title}` : target?.node.name || '');
       }
-      if (bug) this.bugs.catch(bug, tool.catchAs);
-      else if (target) this.tag(target);
+      if (bug) {
+        this.bugs.catch(bug, tool.catchAs);
+        this.quip('caught');
+      } else if (target) this.tag(target);
       else if (this.aim.far) this.flash(`Out of reach: the ${tool.label.toLowerCase()} has to be walked up to`);
       return;
     }
@@ -252,6 +254,7 @@ export const shots = {
     // Implements: REQ-WALK-027
     this.fell = up ? null : Math.max(this.fell ?? this.p.feet, this.p.feet);
     this.flash(up ? 'Line away - going up' : 'Line away - going down');
+    this.quip('grapple');
     this.drawHud();
     return true;
   },
@@ -466,7 +469,10 @@ export const shots = {
    */
   landed(dart, { bug, box: hit }) {
     const m = dart.mesh;
-    if (bug) this.bugs.catch(bug, dart.tool.catchAs);
+    if (bug) {
+      this.bugs.catch(bug, dart.tool.catchAs);
+      this.quip('caught');
+    }
     // One that has already glanced off a wall is on its way down, spent: it tags
     // nothing and bites nothing on the way.
     if (hit && !dart.glanced && !dart.tool.climbs && hits(dart.tool, 'buildings')

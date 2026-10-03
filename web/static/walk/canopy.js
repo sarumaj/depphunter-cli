@@ -49,6 +49,7 @@ export const canopy = {
     this.fell = null; // from here the canopy decides what the ground costs
     if (this.offhand) this.offhand.userData.throwing = true;
     this.flash('Pilot chute out');
+    this.quip('chute');
     this.drawHud();
   },
 
@@ -106,7 +107,10 @@ export const canopy = {
     if (!damage) return;
     // In a person's meters a second, the walker being half a unit tall (health.js).
     if (this.health.dead) this.die(`A wall at ${Math.round(speed * 3.5)} meters a second`);
-    else this.flash(`That wall cost ${damage} - steer clear of the buildings`);
+    else {
+      this.flash(`That wall cost ${damage} - steer clear of the buildings`);
+      this.quip('wall');
+    }
   },
 
   /**
@@ -137,8 +141,13 @@ export const canopy = {
     const wet = this.height(p.x, p.z, p.feet) <= WATER;
     const damage = wet ? 0 : this.health.touchdown(e.speed, e.open, dropFor(e.vertical));
     if (this.health.dead) this.die(`A landing at ${Math.round(e.speed * 3.5)} meters a second`);
-    else if (damage) this.flash(`That landing cost ${damage} - flare just before the ground`);
-    else this.flash(wet ? 'Down in the water' : 'Down - the parachute is being repacked');
+    else if (damage) {
+      this.flash(`That landing cost ${damage} - flare just before the ground`);
+      this.quip('fall');
+    } else {
+      this.flash(wet ? 'Down in the water' : 'Down - the parachute is being repacked');
+      if (!wet) this.quip('landed');
+    }
     this.drawHud();
   },
 
@@ -157,6 +166,7 @@ export const canopy = {
     this.p.ground = false;
     this.fell = this.p.feet;
     this.flash('Cut away - the canopy is gone, and so is what was holding you up');
+    this.quip('cutAway');
     this.drawHud();
     return true;
   },

@@ -34,6 +34,7 @@ import { shots } from './shots.js';
 import { trajectory, guided } from './trajectory.js';
 import { canopy } from './canopy.js';
 import { play } from './play.js';
+import { quips } from './quips.js';
 import { Legs } from './legs.js';
 import { wear } from './hands.js';
 import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee } from './tools.js';
@@ -742,10 +743,12 @@ export class Walker {
       this.stowed = null;
     }
     if (!this.active) return;
+    if (landed) this.quip('arrive');
     this.showTool();
     this.drawSlots();
     const back = this.secondary ? `${this.primary.label} and ${this.secondary.label.toLowerCase()}` : this.primary.label;
     this.flash(off ? 'Both hands empty - H takes the tools out again' : `${back} back in hand`);
+    if (off) this.quip('hands');
     this.drawHud();
   }
 
@@ -1989,7 +1992,10 @@ export class Walker {
     if (k.has('Space') && p.ground && this.wind.spend(Wind.jumpCost)) p.vy = JUMP;
     // Said once, when it happens: a bar at nought explains why running and jumping
     // stopped working, but only to somebody already looking at it.
-    if (this.wind.spent && !this.blown) this.flash('Out of breath');
+    if (this.wind.spent && !this.blown) {
+      this.flash('Out of breath');
+      this.quip('breath');
+    }
     this.blown = this.wind.spent;
     p.vy -= GRAVITY * deltaTime;
     p.feet += p.vy * deltaTime;
@@ -2131,6 +2137,7 @@ export class Walker {
       this.sinkT = 0;
       this.sinkFrom = this.health.hp;
       this.flash(this.waterKind().sinking);
+      this.quip('water');
     }
     this.sinkT += deltaTime;
     if (this.health.hurt(DROWN * deltaTime)) this.die(this.waterKind().cause);
@@ -2250,6 +2257,7 @@ export class Walker {
       if (now === 0 && was > 0) {
         this.dry.add(id);
         this.flash(`${tool.label} out - it works again once it has filled a little`);
+        this.quip('empty');
       } else if (now <= REFILLED && was > REFILLED) this.flash(`${tool.label} running low`);
     }
   }
@@ -2266,7 +2274,10 @@ export class Walker {
     if (!damage) return;
     // In a person's meters, the walker being half a unit tall (health.js).
     if (this.health.dead) this.die(`A fall of ${Math.round(drop * 3.5)} meters`);
-    else this.flash(`That drop cost ${damage} - watch the roofs`);
+    else {
+      this.flash(`That drop cost ${damage} - watch the roofs`);
+      this.quip('fall');
+    }
   }
 
   /**
@@ -2287,7 +2298,10 @@ export class Walker {
     this.bitAt = now;
     const damage = this.health.bite(bug.f.severity);
     if (this.health.dead) this.die(`${bug.f.severity}: ${bug.f.title}`);
-    else this.flash(`Bitten - ${bug.f.severity}: ${bug.f.title} (-${damage}). Catch it or get clear`);
+    else {
+      this.flash(`Bitten - ${bug.f.severity}: ${bug.f.title} (-${damage}). Catch it or get clear`);
+      this.quip(bug.f.severity === 'critical' ? 'critical' : 'bitten');
+    }
   }
 
   /**
@@ -2313,6 +2327,7 @@ export class Walker {
     this.setScoped(false);
     this.hud.classList.add('dead');
     this.flash(`${cause} finished you. Back to the map; walk in again to start over`);
+    this.quip('died', true);
   }
 
   /**
@@ -2654,6 +2669,7 @@ export class Walker {
       // The throttle, wide open for a moment: a burst of speed rather than a shot.
       this.burst = BURST;
       this.flash('Thrusters');
+      this.quip('fly');
       return;
     }
     if (tool.floats) {
@@ -2744,7 +2760,10 @@ export class Walker {
     const damage = Math.max(1, Math.round(BURN * worst.heat));
     this.health.hurt(damage);
     if (this.health.dead) this.die(`The fire on ${worst.node.name}`);
-    else this.flash(`Burning - ${worst.node.name} (-${damage}). Get clear, or put it out with the extinguisher`);
+    else {
+      this.flash(`Burning - ${worst.node.name} (-${damage}). Get clear, or put it out with the extinguisher`);
+      this.quip('burning');
+    }
   }
 
   /**
@@ -2868,7 +2887,7 @@ export class Walker {
   }
 }
 
-Object.assign(Walker.prototype, tracker, shots, trajectory, canopy, play);
+Object.assign(Walker.prototype, tracker, shots, trajectory, canopy, play, quips);
 
 /**
  * Where the first arrival has the walker at t (0 to 1): from behind and to the right

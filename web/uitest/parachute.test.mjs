@@ -267,7 +267,7 @@ describe('the pack', () => {
     const W = WALK.Walker.prototype;
     return {
       tanks: new Map(), dry: new Set(), secondary: TOOLS.parachute, chute: P.packedChute(), said: [],
-      flash(m) { this.said.push(m); }, tank: W.tank, spend: W.spend, burn: W.burn,
+      flash(m) { this.said.push(m); }, quip() {}, tank: W.tank, spend: W.spend, burn: W.burn,
     };
   }
 

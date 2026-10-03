@@ -609,3 +609,51 @@ describe('empty hands', () => {
     assert.ok(!w.bare);
   });
 });
+
+const { QUIPS } = await import('../static/walk/quips.js');
+
+describe('what the walker says', () => {
+  // Verifies: REQ-WALK-060
+  it('has a few short lines for everything it remarks on', () => {
+    for (const [topic, lines] of Object.entries(QUIPS)) {
+      assert.ok(lines.length >= 2, `only ${lines.length} line about ${topic}`);
+      for (const line of lines) assert.ok(line.length <= 60, `too long to read at a glance: ${line}`);
+    }
+  });
+
+  // Verifies: REQ-WALK-060
+  it('says something now and then, not the same thing twice running, and always when dying', () => {
+    const { w } = walker(PITCH, [0.3, 0, 0], [0.85, 0, 0]);
+    const first = w.quip('caught');
+    assert.ok(QUIPS.caught.includes(first));
+    assert.equal(w.quip('bitten'), null, 'two lines in a row');
+    w.said.at -= 11;
+    assert.equal(w.quip('caught'), null, 'the same thing remarked on again at once');
+    assert.ok(w.quip('bitten'), 'nothing said ten seconds later');
+    w.said.at -= 50;
+    w.said.topics.caught.at -= 50;
+    for (let i = 0; i < 20; i++) {
+      w.said.at -= 50;
+      w.said.topics.caught.at -= 50;
+      const again = w.quip('caught');
+      assert.notEqual(again, first, 'the same line twice running');
+      w.said.topics.caught.line = QUIPS.caught.indexOf(first);
+    }
+    assert.ok(QUIPS.died.includes(w.quip('died', true)), 'dying said nothing');
+  });
+
+  // Verifies: REQ-WALK-060
+  it('remarks on a bobby car come into view, and on getting on a ride', () => {
+    const drive = SPACE_PARK.play.find(e => e.ride === 'drive'), rig = SPACE_PARK.rigs[drive.rig];
+    const { w, it } = walker(SPACE_PARK, [rig.at[0] - 0.8, 0, rig.at[2]], rig.at);
+    const said = [];
+    w.showQuip = text => said.push(text);
+    run(w, 1);
+    assert.ok(said.length === 1 && QUIPS.car.includes(said[0]), `seeing a bobby car: ${said}`);
+    assert.ok(it.carSeen);
+    const pipe = SPACE_PARK.play.find(e => e.slick);
+    w.said.at -= 11;
+    w.board(it, pipe);
+    assert.ok(QUIPS.pipe.includes(said.at(-1)), `getting into a pipe: ${said.at(-1)}`);
+  });
+});
