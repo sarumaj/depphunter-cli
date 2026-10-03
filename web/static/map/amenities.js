@@ -208,7 +208,7 @@ function dome(kit, { r = 0.2 } = {}) {
 // A slide down a pipe: a tower climbed by a ladder up its back, a bridge out to the
 // pipe's mouth, and the pipe wound once round its own axis down to the ground, ringed
 // with light. The ride follows the pipe's bed (pipeBed), sat on from the bridge.
-const PIPE_H = 0.42, PIPE_R = 0.12, PIPE_AXIS = [0.05, 0], PIPE_WIND = 0.19, PIPE_STEPS = 32;
+const PIPE_H = 0.42, PIPE_R = 0.12, PIPE_AXIS = [0.05, 0], PIPE_WIND = 0.19, PIPE_STEPS = 64;
 function pipeBed(t) {
   const a = Math.PI / 2 - 2 * Math.PI * t, eased = t - Math.sin(2 * Math.PI * t) / (2 * Math.PI);
   return [PIPE_AXIS[0] + PIPE_WIND * Math.cos(a), 0.03 + (PIPE_H - 0.03) * (1 - eased), PIPE_AXIS[1] + PIPE_WIND * Math.sin(a)];

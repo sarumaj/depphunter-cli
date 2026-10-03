@@ -1022,6 +1022,18 @@ function slideTrack(it, entry) {
   };
   const facing = (a, b) => Math.atan2(-(b.x - a.x), -(b.z - a.z));
   const last = points.length - 1;
+  // A turn or a change of slope comes on across the corner between two straight pieces
+  // of the path, not at it: each piece's value holds at its middle and blends into its
+  // neighbor's towards their meeting, where the two agree.
+  const slopes = points.map((b, i) => i && Math.atan2(points[i - 1].y - b.y, Math.hypot(b.x - points[i - 1].x, b.z - points[i - 1].z)));
+  const headings = points.map((b, i) => i && facing(points[i - 1], b));
+  const blended = (values, angle) => s => {
+    const i = segment(s), u = Math.max(0, Math.min(1, (s - along[i - 1]) / Math.max(1e-6, along[i] - along[i - 1])));
+    const next = u >= 0.5 ? Math.min(last, i + 1) : Math.max(1, i - 1), k = Math.abs(u - 0.5);
+    let gap = values[next] - values[i];
+    if (angle) gap = Math.atan2(Math.sin(gap), Math.cos(gap));
+    return values[i] + gap * k;
+  };
   return {
     marks: { top: along[1], edge: along[entry.sit], foot: along[last - 1], end: along[last] },
     ladderYaw: facing(points[0], points[1]),
@@ -1030,14 +1042,8 @@ function slideTrack(it, entry) {
       const i = segment(s), u = (s - along[i - 1]) / Math.max(1e-6, along[i] - along[i - 1]);
       return out.copy(points[i - 1]).lerp(points[i], Math.max(0, Math.min(1, u)));
     },
-    slopeAt(s) {
-      const i = segment(s), a = points[i - 1], b = points[i];
-      return Math.atan2(a.y - b.y, Math.hypot(b.x - a.x, b.z - a.z));
-    },
-    headingAt(s) {
-      const i = segment(s);
-      return facing(points[i - 1], points[i]);
-    },
+    slopeAt: blended(slopes, false),
+    headingAt: blended(headings, true),
   };
 }
 

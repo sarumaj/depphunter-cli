@@ -25,7 +25,8 @@ get them on:
 - on a seesaw W pushes off from the bottom, and on a spring rider W rocks it;
 - a slide is ridden in one run by itself: up the ladder facing it, across the
   platform sitting down by its edge, down the chute's curve gathering speed and
-  facing along it - round and round down a pipe - along the run-out slowing,
+  facing along it - round and round down a pipe, turning smoothly and never
+  in steps - along the run-out slowing,
   and up onto the ground off its end;
 - a bobby car is driven: W goes, S brakes and then backs up, A and D steer, the
   more the faster it goes, the view turning with it. It **shall** stay on its

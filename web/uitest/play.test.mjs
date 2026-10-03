@@ -206,11 +206,30 @@ describe('playing in the parks', () => {
     const { w, it } = walker(SPACE_PARK, pipe.path[0], pipe.path[1]);
     assert.equal(w.playClick(), true);
     let turned = 0, last = w.p.yaw, t = 0;
+    // How the body's facing and the eye change from frame to frame: a turn may be fast,
+    // but it may not jump - the change from one frame to the next is steady.
+    let body = null, turn = null, eye = null, step = null, worstTurn = 0, worstStep = 0;
+    const angle = a => Math.atan2(Math.sin(a), Math.cos(a));
     for (; t < 15 && w.riding; t += FRAME) {
       w.rideStep(FRAME);
       turned += Math.atan2(Math.sin(w.p.yaw - last), Math.cos(w.p.yaw - last));
       last = w.p.yaw;
+      const r = w.riding;
+      if (!r || r.s < r.marks.edge + 0.05 || r.s > r.marks.foot - 0.05) { body = turn = eye = step = null; continue; }
+      const now = w.rideYaw(), at = new THREE.Vector3(w.p.x, w.p.feet, w.p.z);
+      if (body !== null) {
+        const t1 = angle(now - body);
+        if (turn !== null) worstTurn = Math.max(worstTurn, Math.abs(t1 - turn));
+        turn = t1;
+        const s1 = at.clone().sub(eye);
+        if (step) worstStep = Math.max(worstStep, s1.clone().sub(step).length());
+        step = s1;
+      }
+      body = now;
+      eye = at;
     }
+    assert.ok(worstTurn < 0.01, `down the pipe the body's turn jumps by ${worstTurn.toFixed(3)} in a frame`);
+    assert.ok(worstStep < 0.004, `down the pipe the eye's step jumps by ${worstStep.toFixed(4)} in a frame`);
     assert.equal(w.riding, null, 'still in the pipe after fifteen seconds');
     assert.ok(t < 10, `the ride took ${t.toFixed(1)} seconds`);
     assert.ok(Math.abs(turned) > 5, `turned ${turned.toFixed(1)} going down`);
