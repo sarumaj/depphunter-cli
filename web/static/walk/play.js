@@ -36,6 +36,8 @@ const LOST = 1.2;           // seconds a ball lies off its court before it is pu
 const FLIGHT = 3;           // seconds of a ball's flight the guide looks ahead at most
 const SWAY = 0.525;         // how far a held button swings a ball's strength either side of ...
 const MID = 0.975;          // ... its middle, from soft (0.45) to hard (1.5)
+const FINE = 0.15;          // the share of the walker's pace left at a ball, or with one in the hands ...
+const CLOSE = 1.6;          // ... and how far off a ball their full pace comes back
 const SHOOTING_HAND = 0.035; // a shot leaves this far right of the eye, so its arc is seen as one
 const CAR_TOP = 1.1;        // a bobby car's top speed, units a second
 const CAR = 0.09;           // its reach round its middle, as its model has it
@@ -187,6 +189,24 @@ export const play = {
       if (this.ballHeld === what.ball) this.throwBall(what.ball, hard);
     } else if (this.playable()?.ball === what.ball) this.touchBall(what.ball, hard);
     return true;
+  },
+
+  /**
+   * How much of their pace the walker has near a ball (intent, walk.js): little at one
+   * to kick, or with one in the hands, so that short steps line a shot up; all of it a
+   * few strides off. Only with the hands free to play.
+   */
+  footwork() {
+    if (!this.freeHands() || this.riding) return 1;
+    if (this.ballHeld || this.charging) return FINE;
+    let near = Infinity;
+    for (const ball of this.balls?.values() || []) near = Math.min(near, Math.hypot(ball.pos.x - this.p.x, ball.pos.z - this.p.z));
+    return FINE + (1 - FINE) * Math.min(1, Math.max(0, (near - PICK) / (CLOSE - PICK)));
+  },
+
+  /** How much of their usual turn the walker has: a little over half of it, lining up a ball (aiming). */
+  fineTurn() {
+    return this.balls?.size && this.aiming() ? 0.6 : 1;
   },
 
   /** Whether touching `ball` sends it - a kick, a volley hit in the air - rather than picking it up. */

@@ -1667,7 +1667,8 @@ export class Walker {
   // Implements: REQ-WALK-011, REQ-WALK-012
   look(dx, dy) {
     if (this.frozen) return;
-    const k = LOOK * this.scene.walkCamera.fov / FOV; // steadier through the scope
+    // Steadier through the scope, and lining up a ball (play.js footwork).
+    const k = LOOK * this.scene.walkCamera.fov / FOV * this.fineTurn();
     this.p.yaw -= dx * k;
     this.p.pitch = clamp(this.p.pitch - dy * k, -1.5, 1.5);
   }
@@ -2018,7 +2019,7 @@ export class Walker {
   intent(deltaTime) {
     const k = this.keys, p = this.p;
     const turn = (k.has('ArrowLeft') ? 1 : 0) - (k.has('ArrowRight') ? 1 : 0);
-    p.yaw += turn * TURN * deltaTime;
+    p.yaw += turn * TURN * deltaTime * this.fineTurn();
     const forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
     const side = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
     // Sprinting is the legs' work, so it is the legs that pay for it; a jet carries
@@ -2029,7 +2030,7 @@ export class Walker {
     // A burst on the jet backpack runs down whether or not it is being used to go
     // anywhere, so opening the throttle is a decision rather than a switch.
     this.burst = Math.max(0, this.burst - deltaTime);
-    const speed = (p.fly ? (run ? FLY * 2.5 : FLY) : run ? RUN : WALK)
+    const speed = (p.fly ? (run ? FLY * 2.5 : FLY) : (run ? RUN : WALK) * this.footwork())
       * (this.burst > 0 ? BURST_SPEED : 1);
     // On foot, W and S move level; flying, they move where the view points (look
     // down and press W to dive), and Space and C add straight up and down.

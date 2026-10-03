@@ -44,7 +44,11 @@ usual speed, and a button held down swinging how hard it goes up to half as
 hard again, down to under half as hard and back, every two seconds, shown in
 the line saying what a click does, so that letting go at the right moment
 sends it as hard as wanted. Picking a ball up **shall** not wait for the
-button.
+button. Near a ball, with the hands free, the walker's steps **shall** shorten -
+to a sixth or so of their pace at the ball or with one in the hands, coming
+back over a few strides off it - and with a ball to send, mouse and arrow keys
+**shall** turn them at a little over half their usual rate, so that a shot can
+be lined up by small steps and small turns.
 While a ball is held, or one is at the walker's feet to kick or in the air to
 hit, the guide the tools are aimed by (REQ-TOOL-082) **shall** show the path it
 would take, flown by the ball's own physics, to where it would first come down;
@@ -78,3 +82,6 @@ and took the game out of playing.
 6. A tap shoots at the usual speed; held half a second the shot goes about
    half as hard again, held a second and a half under half as hard, and it
    goes as the guide showed when the button comes up.
+7. At a ball the walker keeps under a quarter of their pace and turns at
+   under 0.7 of their rate; a couple of strides off, more of each; well away,
+   all of it.

@@ -398,6 +398,24 @@ describe('balls, rides and the guide, kept honest', () => {
   });
 
   // Verifies: REQ-WALK-058
+  it('slows the walker\'s steps and turns at a ball, to line a shot up', () => {
+    const { w } = walker(PITCH, [0.3, 0, 0], [0.85, 0, 0]);
+    const ball = ballAtFeet(w, 'soccer');
+    const at = w.footwork(), turn = w.fineTurn();
+    ball.pos.x += 3;
+    const off = w.footwork();
+    assert.ok(at < 0.25 && off === 1, `the walker keeps ${at.toFixed(2)} of their pace at the ball, ${off} off it`);
+    assert.ok(turn < 0.7 && w.fineTurn() === 1, `the walker turns ${turn} as fast lining up a kick`);
+    ball.pos.x -= 2.3;
+    const between = w.footwork();
+    assert.ok(between > at && between < 1, 'the pace does not come back by degrees');
+    // A tool in hand, nothing is being played: full pace.
+    w.handsOff = false;
+    ball.pos.x -= 0.7;
+    assert.equal(w.footwork(), 1);
+  });
+
+  // Verifies: REQ-WALK-058
   it('leaves a ball where it lies when walked into, or clicked without looking at it', () => {
     const { w } = walker(PITCH, [0.3, 0, 0], [0.85, 0, 0]);
     const ball = ballAtFeet(w, 'soccer'), at = ball.pos.clone();
