@@ -9,11 +9,11 @@
 //
 // Implements: REQ-WALK-060
 
-const GAP = 10;        // seconds between two lines at the least
-const TOPIC_GAP = 45;  // ... and between two on the same thing
-const READ = 2.6;      // seconds a line stays up, and ...
-const PER_CHAR = 0.05; // ... a little longer for every character in it
-const IDLE = 45;       // seconds stood stock still before the walker says so
+const GAP = 4;         // seconds between two lines at the least
+const TOPIC_GAP = 20;  // ... and between two on the same thing
+const READ = 4.5;      // seconds a line stays up, and ...
+const PER_CHAR = 0.08; // ... a little longer for every character in it
+const IDLE = 30;       // seconds stood stock still before the walker says so
 const LOW = 0.3;       // the share of their health under which what hurts is remarked on as hurting
 
 /** The lines, by what they are said about. */

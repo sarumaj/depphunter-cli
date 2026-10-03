@@ -649,9 +649,9 @@ describe('what the walker says', () => {
     const first = w.quip('caught');
     assert.ok(QUIPS.caught.includes(first));
     assert.equal(w.quip('bitten'), null, 'two lines in a row');
-    w.said.at -= 11;
+    w.said.at -= 5;
     assert.equal(w.quip('caught'), null, 'the same thing remarked on again at once');
-    assert.ok(w.quip('bitten'), 'nothing said ten seconds later');
+    assert.ok(w.quip('bitten'), 'nothing said five seconds later');
     w.said.at -= 50;
     w.said.topics.caught.at -= 50;
     for (let i = 0; i < 20; i++) {
