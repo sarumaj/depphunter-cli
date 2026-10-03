@@ -1,0 +1,44 @@
+---
+id: REQ-WALK-061
+title: The walker can be seen from behind
+scope: walk
+type: functional
+priority: may
+status: implemented
+verification:
+  - unit
+  - manual
+---
+
+## Statement
+
+Y **shall** move the view from the walker's own eyes to behind them, over the
+right shoulder and a little above, and back again; the walk **shall** begin
+through the walker's own eyes unless this viewer chose otherwise before, which
+**shall** be remembered. Seen from behind:
+
+- the whole body **shall** be drawn - the head with its face, turned the way
+  the walker looks, and what they wear in the style (REQ-WALK-059);
+- the view **shall** turn and tilt as it does from the eye, the camera swinging
+  round the walker; it **shall** come in short of a wall or the ground behind
+  them at once, and go back out over a moment once there is room;
+- nothing **shall** be held before the eye: the body holds it - a tool's arm
+  aimed along the view, the off hand's too, a ball carried before the chest in
+  both hands, and seen there;
+- what is aimed **shall** be aimed as from the eye, along the view, so the
+  crosshair means the same either way;
+- sat on a ride, the view **shall** turn freely round the walker.
+
+## Rationale
+
+The walker now has a whole body, dressed for each style and moving as a body
+does; seeing it is half the point of having one, and a ride or a ball game reads
+better from a step behind than from inside the head.
+
+## Acceptance criteria
+
+1. Y shows the walker from behind and over the right shoulder; Y again goes
+   back to the eye; the choice is there on the next walk.
+2. Backed against a wall, the camera stays on the walker's side of it.
+3. From behind, a tool held is not drawn before the eye, and the tool arm is
+   raised along the view; a basketball picked up is seen between the hands.

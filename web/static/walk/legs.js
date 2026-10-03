@@ -6,7 +6,8 @@
 // One pair of hands at a time: while a tool or a ball is held before the eye (walk.js)
 // the body's arms are folded away, and they are the hands seen otherwise - empty-handed,
 // or looking down past what is held. The head is the eye's, so it is drawn only for a
-// view from outside it (showHead).
+// view from outside it: seen from behind (walk.js thirdPerson), where the body holds
+// what is in hand - a tool aimed along the view, a ball carried before the chest.
 //
 // They stand in the walk scene at the walker's feet - where the planet's bend is
 // nothing, so they are drawn flat - turned the way the walker faces, a little behind
@@ -140,7 +141,8 @@ export class Legs {
     const r = w.riding, slide = r?.entry.ride === 'slide' ? r : null;
     const slope = slide && r.s > r.marks.edge && r.s < r.marks.foot ? r.slopeAt(r.s) : 0;
     this.lean = (this.lean || 0) + (slope * 0.5 * sit - (this.lean || 0)) * Math.min(1, deltaTime * 8);
-    const behind = BEHIND + STOOP * Math.min(1, Math.max(0, -p.pitch) / (Math.PI / 2));
+    // Looking down from the eye, the head is bent over the chest; seen from behind, it is not.
+    const behind = BEHIND + (w.thirdPerson ? 0 : STOOP * Math.min(1, Math.max(0, -p.pitch) / (Math.PI / 2)));
     const hipsAt = HIPS.set(p.x + Math.sin(yaw) * behind, y + HIP, p.z + Math.cos(yaw) * behind);
     this.tilt(this.lean, yaw, hipsAt);
     this.phase = (this.phase + deltaTime * 7.5 * Math.max(0.5, w.pace || 0)) % (Math.PI * 2);
@@ -182,7 +184,13 @@ export class Legs {
     // The head looks where the eye does, as far as a neck turns.
     const glance = Math.max(-1.4, Math.min(1.4, Math.atan2(Math.sin(p.yaw - yaw), Math.cos(p.yaw - yaw))));
     this.turn('head', Math.max(-0.9, Math.min(0.7, p.pitch)), glance);
-    this.bones.get('head')?.bone.scale.setScalar(this.showHead ? 1 : 1e-4);
+    this.bones.get('head')?.bone.scale.setScalar(this.showHead || w.thirdPerson ? 1 : 1e-4);
+    // A ball carried seen from behind is between the hands.
+    if (w.thirdPerson && w.ballHeld && arms) {
+      this.rig.updateMatrixWorld(true);
+      const left = this.bones.get('hand_L')?.bone.getWorldPosition(AT), right = this.bones.get('hand_R')?.bone.getWorldPosition(ON);
+      if (left && right) w.ballHeld.mesh.position.addVectors(left, right).multiplyScalar(0.5).add(HELD.set(-Math.sin(yaw), 0, -Math.cos(yaw)).multiplyScalar(0.03));
+    }
     // Standing or walking, the lower foot planted on the ground.
     if (p.ground && sit < 1) {
       this.rig.updateMatrixWorld(true);
@@ -216,6 +224,7 @@ export class Legs {
 
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
 const TURN = new THREE.Quaternion(), OUT = new THREE.Quaternion(), SIDE = new THREE.Quaternion(), AT = new THREE.Vector3(), HIPS = new THREE.Vector3(), ON = new THREE.Vector3();
+const HELD = new THREE.Vector3();
 
 /**
  * How far the walker is sat down, 0 to 1: on a swing, a seesaw, a rider or a car once on it,
@@ -323,6 +332,18 @@ function arms(pose, w, phase, sit, kick) {
     // Against the right leg: the left arm forward and up, the right one back and out.
     towards('L', 0.9, 0.6, 0.3, kick);
     towards('R', -0.6, 0.3, 0.6, kick);
+  }
+  // Seen from behind, the body holds what is in hand: a ball before the chest in both,
+  // a tool aimed along the view - the off hand's too.
+  if (w.thirdPerson && !r) {
+    const aim = Math.PI / 2 + Math.max(-0.8, Math.min(1, p.pitch));
+    if (w.ballHeld) {
+      towards('L', 1.0, 1.1, -0.25, 1);
+      towards('R', 1.0, 1.1, -0.25, 1);
+    } else {
+      if (!w.bare) towards('R', aim, 0.15, -0.15, 1);
+      if (w.secondary) towards('L', aim - 0.15, 0.3, -0.1, 1);
+    }
   }
 }
 

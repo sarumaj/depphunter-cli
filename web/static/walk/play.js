@@ -450,11 +450,12 @@ export const play = {
 
   /**
    * `yaw`, kept within a head's turn of the way the body faces while sat on a ride, so
-   * the view never turns round to the back of one's own neck; as it is otherwise.
+   * the view never turns round to the back of one's own neck; as it is otherwise, and
+   * seen from behind, where there is no neck to see the back of.
    */
   withinReach(yaw) {
     const r = this.riding;
-    if (!r || r.blend < 1 || r.entry.ride === 'spin' || (r.entry.ride === 'slide' && r.sit < 0.5)) return yaw;
+    if (!r || this.thirdPerson || r.blend < 1 || r.entry.ride === 'spin' || (r.entry.ride === 'slide' && r.sit < 0.5)) return yaw;
     const body = this.rideYaw(), off = Math.atan2(Math.sin(yaw - body), Math.cos(yaw - body));
     return Math.abs(off) <= LOOK_AROUND ? yaw : body + Math.sign(off) * LOOK_AROUND;
   },

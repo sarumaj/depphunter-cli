@@ -97,6 +97,10 @@ const REFILLED = 0.25;
 const FOV = 70, MIN_FOV = 30, MAX_FOV = 90, SCOPE_FOV = 22;
 // How far in the held tool sits, as a fraction of where it is modeled. See showTool.
 const VIEW_NEAR = 0.5;
+// Seen from behind (Y): the camera this far back from the eye, this far right of it and
+// this far over it, and how many steps along the way to it are tried for a wall.
+const BEHIND_VIEW = { back: 0.75, side: 0.14, up: 0.08, probes: 12 };
+const VIEW_KEY = 'depphunter.walk.view';
 const ARMS_DOWN = [0.55, 0.9]; // looking this far down, what is held before the eye sinks out of view ...
 const SUNK = 0.3;              // ... this far, in the camera's units
 const SWING = 0.45;         // seconds a tool takes to swing and settle
@@ -192,7 +196,7 @@ const ASHORE_IN = 0.6;
 const KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyE', 'KeyQ', 'KeyF', 'Enter',
-  'Escape', 'KeyV', 'KeyM', 'KeyR', 'KeyH',
+  'Escape', 'KeyV', 'KeyM', 'KeyR', 'KeyH', 'KeyY',
   // Every tool's digit: the digits count along the row, 1 to 9 and then 0 for the
   // tenth (switcher.js) - and the parachute's key of its own, T (tools.js).
   'Digit0', ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`), 'KeyT',
@@ -326,6 +330,10 @@ export class Walker {
     this.bare = false;     // the right hand holding nothing: its tool put down
     this.stowed = null;    // what the left hand held before H put everything down
     this.riding = null;    // the ride the walker is on (play.js)
+    // Seen from the eye, or from behind (Y): the eye unless this viewer chose otherwise.
+    this.thirdPerson = false;
+    try { this.thirdPerson = localStorage.getItem(VIEW_KEY) === 'third'; } catch { /* no storage: the eye */ }
+    this.camReach = 1;     // how much of the way back the camera has room for
     this.charging = null;  // a ball being wound up by the held button (play.js)
     this.ballHeld = null;  // the ball in their hands
     this.balls = new Map(); // the balls out on the courts near by, by their play entry
@@ -1168,8 +1176,48 @@ export class Walker {
     for (const held of [this.held, this.ballView]) {
       if (!held) continue;
       held.position.y = -down * SUNK;
-      held.visible = down < 1;
+      // Seen from behind, nothing is held before the eye: the body holds it.
+      held.visible = down < 1 && !this.thirdPerson;
     }
+    if (this.ballHeld) this.ballHeld.mesh.visible = this.thirdPerson;
+  }
+
+  /**
+   * Sees the walker from the eye, or from behind them: the whole body then, head and
+   * all, what is in the hands held in the body's, and the camera over the shoulder.
+   * Remembered for this viewer.
+   *
+   * Implements: REQ-WALK-061
+   */
+  setThirdPerson(on) {
+    this.thirdPerson = on;
+    this.camReach = 1;
+    try { localStorage.setItem(VIEW_KEY, on ? 'third' : 'first'); } catch { /* not remembered */ }
+    this.flash(on ? 'Seen from behind - Y for your own eyes again' : 'Through your own eyes - Y to see yourself from behind');
+  }
+
+  /**
+   * Where the camera is seen from behind: back from the eye `eye` over the feet along
+   * the view, a little right and over it, and drawn in short of a wall or the ground
+   * behind - at once, as the wall comes, and back out over a moment as it goes.
+   */
+  thirdEye(eye, deltaTime) {
+    const p = this.p, { back, side, up, probes } = BEHIND_VIEW;
+    const from = this.thirdFrom ||= new THREE.Vector3(), to = this.thirdTo ||= new THREE.Vector3(), at = this.thirdAt ||= new THREE.Vector3();
+    from.set(p.x, p.feet + eye, p.z);
+    const cos = Math.cos(p.pitch);
+    to.set(
+      from.x + Math.sin(p.yaw) * cos * back + Math.cos(p.yaw) * side,
+      from.y - Math.sin(p.pitch) * back + up,
+      from.z + Math.cos(p.yaw) * cos * back - Math.sin(p.yaw) * side,
+    );
+    let room = 1;
+    for (let k = 1; k <= probes; k++) {
+      at.lerpVectors(from, to, k / probes);
+      if (this.boxAt(at) || at.y < this.height(at.x, at.z, at.y) + 0.04) { room = (k - 1) / probes; break; }
+    }
+    this.camReach = room < this.camReach ? room : this.camReach + (room - this.camReach) * Math.min(1, deltaTime * 3);
+    return at.lerpVectors(from, to, this.camReach);
   }
 
   /** Whether the body's arms are the hands to draw: nothing held before the eye, or what is held sunk out of sight. */
@@ -1644,6 +1692,7 @@ export class Walker {
       case 'KeyQ': this.nextCarried(); break;
       case 'KeyR': this.openWheel(); break;
       case 'KeyH': this.setHandsOff(!this.handsOff); break;
+      case 'KeyY': this.setThirdPerson(!this.thirdPerson); break;
       case 'Escape':
         // The Esc that frees the pointer, whether or not the browser swallowed it. The
         // browser lets go at once but says so (pointerlockchange) up to a second
@@ -1813,8 +1862,9 @@ export class Walker {
       this.bank(deltaTime);
       const under = this.drown(deltaTime, now);
       const hang = this.hang();
-      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(deltaTime) + under + hang.eye + this.eyeShift,
-        this.p.yaw, this.p.pitch + hang.pitch, this.roll + hang.roll);
+      const eye = EYE + this.ride(deltaTime) + under + hang.eye + this.eyeShift;
+      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, eye,
+        this.p.yaw, this.p.pitch + hang.pitch, this.roll + hang.roll, this.thirdPerson && !this.arrival ? this.thirdEye(eye, deltaTime) : null);
       this.hangCanopy(now);
       // Dressed for the map: the hands' sleeves and gloves, and the legs.
       if (this.scene.style !== this.dressedFor) {

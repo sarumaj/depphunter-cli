@@ -689,6 +689,36 @@ describe('empty hands', () => {
     assert.ok(w.bodyArms(), 'empty-handed, no arms at all');
   });
 
+  // Verifies: REQ-WALK-061
+  it('sees the walker from behind with Y, the camera pulled in short of a wall, the body holding what is in hand', () => {
+    const w = holding();
+    const camera = new THREE.PerspectiveCamera();
+    Object.assign(w, {
+      active: true, hud: { dataset: {}, classList: { toggle() {} }, querySelector: () => null },
+      scene: { walkCamera: camera, viewScene: new THREE.Scene(), scene: new THREE.Scene(), style: 'city' }, drawSlots() {}, drawHud() {}, flash() {}, setFog() {},
+      p: { x: 0, z: 0, feet: 0, yaw: 0, pitch: 0, fly: false }, camReach: 1, height: () => 0, boxAt: () => null,
+    });
+    w.secondary = null;
+    w.showTool();
+    w.setThirdPerson(true);
+    // Behind (facing -z, so at +z), over the right shoulder (+x) and over the eye.
+    const at = w.thirdEye(EYE, FRAME).clone();
+    assert.ok(at.z > 0.6 && at.x > 0.05 && at.y > EYE, `the camera is at ${at.toArray()}`);
+    // Nothing is held before the eye: the body holds it, aimed along the view.
+    w.lowerArms();
+    assert.ok(!w.held.visible && w.bodyArms(), 'the tool is still before the eye seen from behind');
+    const pose = posture({ ...w, pace: 0, kicked: null, riding: null, p: { ...w.p, ground: true } }, 0, 0);
+    assert.ok(pose.upperarm_R[0] > 1.3, `the tool arm is at ${pose.upperarm_R[0]}`);
+    // A wall behind: the camera comes in short of it, at once.
+    w.boxAt = v => (v.z > 0.3 ? {} : null);
+    const near = w.thirdEye(EYE, FRAME);
+    assert.ok(near.z <= 0.3, `the camera is in the wall behind, at ${near.z}`);
+    // And Y again: the eye's own view, the tool before it again.
+    w.setThirdPerson(false);
+    w.lowerArms();
+    assert.ok(w.held.visible && !w.bodyArms());
+  });
+
   // Verifies: REQ-TOOL-032
   it('puts the right hand\'s tool down on its own key, and its key takes it out', () => {
     const w = holding();

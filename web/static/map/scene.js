@@ -338,11 +338,13 @@ export class MapScene {
    * (radians). Roll is about the line of sight, so it tilts the view without changing
    * where it points.
    */
-  setWalker(x, feet, z, eye, yaw, pitch, roll = 0) {
+  setWalker(x, feet, z, eye, yaw, pitch, roll = 0, from = null) {
     this.sky.position.set(x, feet + eye, z);
     this.curve.uCenter.value.set(x, 0, z);
     this.planet.position.set(x, -this.curve.uRadius.value, z);
-    this.walkCamera.position.set(x, feet + eye, z);
+    // At the eye, or - seen from behind (walk.js thirdEye) - from `from`.
+    if (from) this.walkCamera.position.copy(from);
+    else this.walkCamera.position.set(x, feet + eye, z);
     this.walkCamera.rotation.set(pitch, yaw, roll);
     this.walkCamera.updateMatrixWorld();
   }
