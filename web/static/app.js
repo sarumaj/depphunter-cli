@@ -1142,7 +1142,10 @@ function reveal(n) {
   if (changed) relayout();
   select(n);
   const b = representativeOf(n);
-  if (b && walker.active) walker.teleport(b);
+  if (b && walker.active) {
+    walker.teleport(b);
+    walker.quip('teleport');
+  }
   else if (b) scene.centerOn(b.x, b.y + b.h / 2, b.z);
 }
 

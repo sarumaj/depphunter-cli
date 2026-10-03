@@ -89,9 +89,12 @@ export const shots = {
       }
       if (bug) {
         this.bugs.catch(bug, tool.catchAs);
-        this.quip('caught');
+        this.caughtOne();
       } else if (target) this.tag(target);
-      else if (this.aim.far) this.flash(`Out of reach: the ${tool.label.toLowerCase()} has to be walked up to`);
+      else if (this.aim.far) {
+        this.flash(`Out of reach: the ${tool.label.toLowerCase()} has to be walked up to`);
+        this.quip('reach');
+      }
       return;
     }
     const shot = this.shotFrom(tool, this.viewmodel);
@@ -119,7 +122,10 @@ export const shots = {
     const box = this.aim.box;
     if (!box) return;
     const what = this.fires.douse(box.node.id, deltaTime);
-    if (what === 'out') this.flash(`Out - ${box.node.name} and everything that fire reached`);
+    if (what === 'out') {
+      this.flash(`Out - ${box.node.name} and everything that fire reached`);
+      this.quip('fireOut');
+    }
     else if (what === 'cooled') this.flash(`${box.node.name} is out; the fire is still going elsewhere`);
   },
 
@@ -471,7 +477,7 @@ export const shots = {
     const m = dart.mesh;
     if (bug) {
       this.bugs.catch(bug, dart.tool.catchAs);
-      this.quip('caught');
+      this.caughtOne();
     }
     // One that has already glanced off a wall is on its way down, spent: it tags
     // nothing and bites nothing on the way.
@@ -499,7 +505,10 @@ export const shots = {
     // everything else the end is the tool's reach.
     const rope = dart.tool.reel && dart.from && gone > dart.tool.reel.max;
     const spent = !dart.tool.reel && dart.from && gone > (dart.tool.reach ?? REACH);
-    if (rope) this.flash('The line ran out');
+    if (rope) {
+      this.flash('The line ran out');
+      this.quip('rope');
+    }
     return bug || hit || rope || spent || m.position.y < WATER || dart.t > 6 ? 'over' : null;
   },
 

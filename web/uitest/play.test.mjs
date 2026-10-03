@@ -643,6 +643,34 @@ describe('what the walker says', () => {
   });
 
   // Verifies: REQ-WALK-060
+  it('says how it hurts when little health is left, cheers the last bug, and notices standing still', () => {
+    const { w } = walker(PITCH, [0.3, 0, 0], [0.85, 0, 0]);
+    const said = [];
+    w.showQuip = text => said.push(text);
+    const wait = () => { w.said.at -= 100; for (const t of Object.values(w.said.topics)) t.at -= 100; };
+    w.health = { hp: 80, max: 100 };
+    w.ouch('bitten');
+    assert.ok(QUIPS.bitten.includes(said.at(-1)));
+    wait();
+    w.health.hp = 20;
+    w.ouch('bitten');
+    assert.ok(QUIPS.hurt.includes(said.at(-1)), `bitten at 20 of 100: ${said.at(-1)}`);
+    wait();
+    w.bugs = { counts: { total: 3, caught: 2 } };
+    w.caughtOne();
+    assert.ok(QUIPS.caught.includes(said.at(-1)));
+    w.bugs.counts.caught = 3;
+    w.caughtOne();
+    assert.ok(QUIPS.allCaught.includes(said.at(-1)), 'the last bug caught, said nothing of it');
+    // Stood still: a line after a while, and only the one.
+    wait();
+    const before = said.length;
+    for (let t = 0; t < 120; t += 0.5) w.fidget(0.5);
+    assert.equal(said.length, before + 1);
+    assert.ok(QUIPS.idle.includes(said.at(-1)));
+  });
+
+  // Verifies: REQ-WALK-060
   it('remarks on a bobby car come into view, and on getting on a ride', () => {
     const drive = SPACE_PARK.play.find(e => e.ride === 'drive'), rig = SPACE_PARK.rigs[drive.rig];
     const { w, it } = walker(SPACE_PARK, [rig.at[0] - 0.8, 0, rig.at[2]], rig.at);

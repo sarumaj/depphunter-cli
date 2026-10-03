@@ -12,12 +12,13 @@ verification:
 
 ## Statement
 
-The figure that shows on the map where the walker stands **shall** pulse: a
-ring in the figure's color **shall** spread out over the ground from its feet
-and fade, over and over, about every second and a half, and be seen through
-whatever stands in front of it. The map **shall** keep redrawing for the pulse
-only while the figure is shown. Where the system asks for reduced motion the
-ring **shall** stand still around the figure.
+The figure that shows on the map where the walker stands **shall** pulse:
+bright rings, in a color of their own that stands out on grass, streets and the
+dark of space alike, **shall** spread out over the ground from its feet and
+fade, one after another, about once a second, and be seen through whatever
+stands in front of it. The map **shall** keep redrawing for the pulse only
+while the figure is shown. Where the system asks for reduced motion the rings
+**shall** stand still around the figure.
 
 ## Rationale
 

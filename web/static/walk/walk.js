@@ -2276,7 +2276,7 @@ export class Walker {
     if (this.health.dead) this.die(`A fall of ${Math.round(drop * 3.5)} meters`);
     else {
       this.flash(`That drop cost ${damage} - watch the roofs`);
-      this.quip('fall');
+      this.ouch('fall');
     }
   }
 
@@ -2300,7 +2300,7 @@ export class Walker {
     if (this.health.dead) this.die(`${bug.f.severity}: ${bug.f.title}`);
     else {
       this.flash(`Bitten - ${bug.f.severity}: ${bug.f.title} (-${damage}). Catch it or get clear`);
-      this.quip(bug.f.severity === 'critical' ? 'critical' : 'bitten');
+      this.ouch(bug.f.severity === 'critical' ? 'critical' : 'bitten');
     }
   }
 
@@ -2673,8 +2673,9 @@ export class Walker {
       return;
     }
     if (tool.floats) {
-      this.flash(this.height(this.p.x, this.p.z) <= WATER
-        ? 'Riding the water' : 'The skimmers want water under them');
+      const wet = this.height(this.p.x, this.p.z) <= WATER;
+      this.flash(wet ? 'Riding the water' : 'The skimmers want water under them');
+      if (wet) this.quip('skim');
       return;
     }
     if (!tool.projectile) return;
@@ -2689,7 +2690,10 @@ export class Walker {
     // Implements: REQ-TOOL-081, REQ-TOOL-083
     const plan = tool.reel ? this.planLine(tool) : null;
     if (!plan || plan.far) {
-      if (plan?.far) this.flash(`Out of reach: the ${tool.label.toLowerCase()} throws ${tool.reach ?? REACH} units`);
+      if (plan?.far) {
+        this.flash(`Out of reach: the ${tool.label.toLowerCase()} throws ${tool.reach ?? REACH} units`);
+        this.quip('reach');
+      }
       this.loose(shot);
       return;
     }
@@ -2762,7 +2766,7 @@ export class Walker {
     if (this.health.dead) this.die(`The fire on ${worst.node.name}`);
     else {
       this.flash(`Burning - ${worst.node.name} (-${damage}). Get clear, or put it out with the extinguisher`);
-      this.quip('burning');
+      this.ouch('burning');
     }
   }
 
@@ -2837,6 +2841,7 @@ export class Walker {
       return;
     }
     this.tagged.add(box.node.id);
+    this.quip('tag');
     this.drawBeacons();
     this.drawHud();
     this.hooks.onHit(box, this.tagged.size);

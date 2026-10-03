@@ -109,7 +109,7 @@ export const canopy = {
     if (this.health.dead) this.die(`A wall at ${Math.round(speed * 3.5)} meters a second`);
     else {
       this.flash(`That wall cost ${damage} - steer clear of the buildings`);
-      this.quip('wall');
+      this.ouch('wall');
     }
   },
 
@@ -143,7 +143,7 @@ export const canopy = {
     if (this.health.dead) this.die(`A landing at ${Math.round(e.speed * 3.5)} meters a second`);
     else if (damage) {
       this.flash(`That landing cost ${damage} - flare just before the ground`);
-      this.quip('fall');
+      this.ouch('fall');
     } else {
       this.flash(wet ? 'Down in the water' : 'Down - the parachute is being repacked');
       if (!wet) this.quip('landed');

@@ -244,6 +244,7 @@ export const play = {
     this.drawBallGuide();
     this.drawPlay();
     this.noticeCars(deltaTime);
+    this.fidget(deltaTime);
   },
 
   /** A bobby car come into view close by, remarked on - the first time each is seen. */
@@ -844,6 +845,7 @@ export const play = {
     }
     if (this.sends(ball)) return this.send(ball, 'hit', hard);
     this.ballHeld = ball;
+    this.quip('pickUp');
     ball.mesh.visible = false;
     ball.vel.set(0, 0, 0);
     this.showBall(ball);

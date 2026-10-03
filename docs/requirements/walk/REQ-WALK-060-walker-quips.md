@@ -17,12 +17,16 @@ about it to themselves, shown as a speech bubble at the right of the view for
 long enough to read and then fading away - no sound. The lines are in the voice
 of a software engineer hunting the bugs of their own code: a bobby car come
 into view ("What the hell? Was this feature really required?"), walking in,
-putting the tools away, getting on a swing, a roundabout, a seesaw or a rider,
-a slide, a pipe slide or a bobby car, a ball going in or not, a jet's thrust,
-a tool running dry, the parachute opening, landing under it, meeting a wall
-under it or cutting it away, a fall that hurts, running out of breath, a
-grapple line going out, being bitten - by a critical bug in its own words -,
-catching a bug, burning, sinking and dying.
+jumping to a search result, putting the tools away, getting on a swing, a
+roundabout, a seesaw or a rider, a slide, a pipe slide or a bobby car, picking
+a ball up, a ball going in or not, a jet's thrust, skimming over water, a tool
+running dry, the parachute opening, landing under it, meeting a wall under it
+or cutting it away, a fall that hurts, running out of breath, a grapple line
+going out or running out, something out of reach, tagging a module, putting a
+fire out, being bitten - by a critical bug in its own words -, catching a bug,
+catching the last one on the map, burning, sinking, standing stock still for
+most of a minute and dying. Hurt with under a third of their health left, what
+hurts them **shall** be remarked on as how they feel.
 
 Each **shall** have a few lines to choose from, short enough to read at a
 glance, and the walker **shall** not chatter: one line at most every ten
@@ -42,3 +46,6 @@ recurs every few seconds stops being a joke, so the restraint is half of it.
 2. Catching a bug and then being bitten at once says only the first; ten
    seconds on, the second is said.
 3. The same line never comes up twice running, and dying is always remarked on.
+4. Bitten with a fifth of their health left, the walker says how they feel;
+   catching the last bug on the map is remarked on as such; standing still for
+   most of a minute says so, once.

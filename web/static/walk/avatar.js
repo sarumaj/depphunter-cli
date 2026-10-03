@@ -8,8 +8,8 @@
 // about). It is drawn twice - once solid, once faintly with the depth test off - so a
 // walker in a street between two towers is still visible through the one in front.
 //
-// And it pulses, so it is found at a glance on a busy map: rings in its color spread
-// over the ground from its feet and fade, one after another, seen through whatever
+// And it pulses, so it is found at a glance on a busy map: bright rings spread over the
+// ground from its feet and fade, one after another, seen through whatever
 // stands in front of it. A pulse is a redraw, so the map keeps drawing (setAnimated)
 // only while the figure is shown; with reduced motion the ring stands still.
 //
@@ -23,7 +23,8 @@ const PX = 34;     // how tall the figure tries to be on the screen
 const MIN = 0.06;  // never smaller than this in map units
 const MAX = 5;     // nor bigger, however far the map is pulled away
 const GHOST = 0.3; // how strongly it shows through what stands in front of it
-const PULSE = 1.6; // seconds a ring takes to spread from the feet and fade
+const PULSE = 1;   // seconds a ring takes to spread from the feet and fade
+const BEACON = '#2ec5ff'; // its color: bright on grass, asphalt and the dark of space alike, which ink is not
 const SPREAD = [0.45, 2.2]; // from and to what radius, as the figure is tall
 
 let parts = null;
@@ -39,6 +40,7 @@ export class Avatar {
     this.canopy = [];   // the canopy over the figure, for a walker who left under one
     this.zoom = 0;      // the zoom the current scale was worked out for
     this.materials = [];
+    this.beacons = [];  // the pulse's, which keep their own color
     scene.scene.add(this.group);
   }
 
@@ -113,16 +115,16 @@ export class Avatar {
     // so they need nothing but redraws.
     this.pulse = [0, 0.5].map(phase => {
       const material = this.scene.bendable(new THREE.MeshBasicMaterial({
-        color, transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+        color: BEACON, transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
       }));
-      this.materials.push(material);
-      const ring = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 40).rotateX(-Math.PI / 2).translate(0, 0.02, 0), material);
+      this.beacons.push(material);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.7, 1, 40).rotateX(-Math.PI / 2).translate(0, 0.02, 0), material);
       ring.frustumCulled = false;
       ring.renderOrder = 7;
       ring.onBeforeRender = () => {
         const t = reducedMotion() ? 0.35 + phase * 0.3 : (performance.now() / 1000 / PULSE + phase) % 1;
         ring.scale.setScalar(SPREAD[0] + (SPREAD[1] - SPREAD[0]) * t);
-        material.opacity = 0.9 * (1 - t) ** 1.5;
+        material.opacity = (1 - t) ** 1.2;
         ring.updateMatrixWorld();
       };
       this.group.add(ring);
@@ -136,8 +138,9 @@ export class Avatar {
   }
 
   clear() {
-    for (const m of this.materials) m.dispose();
+    for (const m of [...this.materials, ...this.beacons]) m.dispose();
     this.materials = [];
+    this.beacons = [];
     this.canopy = [];
     this.pulse = [];
     this.group.clear();
