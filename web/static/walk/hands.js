@@ -1,10 +1,12 @@
 // The walker's hands, as a model rather than as a pile of boxes.
 //
-// hand.glb is prepared by scripts/hand.py: the MIT-licensed `generic-hand` from the
-// WebXR Input Profiles project, turned to the axes used here, scaled to map units,
-// given the forearm a VR hand has no need of, and re-rigged so that a finger carries
-// its own tip when it curls. It is loaded once and every hand the UI draws is a clone
-// sharing that geometry, so a second hand costs a skeleton and nothing else.
+// The hand is prepared by scripts/hand.py: the MIT-licensed `generic-hand` from the
+// WebXR Input Profiles project, turned to the axes used here, given the forearm a VR
+// hand has no need of, and re-rigged so that a finger carries its own tip when it
+// curls. scripts/body.py exports it in body.glb, whole as `hand_rig`, and cut down to
+// scale as the body's own hands (body.js) - one hand, seen held before the eye or at
+// the end of the walker's arms. It is loaded once and every hand the UI draws is a
+// clone sharing that geometry, so a second hand costs a skeleton and nothing else.
 //
 // The rig is what makes it worth loading a model at all: the fingers close around
 // whatever the walker is holding, and the wrist and forearm turn so the arm leaves the
@@ -12,10 +14,9 @@
 // names are the WebXR joint names, which is the contract between this and scripts/hand.py.
 
 import * as THREE from '../vendor/three.module.min.js';
-import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneRigged } from '../vendor/SkeletonUtils.js';
-import { STATIC } from '../core/data.js';
 import { CLOTH, layer } from './cloth.js';
+import { loadBody } from './bodymodel.js';
 
 // The joints that bend. WebXR gives a finger a metacarpal inside the palm as well,
 // but that one is part of the hand's shape rather than part of closing it.
@@ -24,8 +25,7 @@ const FINGERS = ['index', 'middle', 'ring', 'pinky'].map(d =>
   ['proximal', 'intermediate', 'distal'].map(j => `${d}-finger-phalanx-${j}`));
 const THUMB = ['thumb-metacarpal', 'thumb-phalanx-proximal', 'thumb-phalanx-distal'];
 
-let model = null;    // the loaded scene, shared by every clone
-let loading = null;  // the load in flight
+let model = null;    // the loaded hand, shared by every clone
 
 /**
  * Starts loading the model, and resolves once it is in. Calling it again while it is
@@ -35,16 +35,10 @@ let loading = null;  // the load in flight
  * Implements: REQ-TOOL-010
  */
 export function loadHands() {
-  // A static export has no server to fetch from and carries the model inline.
-  loading ||= new GLTFLoader().loadAsync(STATIC?.hand || 'hand.glb').then(gltf => {
-    model = gltf.scene;
-    model.updateMatrixWorld(true);
+  return loadBody().then(scene => {
+    model = scene?.getObjectByName('hand_rig') || null;
     return model;
-  }).catch(err => {
-    console.error('hand model:', err);
-    return null;
   });
-  return loading;
 }
 
 export const handsReady = () => model !== null;
@@ -157,17 +151,20 @@ const axis = new THREE.Vector3();
 const turn = new THREE.Quaternion();
 
 /**
- * Turns one bone by an angle about one of its own axes, from its rest pose. scripts/hand.py
- * rolls every bone so that its local x runs across the hand and its local z points out
- * of the back of it, which is why one axis curls every finger the same way.
+ * Turns one bone by an angle about one of its own axes, from its rest pose - after
+ * fanning it `fan` out of the back of the hand. scripts/hand.py rolls every bone so
+ * that its local x runs across the hand and its local z points out of the back of it,
+ * which is why one axis curls every finger the same way.
  *
  * Implements: REQ-TOOL-009
  */
-export function pose(hand, name, about, angle) {
+export function pose(hand, name, about, angle, fan = 0) {
   const joint = hand?.userData.bones?.get(name);
   if (!joint) return;
+  joint.bone.quaternion.copy(joint.rest);
+  if (fan) joint.bone.quaternion.multiply(turn.setFromAxisAngle(axis.set(0, 0, 1), fan));
   axis.set(about === 'x' ? 1 : 0, about === 'y' ? 1 : 0, about === 'z' ? 1 : 0);
-  joint.bone.quaternion.copy(joint.rest).multiply(turn.setFromAxisAngle(axis, angle));
+  joint.bone.quaternion.multiply(turn.setFromAxisAngle(axis, angle));
 }
 
 // How far each joint of a finger gives when the hand closes. A hand does not fold
@@ -176,9 +173,8 @@ export function pose(hand, name, about, angle) {
 // Implements: REQ-TOOL-011
 const GIVE = [0.75, 1.25, 0.95];
 
-// Across the hand, and out of the back of it: fingers curl about the first and fan
-// about the second.
-const CURL = 'x', SPREAD = 'z';
+// Across the hand: fingers curl about it, and fan out of the back of it (pose).
+const CURL = 'x';
 
 /**
  * Closes every finger: 0 is the model's open rest pose, 1 a fist. `spread` opens the
@@ -186,10 +182,7 @@ const CURL = 'x', SPREAD = 'z';
  */
 export function closeHand(hand, amount, spread = 0) {
   if (!hand) return;
-  for (let i = 0; i < FINGERS.length; i++) {
-    closeFinger(hand, i, amount);
-    pose(hand, FINGERS[i][0], SPREAD, spread * (i - 1.5) * 0.12);
-  }
+  for (let i = 0; i < FINGERS.length; i++) closeFinger(hand, i, amount, spread * (i - 1.5) * 0.12);
   // The thumb comes across rather than curling under.
   pose(hand, THUMB[0], CURL, -amount * 0.35);
   pose(hand, THUMB[1], CURL, -amount * 0.5);
@@ -199,10 +192,10 @@ export function closeHand(hand, amount, spread = 0) {
 /**
  * One finger on its own, 0 straight and 1 curled, which is what a trigger finger is:
  * the rest of the hand holds the thing while the index lies along it and presses.
- * Call it after closeHand, which closes this one too.
+ * Call it after closeHand, which closes this one too; `fan` turns it out at the knuckle.
  */
-export function closeFinger(hand, i, amount) {
-  for (let j = 0; j < 3; j++) pose(hand, FINGERS[i][j], CURL, -amount * GIVE[j]);
+export function closeFinger(hand, i, amount, fan = 0) {
+  for (let j = 0; j < 3; j++) pose(hand, FINGERS[i][j], CURL, -amount * GIVE[j], j ? 0 : fan);
 }
 
 /** Bends the wrist and turns the forearm; both are bones like any other. */

@@ -1,35 +1,51 @@
 #!/usr/bin/env python3.11
-"""Models the walker's whole body - legs, torso, arms and a head with a face - in the
-three outfits the map's styles dress them in, and exports them as glTF.
+"""Models the walker's whole body - legs, torso, arms, hands and a head with a face - in
+the three outfits the map's styles dress them in, and exports it as glTF, in
+web/static/body.glb: the one model of the walker there is.
 
 Run it with Blender, or with the `bpy` module on the same Python it was built for:
 
     pip install "numpy<2" bpy
-    python3 scripts/legs.py
+    python3 scripts/body.py
 
-Like the beetle (scripts/bug.py) the body is modeled here rather than taken from a
-pack, to dress it per style and rig it as the walk poses it. A first-person walker
-sees their chest, arms, legs and feet looking down; the head is the camera's, drawn
-only for a view from outside it (web/static/walk/legs.js). One rig, three meshes
-skinned to it:
+The hands are a real hand's: the `generic-hand` scripts/hand.py fetches and re-rigs.
+It is in the file twice over - whole, as the arm the first-person view holds tools
+with (web/static/walk/hands.js), and cut down to the body's scale as the body's own
+forearms and hands - so the hands are the same hands however they are seen.
 
-  * legs_city: a T-shirt with short sleeves over bare arms, shorts to above the
+The rest is modeled here rather than taken from a pack, to dress it per style and
+rig it as the walk poses it. A first-person walker sees their chest, arms, legs and
+feet looking down; the head is the camera's, drawn only for a view from outside it
+(web/static/walk/body.js). One rig, three meshes skinned to it:
+
+  * body_city: a T-shirt with short sleeves over bare arms, shorts to above the
     knee, bare shins, socks and sneakers;
-  * legs_circuit: an electrician's coverall with a chest pocket, knee pads and
-    reflective bands, insulating gloves, and work boots with toe caps;
-  * legs_galaxy: a spacesuit, bulky, ringed at the joints and the neck, with a
-    control panel on the chest and a ring of light at the cuffs, in moon boots.
+  * body_circuit: an electrician's coverall with a chest pocket, knee pads and
+    reflective bands, insulating gloves, work boots with toe caps and a hard hat;
+  * body_galaxy: a spacesuit, bulky, ringed at the joints and the neck, with a
+    control panel on the chest, a ring of light at the cuffs and a helmet with a
+    visor, in moon boots.
 
 Colors are vertex colors (COLOR_0); the map paints with flat colors and so do these.
-The bone and mesh names are the contract with web/static/walk/legs.js.
+The bone and mesh names are the contract with web/static/walk/body.js, and the
+hand's (hand_rig, hand) with web/static/walk/hands.js.
+
+Re-running this does not reproduce the committed file byte for byte: Blender's glTF
+exporter writes the same mesh with slightly different floats each time. The model is
+committed for that reason rather than built, and a regenerated one is equivalent
+without being identical.
 """
 
 # pyright: basic
 import math
 import os
+import sys
 from itertools import pairwise
 
 import bpy
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from hand import build as build_hand  # noqa: E402
 
 try:  # only importable once bpy has loaded
     import bmesh  # type: ignore[reportMissingImports]
@@ -40,9 +56,13 @@ except (ImportError, ModuleNotFoundError):
 HERE: str = os.path.dirname(os.path.abspath(__file__))
 # Which vertices of each mesh are an arm's, and which side: mesh_for to skin.
 ARMS: dict[str, dict[int, float]] = {}
+# ... and of the hands: their weights, by bone, as the hand model had them.
+HAND_WEIGHTS: dict[str, dict[int, dict[str, float]]] = {}
+# The hand model's bones that are the body's own by other names.
+BONE_FOR: dict[str, str] = {"wrist": "hand"}
 # ... and which are the head's.
 HEADS: dict[str, set[int]] = {}
-OUT: str = os.path.normpath(os.path.join(HERE, "..", "web", "static", "legs.glb"))
+OUT: str = os.path.normpath(os.path.join(HERE, "..", "web", "static", "body.glb"))
 
 # Map units: the walker's eye is 0.45 over their feet, so a unit is about 3.55 m. The
 # model stands on the origin facing Blender's +y, which the glTF export turns into
@@ -57,7 +77,33 @@ SHOULDER = 0.41  # under the eye at 0.45; the neck goes on up behind it
 ARM_X = 0.08  # the shoulder joints off the middle
 ARM_TOP = 0.395
 ELBOW = 0.305
-WRIST = 0.228
+
+# The forearms and hands are not modeled here: they are the walker's hand model
+# (scripts/hand.py), the one the first-person view draws, cut at its elbow and scaled
+# down to the body - a hand held up to the lens is drawn larger than life on purpose.
+# Its fingers run along -y, the back of the hand along +z and the thumb along +x, the
+# arm back up +y; it hangs here palm in, thumb forward.
+HAND_SCALE = 0.26  # the hand model's hand, 0.213 long, to a person's
+HAND_CUT = 0.32  # how far up its arm, from the wrist, the elbow is
+WRIST = ELBOW - HAND_CUT * HAND_SCALE
+# What is worn over the hand model's forearm and hand, along it from the wrist (+ the
+# fingers): [from, to, how far it stands off, color, fabric] - the layers
+# web/static/walk/hands.js cuts for the first-person view, OUTFITS there, so that the
+# same hands look the same however they are seen. The thickest layer over a point is
+# its color.
+HAND_LAYERS: dict[str, list] = {
+    "city": [],
+    "circuit": [
+        (None, -0.035, 0.0035, "#24365a", "twill"),
+        (-0.012, None, 0.0018, "#d9772b", "rubber"),
+        (-0.05, -0.012, 0.0048, "#c46a24", "rubber"),
+    ],
+    "galaxy": [
+        (None, -0.02, 0.005, "#eef0f4", "suit"),
+        (-0.03, None, 0.0025, "#d6d9e2", "rubber"),
+        (-0.026, -0.018, 0.0065, "#6ff4ff", "rubber"),
+    ],
+}
 NECK = 0.428  # where the head sits on the neck; the eye is at 0.45, inside it
 HAIR = "#4a3426"
 EYES = "#1b1d22"
@@ -181,21 +227,17 @@ OUTFITS: dict[str, dict] = {
             "wide": 1.0,
             "fabrics": {"upper": "knit", "sole": "rubber", "toe": "rubber"},
         },
-        # An arm from the shoulder down - [height, half width, half depth, color] -
-        # round its own middle `arm_x` off the body's: here a T-shirt's sleeve over a
-        # bare arm and hand.
+        # An upper arm, from the shoulder to the elbow - [height, half width, half
+        # depth, color] - round its own middle `arm_x` off the body's: here a
+        # T-shirt's sleeve over a bare arm. The forearm and the hand are the hand
+        # model's (hand_into).
         "arm_x": 0.075,
         "arm": [
             (0.405, 0.020, 0.020, "#2a9d8f"),
             (0.390, 0.021, 0.021, "#2a9d8f"),
             (0.360, 0.019, 0.019, "#2a9d8f"),
             (0.358, 0.0145, 0.0145, None),
-            (ELBOW, 0.013, 0.013, None),
-            (0.270, 0.012, 0.012, None),
-            (0.232, 0.0095, 0.0105, None),
-            (0.225, 0.008, 0.016, None),
-            (0.195, 0.008, 0.017, None),
-            (0.178, 0.007, 0.012, None),
+            (ELBOW - 0.004, 0.013, 0.013, None),
         ],
         "cloth": "twill",
         "fabrics": {"#2a9d8f": "knit", "#f2f2f2": "knit"},
@@ -235,18 +277,13 @@ OUTFITS: dict[str, dict] = {
             "wide": 1.12,
             "fabrics": {"upper": "leather", "sole": "rubber", "toe": "leather"},
         },
-        # The coverall's sleeve to the wrist, and an insulating glove over it.
+        # The coverall's sleeve, on down the forearm, and an insulating glove
+        # (HAND_LAYERS).
         "arm_x": 0.076,
         "arm": [
             (0.405, 0.021, 0.021, "#24365a"),
             (0.390, 0.022, 0.022, "#24365a"),
-            (ELBOW, 0.016, 0.016, "#24365a"),
-            (0.245, 0.013, 0.013, "#24365a"),
-            (0.243, 0.015, 0.015, "#c46a24"),
-            (0.224, 0.014, 0.016, "#c46a24"),
-            (0.222, 0.009, 0.017, "#d9772b"),
-            (0.195, 0.009, 0.018, "#d9772b"),
-            (0.178, 0.008, 0.013, "#d9772b"),
+            (ELBOW - 0.004, 0.016, 0.016, "#24365a"),
         ],
         "cloth": "twill",
         "fabrics": {
@@ -290,22 +327,15 @@ OUTFITS: dict[str, dict] = {
             "wide": 1.3,
             "fabrics": {"upper": "suit", "sole": "rubber", "toe": "rubber"},
         },
-        # The suit's sleeve, ringed at the elbow, a ring of light at the cuff, and the
-        # glove.
+        # The suit's sleeve, ringed at the elbow; a ring of light at the cuff and the
+        # glove below it (HAND_LAYERS).
         "arm_x": 0.088,
         "arm": [
             (0.405, 0.026, 0.026, "#eef0f4"),
             (0.390, 0.027, 0.027, "#eef0f4"),
             (0.312, 0.021, 0.021, "#eef0f4"),
             (0.310, 0.023, 0.023, "#9aa3b5"),
-            (0.298, 0.023, 0.023, "#9aa3b5"),
-            (0.296, 0.020, 0.020, "#eef0f4"),
-            (0.246, 0.017, 0.017, "#eef0f4"),
-            (0.244, 0.019, 0.019, "#6ff4ff"),
-            (0.234, 0.019, 0.019, "#6ff4ff"),
-            (0.232, 0.011, 0.019, "#d6d9e2"),
-            (0.195, 0.011, 0.020, "#d6d9e2"),
-            (0.176, 0.009, 0.014, "#d6d9e2"),
+            (ELBOW - 0.004, 0.023, 0.023, "#9aa3b5"),
         ],
         "cloth": "suit",
         "fabrics": {
@@ -433,7 +463,7 @@ def box(bm, middle: tuple, half: tuple, col, colors):
         bm.faces.new([vertices[i] for i in face])
 
 
-def mesh_for(name: str, outfit: dict):
+def mesh_for(name: str, outfit: dict, hand):
     """The outfit's mesh, its vertex colors written, as an object: a torso from the
     neck down round both hips, closed on top, a leg out of it on each side, and what
     is on its chest."""
@@ -470,9 +500,10 @@ def mesh_for(name: str, outfit: dict):
         shoe(bm, side, outfit["shoe"], colors)
     for middle, half, hexa in outfit.get("chest", []):
         box(bm, middle, half, paint(hexa), colors)
-    # The arms, out of the shoulders: closed at the top inside them and at the
-    # fingertips. Their vertices are weighted to the arm bones (skin), not by height.
-    arms = {}
+    # The arms, out of the shoulders: the upper arm, closed at the top inside the
+    # shoulder and at the elbow, and from the elbow the hand model's forearm and hand.
+    # Their vertices go to the arm's own bones (skin), not by height.
+    arms, hands = {}, {}
     for side in (-1.0, 1.0):
         before = len(bm.verts)
         rows, x = outfit["arm"], side * outfit["arm_x"]
@@ -482,9 +513,17 @@ def mesh_for(name: str, outfit: dict):
         for loop, (z, _, _, col) in ((loops[0], rows[0]), (loops[-1], rows[-1])):
             cap(bm, loop, z, x, paint(col), colors)
         arms.update({v: side for v in list(bm.verts)[before:]})
+        hands.update(
+            {
+                v: (side, w)
+                for v, w in hand_into(
+                    bm, hand, side, x, name.removeprefix("body_"), colors
+                ).items()
+            }
+        )
     # The head, closed at the crown and down inside the neck.
     before = len(bm.verts)
-    style = name.removeprefix("legs_")
+    style = name.removeprefix("body_")
     rows = HEADS_WORN[style]
     loops = [ring(bm, z, 0.0, rx, ry, paint(col), colors) for z, rx, ry, col in rows]
     for a, b in pairwise(loops):
@@ -503,10 +542,17 @@ def mesh_for(name: str, outfit: dict):
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.verts.index_update()
     ARMS[name] = {v.index: side for v, side in arms.items()}
+    suffix = lambda side: "R" if side > 0 else "L"  # noqa: E731
+    HAND_WEIGHTS[name] = {
+        v.index: {f"{BONE_FOR.get(g, g)}_{suffix(side)}": w for g, w in weights.items()}
+        for v, (side, weights) in hands.items()
+    }
     HEADS[name] = {v.index for v in head}
     painted = [colors[v] for v in bm.verts]
     bm.to_mesh(mesh)
     bm.free()
+    # Smooth faces share their vertices in the file; body.js works out the normals.
+    mesh.shade_smooth()
     attribute = mesh.color_attributes.new("Col", "BYTE_COLOR", "POINT")
     for i, c in enumerate(painted):
         attribute.data[i].color = (*c[:3], 1.0)
@@ -519,12 +565,58 @@ def mesh_for(name: str, outfit: dict):
     return obj
 
 
-def armature():
+def on_body(p, side: float, offset: bool = True) -> Vector:
+    """A point of the hand model (or with `offset` false, a direction) where it lies on
+    the body: scaled, turned to hang palm in with the thumb forward, mirrored for the
+    left hand, and at the wrist of the arm on `side`."""
+    q = Vector((p.z, p.x, p.y)) * (HAND_SCALE if offset else 1.0)
+    q.x *= side
+    return q + Vector((side * ARM_X, 0, WRIST)) if offset else q
+
+
+def hand_into(bm, hand, side: float, x: float, style: str, colors: dict) -> dict:
+    """The hand model's forearm and hand, cut at its elbow and closed there, added to
+    `bm` hanging from the elbow of the arm on `side` (`x` across), painted as worn in
+    `style`; returns each new vertex's weights by the hand model's bone names."""
+    names = [g.name for g in hand.vertex_groups]
+    made, weights = {}, {}
+    for v in hand.data.vertices:
+        co = hand.matrix_world @ v.co
+        if co.y > HAND_CUT:
+            continue
+        at = on_body(co, side) + Vector((x - side * ARM_X, 0, 0))
+        nv = bm.verts.new(at)
+        colors[nv] = worn_on_hand(style, -co.y)
+        made[v.index] = nv
+        weights[nv] = {names[g.group]: g.weight for g in v.groups if g.weight > 1e-3}
+    for f in hand.data.polygons:
+        if all(i in made for i in f.vertices):
+            # Mirrored for the left hand, so its faces wound the other way round.
+            order = list(f.vertices) if side > 0 else list(reversed(f.vertices))
+            bm.faces.new([made[i] for i in order])
+    rim = [e for e in bm.edges if e.is_boundary and all(v in weights for v in e.verts)]
+    bmesh.ops.holes_fill(bm, edges=rim, sides=0)
+    return weights
+
+
+def worn_on_hand(style: str, along: float):
+    """What covers the hand model at `along` from the wrist in `style`: the thickest
+    layer of HAND_LAYERS over it, or bare skin."""
+    top = None
+    for start, end, stand, hexa, kind in HAND_LAYERS[style]:
+        if (start is None or along >= start) and (end is None or along <= end):
+            if top is None or stand > top[0]:
+                top = (stand, hexa, kind)
+    return color(top[1], top[2]) if top else SKIN
+
+
+def armature(hand):
     """The rig: the hips, the spine up from them, and for each side a thigh, a shin and
-    a foot, and an upper arm off the spine, a forearm and a hand; and the head on the
-    spine."""
-    data = bpy.data.armatures.new("legs_rig")
-    rig = bpy.data.objects.new("legs_rig", data)
+    a foot, an upper arm off the spine, a forearm, and the hand model's hand with its
+    fingers; and the head on the spine."""
+    hand = hand.parent
+    data = bpy.data.armatures.new("body_rig")
+    rig = bpy.data.objects.new("body_rig", data)
     bpy.context.scene.collection.objects.link(rig)  # type: ignore[reportAttributeAccessIssue]
     bpy.context.view_layer.objects.active = rig  # type: ignore[reportAttributeAccessIssue]
     bpy.ops.object.mode_set(mode="EDIT")  # type: ignore[reportAttributeAccessIssue]
@@ -538,7 +630,8 @@ def armature():
         hips,
     )
     spine.roll = 0
-    for side, suffix in ((-1.0, "R"), (1.0, "L")):
+    # The model faces +y, so its right is +x.
+    for side, suffix in ((-1.0, "L"), (1.0, "R")):
         x = side * APART
         thigh = bones.new(f"thigh_{suffix}")
         thigh.head, thigh.tail, thigh.parent = (
@@ -573,16 +666,33 @@ def armature():
             upper,
         )
         forearm.use_connect = True
-        hand = bones.new(f"hand_{suffix}")
-        hand.head, hand.tail, hand.parent = (
-            Vector((side * ARM_X, 0, WRIST)),
-            Vector((side * ARM_X, 0, 0.17)),
-            forearm,
-        )
-        hand.use_connect = True
         # Every bone rolled the same way, so one axis bends every joint forward.
-        for b in (thigh, shin, foot, upper, forearm, hand):
+        for b in (thigh, shin, foot, upper, forearm):
             b.roll = 0
+        # The hand model's own bones from the wrist out, as they lie on the body: the
+        # wrist is this side's hand, and each finger joint keeps its WebXR name.
+        for b in sorted(hand.data.bones, key=lambda b: len(b.parent_recursive)):
+            if b.name == "forearm":
+                continue
+            name = "hand" if b.name == "wrist" else b.name
+            bone = bones.new(f"{name}_{suffix}")
+            bone.head = on_body(hand.matrix_world @ b.head_local, side)
+            bone.tail = on_body(hand.matrix_world @ b.tail_local, side)
+            parent = b.parent.name
+            bone.parent = bones[
+                (
+                    f"forearm_{suffix}"
+                    if parent == "forearm"
+                    else ("hand" if parent == "wrist" else parent) + f"_{suffix}"
+                )
+            ]
+            bone.align_roll(
+                on_body(
+                    hand.matrix_world.to_3x3() @ b.matrix_local.to_3x3().col[2],
+                    side,
+                    offset=False,
+                )
+            )
     head = bones.new("head")
     head.head, head.tail, head.parent = (
         Vector((0, 0, NECK)),
@@ -603,8 +713,14 @@ def blend(z: float, at: float, over: float) -> float:
 def skin(obj, rig):
     """Weights by height: the spine over the waist, the hips over the thighs, the thighs
     over the knees, the shins down to the ankles, the feet below them - each eased
-    into the next. An arm's vertices go to its own bones, by height along it."""
+    into the next. An upper arm's vertices go to its bone, and the hands' to the bones
+    the hand model weighted them to."""
+    hand_weights = HAND_WEIGHTS.get(obj.name, {})
     groups = {
+        name: obj.vertex_groups.new(name=name)
+        for name in sorted({g for w in hand_weights.values() for g in w})
+    }
+    groups |= {
         name: obj.vertex_groups.new(name=name)
         for name in (
             "spine",
@@ -616,13 +732,10 @@ def skin(obj, rig):
             "shin_R",
             "foot_R",
             "upperarm_L",
-            "forearm_L",
-            "hand_L",
             "upperarm_R",
-            "forearm_R",
-            "hand_R",
             "head",
         )
+        if name not in groups
     }
     arms, heads = ARMS.get(obj.name, {}), HEADS.get(obj.name, set())
     for v in obj.data.vertices:
@@ -630,19 +743,15 @@ def skin(obj, rig):
         if v.index in heads:
             groups["head"].add([v.index], 1.0, "REPLACE")
             continue
-        if v.index in arms:
-            suffix = "L" if arms[v.index] > 0 else "R"
-            below_elbow = blend(z, ELBOW, 0.012)
-            below_wrist = blend(z, WRIST, 0.006)
-            for name, w in (
-                (f"upperarm_{suffix}", 1 - below_elbow),
-                (f"forearm_{suffix}", below_elbow * (1 - below_wrist)),
-                (f"hand_{suffix}", below_elbow * below_wrist),
-            ):
-                if w > 1e-3:
-                    groups[name].add([v.index], w, "REPLACE")
+        if v.index in hand_weights:
+            for name, w in hand_weights[v.index].items():
+                groups[name].add([v.index], w, "REPLACE")
             continue
-        suffix = "L" if x > 0 else "R"
+        if v.index in arms:
+            suffix = "R" if arms[v.index] > 0 else "L"
+            groups[f"upperarm_{suffix}"].add([v.index], 1.0, "REPLACE")
+            continue
+        suffix = "R" if x > 0 else "L"
         below_waist = blend(z, WAIST + 0.01, 0.01)
         below_hip = blend(z, HIP + 0.012, 0.012)
         below_knee = blend(z, KNEE, 0.012)
@@ -680,11 +789,12 @@ def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)  # type: ignore[reportAttributeAccessIssue]
     for stray in list(bpy.data.objects):  # type: ignore[reportAttributeAccessIssue]
         bpy.data.objects.remove(stray, do_unlink=True)  # type: ignore[reportAttributeAccessIssue]
-    rig = armature()
+    hand, _ = build_hand()
+    rig = armature(hand)
     cloth = material()
     made = []
     for style, outfit in OUTFITS.items():
-        obj = mesh_for(f"legs_{style}", outfit)
+        obj = mesh_for(f"body_{style}", outfit, hand)
         obj.data.materials.append(cloth)
         skin(obj, rig)
         made.append(obj)
@@ -696,8 +806,8 @@ def main():
         export_apply=False,
         export_yup=True,
         use_selection=False,
-        # legs.js shades by normals it works out itself, and never reads a texture.
-        export_normals=False,
+        # body.js shades the body by normals it works out itself, and hands.js lights
+        # the hand by its own; neither reads a texture.
         export_texcoords=False,
         export_vertex_color="ACTIVE",
         export_attributes=True,

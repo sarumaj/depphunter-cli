@@ -35,6 +35,7 @@ except (ImportError, ModuleNotFoundError):
 HERE: str = os.path.dirname(os.path.abspath(__file__))
 OUT: str = os.path.normpath(os.path.join(HERE, "..", "web", "static", "play.glb"))
 
+
 # Blender's z is up; the export turns it into three.js's y. Each part is written in
 # three.js's axes - x along the amenity, y up, z across it - and turned on the way in.
 def blender(x: float, y: float, z: float) -> Vector:
@@ -48,17 +49,25 @@ def strand(bm, a, b, r: float, sides: int = 4):
     length = axis.length
     if length < 1e-9:
         return
-    out = bmesh.ops.create_cone(bm, cap_ends=False, segments=sides, radius1=r, radius2=r, depth=length)
+    out = bmesh.ops.create_cone(
+        bm, cap_ends=False, segments=sides, radius1=r, radius2=r, depth=length
+    )
     turn = axis.normalized().to_track_quat("Z", "Y").to_matrix().to_4x4()
-    bmesh.ops.transform(bm, matrix=Matrix.Translation((a + b) / 2) @ turn, verts=out["verts"])
+    bmesh.ops.transform(
+        bm, matrix=Matrix.Translation((a + b) / 2) @ turn, verts=out["verts"]
+    )
 
 
 def blob(bm, at, size, segments: int = 10):
     """An ellipsoid at `at`, `size` its half extents (three.js axes)."""
-    out = bmesh.ops.create_uvsphere(bm, u_segments=segments, v_segments=max(4, segments // 2), radius=1)
+    out = bmesh.ops.create_uvsphere(
+        bm, u_segments=segments, v_segments=max(4, segments // 2), radius=1
+    )
     sx, sy, sz = size
     scale = Matrix.Diagonal((sx, sz, sy, 1))
-    bmesh.ops.transform(bm, matrix=Matrix.Translation(blender(*at)) @ scale, verts=out["verts"])
+    bmesh.ops.transform(
+        bm, matrix=Matrix.Translation(blender(*at)) @ scale, verts=out["verts"]
+    )
 
 
 def belt_seat(bm):
@@ -87,15 +96,19 @@ def belt_seat(bm):
 
 def horse(bm):
     """A spring rider's horse facing +x, standing on its spring's top at y = 0.075."""
-    blob(bm, (0, 0.105, 0), (0.065, 0.032, 0.03), 12)                  # the body
-    strand(bm, (0.045, 0.12, 0), (0.075, 0.16, 0), 0.016, 8)           # the neck
-    blob(bm, (0.085, 0.165, 0), (0.03, 0.017, 0.016), 10)              # the head
+    blob(bm, (0, 0.105, 0), (0.065, 0.032, 0.03), 12)  # the body
+    strand(bm, (0.045, 0.12, 0), (0.075, 0.16, 0), 0.016, 8)  # the neck
+    blob(bm, (0.085, 0.165, 0), (0.03, 0.017, 0.016), 10)  # the head
     for side in (-1, 1):
-        strand(bm, (0.075, 0.18, side * 0.008), (0.07, 0.195, side * 0.01), 0.004, 4)  # ears
+        strand(
+            bm, (0.075, 0.18, side * 0.008), (0.07, 0.195, side * 0.01), 0.004, 4
+        )  # ears
         for x in (-0.04, 0.04):
-            strand(bm, (x, 0.09, side * 0.018), (x * 1.1, 0.075, side * 0.022), 0.008, 6)  # leg stubs
-    strand(bm, (-0.062, 0.115, 0), (-0.085, 0.085, 0), 0.007, 6)       # the tail
-    blob(bm, (-0.005, 0.135, 0), (0.025, 0.006, 0.026), 10)            # the saddle
+            strand(
+                bm, (x, 0.09, side * 0.018), (x * 1.1, 0.075, side * 0.022), 0.008, 6
+            )  # leg stubs
+    strand(bm, (-0.062, 0.115, 0), (-0.085, 0.085, 0), 0.007, 6)  # the tail
+    blob(bm, (-0.005, 0.135, 0), (0.025, 0.006, 0.026), 10)  # the saddle
     strand(bm, (0.075, 0.17, -0.032), (0.075, 0.17, 0.032), 0.0035, 6)  # the handlebar
 
 
@@ -107,13 +120,24 @@ def hoop_net(bm):
         a0 = 2 * math.pi * i / n
         for turn in (1, -1):
             a1 = a0 + turn * 2 * math.pi / n
-            strand(bm, (top * math.cos(a0), 0, top * math.sin(a0)),
-                   (bottom * math.cos(a1), -depth, bottom * math.sin(a1)), 0.0009, 3)
+            strand(
+                bm,
+                (top * math.cos(a0), 0, top * math.sin(a0)),
+                (bottom * math.cos(a1), -depth, bottom * math.sin(a1)),
+                0.0009,
+                3,
+            )
     for k in (1, 2):
         r, y = top + (bottom - top) * k / 3, -depth * k / 3
         for i in range(n):
             a0, a1 = 2 * math.pi * i / n, 2 * math.pi * (i + 1) / n
-            strand(bm, (r * math.cos(a0), y, r * math.sin(a0)), (r * math.cos(a1), y, r * math.sin(a1)), 0.0009, 3)
+            strand(
+                bm,
+                (r * math.cos(a0), y, r * math.sin(a0)),
+                (r * math.cos(a1), y, r * math.sin(a1)),
+                0.0009,
+                3,
+            )
 
 
 def goal_net(bm):
@@ -140,15 +164,28 @@ def goal_net(bm):
     for side in (-mouth, mouth):
         for k in range(1, 6):
             y = bar * k / 6
-            back = foot_back - (foot_back - top_back) * (y / (bar * 0.92)) if y <= bar * 0.92 else top_back
+            back = (
+                foot_back - (foot_back - top_back) * (y / (bar * 0.92))
+                if y <= bar * 0.92
+                else top_back
+            )
             strand(bm, (0, y, side), (back, y, side), r)
         for k in range(1, 5):
             x = foot_back * k / 5
-            height = bar if x <= top_back else bar * 0.92 * (foot_back - x) / (foot_back - top_back)
+            height = (
+                bar
+                if x <= top_back
+                else bar * 0.92 * (foot_back - x) / (foot_back - top_back)
+            )
             strand(bm, (x, 0, side), (x, height, side), r)
 
 
-PARTS = {"belt_seat": belt_seat, "horse": horse, "hoop_net": hoop_net, "goal_net": goal_net}
+PARTS = {
+    "belt_seat": belt_seat,
+    "horse": horse,
+    "hoop_net": hoop_net,
+    "goal_net": goal_net,
+}
 
 
 # Implements: REQ-CITY-041

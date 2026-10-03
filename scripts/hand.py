@@ -1,10 +1,5 @@
-#!/usr/bin/env python3.11
-"""Prepares the walker's hand and forearm, and exports it as glTF.
-
-Run it with Blender, or with the `bpy` module on the same Python it was built for:
-
-    pip install "numpy<2" bpy
-    python3 scripts/hand.py
+"""Prepares the walker's hand and forearm, for scripts/body.py, which exports it in
+web/static/body.glb with the body it is also the hands of.
 
 The hand itself is not modeled here. It is `generic-hand` from the WebXR Input
 Profiles project - a real hand, modeled and rigged by people who model hands, and
@@ -18,14 +13,11 @@ What the script does is the part that is ours:
   * rebuild its rig, because the WebXR profile stores the 25 joints as a flat list
     of poses rather than a skeleton, and a finger that does not carry its own tip
     along when it curls is no use to us;
-  * write web/static/hand.glb, which the UI loads once and clones per hand.
+  * hand the result to scripts/body.py (build), which exports it whole, for the
+    first-person view (hands.js), and cut down to the body's scale as the body's
+    forearms and hands (body.js).
 
 The bone names are the WebXR joint names and are the contract with hands.js.
-
-Re-running this does not reproduce the committed file byte for byte: Blender's glTF
-exporter writes the same mesh with slightly different floats each time. The model is
-committed for that reason rather than built, and a regenerated one is equivalent
-without being identical.
 """
 
 # pyright: basic
@@ -46,7 +38,6 @@ except (ImportError, ModuleNotFoundError):
     raise SystemExit("this script must be run with Blender or the bpy module")
 
 HERE: str = os.path.dirname(os.path.abspath(__file__))
-OUT: str = os.path.normpath(os.path.join(HERE, "..", "web", "static", "hand.glb"))
 
 # The model, pinned. The package carries a hand per side; we take the right one and
 # the UI mirrors it for the left, which is what a left hand is.
@@ -153,7 +144,7 @@ def load(path: str) -> tuple[Object, Object]:
         bpy.data.objects.remove(stray, do_unlink=True)  # type: ignore[reportAttributeAccessIssue]
 
     mesh.name = mesh.data.name = "hand"
-    rig.name = rig.data.name = "rig"
+    rig.name = rig.data.name = "hand_rig"
     return mesh, rig
 
 
@@ -345,31 +336,13 @@ def material(mesh: Object) -> None:
 
 
 # Implements: REQ-TOOL-007
-def main() -> None:
+def build() -> tuple[Object, Object]:
+    """The hand, fetched, turned, re-rigged and given its forearm: its mesh and its rig,
+    in the scene, for scripts/body.py to export with the body."""
     mesh, rig = load(fetch())
     head = place(mesh, rig)
     elbow, wrist = rig_hand(rig, head)
     material(mesh)
     cuff, width, axis = forearm(mesh, elbow, wrist)
     weigh(mesh, cuff, width, axis)
-
-    bpy.ops.export_scene.gltf(  # type: ignore[reportAttributeAccessIssue]
-        filepath=OUT,
-        export_format="GLB",
-        export_skins=True,
-        export_animations=False,
-        export_apply=False,
-        export_yup=True,
-        use_selection=False,
-        # The UI re-colors the model and never reads a texture, so the coordinates
-        # for one are a third of the file wasted.
-        export_texcoords=False,
-    )
-    print(
-        f"wrote {OUT}: {len(mesh.data.vertices)} vertices, {len(mesh.data.polygons)} faces, "
-        f"{len(rig.data.bones)} bones, {os.path.getsize(OUT)} bytes"
-    )
-
-
-if __name__ == "__main__":
-    main()
+    return mesh, rig

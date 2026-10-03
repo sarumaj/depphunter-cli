@@ -35,7 +35,7 @@ import { trajectory, guided } from './trajectory.js';
 import { canopy } from './canopy.js';
 import { play } from './play.js';
 import { quips } from './quips.js';
-import { Legs } from './legs.js';
+import { Body } from './body.js';
 import { wear } from './hands.js';
 import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee } from './tools.js';
 import { packedChute, aloft } from './parachute.js';
@@ -343,7 +343,7 @@ export class Walker {
     this.settling = [];    // rides left moving, coming to rest
     this.flung = null;     // how fast a jump off a ride carries them across the map
     this.eyeShift = 0;     // how far the eye still is from where it is going, getting on or off a seat
-    this.legs = new Legs(scene);
+    this.body = new Body(scene);
     this.home = null;      // where the walker stood when they last left the street
     this.radius = 40;
     this.shownRadius = 40; // what the planet is drawn at, on its way to radius (easeRadius)
@@ -565,7 +565,7 @@ export class Walker {
     this.drawGrip(null);
     this.endPlay();
     this.drawPlay();
-    if (this.legs) this.legs.group.visible = false;
+    if (this.body) this.body.group.visible = false;
     this.bugs?.show(false);
     this.showTarget(null);
     this.hideTool();
@@ -1172,7 +1172,7 @@ export class Walker {
   /**
    * Looking down past ARMS_DOWN, what is held before the eye - a tool, a ball - sinks
    * out of the view, and once it is gone the body's own arms are the ones drawn
-   * (legs.js): one pair of hands at a time, and always on the shoulders.
+   * (body.js): one pair of hands at a time, and always on the shoulders.
    */
   lowerArms() {
     const t = clamp((-this.p.pitch - ARMS_DOWN[0]) / (ARMS_DOWN[1] - ARMS_DOWN[0]), 0, 1), down = t * t * (3 - 2 * t);
@@ -1872,14 +1872,14 @@ export class Walker {
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, eye,
         this.p.yaw, this.p.pitch + hang.pitch, this.roll + hang.roll, this.thirdPerson && !this.arrival ? this.thirdEye(eye, deltaTime) : null);
       this.hangCanopy(now);
-      // Dressed for the map: the hands' sleeves and gloves, and the legs.
+      // Dressed for the map: the hands' sleeves and gloves, and the body.
       if (this.scene.style !== this.dressedFor) {
         this.dressedFor = this.scene.style;
         wear(this.dressedFor);
         if (!this.handsOff) this.showTool();
       }
-      this.legs.wear(this.scene.style);
-      this.legs.update(this, deltaTime);
+      this.body.wear(this.scene.style);
+      this.body.update(this, deltaTime);
       if (!this.still && !this.arrival) this.updateAim();
       this.drawPath();
       this.drawLine();

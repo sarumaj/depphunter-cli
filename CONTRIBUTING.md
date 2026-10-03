@@ -244,11 +244,13 @@ tools are optional: `git` for file listing and history, language servers for
 
 ### The 3D models
 
-The hands and forearms shown in walk mode are a rigged model, built by
-`scripts/hand.py` in Blender and exported to `web/static/hand.glb`. The script is
+The hands and forearms shown in walk mode are a rigged model, prepared by
+`scripts/hand.py` in Blender and exported by `scripts/body.py` to
+`web/static/body.glb`. The script is
 the source, so the model can be read and regenerated rather than being a binary
 that cannot be modified. They are also the only lit objects on the map: the walk
-camera carries its own lights and every other material is unlit, which preserves
+camera carries its own lights (and the body, seen from behind, the same for a tool
+in its hand) and every other material is unlit, which preserves
 the city's flat, data-led coloring.
 
 The trees and bushes follow the same arrangement. `scripts/props.py` takes a CC0
@@ -260,12 +262,16 @@ finding is modeled rather than sourced, since neither pack contains an insect:
 severity's color, a dark head and thorax, and six independently animated
 legs.
 
-The walker's own legs are modeled too: `scripts/legs.py` writes
-`web/static/legs.glb`, one rig and three meshes skinned to it, one for each
-style's outfit, colored with vertex colors and marked with the fabric each
-vertex is (`_CLOTH`). The hands are not remodeled for the outfits; their
-sleeves and gloves are layers cut from the arm's own mesh at load time
-(`web/static/walk/cloth.js`), which also shades every fabric with its weave.
+The walker's whole body is modeled too, in the same file: `scripts/body.py`
+writes `web/static/body.glb` with the hand rig as it is (`hand_rig`) and the
+body's rig (`body_rig`) with three meshes skinned to it, one for each style's
+outfit, colored with vertex colors and marked with the fabric each vertex is
+(`_CLOTH`). The body's forearms and hands are the same hand, cut at the elbow
+and scaled down, its finger bones copied with their names, so the hands seen on
+the body are the ones held before the eye. The first-person hand is not
+remodeled for the outfits; its sleeves and gloves are layers cut from the arm's
+own mesh at load time (`web/static/walk/cloth.js`), which also shades every
+fabric with its weave.
 
 What the parks' play equipment is made of is mostly posts, bars and blocks, which
 are what a goal frame or a swing's legs are, and are built in

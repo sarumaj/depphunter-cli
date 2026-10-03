@@ -13,3 +13,6 @@ internal/lang/java/testdata/repo/target/
 # checkouts' manifests are fixture.
 internal/lang/swift/testdata/**/.build/*
 !internal/lang/swift/testdata/repo/.build/checkouts/
+
+# Python bytecode, from scripts/body.py importing scripts/hand.py
+__pycache__/

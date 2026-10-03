@@ -298,7 +298,7 @@ async function main() {
 
   applyStyle(false);
   applyTheme();
-  loadHands(); // the walker's hands, fetched while the map is still being looked at
+  loadHands(); // the walker's body and hands, fetched while the map is still being looked at
   loadPlants().then(got => got && scene.redress()); // and what grows on the map
   loadBugs().then(got => got && bugs && placeBugs()); // ... and what walks it
   loadPlay().then(got => got && scene.redress()); // ... and what is played on

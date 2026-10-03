@@ -18,7 +18,7 @@ import { shaded, merge } from '../map/shapes.js';
 import { EYE, WATER, POINT } from './walkbase.js';
 import { ballInHands, viewLights, HELD_BALL } from './tools.js';
 import { makeGuide } from './trajectory.js';
-import { CONTACT } from './legs.js';
+import { CONTACT } from './body.js';
 
 const RIDE_REACH = 0.5;     // how near a seat, a deck or a ladder has to be to get on
 const SIT = 0.22;           // the eye over a seat
@@ -62,6 +62,7 @@ const floorKey = (gx, gz) => (gx + 32768) * 65536 + (gz + 32768);
 
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), v4 = new THREE.Vector3();
 const m1 = new THREE.Matrix4();
+const GRIPS = [new THREE.Vector3(), new THREE.Vector3()];
 
 /**
  * How hard a ball is sent, as a share of its usual speed, after the button has been held
@@ -460,6 +461,20 @@ export const play = {
     return Math.abs(off) <= LOOK_AROUND ? yaw : body + Math.sign(off) * LOOK_AROUND;
   },
 
+  /**
+   * What the hands hold on to sat on a ride - a swing's chains, a seesaw's handles, a
+   * car's wheel - as world points, the left hand's first; null for a ride with none.
+   */
+  rideGrips() {
+    const r = this.riding, e = r?.entry;
+    if (!e?.grips) return null;
+    const at = (local, out) => (e.ride === 'drive' ? this.carPoint(r.it, e, local, out) : rigPoint(r.it, r.it.spec, r.rig, r.angle, local, out));
+    const [a, b] = e.grips.map((local, i) => at(local, GRIPS[i]));
+    // The left hand's is the one further to the body's left.
+    const yaw = this.rideYaw(), right = (v) => v.x * Math.cos(yaw) - v.z * Math.sin(yaw);
+    return right(a) <= right(b) ? GRIPS : [b, a];
+  },
+
   /** Where an amenity's car is: off its spot once driven - { x, z, yaw, speed }, as its model has them. */
   carOf(it, entry) {
     const rig = it.spec.rigs[entry.rig];
@@ -853,7 +868,7 @@ export const play = {
    */
   touchBall(ball, hard = 1) {
     if (ball.kind === 'soccer') {
-      // The leg is drawn back first (legs.js); the ball goes when the foot meets it.
+      // The leg is drawn back first (body.js); the ball goes when the foot meets it.
       this.kicked = performance.now();
       this.kicking = { ball, left: CONTACT, strength: hard };
       return;

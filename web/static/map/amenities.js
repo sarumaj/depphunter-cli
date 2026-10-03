@@ -29,12 +29,13 @@ const moved = (p, dx, dz) => [p[0] + dx, p[1], p[2] + dz];
 const isPoint = v => Array.isArray(v) && v.length === 3 && v.every(n => typeof n === 'number');
 
 // A play entry moved by dx, dz, its rig numbered among the amenity's from `base`. A
-// seat is where on its rig the rider sits, and moves with the rig.
+// seat - where on its rig the rider sits - and grips - what they hold on to - are on
+// the rig, and move with it.
 function shifted(entry, dx, dz, base) {
   const out = {};
   for (const [key, v] of Object.entries(entry)) {
     if (key === 'rig') out.rig = v + base;
-    else if (key === 'seat') out.seat = v;
+    else if (key === 'seat' || key === 'grips') out[key] = v;
     else if (key === 'area') out.area = [v[0] + dx, v[1] + dz, v[2] + dx, v[3] + dz];
     else if (isPoint(v)) out[key] = moved(v, dx, dz);
     else if (Array.isArray(v) && v.length && v.every(isPoint)) out[key] = v.map(p => moved(p, dx, dz));
@@ -83,6 +84,8 @@ function domeEdges(r) {
 
 // ------------------------------------------------------------------ playground pieces
 
+const GRIP_UP = 0.05; // a swing's chains held this far over its seat
+
 // A swing set: an A-frame at each end of a beam along z, a seat hanging from the beam
 // for each of `seats` (their z), swinging along x.
 function swings(kit, { seats = [-0.13, 0.13], h = 0.32, seatY = 0.07, nest = false } = {}) {
@@ -97,7 +100,9 @@ function swings(kit, { seats = [-0.13, 0.13], h = 0.32, seatY = 0.07, nest = fal
         kit.nest(-length)])
       : merge([kit.chain([0, 0, -0.04], [0, -length, -0.04]), kit.chain([0, 0, 0.04], [0, -length, 0.04]), kit.seat(-length)]);
     p.rigs.push({ geo, at: [0, h, z], axis: 'z' });
-    p.play.push({ ride: 'swing', rig: p.rigs.length - 1, pivot: [0, h, z], length });
+    // Held by its chains, a little over the seat; a nest is lain in, not held.
+    const grips = nest ? undefined : [-0.04, 0.04].map(cz => [0, GRIP_UP - length, cz]);
+    p.play.push({ ride: 'swing', rig: p.rigs.length - 1, pivot: [0, h, z], length, grips });
   }
   p.glows.push(...(kit.glowsOn?.swings?.(h, z0, z1) || []));
   return p;
@@ -184,7 +189,10 @@ function seesaw(kit, { length = 0.5 } = {}) {
   ]);
   const p = piece([kit.fulcrum()], { posts: [[0, 0, 0.04]] });
   p.rigs.push({ geo: plank, at: [0, 0.055, 0], axis: 'z', rest: 0.12 });
-  for (const s of [-1, 1]) p.play.push({ ride: 'rock', rig: 0, pivot: [0, 0.055, 0], seat: [s * (half - 0.035), 0.012, 0], reach: 0.2 });
+  for (const s of [-1, 1]) {
+    const grips = [-0.018, 0.018].map(cz => [s * (half - 0.07), 0.06, cz]);
+    p.play.push({ ride: 'rock', rig: 0, pivot: [0, 0.055, 0], seat: [s * (half - 0.035), 0.012, 0], reach: 0.2, grips });
+  }
   return p;
 }
 
@@ -266,7 +274,8 @@ function bobbyCar(kit) {
   ]);
   const p = piece([]);
   p.rigs.push({ geo: car, at: [0, 0, 0], axis: 'y', rest: Math.PI });
-  p.play.push({ ride: 'drive', rig: 0, seat: [-0.03, 0.056, 0] });
+  // The wheel held at each side of its rim.
+  p.play.push({ ride: 'drive', rig: 0, seat: [-0.03, 0.056, 0], grips: [[0.035, 0.085, -0.018], [0.035, 0.085, 0.018]] });
   return p;
 }
 

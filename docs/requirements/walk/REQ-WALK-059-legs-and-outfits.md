@@ -13,8 +13,8 @@ verification:
 ## Statement
 
 Walk mode **shall** draw the walker's whole body - the legs, the torso, the
-arms and a head with a face - a model prepared by `scripts/legs.py` in Blender
-and exported to `web/static/legs.glb` with the script committed as its source,
+arms and a head with a face - a model prepared by `scripts/body.py` in Blender
+and exported to `web/static/body.glb` with the script committed as its source,
 standing at their feet, turned as they face and seen when they look down. The
 chest **shall** be seen only from outside, never cut through: the eye is over
 it and a little ahead, the further ahead the further down they look, as a head
@@ -36,6 +36,10 @@ The legs **shall** be posed:
 - kicking a ball, the right leg drawn back with the heel up, whipped through at
   the knee to meet the ball under the hips as it leaves, and swung on up and
   down again, eased all the way, while the standing knee gives.
+
+The body's hands **shall** be the hand held before the eye (REQ-TOOL-007) at
+the body's scale, its fingers jointed the same way: relaxed, a little closed;
+closed round what they hold on to.
 
 There **shall** be one pair of hands at a time, and always on the shoulders:
 while a tool or a ball is held before the eye, those are the hands seen and the
@@ -89,3 +93,5 @@ where the walker is as plainly as the sky does.
    body's arms instead; never two pairs of hands, never none.
 8. Walking, the left arm swings forward with the right leg; on a bobby car the
    hands are on the wheel.
+9. Looking down empty-handed shows the same hand, glove and cuff as holding a
+   tool does, the fingers a little curled; holding on to a ride, closed.

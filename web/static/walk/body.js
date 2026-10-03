@@ -1,13 +1,15 @@
-// The walker's body - legs, torso, arms and a head - as a model (scripts/legs.py) in
-// the outfit of the map's style: a T-shirt, shorts and sneakers in a city, an
-// electrician's coverall, gloves, boots and hard hat on a board, a spacesuit in the
+// The walker's body - legs, torso, arms and a head - as a model (scripts/body.py,
+// body.glb) in the outfit of the map's style: a T-shirt, shorts and sneakers in a city,
+// an electrician's coverall, gloves, boots and hard hat on a board, a spacesuit in the
 // galaxy. Seen looking down, sitting on a swing, sliding, kicking a ball.
 //
-// One pair of hands at a time: while a tool or a ball is held before the eye (walk.js)
-// the body's arms are folded away, and they are the hands seen otherwise - empty-handed,
-// or looking down past what is held. The head is the eye's, so it is drawn only for a
-// view from outside it: seen from behind (walk.js thirdPerson), where the body holds
-// what is in hand - a tool aimed along the view, a ball carried before the chest.
+// Its hands are the hand held before the eye (hands.js), at the body's scale, and close
+// as that one does. One pair of hands at a time: while a tool or a ball is held before
+// the eye (walk.js) the body's arms are folded away, and they are the hands seen
+// otherwise - empty-handed, or looking down past what is held. The head is the eye's,
+// so it is drawn only for a view from outside it: seen from behind (walk.js
+// thirdPerson), where the body holds what is in hand - a tool where the view holds it,
+// a ball carried before the chest.
 //
 // They stand in the walk scene at the walker's feet - where the planet's bend is
 // nothing, so they are drawn flat - turned the way the walker faces, a little behind
@@ -17,9 +19,10 @@
 // Implements: REQ-WALK-059
 
 import * as THREE from '../vendor/three.module.min.js';
-import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneRigged } from '../vendor/SkeletonUtils.js';
-import { STATIC } from '../core/data.js';
+import { loadBody } from './bodymodel.js';
+import { closeHand, closeFinger } from './hands.js';
+import { viewLights } from './tools.js';
 import { EYE } from './walkbase.js';
 import { fabric } from './cloth.js';
 
@@ -50,23 +53,10 @@ const KICK_KEYS = [
 ];
 const KICK_JOINTS = ['thigh_R', 'shin_R', 'foot_R', 'thigh_L', 'shin_L'];
 
-let model = null, loading = null;
-
-/** Starts loading the model; resolves with it, or null if it will not load. */
-export function loadLegs() {
-  loading ||= new GLTFLoader().loadAsync(STATIC?.legs || 'legs.glb').then(gltf => {
-    model = gltf.scene;
-    model.updateMatrixWorld(true);
-    return model;
-  }).catch(err => {
-    console.error('legs model:', err);
-    return null;
-  });
-  return loading;
-}
+let model = null;
 
 // The model's geometry ready to draw: its normals, which the fabric is lit by
-// (cloth.js), and which fabric each vertex is (_CLOTH, from scripts/legs.py).
+// (cloth.js), and which fabric each vertex is (_CLOTH, from scripts/body.py).
 const prepared = new Map();
 function prepare(geometry) {
   if (prepared.has(geometry)) return prepared.get(geometry);
@@ -79,30 +69,34 @@ function prepare(geometry) {
   return out;
 }
 
-export class Legs {
+export class Body {
   constructor(scene) {
     this.scene = scene;
     this.group = new THREE.Group();
     this.group.visible = false;
-    this.worn = null;   // the style the legs were dressed for
+    this.worn = null;   // the style the body was dressed for
     this.rig = null;    // the clone being drawn
     this.bones = null;
     this.phase = 0;     // the stride
     this.showHead = false; // the head, for a view from outside the walker's own eye
+    this.carried = { L: null, R: null }; // what each hand holds seen from behind
+    // Lit as a held tool is: nothing else in the map is lit, so this reaches only a
+    // tool carried in the body's hand.
+    this.group.add(viewLights());
     scene.scene.add(this.group);
   }
 
-  /** Dresses the legs for `style`, once the model is in. */
+  /** Dresses the body for `style`, once the model is in. */
   wear(style) {
     if (this.worn === style && this.rig) return;
     if (!model) {
-      loadLegs().then(m => { if (m) this.wear(style); });
+      loadBody().then(scene => { if ((model = scene?.getObjectByName('body_rig') || null)) this.wear(style); });
       return;
     }
     this.worn = style;
     if (this.rig) this.group.remove(this.rig);
     const rig = cloneRigged(model);
-    const wanted = `legs_${style}`, fallback = 'legs_city';
+    const wanted = `body_${style}`, fallback = 'body_city';
     const meshes = [];
     rig.traverse(o => { if (o.isSkinnedMesh) meshes.push(o); });
     const pick = meshes.find(o => o.name === wanted) || meshes.find(o => o.name === fallback);
@@ -116,13 +110,24 @@ export class Legs {
     }
     this.bones = new Map();
     rig.traverse(o => { if (o.isBone) this.bones.set(o.name, { bone: o, rest: o.quaternion.clone() }); });
+    // Each hand's bones by the hand model's own names, for hands.js to close.
+    this.hands = {};
+    for (const side of ['L', 'R']) {
+      const bones = new Map();
+      for (const [name, joint] of this.bones) {
+        if (!name.endsWith(`_${side}`) || !/finger|thumb|^hand_/.test(name)) continue;
+        bones.set(name === `hand_${side}` ? 'wrist' : name.slice(0, -2), joint);
+      }
+      this.hands[side] = { userData: { bones } };
+    }
+    this.carried = { L: null, R: null };
     this.rig = rig;
     this.group.add(rig);
   }
 
   /**
-   * Stands the legs under a walker this frame: `w` is the Walker. Hidden while there
-   * is no walker out there to have legs. On their feet, the lower foot is on the
+   * Stands the body under a walker this frame: `w` is the Walker. Hidden while there
+   * is no walker out there to have one. On their feet, the lower foot is on the
    * ground; sitting, the hips are on the seat and the feet clear of what is under it.
    */
   update(w, deltaTime) {
@@ -174,12 +179,26 @@ export class Legs {
     // the eye are the ones seen.
     const arms = w.bodyArms?.() ?? true;
     for (const side of ['L', 'R']) {
-      const out = side === 'L' ? -1 : 1;
+      const out = side === 'L' ? 1 : -1;
       for (const part of ['upperarm', 'forearm', 'hand']) {
         const [angle, spread] = pose[`${part}_${side}`] || [0, 0];
         this.turn(`${part}_${side}`, angle, 0, spread * out);
       }
       this.bones.get(`upperarm_${side}`)?.bone.scale.setScalar(arms ? 1 : 1e-4);
+    }
+    // Sat on a ride, the hands on what it has to hold on to (play.js rideGrips).
+    const grips = sit > 0 && w.rideGrips?.();
+    if (grips) for (const [i, side] of ['L', 'R'].entries()) this.armTo(side, grips[i], sit);
+    // Seen from behind, the tools are in the body's hands, which close round them;
+    // otherwise the hands are as the pose has them.
+    const third = w.thirdPerson && !w.riding && !w.ballHeld;
+    this.carry('R', third ? w.viewmodel : null);
+    this.carry('L', third ? w.offhand : null);
+    for (const side of ['L', 'R']) {
+      const held = this.carried[side];
+      if (held) this.reach(side, held, w);
+      closeHand(this.hands[side], held ? held.grip : pose[`grip_${side}`] ?? RELAXED);
+      if (held?.trigger != null) closeFinger(this.hands[side], 0, held.trigger);
     }
     // The head looks where the eye does, as far as a neck turns.
     const glance = Math.max(-1.4, Math.min(1.4, Math.atan2(Math.sin(p.yaw - yaw), Math.cos(p.yaw - yaw))));
@@ -199,7 +218,96 @@ export class Legs {
     }
   }
 
-  // Turns the legs `lean` forward and down about the hips, which are kept at `hips`.
+  /**
+   * Lays a copy of the tool `vm` - a viewmodel, built for the view (tools.js) - in the
+   * hand on `side`, held as the viewmodel's own hand holds it, without that hand: the
+   * body's hand is the same model, scaled to the body. Nothing (null) empties the hand.
+   */
+  carry(side, vm) {
+    const now = this.carried[side];
+    if (now?.vm === vm) return;
+    const holder = vm?.userData.hands?.[0], hand = holder?.userData.hand;
+    const bone = this.bones?.get(`hand_${side}`)?.bone;
+    // The viewmodel's hand comes in with the model; until then, nothing to copy.
+    if (vm && (!hand || !bone)) return;
+    now?.copy.removeFromParent();
+    this.carried[side] = null;
+    if (!vm) return;
+    // The tool where the viewmodel's hand has it, in the hand model's own space...
+    vm.updateWorldMatrix(true, true);
+    const inHand = new THREE.Matrix4().copy(hand.matrixWorld).invert().multiply(vm.matrixWorld);
+    // ... copied without any of the viewmodel's hands ...
+    const hands = (vm.userData.hands || []).map(h => [h, h.userData.hand]).filter(([, h]) => h);
+    for (const [, h] of hands) h.removeFromParent();
+    const copy = vm.clone();
+    for (const [holding, h] of hands) holding.add(h);
+    // ... and laid in the body's hand, mirrored for the left.
+    copy.matrixAutoUpdate = false;
+    copy.matrix.copy(side === 'L' ? MIRROR : IDENTITY).multiply(handToBone()).multiply(inHand);
+    copy.traverse(o => { o.frustumCulled = false; o.renderOrder = 0; });
+    bone.add(copy);
+    const rest = holder.userData.restGrip ?? vm.userData.restGrip ?? 0.75;
+    this.carried[side] = { vm, copy, grip: rest, trigger: vm.userData.trigger };
+  }
+
+  /**
+   * Puts the hand on `side` where the view's hand holding `held` is: as far from the
+   * eye, turned the same way to it, at the body's scale - the arm reaching it with the
+   * elbow down and out, as far as it reaches.
+   */
+  reach(side, held, w) {
+    const hand = held.vm.userData.hands[0].userData.hand, view = w.held;
+    const fore = this.bones.get(`forearm_${side}`)?.bone, wrist = this.bones.get(`hand_${side}`)?.bone;
+    if (!view || !fore || !wrist) return;
+    // The view's hand from the held group, which is the eye's, in the hand model's units...
+    hand.updateWorldMatrix(true, false);
+    GOAL.copy(view.matrixWorld).invert().multiply(hand.matrixWorld);
+    // ... before the walker's own eye, at the body's scale: where the hand bone goes.
+    const p = w.p, rest = handRest(), s = handScale;
+    EYE_AT.set(p.x, p.feet + EYE + (w.eyeShift || 0), p.z);
+    EYE_TURN.setFromEuler(LOOK.set(p.pitch, p.yaw, 0, 'YXZ'));
+    BONE_GOAL.compose(EYE_AT, EYE_TURN, ONE).multiply(SCALED.makeScale(s, s, s)).multiply(GOAL)
+      .multiply(rest).multiply(SCALED.makeScale(1 / s, 1 / s, 1 / s));
+    if (side === 'L') BONE_GOAL.multiply(MIRROR);
+    BONE_GOAL.decompose(TARGET, TURNED, SIZE);
+    // The view's arm is longer than the body's, reaching from past the corner of the
+    // eye: the body holds a tool that way from the shoulder, a little lower, the elbow
+    // bent.
+    const upper = this.bones.get(`upperarm_${side}`).bone;
+    this.rig.updateMatrixWorld(true);
+    const shoulder = upper.getWorldPosition(SHOULDER), reach = shoulder.distanceTo(fore.getWorldPosition(ELBOW)) + ELBOW.distanceTo(wrist.getWorldPosition(AT));
+    TARGET.sub(shoulder);
+    TARGET.y -= HOLD_LOW * reach;
+    TARGET.setLength(Math.min(TARGET.length(), HOLD_IN * reach)).add(shoulder);
+    this.armTo(side, TARGET);
+    // The hand turned as the view's is.
+    fore.getWorldQuaternion(EYE_TURN);
+    wrist.quaternion.copy(EYE_TURN.invert().multiply(TURNED));
+    wrist.updateMatrixWorld(true);
+  }
+
+  /**
+   * Reaches the arm on `side` for `target`, a world point for the wrist, `k` of the way
+   * from where the pose has it: the elbow where the arm's lengths put it, bent down and
+   * out, and the arm straight toward it when it is out of reach.
+   */
+  armTo(side, target, k = 1) {
+    const upper = this.bones.get(`upperarm_${side}`)?.bone, fore = this.bones.get(`forearm_${side}`)?.bone, wrist = this.bones.get(`hand_${side}`)?.bone;
+    if (!upper || !fore || !wrist) return;
+    this.rig.updateMatrixWorld(true);
+    const shoulder = upper.getWorldPosition(SHOULDER), elbow = fore.getWorldPosition(ELBOW);
+    const a = shoulder.distanceTo(elbow), b = elbow.distanceTo(wrist.getWorldPosition(AT));
+    const goal = AT.lerp(target, k);
+    const toward = ON.subVectors(goal, shoulder), d = Math.min(a + b - 1e-4, Math.max(Math.abs(a - b) + 1e-4, toward.length()));
+    toward.normalize();
+    POLE.set(side === 'L' ? -0.6 : 0.6, -1, 0.3).applyQuaternion(this.group.quaternion);
+    POLE.addScaledVector(toward, -POLE.dot(toward)).normalize();
+    const along = (a * a - b * b + d * d) / (2 * d), up = Math.sqrt(Math.max(0, a * a - along * along));
+    point(upper, shoulder, HELD.copy(shoulder).addScaledVector(toward, along).addScaledVector(POLE, up));
+    point(fore, fore.getWorldPosition(ELBOW), shoulder.addScaledVector(toward, d), wrist);
+  }
+
+  // Turns the body `lean` forward and down about the hips, which are kept at `hips`.
   tilt(lean, yaw, hips) {
     this.group.rotation.set(-lean, yaw, 0, 'YXZ');
     const from = AT.set(0, HIP, 0).applyEuler(this.group.rotation);
@@ -225,6 +333,49 @@ export class Legs {
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
 const TURN = new THREE.Quaternion(), OUT = new THREE.Quaternion(), SIDE = new THREE.Quaternion(), AT = new THREE.Vector3(), HIPS = new THREE.Vector3(), ON = new THREE.Vector3();
 const HELD = new THREE.Vector3();
+const IDENTITY = new THREE.Matrix4(), MIRROR = new THREE.Matrix4().makeScale(-1, 1, 1);
+const GOAL = new THREE.Matrix4(), BONE_GOAL = new THREE.Matrix4(), SCALED = new THREE.Matrix4();
+const EYE_AT = new THREE.Vector3(), EYE_TURN = new THREE.Quaternion(), LOOK = new THREE.Euler(), ONE = new THREE.Vector3(1, 1, 1);
+const TARGET = new THREE.Vector3(), TURNED = new THREE.Quaternion(), SIZE = new THREE.Vector3(), POLE = new THREE.Vector3();
+const SHOULDER = new THREE.Vector3(), ELBOW = new THREE.Vector3();
+const FROM = new THREE.Vector3(), TO = new THREE.Vector3(), SWING = new THREE.Quaternion(), PARENT = new THREE.Quaternion();
+
+// Turns `bone`, whose head is at `head`, so that its child (`tip`, or its first bone)
+// lies toward `goal`: by the least turn, so it keeps its twist.
+function point(bone, head, goal, tip = bone.children.find(c => c.isBone)) {
+  FROM.copy(tip.getWorldPosition(FROM)).sub(head).normalize();
+  TO.subVectors(goal, head).normalize();
+  SWING.setFromUnitVectors(FROM, TO);
+  bone.getWorldQuaternion(EYE_TURN);
+  bone.parent.getWorldQuaternion(PARENT);
+  bone.quaternion.copy(PARENT.invert().multiply(SWING).multiply(EYE_TURN));
+  bone.updateMatrixWorld(true);
+}
+
+// How closed a hand is: relaxed, round a ball, and holding on to a ride.
+const RELAXED = 0.3, BALL_GRIP = 0.4, GRIPPED = 0.85;
+
+// How far out a tool is held, of the arm's reach, and how much lower than the view has it.
+const HOLD_IN = 0.8, HOLD_LOW = 0.5;
+
+// From the first-person hand's space (hand_rig) to the space of a body's hand bone: the
+// wrist's rest undone and scaled down to the body. The left hand's bone is the right's
+// mirrored with its x turned back again, which MIRROR undoes.
+let toBone = null, wristRest = null, handScale = 1;
+function handToBone() {
+  if (toBone) return toBone;
+  const hand = model.parent.getObjectByName('hand_rig');
+  const length = (rig, a, b) => rig.getObjectByName(a).getWorldPosition(AT).distanceTo(rig.getObjectByName(b).getWorldPosition(ON));
+  handScale = length(model, 'hand_R', 'middle-finger-tip_R') / length(hand, 'wrist', 'middle-finger-tip');
+  wristRest = hand.getObjectByName('wrist').matrixWorld.clone();
+  toBone = new THREE.Matrix4().makeScale(handScale, handScale, handScale).multiply(wristRest.clone().invert());
+  return toBone;
+}
+// The hand model's wrist at rest, in the hand model's space.
+function handRest() {
+  handToBone();
+  return wristRest;
+}
 
 /**
  * How far the walker is sat down, 0 to 1: on a swing, a seesaw, a rider or a car once on it,
@@ -270,7 +421,7 @@ export function posture(w, phase, now, room = Infinity) {
       pose[joint] = (pose[joint] || 0) + (to - (pose[joint] || 0)) * sit;
     }
     // Astride a car, the thighs turned out round its body and the feet down beside it.
-    if (ride === 'drive') Object.assign(pose, { thigh_L_out: STRADDLE * sit, thigh_R_out: -STRADDLE * sit });
+    if (ride === 'drive') Object.assign(pose, { thigh_L_out: -STRADDLE * sit, thigh_R_out: STRADDLE * sit });
   }
   const since = (now - (w.kicked ?? -Infinity)) / 1000;
   const kicking = since >= 0 && since < KICK_KEYS.at(-1)[0];
@@ -328,22 +479,20 @@ function arms(pose, w, phase, sit, kick) {
     for (const side of ['L', 'R']) towards(side, ...hold, k);
     pose.twist *= 1 - k;
   }
+  // The hands relaxed, a little closed; shut round what they hold on to.
+  const grip = ride === 'slide' && r.s < r.marks.top ? 1 : hold ? k : 0;
+  pose.grip_L = pose.grip_R = RELAXED + (GRIPPED - RELAXED) * grip;
   if (kick > 0) {
     // Against the right leg: the left arm forward and up, the right one back and out.
     towards('L', 0.9, 0.6, 0.3, kick);
     towards('R', -0.6, 0.3, 0.6, kick);
   }
-  // Seen from behind, the body holds what is in hand: a ball before the chest in both,
-  // a tool aimed along the view - the off hand's too.
-  if (w.thirdPerson && !r) {
-    const aim = Math.PI / 2 + Math.max(-0.8, Math.min(1, p.pitch));
-    if (w.ballHeld) {
-      towards('L', 1.0, 1.1, -0.25, 1);
-      towards('R', 1.0, 1.1, -0.25, 1);
-    } else {
-      if (!w.bare) towards('R', aim, 0.15, -0.15, 1);
-      if (w.secondary) towards('L', aim - 0.15, 0.3, -0.1, 1);
-    }
+  // Seen from behind, a ball is carried before the chest in both hands. A tool is held
+  // where the view holds it (Body.reach).
+  if (w.thirdPerson && !r && w.ballHeld) {
+    towards('L', 1.0, 1.1, -0.25, 1);
+    towards('R', 1.0, 1.1, -0.25, 1);
+    pose.grip_L = pose.grip_R = BALL_GRIP;
   }
 }
 

@@ -61,7 +61,7 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra m
 	// The models are binary assets the UI fetches; a page with no server to fetch
 	// from carries them inline instead.
 	models := map[string]string{}
-	for key, name := range map[string]string{"hand": "hand.glb", "props": "props.glb", "bug": "bug.glb", "legs": "legs.glb", "play": "play.glb"} {
+	for key, name := range map[string]string{"body": "body.glb", "props": "props.glb", "bug": "bug.glb", "play": "play.glb"} {
 		b, err := fs.ReadFile(assets, name)
 		if err != nil {
 			return err
@@ -89,9 +89,10 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra m
 	}
 	// json.Marshal escapes <, > and &, so the payload cannot close its <script> element.
 	data := map[string]any{
-		"hand":  models["hand"],
+		"body":  models["body"],
 		"props": models["props"],
 		"bug":   models["bug"],
+		"play":  models["play"],
 		"tour":  tour,
 		"graph": g,
 		"config": struct {

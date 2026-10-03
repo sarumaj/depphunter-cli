@@ -237,7 +237,7 @@ describe('playing in the parks', () => {
     assert.ok(Math.hypot(w.p.x - end.x, w.p.z - end.z) < 0.05, 'the walker did not come out of the pipe');
   });
 
-  // Verifies: REQ-WALK-057
+  // Verifies: REQ-WALK-057, REQ-WALK-059
   it('drives a bobby car round its playground, steered, and leaves it where it stopped', () => {
     const drive = SPACE_PARK.play.find(e => e.ride === 'drive'), rig = SPACE_PARK.rigs[drive.rig];
     const seat = [rig.at[0] + drive.seat[0], 0, rig.at[2] + drive.seat[2]];
@@ -263,6 +263,12 @@ describe('playing in the parks', () => {
       assert.ok(Math.abs(off) <= 1.4 + 1e-9 && Math.abs(off) > 1.3, `looked ${off.toFixed(2)} away from the way the car faces`);
     }
     w.p.yaw = w.rideYaw();
+    // The hands on the wheel: a little ahead of the driver, one either side of it.
+    const facing = w.rideYaw(), [leftHand, rightHand] = w.rideGrips();
+    const across = v => (v.x - w.p.x) * Math.cos(facing) - (v.z - w.p.z) * Math.sin(facing);
+    const ahead = v => -(v.x - w.p.x) * Math.sin(facing) - (v.z - w.p.z) * Math.cos(facing);
+    assert.ok(across(leftHand) < 0 && across(rightHand) > 0, 'the hands crossed on the wheel');
+    for (const hand of [leftHand, rightHand]) assert.ok(ahead(hand) > 0.05 && ahead(hand) < 0.25, `a hand ${ahead(hand).toFixed(2)} ahead on the wheel`);
     // Held at full speed a long while, it stays on the playground's ground.
     run(w, 8, ['KeyW']);
     const [x0, z0, x1, z1] = SPACE_PARK.floors[0];
@@ -535,9 +541,9 @@ describe('balls, rides and the guide, kept honest', () => {
   });
 });
 
-const { posture, CONTACT } = await import('../static/walk/legs.js');
+const { posture, CONTACT } = await import('../static/walk/body.js');
 const { EYE, POINT } = await import('../static/walk/walkbase.js');
-const { outfitAt, SKIN } = await import('../static/walk/hands.js');
+const { outfitAt, SKIN, closeHand } = await import('../static/walk/hands.js');
 
 describe('what the walker wears, and how their legs go', () => {
   // Verifies: REQ-WALK-059
@@ -550,6 +556,21 @@ describe('what the walker wears, and how their legs go', () => {
       for (const z of [HAND, FOREARM, UPPER]) assert.notEqual(outfitAt(style, z), SKIN, `bare skin on a ${style} arm at ${z}`);
     }
     assert.notEqual(outfitAt('circuit', HAND), outfitAt('circuit', FOREARM), 'an electrician\'s glove the color of the sleeve');
+  });
+
+  // Verifies: REQ-TOOL-011, REQ-WALK-059
+  it('closes a hand at every joint of a finger, knuckle and all, and grips a ride', () => {
+    const bones = new Map(['proximal', 'intermediate', 'distal'].map(j => {
+      const bone = new THREE.Bone();
+      return [`index-finger-phalanx-${j}`, { bone, rest: bone.quaternion.clone() }];
+    }));
+    const hand = { userData: { bones } };
+    closeHand(hand, 1, 1);
+    for (const [name, { bone, rest }] of bones) assert.ok(bone.quaternion.angleTo(rest) > 0.5, `${name} does not bend`);
+    const at = (extra = {}) => ({ p: { ground: true }, riding: null, pace: 0, kicked: null, ...extra });
+    const relaxed = posture(at(), 0, 0), holding = posture(at({ riding: { entry: { ride: 'drive' }, blend: 1 } }), 0, 0);
+    assert.ok(relaxed.grip_R > 0 && relaxed.grip_R < 0.5, `a hand at rest closed ${relaxed.grip_R}`);
+    assert.ok(holding.grip_L > 0.8 && holding.grip_R > 0.8, 'hands open on the wheel of a car');
   });
 
   // Verifies: REQ-WALK-059
@@ -579,7 +600,7 @@ describe('what the walker wears, and how their legs go', () => {
     assert.ok(worst < 0.45, `a joint turns ${worst.toFixed(2)} in a frame`);
     // Astride a car, the thighs turned out round it, one each way.
     const astride = posture(at({ riding: { entry: { ride: 'drive' }, blend: 1 } }), 0, 0);
-    assert.ok(astride.thigh_L_out > 0.5 && astride.thigh_R_out < -0.5 && astride.thigh_L > 1.3, `astride a car ${JSON.stringify(astride)}`);
+    assert.ok(astride.thigh_L_out < -0.5 && astride.thigh_R_out > 0.5 && astride.thigh_L > 1.3, `astride a car ${JSON.stringify(astride)}`);
     // The arms swing against the legs walking, hold on to a ride, and are thrown
     // forward and back against a kick.
     const walking = posture(at(), 0.5, 0);
@@ -713,11 +734,9 @@ describe('empty hands', () => {
     // Behind (facing -z, so at +z), over the right shoulder (+x) and over the eye.
     const at = w.thirdEye(EYE, FRAME).clone();
     assert.ok(at.z > 0.6 && at.x > 0.05 && at.y > EYE, `the camera is at ${at.toArray()}`);
-    // Nothing is held before the eye: the body holds it, aimed along the view.
+    // Nothing is held before the eye: the body holds it (Body.carry).
     w.lowerArms();
     assert.ok(!w.held.visible && w.bodyArms(), 'the tool is still before the eye seen from behind');
-    const pose = posture({ ...w, pace: 0, kicked: null, riding: null, p: { ...w.p, ground: true } }, 0, 0);
-    assert.ok(pose.upperarm_R[0] > 1.3, `the tool arm is at ${pose.upperarm_R[0]}`);
     // A wall behind: the camera comes in short of it, at once.
     w.boxAt = v => (v.z > 0.3 ? {} : null);
     const near = w.thirdEye(EYE, FRAME);

@@ -14,7 +14,8 @@ verification:
 
 The hand model **shall** be rigged with a bone per phalanx, and the UI **shall**
 pose it by bone name only; the bone names **shall** be the contract between
-`scripts/hand.py` and `web/static/walk/hands.js`.
+`scripts/hand.py` and `web/static/walk/hands.js` - and `web/static/walk/body.js`,
+whose hands `scripts/body.py` rigs with the same names and a side's suffix.
 
 ## Rationale
 

@@ -15,7 +15,7 @@ func testAssets() *assets {
 		"index.html": {Data: []byte("<!-- a note -->\n<p>hi</p>")},
 		"app.js":     {Data: []byte("// a note\nexport const a = 1; /* and another */\n" + longComment())},
 		"style.css":  {Data: []byte("/* a note */\n.x { color: red; }")},
-		"hand.glb":   {Data: []byte("glTF binary bytes")},
+		"body.glb":   {Data: []byte("glTF binary bytes")},
 	})
 }
 
@@ -107,7 +107,7 @@ func TestAssetsServesIndexAndBinaries(t *testing.T) {
 	for _, testCase := range []struct{ path, ctype, body string }{
 		{"/", "text/html; charset=utf-8", "<p>hi</p>"},
 		{"/index.html", "text/html; charset=utf-8", "<p>hi</p>"},
-		{"/hand.glb", "model/gltf-binary", "glTF binary bytes"},
+		{"/body.glb", "model/gltf-binary", "glTF binary bytes"},
 	} {
 		w := fetch(t, a, testCase.path, nil)
 		if w.Code != http.StatusOK {
