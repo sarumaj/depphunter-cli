@@ -51,7 +51,14 @@ SEGMENTS = 14  # round a leg
 
 # The fabrics, as web/static/walk/cloth.js numbers them. Each vertex carries its own, as
 # the _CLOTH attribute (carried in the color's alpha until it is written).
-CLOTH: dict[str, int] = {"skin": 0, "knit": 1, "twill": 2, "rubber": 3, "suit": 4, "leather": 5}
+CLOTH: dict[str, int] = {
+    "skin": 0,
+    "knit": 1,
+    "twill": 2,
+    "rubber": 3,
+    "suit": 4,
+    "leather": 5,
+}
 
 SKIN = (0.88, 0.67, 0.53, 0.0)
 
@@ -178,7 +185,12 @@ OUTFITS: dict[str, dict] = {
             "fabrics": {"upper": "suit", "sole": "rubber", "toe": "rubber"},
         },
         "cloth": "suit",
-        "fabrics": {"#9aa3b5": "rubber", "#6ff4ff": "rubber", "#2a2f3a": "rubber", "#5a5f6b": "rubber"},
+        "fabrics": {
+            "#9aa3b5": "rubber",
+            "#6ff4ff": "rubber",
+            "#2a2f3a": "rubber",
+            "#5a5f6b": "rubber",
+        },
         "chest": [
             ((0.0, 0.046, 0.368), (0.022, 0.006, 0.014), "#5a5f6b"),  # a control panel
             ((-0.008, 0.052, 0.372), (0.004, 0.0015, 0.004), "#6ff4ff"),  # its lights
@@ -215,7 +227,9 @@ def cap(bm, loop: list, z: float, cx: float, col, colors):
 def shoe(bm, side: float, spec: dict, colors):
     """A shoe or a boot: an upper round the foot from heel to toe over a sole."""
     wide, top = spec["wide"], spec["height"]
-    upper, sole, toe = (color(spec[part], spec["fabrics"][part]) for part in ("upper", "sole", "toe"))
+    upper, sole, toe = (
+        color(spec[part], spec["fabrics"][part]) for part in ("upper", "sole", "toe")
+    )
     cx = side * APART
     # Lengthwise sections: [y, half width, top height], heel to toe.
     sections = [
@@ -268,7 +282,9 @@ def shoe(bm, side: float, spec: dict, colors):
 def box(bm, middle: tuple, half: tuple, col, colors):
     """A box at `middle`, `half` its size each way."""
     vertices = [
-        bm.verts.new(tuple(m + h * s for m, h, s in zip(middle, half, signs, strict=True)))
+        bm.verts.new(
+            tuple(m + h * s for m, h, s in zip(middle, half, signs, strict=True))
+        )
         for signs in (
             (-1, -1, -1),
             (1, -1, -1),
@@ -282,7 +298,14 @@ def box(bm, middle: tuple, half: tuple, col, colors):
     ]
     for v in vertices:
         colors[v] = col
-    for face in ((0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)):
+    for face in (
+        (0, 3, 2, 1),
+        (4, 5, 6, 7),
+        (0, 1, 5, 4),
+        (1, 2, 6, 5),
+        (2, 3, 7, 6),
+        (3, 0, 4, 7),
+    ):
         bm.faces.new([vertices[i] for i in face])
 
 
@@ -295,7 +318,7 @@ def mesh_for(name: str, outfit: dict):
     colors: dict = {}
     profile = outfit["leg"]
     waist = [r for r in profile if r[0] > HIP + 1e-6]
-    paint = lambda hexa: color(hexa, fabric(outfit, hexa)) if hexa else SKIN  # noqa: E731
+    paint = lambda hexa: color(hexa, fabric(outfit, hexa)) if hexa else SKIN
     loops = [ring(bm, z, 0.0, rx, ry, paint(col), colors) for z, rx, ry, col in waist]
     # ... down over the tops of the legs, where it is hidden in them.
     _, rx, ry, col = waist[-1]
@@ -351,7 +374,11 @@ def armature():
     hips = bones.new("hips")
     hips.head, hips.tail = Vector((0, 0, HIP)), Vector((0, 0, WAIST))
     spine = bones.new("spine")
-    spine.head, spine.tail, spine.parent = Vector((0, 0, WAIST)), Vector((0, 0, SHOULDER)), hips
+    spine.head, spine.tail, spine.parent = (
+        Vector((0, 0, WAIST)),
+        Vector((0, 0, SHOULDER)),
+        hips,
+    )
     spine.roll = 0
     for side, suffix in ((-1.0, "R"), (1.0, "L")):
         x = side * APART
