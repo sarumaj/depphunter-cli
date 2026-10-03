@@ -16,7 +16,7 @@
 // Implements: REQ-CITY-039, REQ-CITY-040, REQ-CITY-041
 
 import * as THREE from '../vendor/three.module.min.js';
-import { merge, shaded, painted, patch, stripe, outline, ring, post, bar, block, lit } from './shapes.js';
+import { merge, shaded, painted, INLAY, patch, stripe, outline, ring, post, bar, block, lit } from './shapes.js';
 import { playParts } from './models.js';
 
 // ------------------------------------------------------------------ pieces
@@ -205,7 +205,7 @@ const ground = (kit, w, d) => piece([patch(w, d, kit.ground), outline(w, d, kit.
 // A five-a-side pitch along x with a goal at each end.
 function pitch(kit) {
   const p = piece([
-    patch(1.78, 1.18, kit.turf), patch(0.3, 1.18, kit.turfLight, -0.6), patch(0.3, 1.18, kit.turfLight, 0), patch(0.3, 1.18, kit.turfLight, 0.6),
+    patch(1.78, 1.18, kit.turf), ...[-0.6, 0, 0.6].map(x => patch(0.3, 1.18, kit.turfLight, x, 0, INLAY)),
     outline(1.7, 1.1, kit.line), stripe(0, -0.55, 0, 0.55, kit.line), ring(0.15, kit.line),
     outline(0.24, 0.5, kit.line, -0.73), outline(0.24, 0.5, kit.line, 0.73), kit.goal(-1), kit.goal(1),
   ], { posts: [[-0.85, -0.13, 0.03], [-0.85, 0.13, 0.03], [0.85, -0.13, 0.03], [0.85, 0.13, 0.03]] });
@@ -218,7 +218,7 @@ function pitch(kit) {
 // A basketball court along x with a hoop at each end, its board facing in.
 function court(kit) {
   const p = piece([
-    patch(1.5, 0.98, kit.court), patch(0.26, 0.28, kit.key, -0.6), patch(0.26, 0.28, kit.key, 0.6),
+    patch(1.5, 0.98, kit.court), patch(0.26, 0.28, kit.key, -0.6, 0, INLAY), patch(0.26, 0.28, kit.key, 0.6, 0, INLAY),
     outline(1.36, 0.86, kit.line), stripe(0, -0.43, 0, 0.43, kit.line), ring(0.13, kit.line),
     outline(0.26, 0.28, kit.line, -0.55), outline(0.26, 0.28, kit.line, 0.55),
     ring(0.36, kit.line, -0.68, 0, -Math.PI / 2, Math.PI), ring(0.36, kit.line, 0.68, 0, Math.PI / 2, Math.PI),

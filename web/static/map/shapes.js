@@ -12,11 +12,12 @@ export function rand(x, z) {
 
 // Geometries with vertex colors as fixed shading: lighter facing up and towards the
 // light, darker towards the base (self-shadowing), with a little per-vertex jitter so
-// foliage does not look faceted.
+// foliage does not look faceted. A `round` geometry keeps its own smooth normals, so a
+// post or a bar shades round and not in facets.
 // Implements: REQ-CITY-022
-export function shaded(geo, jitter = 0) {
+export function shaded(geo, jitter = 0, round = false) {
   geo = geo.index ? geo.toNonIndexed() : geo;
-  geo.computeVertexNormals();
+  if (!round) geo.computeVertexNormals();
   geo.computeBoundingBox();
   const { min, max } = geo.boundingBox;
   const n = geo.getAttribute('normal'), position = geo.getAttribute('position'), colors = [];
@@ -46,17 +47,18 @@ export function merge(geos) {
 // ------------------------------------------------------------------ painted shapes
 
 // Shaded, then tinted one color.
-export const painted = (geo, hex, jitter = 0) => {
-  geo = shaded(geo, jitter);
+export const painted = (geo, hex, jitter = 0, round = false) => {
+  geo = shaded(geo, jitter, round);
   const c = new THREE.Color(hex), colors = geo.getAttribute('color');
   for (let i = 0; i < colors.count; i++) colors.setXYZ(i, colors.getX(i) * c.r, colors.getY(i) * c.g, colors.getZ(i) * c.b);
   return geo;
 };
-// Flat on the ground: a patch of surface, a painted line, a painted ring.
-export const LIFT = 0.006, PAINT = 0.009;
+// Flat on the ground: a patch of surface, a painted line, a painted ring. A patch laid
+// on another (INLAY) lies between the two, not in the same plane flickering through it.
+export const LIFT = 0.006, INLAY = 0.0075, PAINT = 0.009;
 // Cut finely enough to follow the ground as the walk view bends it, and not lie under it.
 const cuts = length => Math.max(1, Math.ceil(length / 0.1));
-export const patch = (w, d, hex, x = 0, z = 0) => painted(new THREE.PlaneGeometry(w, d, cuts(w), cuts(d)).rotateX(-Math.PI / 2).translate(x, LIFT, z), hex);
+export const patch = (w, d, hex, x = 0, z = 0, y = LIFT) => painted(new THREE.PlaneGeometry(w, d, cuts(w), cuts(d)).rotateX(-Math.PI / 2).translate(x, y, z), hex);
 export const stripe = (x0, z0, x1, z1, hex, width = 0.018) => {
   const len = Math.hypot(x1 - x0, z1 - z0);
   return painted(new THREE.PlaneGeometry(len, width, cuts(len), 1).rotateX(-Math.PI / 2).rotateY(-Math.atan2(z1 - z0, x1 - x0))
@@ -69,12 +71,12 @@ export const outline = (w, d, hex, x = 0, z = 0, width) => merge([
 export const ring = (r, hex, x = 0, z = 0, start = 0, sweep = Math.PI * 2, width = 0.018) => painted(
   new THREE.RingGeometry(r - width / 2, r + width / 2, 28, 1, start, sweep).rotateX(-Math.PI / 2).translate(x, PAINT, z), hex);
 // Standing: a post, a bar between two points, a block.
-export const post = (x, z, h, r, hex, y = 0) => painted(new THREE.CylinderGeometry(r, r, h, 6).translate(x, y + h / 2, z), hex);
+export const post = (x, z, h, r, hex, y = 0) => painted(new THREE.CylinderGeometry(r, r, h, 10).translate(x, y + h / 2, z), hex, 0, true);
 export const bar = (a, b, r, hex) => {
   const from = new THREE.Vector3(...a), to = new THREE.Vector3(...b), len = from.distanceTo(to);
-  const geo = new THREE.CylinderGeometry(r, r, len, 5);
+  const geo = new THREE.CylinderGeometry(r, r, len, 8);
   geo.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize()));
-  return painted(geo.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2), hex);
+  return painted(geo.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2), hex, 0, true);
 };
 export const block = (w, h, d, x, y, z, hex) => painted(new THREE.BoxGeometry(w, h, d).translate(x, y + h / 2, z), hex);
 // The halo round whatever on one lights itself, as an LED's (GLOW): a shell at each
