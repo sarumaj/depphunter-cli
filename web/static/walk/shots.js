@@ -86,6 +86,7 @@ export const shots = {
       if (tool.flash && keeping) this.screenFlash();
       if (keeping) {
         this.hooks.onPhoto?.(bug ? `${bug.f.severity}: ${bug.f.title}` : target?.node.name || '');
+        if (!bug) this.quip('photo');
       }
       if (bug) {
         this.bugs.catch(bug, tool.catchAs);

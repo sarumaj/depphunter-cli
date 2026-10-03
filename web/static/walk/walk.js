@@ -984,6 +984,7 @@ export class Walker {
     if (this.wheel.open) { this.closeWheel(true); return; }
     this.setScoped(false);
     this.firing = false;
+    this.quip('wheel');
     this.wheel.raise(this.holding());
   }
 
@@ -1380,6 +1381,7 @@ export class Walker {
   }
 
   setScoped(on) {
+    if (on && !this.scoped) this.quip('scope');
     this.scoped = on;
     this.hud.classList.toggle('scoped', on);
   }

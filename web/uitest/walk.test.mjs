@@ -781,7 +781,7 @@ describe('the wheel, flicked', () => {
     return {
       wheel, primary: TOOLS[DEFAULT_TOOL], secondary: null, dry: new Set(), p: {}, hooks: {},
       showing: null, active: false, firing: false, flashed: [],
-      setScoped() {}, flying() { return false; }, flash(m) { this.flashed.push(m); },
+      setScoped() {}, flying() { return false; }, flash(m) { this.flashed.push(m); }, quip() {},
       openWheel: W.openWheel, holding: W.holding, aimWheel: W.aimWheel,
       releaseWheel: W.releaseWheel, closeWheel: W.closeWheel, setTool: W.setTool,
     };

@@ -615,8 +615,13 @@ const { QUIPS } = await import('../static/walk/quips.js');
 describe('what the walker says', () => {
   // Verifies: REQ-WALK-060
   it('has a few short lines for everything it remarks on', () => {
+    const seen = new Set();
     for (const [topic, lines] of Object.entries(QUIPS)) {
       assert.ok(lines.length >= 2, `only ${lines.length} line about ${topic}`);
+      for (const line of lines) {
+        assert.ok(!seen.has(line), `said twice over: ${line}`);
+        seen.add(line);
+      }
       for (const line of lines) assert.ok(line.length <= 60, `too long to read at a glance: ${line}`);
     }
   });
