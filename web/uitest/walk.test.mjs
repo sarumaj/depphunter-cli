@@ -862,7 +862,7 @@ describe('the first arrival', () => {
         classList: { add: c => classes.add(c), remove: c => classes.delete(c) },
         style: { props: {}, setProperty(k, v) { this.props[k] = v; }, removeProperty(k) { delete this.props[k]; } },
       }, classes,
-      hideTool() {}, showTool() { this.shown++; }, drawHud() {},
+      hideTool() {}, showTool() { this.shown++; }, drawHud() {}, quip() {},
       startArrival: W.startArrival, arrive: W.arrive, endArrival: W.endArrival,
     };
   }

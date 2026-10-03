@@ -600,6 +600,23 @@ describe('empty hands', () => {
   });
 
   // Verifies: REQ-TOOL-032
+  it('takes the tool and the hand out of the view when H is pressed out in the street', () => {
+    const w = holding();
+    const camera = new THREE.PerspectiveCamera();
+    Object.assign(w, {
+      active: true, hud: { dataset: {}, classList: { toggle() {} }, querySelector: () => null },
+      scene: { walkCamera: camera, viewScene: new THREE.Scene(), scene: new THREE.Scene(), style: 'city' }, drawSlots() {}, drawHud() {}, flash() {}, setFog() {},
+    });
+    w.showTool();
+    assert.ok(w.held && camera.children.includes(w.held), 'nothing in hand to begin with');
+    w.setHandsOff(true);
+    assert.equal(w.held, null, 'the tool and the hand are still in view');
+    assert.ok(!camera.children.some(o => o.isGroup && o.children.length), 'something is still held before the camera');
+    w.setHandsOff(false);
+    assert.ok(w.held && w.viewmodel, 'H again did not take the tools out');
+  });
+
+  // Verifies: REQ-TOOL-032
   it('puts the right hand\'s tool down on its own key, and its key takes it out', () => {
     const w = holding();
     w.secondary = null;

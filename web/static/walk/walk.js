@@ -634,6 +634,7 @@ export class Walker {
     Object.assign(this.p, { x, z, feet, yaw, pitch, vy: 0 });
     if (!landed) return;
     if (!this.handsOff) this.showTool();
+    this.quip('arrive');
     this.drawHud();
   }
 
@@ -743,7 +744,6 @@ export class Walker {
       this.stowed = null;
     }
     if (!this.active) return;
-    if (landed) this.quip('arrive');
     this.showTool();
     this.drawSlots();
     const back = this.secondary ? `${this.primary.label} and ${this.secondary.label.toLowerCase()}` : this.primary.label;
