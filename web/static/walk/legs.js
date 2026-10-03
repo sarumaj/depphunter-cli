@@ -24,6 +24,7 @@ const KICK = 0.45;   // seconds a kick takes
 const SOLE = 0.024;  // from the ankle down to the sole
 const THIGH = 0.115, SHIN = 0.13; // hip to knee, and knee to sole
 const SEATED = 1.5;  // how far forward a seated thigh is turned
+const SEAT_UP = 0.03; // the hips over a seat: the thighs' thickness, sat on
 
 let model = null, loading = null;
 
@@ -104,28 +105,53 @@ export class Legs {
     this.group.visible = shown;
     if (!shown) return;
     const p = w.p, sit = sitting(w);
-    // Sitting, the hips are on the seat, the eye SIT over it.
-    const eye = p.feet + EYE + (w.eyeShift || 0), seat = eye - SIT - 0.01;
-    const y = p.feet + (seat - HIP - p.feet) * sit;
+    // Sitting, the eye is SIT over the seat and the hips on it.
+    const eye = p.feet + EYE + (w.eyeShift || 0), seat = eye - SIT;
+    const y = p.feet + (seat + SEAT_UP - HIP - p.feet) * sit;
     const room = seat - w.height(p.x, p.z, seat);
     // Down a chute, the legs out ahead along half its slope, as a rider holds them -
     // turned about the hips, which stay on the seat.
-    const r = w.riding, slope = r?.entry.ride === 'slide' && r.s > r.marks.edge && r.s < r.marks.foot ? r.slopeAt(r.s) : 0;
+    const r = w.riding, slide = r?.entry.ride === 'slide' ? r : null;
+    const slope = slide && r.s > r.marks.edge && r.s < r.marks.foot ? r.slopeAt(r.s) : 0;
     this.lean = (this.lean || 0) + (slope * 0.5 * sit - (this.lean || 0)) * Math.min(1, deltaTime * 8);
-    this.group.rotation.set(-this.lean, p.yaw, 0, 'YXZ');
-    const hips = AT.set(0, HIP, 0).applyEuler(this.group.rotation);
-    this.group.position.set(p.x + Math.sin(p.yaw) * BEHIND, y + HIP - hips.y, p.z + Math.cos(p.yaw) * BEHIND);
-    this.group.position.x -= hips.x;
-    this.group.position.z -= hips.z;
+    const hipsAt = HIPS.set(p.x + Math.sin(p.yaw) * BEHIND, y + HIP, p.z + Math.cos(p.yaw) * BEHIND);
+    this.tilt(this.lean, p.yaw, hipsAt);
     this.phase = (this.phase + deltaTime * 7.5 * Math.max(0.5, w.pace || 0)) % (Math.PI * 2);
     const pose = posture(w, this.phase, performance.now(), room);
     for (const name of ['thigh_L', 'thigh_R', 'shin_L', 'shin_R', 'foot_L', 'foot_R']) this.turn(name, pose[name] || 0);
+    // Sat, no foot goes under what is beneath it - the chute ahead, the ground: the
+    // legs are lifted about the hips until the lower one clears it.
+    if (sit > 0) {
+      this.rig.updateMatrixWorld(true);
+      let short = 0, reach = 0;
+      for (const name of ['foot_L', 'foot_R']) {
+        const foot = this.bones.get(name)?.bone.getWorldPosition(AT);
+        if (!foot) continue;
+        const out = Math.hypot(foot.x - hipsAt.x, foot.z - hipsAt.z);
+        let under = w.height(foot.x, foot.z, foot.y);
+        if (slide) under = Math.max(under, slide.pointAt(Math.min(slide.marks.end, slide.s + out), ON).y);
+        short = Math.max(short, under + SOLE - foot.y);
+        reach = Math.max(reach, out);
+      }
+      if (short > 0 && reach > 0.05) {
+        this.lean -= Math.asin(Math.min(1, short / reach));
+        this.tilt(this.lean, p.yaw, hipsAt);
+      }
+    }
     // Standing or walking, the lower foot planted on the ground.
     if (p.ground && sit < 1) {
       this.rig.updateMatrixWorld(true);
       const low = Math.min(...['foot_L', 'foot_R'].map(n => this.bones.get(n)?.bone.getWorldPosition(AT).y ?? y + SOLE));
       this.group.position.y += (p.feet - (low - SOLE)) * (1 - sit);
     }
+  }
+
+  // Turns the legs `lean` forward and down about the hips, which are kept at `hips`.
+  tilt(lean, yaw, hips) {
+    this.group.rotation.set(-lean, yaw, 0, 'YXZ');
+    const from = AT.set(0, HIP, 0).applyEuler(this.group.rotation);
+    this.group.position.set(hips.x - from.x, hips.y - from.y, hips.z - from.z);
+    this.group.updateMatrixWorld(true);
   }
 
   // Bends one joint forward by `angle` from its rest.
@@ -140,7 +166,7 @@ export class Legs {
   }
 }
 
-const X = new THREE.Vector3(1, 0, 0), TURN = new THREE.Quaternion(), AT = new THREE.Vector3();
+const X = new THREE.Vector3(1, 0, 0), TURN = new THREE.Quaternion(), AT = new THREE.Vector3(), HIPS = new THREE.Vector3(), ON = new THREE.Vector3();
 
 /**
  * How far the walker is sat down, 0 to 1: on a swing, a seesaw or a rider once on it,

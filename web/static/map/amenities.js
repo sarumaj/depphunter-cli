@@ -16,12 +16,14 @@
 // Implements: REQ-CITY-039, REQ-CITY-040, REQ-CITY-041
 
 import * as THREE from '../vendor/three.module.min.js';
-import { merge, shaded, painted, INLAY, patch, stripe, outline, ring, post, bar, block, lit } from './shapes.js';
+import { merge, shaded, painted, PAINT, INLAY, patch, stripe, outline, ring, post, bar, block, lit } from './shapes.js';
 import { playParts } from './models.js';
 
 // ------------------------------------------------------------------ pieces
 
-const piece = (head, more = {}) => ({ head, rigs: [], play: [], posts: [], glows: [], ...more });
+const piece = (head, more = {}) => ({ head, rigs: [], play: [], posts: [], glows: [], floors: [], ...more });
+// The surface a piece is laid on, w by d, as one of its floors: [x0, z0, x1, z1].
+const floor = (w, d) => [[-w / 2, -d / 2, w / 2, d / 2]];
 
 const moved = (p, dx, dz) => [p[0] + dx, p[1], p[2] + dz];
 const isPoint = v => Array.isArray(v) && v.length === 3 && v.every(n => typeof n === 'number');
@@ -42,9 +44,12 @@ function shifted(entry, dx, dz, base) {
   return out;
 }
 
-/** One amenity from [piece, dx, dz]s. `glow` lights the pieces' glows: { color, shells: [[radius, strength]] }. */
+/**
+ * One amenity from [piece, dx, dz]s. `glow` lights the pieces' glows: { color, shells: [[radius, strength]] }.
+ * Its floors are where it is walked on (floorAt).
+ */
 function amenity(parts, { size, scale, weight = 1, glow = null }) {
-  const head = [], rigs = [], play = [], posts = [], glows = [];
+  const head = [], rigs = [], play = [], posts = [], glows = [], floors = [];
   for (const [p, dx = 0, dz = 0] of parts) {
     const base = rigs.length;
     head.push(...p.head.map(g => g.clone().translate(dx, 0, dz)));
@@ -52,9 +57,10 @@ function amenity(parts, { size, scale, weight = 1, glow = null }) {
     play.push(...p.play.map(e => shifted(e, dx, dz, base)));
     posts.push(...p.posts.map(([x, z, r]) => [x + dx, z + dz, r]));
     glows.push(...p.glows.map(g => moved(g, dx, dz)));
+    floors.push(...p.floors.map(([x0, z0, x1, z1]) => [x0 + dx, z0 + dz, x1 + dx, z1 + dz]));
   }
   return {
-    head: merge(head), rigs, play, posts, size, scale, weight,
+    head: merge(head), rigs, play, posts, floors, size, scale, weight,
     glow: glow && glows.length ? { color: glow.color, shells: lit(glows, glow.shells) } : null,
   };
 }
@@ -136,11 +142,11 @@ function slide(kit, { h = 0.24, run = 0.38, tower = false } = {}) {
     head.push(kit.roof(0.06, h + 0.2));
   }
   const p = piece(head, { posts: [[0.06, 0, 0.09]] });
-  // Up the ladder, across the platform, down the chute's curve and off its end; sat on
-  // from the platform's edge (`sit`).
+  // Up the ladder, across the platform, down the chute's curve and off its end onto the
+  // ground's top; sat on from the platform's edge (`sit`).
   p.play.push({
     ride: 'slide', sit: 2,
-    path: [[-0.14, 0, 0], [-0.03, h + 0.015, 0], [0.12, h + 0.012, 0], ...curve.slice(1).map(([x, y]) => [x, y + 0.004, 0]), [0.24 + run, 0, 0]],
+    path: [[-0.14, 0, 0], [-0.03, h + 0.015, 0], [0.12, h + 0.012, 0], ...curve.slice(1).map(([x, y]) => [x, y + 0.004, 0]), [0.24 + run, PAINT, 0]],
   });
   p.glows.push(...(kit.glowsOn?.slide?.(h, run) || []));
   return p;
@@ -198,7 +204,7 @@ function dome(kit, { r = 0.2 } = {}) {
   return p;
 }
 
-const ground = (kit, w, d) => piece([patch(w, d, kit.ground), outline(w, d, kit.edge, 0, 0, 0.03)]);
+const ground = (kit, w, d) => piece([patch(w, d, kit.ground), outline(w, d, kit.edge, 0, 0, 0.03)], { floors: floor(w, d) });
 
 // ------------------------------------------------------------------ pitches and courts
 
@@ -208,7 +214,7 @@ function pitch(kit) {
     patch(1.78, 1.18, kit.turf), ...[-0.6, 0, 0.6].map(x => patch(0.3, 1.18, kit.turfLight, x, 0, INLAY)),
     outline(1.7, 1.1, kit.line), stripe(0, -0.55, 0, 0.55, kit.line), ring(0.15, kit.line),
     outline(0.24, 0.5, kit.line, -0.73), outline(0.24, 0.5, kit.line, 0.73), kit.goal(-1), kit.goal(1),
-  ], { posts: [[-0.85, -0.13, 0.03], [-0.85, 0.13, 0.03], [0.85, -0.13, 0.03], [0.85, 0.13, 0.03]] });
+  ], { posts: [[-0.85, -0.13, 0.03], [-0.85, 0.13, 0.03], [0.85, -0.13, 0.03], [0.85, 0.13, 0.03]], floors: floor(1.78, 1.18) });
   p.play.push({ ball: 'soccer', at: [0, 0, 0], area: [-0.85, -0.55, 0.85, 0.55] });
   for (const side of [-1, 1]) p.play.push({ goal: side, from: [side * 0.85, 0, -0.13], to: [side * 0.85, 0.12, 0.13] });
   p.glows.push(...(kit.glowsOn?.goals?.() || []));
@@ -223,7 +229,7 @@ function court(kit) {
     outline(0.26, 0.28, kit.line, -0.55), outline(0.26, 0.28, kit.line, 0.55),
     ring(0.36, kit.line, -0.68, 0, -Math.PI / 2, Math.PI), ring(0.36, kit.line, 0.68, 0, Math.PI / 2, Math.PI),
     kit.hoop(-1), kit.hoop(1),
-  ], { posts: [[-0.68, 0, 0.03], [0.68, 0, 0.03]] });
+  ], { posts: [[-0.68, 0, 0.03], [0.68, 0, 0.03]], floors: floor(1.5, 0.98) });
   p.play.push({ ball: 'basket', at: [0, 0, 0], area: [-0.68, -0.43, 0.68, 0.43] });
   for (const side of [-1, 1]) {
     p.play.push({ hoop: [side * 0.565, 0.25, 0], r: 0.028, board: { from: [side * 0.6 - 0.006, 0.24, -0.085], to: [side * 0.6 + 0.006, 0.34, 0.085] } });
@@ -247,7 +253,7 @@ function volley(kit) {
     ...[-1, 1].map(s => kit.pole(s * NET_SIDE, NET_TOP + 0.02)),
     ...strings, kit.netTop([0, NET_TOP, -NET_SIDE], [0, NET_TOP, NET_SIDE]),
     ...[-1, 1].map(s => bar([0, NET_LOW, s * 0.43], [0, NET_TOP + 0.06, s * 0.43], 0.002, kit.antenna)),
-  ], { posts: [[0, -NET_SIDE, 0.02], [0, NET_SIDE, 0.02]] });
+  ], { posts: [[0, -NET_SIDE, 0.02], [0, NET_SIDE, 0.02]], floors: floor(2.1, 1.25) });
   p.play.push({ ball: 'volley', at: [-0.6, 0, 0], area: [-0.855, -0.43, 0.855, 0.43] });
   p.play.push({ net: true, from: [0, NET_LOW, -NET_SIDE], to: [0, NET_TOP, NET_SIDE] });
   p.glows.push(...(kit.glowsOn?.net?.(NET_TOP, NET_SIDE) || []));
@@ -582,6 +588,18 @@ export function onAmenity(it, a, local, out = new THREE.Vector3()) {
 export function inAmenity(it, a, world) {
   const k = a.scale ?? 1, c = Math.cos(it.turn), s = Math.sin(it.turn), dx = world.x - it.x, dz = world.z - it.z;
   return [(dx * c - dz * s) / k, (world.y - it.y) / k, (dx * s + dz * c) / k];
+}
+
+/**
+ * How high the ground of an amenity placed as `it` is at the world point x, z: the top
+ * of the paint on its floors, which is what feet and balls stand on there; -Infinity
+ * off them.
+ */
+export function floorAt(it, a, x, z) {
+  const k = a.scale ?? 1, c = Math.cos(it.turn), s = Math.sin(it.turn), dx = x - it.x, dz = z - it.z;
+  const lx = (dx * c - dz * s) / k, lz = (dx * s + dz * c) / k;
+  for (const [x0, z0, x1, z1] of a.floors || []) if (lx >= x0 && lx <= x1 && lz >= z0 && lz <= z1) return it.y + PAINT * k;
+  return -Infinity;
 }
 
 /** The matrix that stands an amenity's model where `it` is: at its place, turned, at its scale. */

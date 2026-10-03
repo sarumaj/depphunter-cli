@@ -2471,6 +2471,7 @@ export class Walker {
         }
       }
       for (const at of this.decks.get(cellKey(px, pz)) || NO_CELL) top = Math.max(top, at(px, pz));
+      top = Math.max(top, this.floorUnder(px, pz));
     }
     // A bridge carries the walker, not the corners of them. It is asked once, at
     // their middle, against a deck already narrowed by their own radius: asking at

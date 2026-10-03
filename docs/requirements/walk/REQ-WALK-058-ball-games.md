@@ -14,12 +14,13 @@ verification:
 
 Every pitch, basketball court and volleyball court within 14 units of the
 walker **shall** have its own ball out, which falls, bounces off the ground, the
-posts and the walls, rolls to a stop on the ground under its middle - not on a
-curb it is beside. It **shall** move only when played: a walker who walks into
-it **shall** stop against it, and a click **shall** play a ball only when the
-walker is facing it, within about 30 degrees. A ball
-lying off its court, or up on something, **shall** be put back in the middle of
-its court after about a second, and one in the water or far off at once.
+posts and the walls, and rolls to a stop on the ground under its middle - on a
+court's surface, not sunk in it, and not on a curb it is beside. It **shall**
+move only when played: a walker who walks into it **shall** stop against it,
+and a click **shall** play a ball only when the walker is facing it, within
+about 30 degrees. A ball lying off its court, or up on something, **shall** be
+put back in the middle of its court after about a second, and one in the water
+or far off at once. The walker, likewise, **shall** stand on a court's surface.
 With both hands empty (REQ-WALK-057):
 
 - a basketball **shall** be picked up with a click, held in both hands, and

@@ -19,10 +19,10 @@ their feet, turned as they face and seen when they look down:
 
 - striding as they walk, the lower foot on the ground; tucked in the air; a
   leg at a time up a ladder;
-- sitting on a swing, a seesaw or a rider - thighs along the seat, shins
-  hanging, never through the ground under the seat - and out straight down a
-  slide, leaning back along its slope; sitting down and getting up over a
-  moment;
+- sitting on a swing, a seesaw or a rider - on the seat, thighs along it,
+  shins hanging - and out straight down a slide, leaning back along its slope;
+  sitting down and getting up over a moment. Sat anywhere, no leg **shall** go
+  through the seat, the chute ahead or the ground under it;
 - the right leg drawn back and swung through when they kick a ball.
 
 What the walker wears **shall** follow the map's style, on the legs and on the
@@ -50,7 +50,9 @@ where the walker is as plainly as the sky does.
 1. Looking down while walking shows the feet stepping; on a swing, the
    thighs on the seat and the shins hanging off it.
 2. A kick swings the right leg back, through and forward.
-3. Sitting on a seesaw's end at the ground, the feet are above it.
+3. Sitting on a seesaw's end at the ground, the feet are above it; all the
+   way down a slide and along its run-out, the legs are on the chute and the
+   ground, not in them.
 4. A sleeve ends in a clean edge with a rim, and the shorts, the coverall and
    the suit show their weave or seams up close.
 5. The city's arms are bare to the T-shirt's sleeve; the board's are gloved

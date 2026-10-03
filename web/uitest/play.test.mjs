@@ -10,6 +10,7 @@ import './stub.mjs';
 
 const THREE = await import('../static/vendor/three.module.min.js');
 const { amenitiesFor, onAmenity, inAmenity } = await import('../static/map/amenities.js');
+const { PAINT } = await import('../static/map/shapes.js');
 const WALK = await import('../static/walk/walk.js');
 
 const CITY = amenitiesFor('city');
@@ -255,6 +256,20 @@ describe('balls, rides and the guide, kept honest', () => {
     run(w, FRAME);
     assert.ok(ball.pos.distanceTo(ball.home) < 1e-9);
     assert.equal(POINT.length, 2);
+  });
+
+  // Verifies: REQ-WALK-058
+  it('stands the walker and a ball on a court\'s paint, not in it', () => {
+    const { w } = walker(COURT, [-0.3, 0, 0.2], [1, 0, 0]);
+    Object.assign(w, { height: WALK.Walker.prototype.height, cellAt: () => [], decks: new Map(), spans: new Map() });
+    const paint = PAINT * COURT.scale;
+    assert.ok(Math.abs(w.height(w.p.x, w.p.z) - paint) < 1e-9, `on the court the ground is at ${w.height(w.p.x, w.p.z)}`);
+    assert.ok(w.height(40, 0) < paint, 'the court reaches beyond its edge');
+    w.updatePlay(FRAME);
+    const ball = [...w.balls.values()][0];
+    ball.pos.y += 0.2;
+    run(w, 2);
+    assert.ok(Math.abs(ball.pos.y - paint - ball.r) < 1e-6, `the ball rests at ${ball.pos.y.toFixed(4)}, in the court`);
   });
 
   // Verifies: REQ-WALK-058

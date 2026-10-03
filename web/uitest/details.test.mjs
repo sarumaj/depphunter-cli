@@ -102,7 +102,7 @@ describe('building details', () => {
   it('give the walker the tiers to stand on in the city, and the box elsewhere', () => {
     const b = district().find(x => D.tiersOf(x));
     const tiers = D.tiersOf(b);
-    const walker = style => ({ scene: { style }, cellAt: () => [b], decks: new Map(), spans: new Map() });
+    const walker = style => ({ scene: { style }, cellAt: () => [b], decks: new Map(), spans: new Map(), floorUnder: () => -Infinity });
     const height = (style, x, z) => Walker.prototype.height.call(walker(style), x, z);
     assert.equal(height('city', b.x, b.z), b.y + b.h);
     // A body whose edge is over the shaft's ledge and not over the tier: the ledge.

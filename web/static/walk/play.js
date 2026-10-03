@@ -13,7 +13,7 @@
 // Implements: REQ-WALK-057, REQ-WALK-058
 
 import * as THREE from '../vendor/three.module.min.js';
-import { onAmenity, inAmenity, rigMatrix } from '../map/amenities.js';
+import { onAmenity, inAmenity, rigMatrix, floorAt } from '../map/amenities.js';
 import { shaded, merge } from '../map/shapes.js';
 import { EYE, WATER, POINT } from './walkbase.js';
 import { ballInHands, viewLights, HELD_BALL } from './tools.js';
@@ -34,7 +34,9 @@ const SETTLE = 8;           // how fast the eye settles where it is going, getti
 const KICK_LAG = 0.2;       // seconds from the click to the foot meeting the ball
 const LOST = 1.2;           // seconds a ball lies off its court before it is put back
 const FLIGHT = 3;           // seconds of a ball's flight the guide looks ahead at most
+const FLOOR_CELL = 4;        // the grid the amenities' floors are found by
 const UP = new THREE.Vector3(0, 1, 0);
+const NO_FLOORS = [];
 
 const BALLS = {
   soccer: { r: 0.045, bounce: 0.55, roll: 0.7 },
@@ -46,6 +48,8 @@ const SAYS = {
   swing: 'ride the swing', spin: 'ride the roundabout', rock: 'ride it', slide: 'go down the slide',
   soccer: 'kick the ball', basket: 'pick up the ball', volley: 'pick up the ball',
 };
+
+const floorKey = (gx, gz) => (gx + 32768) * 65536 + (gz + 32768);
 
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), v4 = new THREE.Vector3();
 const m1 = new THREE.Matrix4();
@@ -62,6 +66,36 @@ export const play = {
       const k = it.spec.scale ?? 1, size = Math.max(...it.spec.size) * k / 2;
       return Math.hypot(it.x - p.x, it.z - p.z) < size + reach;
     });
+  },
+
+  /**
+   * How high the parks' ground is at x, z where an amenity is laid (floorAt), or
+   * -Infinity: the walker and the balls stand on a court's paint, not in it. Found by a
+   * grid, made once per layout, of the amenities that could be under a point.
+   */
+  floorUnder(x, z) {
+    const all = this.scene?.props?.userData.amenities;
+    if (!all) return -Infinity;
+    if (this.floorsOf !== all) {
+      this.floorsOf = all;
+      this.floorGrid = new Map();
+      for (const it of all) {
+        const a = it.spec;
+        if (!a.floors?.length) continue;
+        const reach = Math.hypot(...a.size) * (a.scale ?? 1) / 2;
+        for (let gx = Math.floor((it.x - reach) / FLOOR_CELL); gx <= Math.floor((it.x + reach) / FLOOR_CELL); gx++) {
+          for (let gz = Math.floor((it.z - reach) / FLOOR_CELL); gz <= Math.floor((it.z + reach) / FLOOR_CELL); gz++) {
+            const key = floorKey(gx, gz), cell = this.floorGrid.get(key);
+            if (cell) cell.push(it); else this.floorGrid.set(key, [it]);
+          }
+        }
+      }
+    }
+    let top = -Infinity;
+    for (const it of this.floorGrid.get(floorKey(Math.floor(x / FLOOR_CELL), Math.floor(z / FLOOR_CELL))) || NO_FLOORS) {
+      top = Math.max(top, floorAt(it, it.spec, x, z));
+    }
+    return top;
   },
 
   /**
