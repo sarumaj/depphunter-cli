@@ -110,7 +110,6 @@ def color(hexa: str, kind: str) -> tuple[float, float, float, float]:
 # Bare skin: the color hands.js gives the hand held before the eye, the same hand.
 SKIN = color("#c98d63", "skin")
 HAIR = "#2b211b"
-LIPS = "#a85f50"
 WHITES = "#efece6"
 IRIS = "#3a2a1e"
 
@@ -132,7 +131,8 @@ class Point:
 # the skin) - or None for bare skin.
 def city(p: Point):
     a = p.at
-    if p.bone == "head":
+    collar = a["neck"] - 0.006
+    if p.bone == "head" and p.z > collar:
         scalp = p.z > a["brow"] or (
             p.z > a["eye"] - 0.014 and p.y < a["head_y"] - 0.012
         )
@@ -146,10 +146,10 @@ def city(p: Point):
     if p.z < a["ankle"] + 0.022:
         return ("#f2f2f2", "knit", 0.0015)  # socks
     sleeve = p.bone.startswith("upperarm") and p.z > a["shoulder"] - 0.03
-    if sleeve or (p.bone in ("spine", "hips") and p.z > a["hip"] + 0.02):
-        if p.z > a["neck"] - 0.006 and p.bone == "spine":
-            return None  # the collar's open
-        return ("#2a9d8f", "knit", 0.0025)
+    body = p.bone in ("spine", "hips", "head") and p.z > a["hip"] + 0.02
+    if sleeve or body:
+        # Up to the collar, round the neck.
+        return ("#2a9d8f", "knit", 0.0025) if p.z < collar else None
     if p.z > a["knee"] + 0.02 and not p.bone.startswith(
         ("upperarm", "forearm", "hand")
     ):
@@ -160,16 +160,14 @@ def city(p: Point):
 
 def circuit(p: Point):
     a = p.at
-    if p.bone == "head" or p.bone.startswith("hand"):
-        return None
+    if p.z > a["neck"] - 0.004 or p.bone.startswith("hand"):
+        return None  # the collar's open
     if p.bone in ("foot_L", "foot_R") or p.z < a["ankle"] + 0.03:
         if p.z < 0.006:
             return ("#141210", "rubber", 0.006)
         if p.y > a["toe_y"] - 0.02 and p.z < a["ankle"] + 0.01:
             return ("#8a6d45", "leather", 0.006)  # the toe cap
         return ("#2a2420", "leather", 0.006)
-    if p.bone == "spine" and p.z > a["neck"] - 0.004:
-        return None  # the collar's open
     if p.between(a["chest"] - 0.005, a["chest"] + 0.005) and p.bone == "spine":
         return ("#d8e04a", "rubber", 0.0035)  # a reflective band round the chest
     if p.between(a["waist"] - 0.004, a["waist"] + 0.004) and p.bone in (
@@ -256,13 +254,21 @@ CUTS = {
     ],
 }
 
-# What a vertex of MakeHuman's mesh is: skin, an eye or the lips.
-PARTS = {"skin": 0, "eye": 1, "lips": 2}
+# What a vertex of MakeHuman's mesh is: skin or an eye.
+PARTS = {"skin": 0, "eye": 1}
 
-# Over the head: a hard hat - its color, fabric, and how far its brim reaches out - or
-# a spacesuit's helmet, a ball of `radius` with a visor.
+# Over the head: a hard hat - its color, fabric, how far it stands off the skull, how
+# much further its brim reaches out over the brow and how much lower it sits at the
+# back - or a spacesuit's helmet, a ball of
+# `radius` with a visor.
 HEADWEAR: dict[str, dict] = {
-    "circuit": {"color": "#f2c230", "kind": "rubber", "brim": 0.006},
+    "circuit": {
+        "color": "#f2c230",
+        "kind": "rubber",
+        "stand": 0.004,
+        "brim": 0.009,
+        "back": 0.007,
+    },
     "galaxy": {"color": "#eef0f4", "kind": "suit", "radius": 0.043},
 }
 
@@ -437,15 +443,7 @@ def mesh_for(name: str, style: str, hand, human: dict, hands: Hands, bones: list
             continue
         v = verts[i] = bm.verts.new(tuple(p))
         weigh(v, {b: float(w[i]) for b, w in bone_weights.items() if w[i] > 1e-3})
-        v[part] = (
-            PARTS["eye"]
-            if i in human["eyes"]
-            else (
-                PARTS["lips"]
-                if human["bone_of"][i].startswith("oris")
-                else PARTS["skin"]
-            )
-        )
+        v[part] = PARTS["eye"] if i in human["eyes"] else PARTS["skin"]
     for f in human["faces"]:
         if all(i in verts for i in f):
             bm.faces.new([verts[i] for i in f])
@@ -470,8 +468,7 @@ def mesh_for(name: str, style: str, hand, human: dict, hands: Hands, bones: list
         bone = bones[max(weights, key=weights.get)] if weights else "spine"
         worn = dress(Point(bone, middle, f.normal, at))
         if worn is None:
-            lips = parts.count(PARTS["lips"]) * 2 > len(parts)
-            lay(f, color(LIPS, "skin") if lips else SKIN)
+            lay(f, SKIN)
             continue
         hexa, kind, thick = worn
         lay(f, color(hexa, kind))
@@ -564,53 +561,91 @@ def headwear(bm, style: str, human: dict, at: dict, colors: dict) -> list:
                 else col
             )
         return out["verts"]
-    # A hard hat: a dome over the crown, a little off it, and a brim round its rim.
-    rim = at["brow"] - 0.002
-    head = [p for p, b in zip(human["points"], human["bone_of"]) if b == "head"]
-    reach = max(
-        math.hypot(p[0], (p[1] - middle.y) / 1.14)
-        for p in head
-        if abs(p[2] - rim) < 0.004
-    )
-    brim = 1.0 + spec["brim"] / reach
-    profile = (
-        (0.0, 1.0),
-        (0.0, brim),
-        (0.002, brim),
-        (0.003, 1.02),
-        (0.012, 0.95),
-        (0.022, 0.75),
-        (0.029, 0.4),
-    )
-    segments, rings, made = 20, [], []
-    for rise, size in profile:
-        ring = []
-        for s in range(segments):
-            angle = 2 * math.pi * s / segments
-            v = bm.verts.new(
+    # A hard hat: a shell over the crown, the skull's own shape stood off it, and a brim
+    # round its rim, reaching out furthest over the brow.
+    rim, top = at["brow"] - 0.002, at["top"]
+    skull = [
+        p
+        for p, b in zip(human["points"], human["bone_of"])
+        if b == "head" and p[2] > rim - 0.004
+    ]
+    segments = 24
+    angles = [2 * math.pi * s / segments for s in range(segments)]
+
+    def reach(angle: float, z: float) -> float:
+        """How far out from the head's middle the skull is, that way at that height."""
+        out = 0.0
+        for p in skull:
+            if abs(p[2] - z) < 0.003:
+                off = math.atan2(p[1] - middle.y, p[0]) - angle
+                if (
+                    abs((off + math.pi) % (2 * math.pi) - math.pi)
+                    < 1.5 * math.pi / segments
+                ):
+                    out = max(out, math.hypot(p[0], p[1] - middle.y))
+        return out
+
+    def smooth(radii: list) -> list:
+        """The radii, each eased toward its neighbors round the ring."""
+        n = len(radii)
+        return [
+            sum(
+                radii[(k + d) % n] * w
+                for d, w in ((-2, 1), (-1, 2), (0, 3), (1, 2), (2, 1))
+            )
+            / 9
+            for k in range(n)
+        ]
+
+    def ring(z: float, radii: list, low: float = 1.0) -> list:
+        """A ring at `z`, its rim dropped `low` of the way down at the back."""
+        made = [
+            bm.verts.new(
                 (
-                    reach * 1.04 * size * math.cos(angle),
-                    middle.y + reach * 1.14 * 1.04 * size * math.sin(angle),
-                    rim + rise,
+                    r * math.cos(a),
+                    middle.y + r * math.sin(a),
+                    z - low * spec["back"] * max(0.0, -math.sin(a)),
                 )
             )
+            for a, r in zip(angles, radii)
+        ]
+        for v in made:
             colors[v] = col
-            ring.append(v)
-        rings.append(ring)
-        made += ring
+        return made
+
+    stand = spec["stand"]
+    skin = smooth([reach(a, rim) for a in angles])
+    brim = [
+        r + stand + spec["brim"] * max(0.0, math.sin(a)) ** 2 + 0.002
+        for a, r in zip(angles, skin)
+    ]
+    rings = [
+        ring(rim - 0.001, skin),
+        ring(rim - 0.001, brim),
+        ring(rim + 0.002, brim),
+    ]
+    last = [r + stand for r in skin]
+    for share in (0.0, 0.3, 0.55, 0.75, 0.9, 0.97):
+        z = rim + (top - rim) * share + 0.002
+        radii = [reach(a, z) or 0.0 for a in angles]
+        radii = smooth([(r + stand) if r else q * 0.85 for r, q in zip(radii, last)])
+        rings.append(ring(z, radii, 1 - share))
+        last = radii
     for a, b in zip(rings, rings[1:]):
         for s in range(segments):
             t = (s + 1) % segments
             bm.faces.new((a[s], a[t], b[t], b[s]))
-    for ring, z in ((rings[-1], rim + 0.031), (rings[0], rim)):
+    made = [v for r in rings for v in r]
+    for loop, z in ((rings[-1], top + stand), (rings[0], rim - 0.001)):
         end = bm.verts.new((0.0, middle.y, z))
         colors[end] = col
         made.append(end)
         for s in range(segments):
-            bm.faces.new((ring[s], ring[(s + 1) % segments], end))
-    badge = (0.0, middle.y + reach * 1.14 * 1.04 * 0.97, rim + 0.012)
+            bm.faces.new((loop[s], loop[(s + 1) % segments], end))
+    z = rim + (top - rim) * 0.3
+    badge = (0.0, middle.y + reach(math.pi / 2, z) + stand + 0.001, z + 0.002)
     return made + box(
-        bm, badge, (0.007, 0.002, 0.004), color("#1b1d22", "rubber"), colors
+        bm, badge, (0.007, 0.0015, 0.004), color("#1b1d22", "rubber"), colors
     )
 
 

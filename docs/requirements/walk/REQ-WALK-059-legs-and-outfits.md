@@ -67,8 +67,9 @@ against the stride.
 What the walker wears **shall** follow the map's style, on the body and on the
 hands and arms alike: in a city a T-shirt, shorts and sneakers, the arms bare
 to a T-shirt's sleeve; on a circuit board an electrician's coverall with a
-chest pocket, knee pads and reflective bands, work boots, and insulating
-gloves; in the galaxy a spacesuit with a ring at the neck and a control panel
+chest pocket, knee pads and reflective bands, work boots, insulating
+gloves, and a hard hat the shape of the head, low at the back, its brim out over
+the brow; in the galaxy a spacesuit with a ring at the neck and a control panel
 on the chest, moon boots, and the suit's sleeves and gloves with a ring of
 light at the cuff. Changing the style **shall** change the outfit at once.
 
