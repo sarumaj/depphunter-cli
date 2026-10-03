@@ -643,54 +643,30 @@ export const play = {
   },
 
   /**
-   * Where `ball` would leave from and how fast, for `how` - 'throw' (a basketball, at
-   * the hoop of its court the walker is facing, or where they look), 'serve' and 'hit'
-   * (a volleyball, over its net), or 'kick' (a football, at the goal they are facing,
-   * or where they look): { from, vel }. The same plan sends the ball and draws its
-   * guide, so it goes where the guide shows.
+   * Where `ball` would leave from and how fast, for `how`: straight on from where the
+   * walker looks, lifted by the throw - 'throw' (a basketball's shot), 'serve' (a
+   * volleyball, standing or, flatter and harder, jumping), 'hit' (a volleyball in the
+   * air) or 'kick' (a football, harder running): { from, vel }. Nothing is aimed for
+   * them; the guide shows where it goes (drawBallGuide), and it goes there.
    */
   plan(ball, how) {
     const p = this.p, from = how === 'kick'
       ? new THREE.Vector3(ball.pos.x, this.height(ball.pos.x, ball.pos.z, ball.pos.y, POINT) + ball.r + 0.005, ball.pos.z)
       : this.releasePoint(ball, new THREE.Vector3());
-    const vel = new THREE.Vector3(), a = ball.it.spec;
-    const ahead = (lift, speed) => vel.set(-Math.sin(p.yaw) * Math.cos(lift), Math.sin(lift), -Math.cos(p.yaw) * Math.cos(lift)).multiplyScalar(speed);
-    if (how === 'throw') {
-      const hoop = this.target(ball, e => e.hoop, e => onAmenity(ball.it, a, e.hoop, new THREE.Vector3()), 0.5, 7);
-      if (hoop) {
-        hoop.y += ball.r * 0.4;
-        const line = Math.atan2(hoop.y - from.y, Math.hypot(hoop.x - from.x, hoop.z - from.z));
-        if (lob(from, hoop, line + (Math.PI / 2 - line) * 0.5, vel)) return { from, vel };
-      }
-      return { from, vel: ahead(p.pitch + 0.25, 2.6) };
-    }
-    if (how === 'kick') {
-      const run = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
-      const goal = this.target(ball, e => e.goal, e => onAmenity(ball.it, a, [e.from[0], e.to[1] * 0.4, (e.from[2] + e.to[2]) / 2], new THREE.Vector3()), 0.3, 14);
-      if (goal && lob(from, goal, run ? 0.12 : 0.25, vel)) return { from, vel };
-      return { from, vel: ahead(Math.max(0.05, Math.min(0.7, p.pitch + 0.25)), run ? 6 : 4) };
-    }
-    // A volleyball: over its net, 60% of the way into the other half where the look
-    // crosses it, on the lowest arc that clears the net - flatter jumping.
-    const rise = how === 'hit' ? 0.8 : p.ground ? 0.5 : 0.05;
-    const net = a.play.find(e => e.net);
-    const here = inAmenity(ball.it, a, from);
-    const look = inAmenity(ball.it, a, v2.set(from.x - Math.sin(p.yaw), from.y, from.z - Math.cos(p.yaw)));
-    const lx = look[0] - here[0], lz = look[2] - here[2], side = -Math.sign(here[0]) || 1;
-    if (net && lx * side > 0.3 * Math.hypot(lx, lz)) {
-      const [, z0, x1, z1] = ball.entry.area, depth = side * x1 * 0.6;
-      const z = Math.max(z0 * 0.85, Math.min(z1 * 0.85, here[2] + lz * (depth - here[0]) / lx));
-      const to = onAmenity(ball.it, a, [depth, 0, z], new THREE.Vector3());
-      to.y = this.height(to.x, to.z, to.y + 0.5, POINT) + ball.r;
-      const over = { at: -here[0] / (depth - here[0]), y: ball.it.y + net.to[1] * a.scale + ball.r * 1.5 };
-      for (let angle = rise; angle < 1.3; angle += 0.04) if (lob(from, to, angle, vel, over)) return { from, vel };
-    }
-    return { from, vel: ahead(rise + Math.max(0, p.pitch), 3) };
+    const run = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+    const [lift, speed] = how === 'throw' ? [0.45, 3]
+      : how === 'kick' ? [0.3, run ? 6 : 4.2]
+        : how === 'hit' ? [0.8, 2.6]
+          : p.ground ? [0.5, 3.6] : [0.15, 5];
+    const up = Math.max(-0.4, Math.min(1.35, p.pitch + lift));
+    const vel = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(up), Math.sin(up), -Math.cos(p.yaw) * Math.cos(up)).multiplyScalar(speed);
+    return { from, vel };
   },
 
   /**
    * The path `plan` would send `ball` on, flown by the ball's own steps (ballStep) until
-   * it first comes down, or for FLIGHT seconds: { path, point }.
+   * it first comes down, or for FLIGHT seconds: { path, point, played } - played being
+   * what it did on the way: through the hoop (scored), into a goal (goal), over a net.
    */
   flight(ball, plan) {
     const ghost = this.ghost ||= { pos: new THREE.Vector3(), vel: new THREE.Vector3(), ghost: true };
@@ -705,7 +681,7 @@ export const play = {
       this.ballStep(ghost, STEP);
       if (n % 2 === 0 || ghost.touched) path.push(ghost.pos.clone());
     }
-    return { path, point: ghost.pos.clone().addScaledVector(UP, -ball.r) };
+    return { path, point: ghost.pos.clone().addScaledVector(UP, -ball.r), played: { ...ghost.played, goal: !!ghost.inNet } };
   },
 
   /** What ball the walker is about to send, and how - for the guide - or null. */
@@ -733,22 +709,6 @@ export const play = {
     if (!aim) { guide.group.visible = false; return; }
     const { path, point } = this.flight(aim.ball, this.plan(aim.ball, aim.how));
     guide.draw(path, point, UP, this.scene.walkCamera.position);
-  },
-
-  /**
-   * The one of `pick`ed play entries of a ball's court the walker is looking at, within
-   * `cone` radians and `range` units: where `at` puts it, or null.
-   */
-  target(ball, pick, at, cone, range) {
-    const p = this.p;
-    let best = null, bestOff = cone;
-    for (const e of ball.it.spec.play.filter(pick)) {
-      const w = at(e), dx = w.x - p.x, dz = w.z - p.z, d = Math.hypot(dx, dz);
-      if (d > range) continue;
-      const off = Math.acos(Math.max(-1, Math.min(1, this.facing(w))));
-      if (off < bestOff) { bestOff = off; best = w; }
-    }
-    return best;
   },
 
   // Where a ball leaves the hands: in front of the eye and a little under it, or over
@@ -779,26 +739,6 @@ export const play = {
     this.ballView = null;
   },
 };
-
-/**
- * The speed, into `vel`, that sends a ball from `from` to land on `to` launched `angle`
- * radians up. With `over` ({ at, y }), only if it is above `y` at the share `at` of the
- * way there - a net. Whether there is one: not when no speed it could be given gets it
- * there.
- */
-function lob(from, to, angle, vel, over = null) {
-  const dx = to.x - from.x, dz = to.z - from.z, d = Math.hypot(dx, dz), dy = to.y - from.y;
-  const denominator = 2 * Math.cos(angle) ** 2 * (d * Math.tan(angle) - dy);
-  if (d < 1e-3 || denominator <= 0) return false;
-  const v = Math.sqrt(BALL_G * d * d / denominator);
-  if (!Number.isFinite(v) || v > 9) return false;
-  if (over) {
-    const t = over.at * d / (v * Math.cos(angle));
-    if (from.y + v * Math.sin(angle) * t - BALL_G * t * t / 2 < over.y) return false;
-  }
-  vel.set(dx / d * v * Math.cos(angle), v * Math.sin(angle), dz / d * v * Math.cos(angle));
-  return true;
-}
 
 const smooth = t => t * t * (3 - 2 * t);
 

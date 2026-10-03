@@ -9,7 +9,7 @@ import { describe, it } from 'node:test';
 import './stub.mjs';
 
 const THREE = await import('../static/vendor/three.module.min.js');
-const { amenitiesFor, onAmenity } = await import('../static/map/amenities.js');
+const { amenitiesFor, onAmenity, inAmenity } = await import('../static/map/amenities.js');
 const WALK = await import('../static/walk/walk.js');
 
 const CITY = amenitiesFor('city');
@@ -60,6 +60,20 @@ function ballAtFeet(w, kind) {
   ball.pos.set(w.p.x - Math.sin(w.p.yaw) * 0.25, ball.r, w.p.z - Math.cos(w.p.yaw) * 0.25);
   ball.vel.set(0, 0, 0);
   return ball;
+}
+
+/**
+ * Looks up or down, as a player would by the guide, for where the ball sent `how` does
+ * what `wanted` asks of its flight (Walker.flight), and keeps to the middle of that.
+ */
+function aimFor(w, ball, how, wanted) {
+  const good = [];
+  for (let pitch = -0.6; pitch <= 1.2; pitch += 0.005) {
+    w.p.pitch = pitch;
+    if (wanted(w.flight(ball, w.plan(ball, how)))) good.push(pitch);
+  }
+  assert.ok(good.length, `nowhere to look sends the ${ball.kind} where it should go`);
+  w.p.pitch = good[good.length >> 1];
 }
 
 const swing = PLAYGROUND.play.find(e => e.ride === 'swing');
@@ -160,9 +174,10 @@ describe('playing in the parks', () => {
     for (const style of ['city', 'circuit', 'galaxy']) {
       const court = amenitiesFor(style).find(a => a.play.some(e => e.hoop));
       const { w, said } = walker(court, [-0.3, 0, 0], [-0.565, 0.25, 0]);
-      ballAtFeet(w, 'basket');
+      const ball = ballAtFeet(w, 'basket');
       assert.equal(w.playClick(), true);
       assert.ok(w.ballHeld, 'the ball was not picked up');
+      aimFor(w, ball, 'throw', f => f.played.scored);
       w.playClick();
       run(w, 3);
       assert.ok(said.some(s => /two points/.test(s)), `the shot in the ${style}: ${said}`);
@@ -174,11 +189,11 @@ describe('playing in the parks', () => {
     // A pitch laid either way round.
     for (const turn of [0, Math.PI / 2]) {
       const { w, said } = walker(PITCH, [0.55, 0, 0], [0.85, 0.05, 0], turn);
-      ballAtFeet(w, 'soccer');
+      const ball = ballAtFeet(w, 'soccer');
+      aimFor(w, ball, 'kick', f => f.played.goal);
       w.playClick();
       run(w, 3);
       assert.ok(said.includes('Goal!'), `the kick: ${said}`);
-      const ball = [...w.balls.values()][0];
       assert.ok(ball.vel.length() < 1, 'the net did not stop the ball');
     }
   });
@@ -186,10 +201,15 @@ describe('playing in the parks', () => {
   // Verifies: REQ-WALK-058
   it('serves over the net into the far half, standing or jumping', () => {
     for (const jump of [false, true]) {
-      const { w, said } = walker(VOLLEY, [-0.8, 0, 0.1], [0.5, 0, 0], jump ? Math.PI / 2 : 0);
-      ballAtFeet(w, 'volley');
+      const { w, it, said } = walker(VOLLEY, [-0.8, 0, 0.1], [0.5, 0, 0], jump ? Math.PI / 2 : 0);
+      const ball = ballAtFeet(w, 'volley');
       w.playClick();
       if (jump) Object.assign(w.p, { feet: 0.3, ground: false });
+      // Over the net and down well inside the far half.
+      aimFor(w, ball, 'serve', ({ played, point }) => {
+        const [x, , z] = inAmenity(it, VOLLEY, point);
+        return !played.net && played.over === 1 && x > 0.2 && x < 0.7 && Math.abs(z) < 0.3;
+      });
       w.playClick();
       run(w, 4);
       assert.ok(said.includes(jump ? 'Ace! A jump serve in' : 'In!'), `the ${jump ? 'jump ' : ''}serve: ${said}`);
