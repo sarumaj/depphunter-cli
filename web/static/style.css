@@ -688,21 +688,23 @@ main { position: relative; flex: 1; min-height: 0; }
 
 /* The bug tracker: a top-down sweep of the streets around the walker, so a finding
    somewhere across the map can be walked to rather than stumbled on. */
-/* What the walker says to themselves (walk/quips.js): a speech bubble at the right of
-   the view, its tail down towards the walker, as in a comic - so white with a dark
-   line whatever the theme - and gone again once it has been read. */
+/* What the walker says to themselves (walk/quips.js): a speech bubble popping up in
+   front of them, just above and right of the middle of the view where the eye already
+   is, its tail down towards the walker, as in a comic - so white with a dark line
+   whatever the theme - and gone again once it has been read. */
 #walk-hud .w-quip {
-  position: absolute; right: 18px; bottom: 34%; max-width: min(300px, 42vw);
-  padding: 8px 13px; border-radius: 14px; font-size: 14px; line-height: 1.35; font-style: italic;
-  color: #1b1d22; background: #ffffff; border: 1.5px solid #1b1d22; box-shadow: var(--shadow);
-  transition: opacity 0.35s, transform 0.35s; animation: w-quip-in 0.25s ease-out;
+  position: absolute; left: 50%; bottom: 57%; margin-left: 40px; max-width: min(440px, 46vw);
+  padding: 11px 17px; border-radius: 18px; font-size: 18px; line-height: 1.35; font-style: italic;
+  color: #1b1d22; background: #ffffff; border: 2px solid #1b1d22; box-shadow: var(--shadow);
+  transition: opacity 0.35s, transform 0.35s; animation: w-quip-in 0.3s cubic-bezier(0.2, 1.4, 0.4, 1);
+  transform-origin: 0 100%;
 }
 #walk-hud .w-quip::after {
-  content: ''; position: absolute; left: 24px; bottom: -8px; width: 13px; height: 13px; background: inherit;
-  border-right: 1.5px solid #1b1d22; border-bottom: 1.5px solid #1b1d22; transform: rotate(45deg);
+  content: ''; position: absolute; left: 20px; bottom: -10px; width: 16px; height: 16px; background: inherit;
+  border-right: 2px solid #1b1d22; border-bottom: 2px solid #1b1d22; transform: rotate(45deg);
 }
 #walk-hud .w-quip.gone { opacity: 0; transform: translateY(6px); }
-@keyframes w-quip-in { from { opacity: 0; transform: translateY(8px) scale(0.96); } }
+@keyframes w-quip-in { from { opacity: 0; transform: scale(0.6); } }
 @media (prefers-reduced-motion: reduce) { #walk-hud .w-quip { animation: none; transition: none; } }
 #walk-hud .w-radar {
   position: absolute; left: 14px; bottom: 14px; pointer-events: none;

@@ -700,6 +700,15 @@ describe('empty hands', () => {
     });
     w.secondary = null;
     w.showTool();
+    // Y toggles it, by the letter: on a German keyboard the key that says Y is KeyZ.
+    const press = (code, key) => w.keyDown({ code, key, target: { closest: () => null }, preventDefault() {}, stopImmediatePropagation() {} });
+    Object.assign(w, { keys: new Set(), radius: 10, wheelKey: () => false });
+    press('KeyZ', 'y');
+    assert.equal(w.thirdPerson, true, 'the key that says Y on a German keyboard did nothing');
+    press('KeyY', 'z');
+    assert.equal(w.thirdPerson, true, 'Z on a German keyboard toggled the view');
+    press('KeyY', 'Y');
+    assert.equal(w.thirdPerson, false);
     w.setThirdPerson(true);
     // Behind (facing -z, so at +z), over the right shoulder (+x) and over the eye.
     const at = w.thirdEye(EYE, FRAME).clone();

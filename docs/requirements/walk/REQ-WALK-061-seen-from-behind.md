@@ -12,10 +12,11 @@ verification:
 
 ## Statement
 
-Y **shall** move the view from the walker's own eyes to behind them, over the
-right shoulder and a little above, and back again; the walk **shall** begin
-through the walker's own eyes unless this viewer chose otherwise before, which
-**shall** be remembered. Seen from behind:
+Y - the key with Y on it, whatever the keyboard's layout - **shall** move the
+view from the walker's own eyes to behind them, over the right shoulder and a
+little above, and back again; the walk **shall** begin through the walker's own
+eyes unless this viewer chose otherwise before, which **shall** be remembered.
+Seen from behind:
 
 - the whole body **shall** be drawn - the head with its face, turned the way
   the walker looks, and what they wear in the style (REQ-WALK-059);

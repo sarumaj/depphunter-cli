@@ -101,6 +101,9 @@ const VIEW_NEAR = 0.5;
 // this far over it, and how many steps along the way to it are tried for a wall.
 const BEHIND_VIEW = { back: 0.75, side: 0.14, up: 0.08, probes: 12 };
 const VIEW_KEY = 'depphunter.walk.view';
+// Y, by the letter on the key and not by where it is: on a German keyboard Y is where Z
+// is on an English one, and a key that does nothing is worse than one that moved.
+const seeYourself = e => e.key === 'y' || e.key === 'Y';
 const ARMS_DOWN = [0.55, 0.9]; // looking this far down, what is held before the eye sinks out of view ...
 const SUNK = 0.3;              // ... this far, in the camera's units
 const SWING = 0.45;         // seconds a tool takes to swing and settle
@@ -196,7 +199,7 @@ const ASHORE_IN = 0.6;
 const KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyE', 'KeyQ', 'KeyF', 'Enter',
-  'Escape', 'KeyV', 'KeyM', 'KeyR', 'KeyH', 'KeyY',
+  'Escape', 'KeyV', 'KeyM', 'KeyR', 'KeyH',
   // Every tool's digit: the digits count along the row, 1 to 9 and then 0 for the
   // tenth (switcher.js) - and the parachute's key of its own, T (tools.js).
   'Digit0', ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`), 'KeyT',
@@ -353,7 +356,7 @@ export class Walker {
   /** Keys that belong to walk mode while it is active. */
   owns(e) {
     return this.active && (KEYS.has(e.code) || BIGGER.has(e.key) || SMALLER.has(e.key)
-      || BIGGER_CODES.has(e.code) || SMALLER_CODES.has(e.code));
+      || BIGGER_CODES.has(e.code) || SMALLER_CODES.has(e.code) || seeYourself(e));
   }
 
   /** Hands the walker the fires burning on it (fires.js); null takes them away. */
@@ -1672,6 +1675,10 @@ export class Walker {
     // carried tool's key pressed for the one already in hand puts it down, so it is
     // never a no-op.
     // Implements: REQ-TOOL-033, REQ-TOOL-054
+    if (seeYourself(e)) {
+      this.setThirdPerson(!this.thirdPerson);
+      return;
+    }
     const digit = toolForKey(e.code);
     if (digit) {
       if (digit !== this.primary.id || this.bare) this.setTool(digit);
@@ -1692,7 +1699,6 @@ export class Walker {
       case 'KeyQ': this.nextCarried(); break;
       case 'KeyR': this.openWheel(); break;
       case 'KeyH': this.setHandsOff(!this.handsOff); break;
-      case 'KeyY': this.setThirdPerson(!this.thirdPerson); break;
       case 'Escape':
         // The Esc that frees the pointer, whether or not the browser swallowed it. The
         // browser lets go at once but says so (pointerlockchange) up to a second

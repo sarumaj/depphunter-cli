@@ -1,5 +1,5 @@
-// What the walker says to themselves, now and then: a line in a speech bubble at the
-// side of the view when something happens - a bug bites or is caught, the parachute
+// What the walker says to themselves, now and then: a line in a speech bubble popping
+// up in front of them when something happens - a bug bites or is caught, the parachute
 // opens, a fall hurts, a ride is got on, a ball goes in - in the voice of the software
 // engineer the walker is, hunting the bugs of their own codebase. Mixed into Walker
 // (walk.js).
@@ -456,7 +456,7 @@ export const quips = {
     if ((this.stoodFor += deltaTime) >= IDLE && this.stoodFor - deltaTime < IDLE) this.quip('idle');
   },
 
-  /** Puts `text` up in the bubble at the side of the view, and takes it down after a read. */
+  /** Puts `text` up in the bubble, and takes it down after a read. */
   showQuip(text) {
     const bubble = this.quipEl ||= this.hud?.querySelector('.w-quip');
     if (!bubble) return;
