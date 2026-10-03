@@ -77,6 +77,17 @@ SHOULDER = 0.41  # under the eye at 0.45; the neck goes on up behind it
 ARM_X = 0.08  # the shoulder joints off the middle
 ARM_TOP = 0.395
 ELBOW = 0.305
+ARM_EASE = 0.03  # over the elbow, the forearm's shape eased to the upper arm's round
+ELBOW_BEND = 0.018  # either side of the elbow, the upper arm and forearm share it
+SHOULDER_BEND = 0.04  # down from the arm's top, the shoulder going with the chest
+# Over the upper arm's top: each ring's rise over it, its size and how far it is tucked
+# in toward the neck.
+SHOULDER_DOME = (
+    (0.007, 0.9, 0.003),
+    (0.013, 0.7, 0.007),
+    (0.017, 0.4, 0.011),
+    (0.019, 0.1, 0.014),
+)
 
 # The forearms and hands are not modeled here: they are the walker's hand model
 # (scripts/hand.py), the one the first-person view draws, cut at its elbow and scaled
@@ -146,7 +157,7 @@ FACES: dict[str, list] = {
     "city": [
         ((-0.011, 0.030, 0.459), (0.004, 0.002, 0.0025), EYES),
         ((0.011, 0.030, 0.459), (0.004, 0.002, 0.0025), EYES),
-        ((0.0, 0.033, 0.451), (0.003, 0.004, 0.005), "#d8a083"),  # the nose
+        ((0.0, 0.033, 0.451), (0.003, 0.004, 0.005), "#b97c55"),  # the nose
         ((0.0, 0.029, 0.441), (0.008, 0.002, 0.0015), LIPS),
         ((-0.011, 0.031, 0.465), (0.006, 0.0015, 0.0012), HAIR),  # brows
         ((0.011, 0.031, 0.465), (0.006, 0.0015, 0.0012), HAIR),
@@ -154,7 +165,7 @@ FACES: dict[str, list] = {
     "circuit": [
         ((-0.011, 0.030, 0.459), (0.004, 0.002, 0.0025), EYES),
         ((0.011, 0.030, 0.459), (0.004, 0.002, 0.0025), EYES),
-        ((0.0, 0.033, 0.451), (0.003, 0.004, 0.005), "#d8a083"),
+        ((0.0, 0.033, 0.451), (0.003, 0.004, 0.005), "#b97c55"),
         ((0.0, 0.029, 0.441), (0.008, 0.002, 0.0015), LIPS),
         ((0.0, 0.040, 0.481), (0.008, 0.002, 0.004), "#1b1d22"),  # the hat's badge
     ],
@@ -177,14 +188,16 @@ CLOTH: dict[str, int] = {
     "leather": 5,
 }
 
-SKIN = (0.88, 0.67, 0.53, 0.0)
-
 
 def color(hexa: str, kind: str) -> tuple[float, float, float, float]:
     """An sRGB hex color, as linear floats, which is what Blender stores, and the
     fabric it is in the alpha."""
     rgb = tuple(((int(hexa[i : i + 2], 16) / 255) ** 2.2) for i in (1, 3, 5))
     return (*rgb, CLOTH[kind] / 8)  # type: ignore[return-value]
+
+
+# Bare skin: the color hands.js gives the hand held before the eye, the same hand.
+SKIN = color("#c98d63", "skin")
 
 
 def fabric(outfit: dict, hexa: str) -> str:
@@ -233,8 +246,8 @@ OUTFITS: dict[str, dict] = {
         # model's (hand_into).
         "arm_x": 0.075,
         "arm": [
-            (0.405, 0.020, 0.020, "#2a9d8f"),
-            (0.390, 0.021, 0.021, "#2a9d8f"),
+            (0.396, 0.020, 0.020, "#2a9d8f"),
+            (0.384, 0.021, 0.021, "#2a9d8f"),
             (0.360, 0.019, 0.019, "#2a9d8f"),
             (0.358, 0.0145, 0.0145, None),
             (ELBOW - 0.004, 0.013, 0.013, None),
@@ -281,8 +294,8 @@ OUTFITS: dict[str, dict] = {
         # (HAND_LAYERS).
         "arm_x": 0.076,
         "arm": [
-            (0.405, 0.021, 0.021, "#24365a"),
-            (0.390, 0.022, 0.022, "#24365a"),
+            (0.396, 0.021, 0.021, "#24365a"),
+            (0.384, 0.022, 0.022, "#24365a"),
             (ELBOW - 0.004, 0.016, 0.016, "#24365a"),
         ],
         "cloth": "twill",
@@ -331,8 +344,8 @@ OUTFITS: dict[str, dict] = {
         # glove below it (HAND_LAYERS).
         "arm_x": 0.088,
         "arm": [
-            (0.405, 0.026, 0.026, "#eef0f4"),
-            (0.390, 0.027, 0.027, "#eef0f4"),
+            (0.396, 0.026, 0.026, "#eef0f4"),
+            (0.384, 0.027, 0.027, "#eef0f4"),
             (0.312, 0.021, 0.021, "#eef0f4"),
             (0.310, 0.023, 0.023, "#9aa3b5"),
             (ELBOW - 0.004, 0.023, 0.023, "#9aa3b5"),
@@ -500,26 +513,16 @@ def mesh_for(name: str, outfit: dict, hand):
         shoe(bm, side, outfit["shoe"], colors)
     for middle, half, hexa in outfit.get("chest", []):
         box(bm, middle, half, paint(hexa), colors)
-    # The arms, out of the shoulders: the upper arm, closed at the top inside the
-    # shoulder and at the elbow, and from the elbow the hand model's forearm and hand.
+    # The arms, one tube each from inside the shoulder to the fingertips: the hand
+    # model's forearm and hand up to the elbow, and the upper arm on up from its rim.
     # Their vertices go to the arm's own bones (skin), not by height.
     arms, hands = {}, {}
     for side in (-1.0, 1.0):
-        before = len(bm.verts)
-        rows, x = outfit["arm"], side * outfit["arm_x"]
-        loops = [ring(bm, z, x, rx, ry, paint(col), colors) for z, rx, ry, col in rows]
-        for a, b in pairwise(loops):
-            bridge(bm, a, b)
-        for loop, (z, _, _, col) in ((loops[0], rows[0]), (loops[-1], rows[-1])):
-            cap(bm, loop, z, x, paint(col), colors)
-        arms.update({v: side for v in list(bm.verts)[before:]})
-        hands.update(
-            {
-                v: (side, w)
-                for v, w in hand_into(
-                    bm, hand, side, x, name.removeprefix("body_"), colors
-                ).items()
-            }
+        x = side * outfit["arm_x"]
+        weights, rim = hand_into(bm, hand, side, x, name.removeprefix("body_"), colors)
+        hands.update({v: (side, w) for v, w in weights.items()})
+        arms.update(
+            {v: side for v in upper_arm(bm, rim, outfit["arm"], x, paint, colors)}
         )
     # The head, closed at the crown and down inside the neck.
     before = len(bm.verts)
@@ -574,10 +577,11 @@ def on_body(p, side: float, offset: bool = True) -> Vector:
     return q + Vector((side * ARM_X, 0, WRIST)) if offset else q
 
 
-def hand_into(bm, hand, side: float, x: float, style: str, colors: dict) -> dict:
-    """The hand model's forearm and hand, cut at its elbow and closed there, added to
-    `bm` hanging from the elbow of the arm on `side` (`x` across), painted as worn in
-    `style`; returns each new vertex's weights by the hand model's bone names."""
+def hand_into(bm, hand, side: float, x: float, style: str, colors: dict):
+    """The hand model's forearm and hand, cut at its elbow, added to `bm` hanging from
+    the elbow of the arm on `side` (`x` across), painted as worn in `style`; returns
+    each new vertex's weights by the hand model's bone names, and the cut's rim, in
+    order round it, for the upper arm to go on up from."""
     names = [g.name for g in hand.vertex_groups]
     made, weights = {}, {}
     for v in hand.data.vertices:
@@ -595,8 +599,83 @@ def hand_into(bm, hand, side: float, x: float, style: str, colors: dict) -> dict
             order = list(f.vertices) if side > 0 else list(reversed(f.vertices))
             bm.faces.new([made[i] for i in order])
     rim = [e for e in bm.edges if e.is_boundary and all(v in weights for v in e.verts)]
-    bmesh.ops.holes_fill(bm, edges=rim, sides=0)
-    return weights
+    return weights, rim_loop(rim)
+
+
+def rim_loop(edges: list) -> list:
+    """The longest loop that boundary `edges` make, as its vertices in order."""
+    nexts: dict = {}
+    for e in edges:
+        a, b = e.verts
+        nexts.setdefault(a, []).append(b)
+        nexts.setdefault(b, []).append(a)
+    seen, best = set(), []
+    for start in nexts:
+        if start in seen:
+            continue
+        loop, at, before = [start], start, None
+        seen.add(start)
+        while True:
+            ahead = [v for v in nexts[at] if v is not before and v not in seen]
+            if not ahead:
+                break
+            before, at = at, ahead[0]
+            seen.add(at)
+            loop.append(at)
+        if len(loop) > len(best):
+            best = loop
+    return best
+
+
+def upper_arm(bm, rim: list, rows: list, x: float, paint, colors) -> list:
+    """The upper arm, on up from the forearm's rim to inside the shoulder, one tube with
+    it: each ring has the rim's vertices, at their angles round the arm, eased from the
+    forearm's own shape to the round of the outfit's `rows` (height, half width, half
+    depth, color) a little over the elbow, and closed at the top. Returns its vertices.
+    """
+    middle = sum((v.co for v in rim), Vector()) / len(rim)
+    offsets = [v.co - middle for v in rim]
+    angles = [math.atan2(o.y, o.x) for o in offsets]
+    # The outfit's rows, bottom up, from just over the elbow; the lowest is the size
+    # the forearm is eased to.
+    rows = sorted(rows)
+    low = rows[0]
+    rows = [(z, rx, ry, c) for z, rx, ry, c in rows if z > ELBOW + ARM_EASE]
+    rows = [(ELBOW + ARM_EASE * k / 3, *low[1:]) for k in (1, 2, 3)] + rows
+    made, before = [], rim
+    for z, rx, ry, col in rows:
+        t = min(1.0, (z - middle.z) / ARM_EASE)
+        t = t * t * (3 - 2 * t)
+        across = middle.x + (x - middle.x) * t
+        deep = middle.y * (1 - t)
+        loop = []
+        for o, a in zip(offsets, angles):
+            px = o.x + (rx * math.cos(a) - o.x) * t
+            py = o.y + (ry * math.sin(a) - o.y) * t
+            v = bm.verts.new((across + px, deep + py, z))
+            colors[v] = paint(col)
+            loop.append(v)
+        bridge(bm, before, loop)
+        made += loop
+        before = loop
+    # Rounded over the top into the shoulder, toward the neck, not cut off flat.
+    top = rows[-1]
+    inward = -math.copysign(1.0, x)
+    for rise, size, tuck in SHOULDER_DOME:
+        z, center = top[0] + rise, x + inward * tuck
+        loop = []
+        for a in angles:
+            v = bm.verts.new(
+                (center + top[1] * size * math.cos(a), top[2] * size * math.sin(a), z)
+            )
+            colors[v] = paint(top[3])
+            loop.append(v)
+        bridge(bm, before, loop)
+        made += loop
+        before = loop
+    cap(bm, before, z, center, paint(top[3]), colors)
+    made.append(list(bm.verts)[-1])
+    return made
 
 
 def worn_on_hand(style: str, along: float):
@@ -744,12 +823,29 @@ def skin(obj, rig):
             groups["head"].add([v.index], 1.0, "REPLACE")
             continue
         if v.index in hand_weights:
-            for name, w in hand_weights[v.index].items():
+            weights = dict(hand_weights[v.index])
+            # Under the elbow, the forearm shares with the upper arm a little.
+            shared = 0.5 * (1 - blend(z, ELBOW - ELBOW_BEND / 2, ELBOW_BEND / 2))
+            if shared > 1e-3:
+                suffix = "R" if x > 0 else "L"
+                weights = {n: w * (1 - shared) for n, w in weights.items()}
+                weights[f"upperarm_{suffix}"] = shared
+            for name, w in weights.items():
                 groups[name].add([v.index], w, "REPLACE")
             continue
         if v.index in arms:
             suffix = "R" if arms[v.index] > 0 else "L"
-            groups[f"upperarm_{suffix}"].add([v.index], 1.0, "REPLACE")
+            # Over the elbow the forearm shares a little, and up into the shoulder
+            # the chest does more and more: the joints bend rather than fold.
+            forearm = 0.5 * blend(z, ELBOW + ELBOW_BEND / 2, ELBOW_BEND / 2)
+            chest = 0.6 * (1 - blend(z, ARM_TOP - SHOULDER_BEND / 2, SHOULDER_BEND / 2))
+            for bone, w in (
+                (f"upperarm_{suffix}", 1 - forearm - chest),
+                (f"forearm_{suffix}", forearm),
+                ("spine", chest),
+            ):
+                if w > 1e-3:
+                    groups[bone].add([v.index], w, "REPLACE")
             continue
         suffix = "R" if x > 0 else "L"
         below_waist = blend(z, WAIST + 0.01, 0.01)

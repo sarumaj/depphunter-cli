@@ -39,7 +39,11 @@ The legs **shall** be posed:
 
 The body's hands **shall** be the hand held before the eye (REQ-TOOL-007) at
 the body's scale, its fingers jointed the same way: relaxed, a little closed;
-closed round what they hold on to.
+closed round what they hold on to. They **shall** look the same as that hand -
+the same skin, the same cloth, lit by the same lights from where the view is -
+and each arm **shall** be one surface from the shoulder to the fingertips, which
+bends at the elbow and rounds over the shoulder rather than folding or breaking
+there.
 
 There **shall** be one pair of hands at a time, and always on the shoulders:
 while a tool or a ball is held before the eye, those are the hands seen and the

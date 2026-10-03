@@ -26,7 +26,7 @@ float clothNoise(vec3 p) {
 }
 // The fabric's relief at p (0..1): its weave, knit or seams; 0.5 where there is none.
 float clothHeight(vec3 p, float kind) {
-  float fine = 1.0 - smoothstep(0.06, 0.45, length(fwidth(p))); // gone before a repeat is a few pixels
+  float fine = 1.0 - smoothstep(0.04, 0.25, length(fwidth(p))); // gone before a repeat is a few pixels
   float h = 0.5;
   if (kind > 0.5 && kind < 1.5) h = 0.5 + 0.5 * sin(6.2832 * (p.x + p.z)) * sin(6.2832 * p.y * 1.5);  // knit
   else if (kind < 2.5) h = 0.5 + 0.5 * sin(6.2832 * (p.y * 1.6 + 0.8 * (p.x + p.z)));                 // twill
@@ -55,38 +55,23 @@ vec3 clothBump(vec3 at, vec3 n, float h, float amount) {
 `;
 
 /**
- * Makes `material` draw fabric: its `cloth` attribute picks the fabric and `scale` is
- * how many repeats of a weave fit in one unit of the model. A lit material takes the
- * relief in its normals and is matte where it is cloth; an unlit one - a skinned mesh's
- * MeshBasicMaterial - is lit here, from over the viewer's left shoulder as the hands
- * are, since nothing in the map is lit.
+ * Makes `material`, a lit one, draw fabric: its `cloth` attribute picks the fabric and
+ * `scale` is how many repeats of a weave fit in one unit of the model. The relief goes
+ * into its normals, and it is matte where it is cloth.
  */
-export function fabric(material, scale, { lit = true } = {}) {
+export function fabric(material, scale) {
   material.onBeforeCompile = shader => {
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\nattribute float cloth;\nvarying vec3 vClothAt;\nvarying float vCloth;${lit ? '' : '\nvarying vec3 vClothNormal;\nvarying vec3 vClothView;'}`)
+      .replace('#include <common>', '#include <common>\nattribute float cloth;\nvarying vec3 vClothAt;\nvarying float vCloth;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>\nvClothAt = position * ${scale.toFixed(2)};\nvCloth = cloth;`);
-    if (!lit) {
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <project_vertex>', '#include <project_vertex>\nvClothView = -mvPosition.xyz;\nvClothNormal = normalize(normalMatrix * objectNormal);');
-    }
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\n${GLSL}${lit ? '' : '\nvarying vec3 vClothNormal;\nvarying vec3 vClothView;'}`)
-      .replace('#include <color_fragment>', '#include <color_fragment>\nfloat clothH = clothHeight(vClothAt, vCloth);\ndiffuseColor.rgb = clothTone(diffuseColor.rgb, vClothAt, vCloth, clothH);');
-    if (lit) {
-      shader.fragmentShader = shader.fragmentShader
-        .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nif (vCloth > 0.5) normal = clothBump(-vViewPosition, normal, clothH, 0.6);')
-        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif (vCloth > 0.5) roughnessFactor = vCloth > 2.5 && vCloth < 3.5 ? 0.55 : 0.95;')
-        .replace('#include <specularmap_fragment>', '#include <specularmap_fragment>\nif (vCloth > 0.5) specularStrength = vCloth > 2.5 && vCloth < 3.5 ? 0.5 : 0.04;');
-    } else {
-      shader.fragmentShader = shader.fragmentShader.replace('#include <opaque_fragment>', `
-        vec3 clothN = clothBump(-vClothView, normalize(vClothNormal) * (gl_FrontFacing ? 1.0 : -1.0), clothH, vCloth > 0.5 ? 0.6 : 0.0);
-        float clothLight = 0.5 + 0.45 * max(0.0, dot(clothN, normalize(vec3(-0.45, 0.75, 0.5)))) + 0.12 * max(0.0, clothN.y);
-        outgoingLight *= clothLight;
-        #include <opaque_fragment>`);
-    }
+      .replace('#include <common>', `#include <common>\n${GLSL}`)
+      .replace('#include <color_fragment>', '#include <color_fragment>\nfloat clothH = clothHeight(vClothAt, vCloth);\ndiffuseColor.rgb = clothTone(diffuseColor.rgb, vClothAt, vCloth, clothH);')
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nif (vCloth > 0.5) normal = clothBump(-vViewPosition, normal, clothH, 0.6);')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif (vCloth > 0.5) roughnessFactor = vCloth > 2.5 && vCloth < 3.5 ? 0.55 : 0.95;')
+      .replace('#include <specularmap_fragment>', '#include <specularmap_fragment>\nif (vCloth > 0.5) specularStrength = vCloth > 2.5 && vCloth < 3.5 ? 0.5 : 0.04;');
   };
-  material.customProgramCacheKey = () => `fabric-${lit}-${scale}`;
+  material.customProgramCacheKey = () => `fabric-${scale}`;
   return material;
 }
 

@@ -13,8 +13,8 @@
 //
 // They stand in the walk scene at the walker's feet - where the planet's bend is
 // nothing, so they are drawn flat - turned the way the walker faces, a little behind
-// the eye as hips are, and posed from what the walker is doing. Unlit like the map; the
-// fabric shades itself (cloth.js).
+// the eye as hips are, and posed from what the walker is doing. Unlike the map it is
+// lit, by lights of its own as the hand held before the eye is, in the same material.
 //
 // Implements: REQ-WALK-059
 
@@ -22,9 +22,8 @@ import * as THREE from '../vendor/three.module.min.js';
 import { clone as cloneRigged } from '../vendor/SkeletonUtils.js';
 import { loadBody } from './bodymodel.js';
 import { closeHand, closeFinger } from './hands.js';
-import { viewLights } from './tools.js';
+import { viewLights, skinMaterial } from './tools.js';
 import { EYE } from './walkbase.js';
-import { fabric } from './cloth.js';
 
 const HIP = 0.245;   // the hips over the feet, as the model has them
 const SIT = 0.22;    // the eye over a seat (play.js)
@@ -80,10 +79,12 @@ export class Body {
     this.phase = 0;     // the stride
     this.showHead = false; // the head, for a view from outside the walker's own eye
     this.carried = { L: null, R: null }; // what each hand holds seen from behind
-    // Lit as a held tool is: nothing else in the map is lit, so this reaches only a
-    // tool carried in the body's hand.
-    this.group.add(viewLights());
-    scene.scene.add(this.group);
+    // Lit as the hand held before the eye is, by the same lights from where the view
+    // is (update): nothing else in the map is lit, so these reach only the body and a
+    // tool carried in its hand.
+    this.lights = viewLights();
+    this.lights.visible = false;
+    scene.scene.add(this.group, this.lights);
   }
 
   /** Dresses the body for `style`, once the model is in. */
@@ -104,8 +105,13 @@ export class Body {
       o.visible = o === pick;
       if (o !== pick) continue;
       o.geometry = prepare(o.geometry);
-      // A weave every couple of centimeters: 180 to a unit of the map.
-      o.material = fabric(new THREE.MeshBasicMaterial({ vertexColors: true }), 180, { lit: false });
+      // Skin and cloth as the hand held before the eye has them, lit as it is - the
+      // weave every couple of centimeters, coarser than the hand's, as it is seen
+      // further off.
+      o.material = skinMaterial(BODY_WEAVE);
+      o.material.vertexColors = true;
+      o.material.color.set('#ffffff');
+      o.material.side = THREE.FrontSide;
       o.frustumCulled = false;
     }
     this.bones = new Map();
@@ -132,8 +138,11 @@ export class Body {
    */
   update(w, deltaTime) {
     const shown = w.active && !w.arrival && w.dying === null && !!this.rig;
-    this.group.visible = shown;
+    this.group.visible = this.lights.visible = shown;
     if (!shown) return;
+    const view = this.scene.walkCamera;
+    view.updateWorldMatrix(true, false);
+    view.matrixWorld.decompose(this.lights.position, this.lights.quaternion, AT);
     const p = w.p, sit = sitting(w);
     // Sitting, the eye is SIT over the seat and the hips on it.
     const eye = p.feet + EYE + (w.eyeShift || 0), seat = eye - SIT;
@@ -328,6 +337,7 @@ export class Body {
 
   dispose() {
     this.group.removeFromParent();
+    this.lights.removeFromParent();
   }
 }
 
@@ -352,6 +362,9 @@ function point(bone, head, goal, tip = bone.children.find(c => c.isBone)) {
   bone.quaternion.copy(PARENT.invert().multiply(SWING).multiply(EYE_TURN));
   bone.updateMatrixWorld(true);
 }
+
+// How many times a weave repeats along a unit of the map: some 2 cm.
+const BODY_WEAVE = 180;
 
 // How closed a hand is: relaxed, round a ball, and holding on to a ride.
 const RELAXED = 0.3, BALL_GRIP = 0.4, GRIPPED = 0.85;

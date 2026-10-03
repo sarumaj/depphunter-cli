@@ -248,9 +248,9 @@ The hands and forearms shown in walk mode are a rigged model, prepared by
 `scripts/hand.py` in Blender and exported by `scripts/body.py` to
 `web/static/body.glb`. The script is
 the source, so the model can be read and regenerated rather than being a binary
-that cannot be modified. They are also the only lit objects on the map: the walk
-camera carries its own lights (and the body, seen from behind, the same for a tool
-in its hand) and every other material is unlit, which preserves
+that cannot be modified. They and the walker's body are also the only lit objects on
+the map: the walk camera carries its own lights, the body the same from where the
+view is, and every other material is unlit, which preserves
 the city's flat, data-led coloring.
 
 The trees and bushes follow the same arrangement. `scripts/props.py` takes a CC0
