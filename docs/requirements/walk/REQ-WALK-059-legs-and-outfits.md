@@ -28,8 +28,10 @@ it, turned the way the walker looks.
 
 The legs **shall** be posed:
 
-- striding as they walk, the lower foot on the ground; tucked in the air; a
-  leg at a time up a ladder;
+- striding as they walk, the lower foot on the ground; running, quicker and
+  longer, the knee driven up ahead, the heel tucked up behind as the leg comes
+  through and the body leaning into it, the head kept level; tucked in the
+  air; a leg at a time up a ladder;
 - sitting on a swing, a seesaw or a rider - on the seat, thighs along it,
   shins hanging - astride a bobby car, the thighs turned out round its body and
   the feet down beside it, and out straight down a slide, leaning back along
@@ -53,9 +55,10 @@ There **shall** be one pair of hands at a time, and always on the shoulders:
 while a tool or a ball is held before the eye, those are the hands seen and the
 body's arms are not drawn; empty-handed, or looking down past what is held -
 which sinks out of the view as the eye goes down - the body's own arms are the
-hands. The arms **shall** hang a little forward at rest, the hands before the
-thighs; swing against the legs walking, further and bent at the elbow
-running; go out for balance in the air; climb a ladder hand over hand; hold on
+hands, and they hold what was held: a tool before the chest as the view held it,
+a ball between them. The arms **shall** hang a little forward at rest, the hands before the
+thighs; swing against the legs walking, and pump from the shoulder running,
+bent near square at the elbow; go out for balance in the air; climb a ladder hand over hand; hold on
 to a ride - a swing's chains, a seesaw's or a rider's handles, a car's wheel, a
 roundabout's rail, a chute's sides - as far as the walker is sat on it; and be
 thrown forward and back against a kick. The shoulders **shall** turn a little
@@ -98,7 +101,8 @@ where the walker is as plainly as the sky does.
 6. Looking straight down shows the top of the chest - a T-shirt, a coverall
    or a spacesuit - and the toes past it, and no inside of the body.
 7. Holding a tool, looking down sinks the tool out of view and shows the
-   body's arms instead; never two pairs of hands, never none.
+   body's arms instead, holding it; never two pairs of hands, never none, and
+   never a tool in neither.
 8. Walking, the left arm swings forward with the right leg; on a bobby car the
    hands are on the wheel.
 9. Looking down empty-handed shows the same hand, glove and cuff as holding a

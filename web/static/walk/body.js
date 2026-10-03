@@ -6,10 +6,10 @@
 // Its hands are the hand held before the eye (hands.js), at the body's scale, and close
 // as that one does. One pair of hands at a time: while a tool or a ball is held before
 // the eye (walk.js) the body's arms are folded away, and they are the hands seen
-// otherwise - empty-handed, or looking down past what is held. The head is the eye's,
-// so it is drawn only for a view from outside it: seen from behind (walk.js
-// thirdPerson), where the body holds what is in hand - a tool where the view holds it,
-// a ball carried before the chest.
+// otherwise - empty-handed, or looking down past what is held, which they then hold, as
+// they do seen from behind (walk.js bodyHolds): a tool where the view holds it, a ball
+// carried before the chest. The head is the eye's, so it is drawn only for a view from
+// outside it (walk.js thirdPerson).
 //
 // They stand in the walk scene at the walker's feet - where the planet's bend is
 // nothing, so they are drawn flat - turned the way the walker faces, a little behind
@@ -161,7 +161,8 @@ export class Body {
     const behind = BEHIND + (w.thirdPerson ? 0 : STOOP * Math.min(1, Math.max(0, -p.pitch) / (Math.PI / 2)));
     const hipsAt = HIPS.set(p.x + Math.sin(yaw) * behind, y + HIP, p.z + Math.cos(yaw) * behind);
     this.tilt(this.lean, yaw, hipsAt);
-    this.phase = (this.phase + deltaTime * 7.5 * Math.max(0.5, w.pace || 0)) % (Math.PI * 2);
+    // Running, the strides come quicker as well as longer.
+    this.phase = (this.phase + deltaTime * 7.5 * Math.max(0.5, w.pace || 0) * (1 + 0.15 * running(w))) % (Math.PI * 2);
     const pose = posture(w, this.phase, performance.now(), room);
     for (const name of ['thigh_L', 'thigh_R', 'shin_L', 'shin_R', 'foot_L', 'foot_R']) this.turn(name, pose[name] || 0, pose[`${name}_out`] || 0);
     // Sat, no foot goes under what is beneath it - the chute ahead, the ground: the
@@ -183,9 +184,9 @@ export class Body {
         this.tilt(this.lean, yaw, hipsAt);
       }
     }
-    // The legs lean about the hips; the torso stays upright under the eye, turning a
-    // little against the stride as a walker's shoulders do.
-    this.turn('spine', this.lean, (pose.twist || 0));
+    // The legs lean about the hips; the torso stays upright under the eye - but for a
+    // runner's lean - turning a little against the stride as a walker's shoulders do.
+    this.turn('spine', this.lean + (pose.lean || 0), (pose.twist || 0));
     // The arms: as they swing or hold on - or folded away, while the hands held before
     // the eye are the ones seen.
     const arms = w.bodyArms?.() ?? true;
@@ -203,9 +204,9 @@ export class Body {
     if (grips) for (const [i, side] of ['L', 'R'].entries()) this.armTo(side, grips[i], holding);
     // Seen from behind, the tools are in the body's hands, which close round them;
     // otherwise the hands are as the pose has them.
-    const third = w.thirdPerson && !w.riding && !w.ballHeld;
-    this.carry('R', third ? w.viewmodel : null);
-    this.carry('L', third ? w.offhand : null);
+    const holds = w.bodyHolds && !w.riding && !w.ballHeld;
+    this.carry('R', holds ? w.viewmodel : null);
+    this.carry('L', holds ? w.offhand : null);
     for (const side of ['L', 'R']) {
       const held = this.carried[side];
       if (held) this.reach(side, held, w);
@@ -214,10 +215,11 @@ export class Body {
     }
     // The head looks where the eye does, as far as a neck turns.
     const glance = Math.max(-1.4, Math.min(1.4, Math.atan2(Math.sin(p.yaw - yaw), Math.cos(p.yaw - yaw))));
-    this.turn('head', Math.max(-0.9, Math.min(0.7, p.pitch)), glance);
+    // ... level however the body leans running.
+    this.turn('head', Math.max(-0.9, Math.min(0.7, p.pitch)) + (pose.lean || 0), glance);
     this.bones.get('head')?.bone.scale.setScalar(this.showHead || w.thirdPerson ? 1 : 1e-4);
-    // A ball carried seen from behind is between the hands.
-    if (w.thirdPerson && w.ballHeld && arms) {
+    // A ball the body carries is between the hands.
+    if (w.bodyHolds && w.ballHeld && arms) {
       this.rig.updateMatrixWorld(true);
       const left = this.bones.get('hand_L')?.bone.getWorldPosition(AT), right = this.bones.get('hand_R')?.bone.getWorldPosition(ON);
       if (left && right) w.ballHeld.mesh.position.addVectors(left, right).multiplyScalar(0.5).add(HELD.set(-Math.sin(yaw), 0, -Math.cos(yaw)).multiplyScalar(0.03));
@@ -277,7 +279,8 @@ export class Body {
     // ... before the walker's own eye, at the body's scale: where the hand bone goes.
     const p = w.p, rest = handRest(), s = handScale;
     EYE_AT.set(p.x, p.feet + EYE + (w.eyeShift || 0), p.z);
-    EYE_TURN.setFromEuler(LOOK.set(p.pitch, p.yaw, 0, 'YXZ'));
+    // Looking down, the hands stay before the chest, where the eye looks down at them.
+    EYE_TURN.setFromEuler(LOOK.set(Math.max(p.pitch, HOLD_PITCH), p.yaw, 0, 'YXZ'));
     BONE_GOAL.compose(EYE_AT, EYE_TURN, ONE).multiply(SCALED.makeScale(s, s, s)).multiply(GOAL)
       .multiply(rest).multiply(SCALED.makeScale(1 / s, 1 / s, 1 / s));
     if (side === 'L') BONE_GOAL.multiply(MIRROR);
@@ -371,8 +374,9 @@ const BODY_WEAVE = 180;
 // How closed a hand is: relaxed, round a ball, and holding on to a ride.
 const RELAXED = 0.3, BALL_GRIP = 0.4, GRIPPED = 0.85;
 
-// How far out a tool is held, of the arm's reach, and how much lower than the view has it.
-const HOLD_IN = 0.8, HOLD_LOW = 0.5;
+// How far out a tool is held, of the arm's reach, and how much lower than the view has it;
+// and how far down the hands go with the look.
+const HOLD_IN = 0.8, HOLD_LOW = 0.5, HOLD_PITCH = -0.3;
 
 // From the first-person hand's space (hand_rig) to the space of a body's hand bone: the
 // wrist's rest undone and scaled down to the body. The left hand's bone is the right's
@@ -391,6 +395,15 @@ function handToBone() {
 function handRest() {
   handToBone();
   return wristRest;
+}
+
+// How far forward the body leans running.
+const RUN_LEAN = 0.16;
+
+/** How far from walking to running the walker's pace is, 0 to 1. */
+export function running(w) {
+  const t = Math.max(0, Math.min(1, ((w.pace || 0) - 1) / 0.5));
+  return t * t * (3 - 2 * t);
 }
 
 /**
@@ -420,12 +433,21 @@ export function posture(w, phase, now, room = Infinity) {
     const up = Math.max(0, Math.sin(phase * 1.3));
     Object.assign(pose, { thigh_L: up * 1.1, thigh_R: (1 - up) * 1.1, shin_L: -up * 1.4, shin_R: -(1 - up) * 1.4 });
   } else {
-    const stride = Math.sin(phase) * 0.42 * Math.min(1.3, pace) * (1 - sit);
-    Object.assign(pose, {
-      thigh_L: stride, thigh_R: -stride,
-      shin_L: -Math.max(0, -Math.sin(phase + 0.9)) * 0.9 * Math.min(1.3, pace) * (1 - sit),
-      shin_R: -Math.max(0, Math.sin(phase + 0.9)) * 0.9 * Math.min(1.3, pace) * (1 - sit),
+    // Each leg `at` its own point of the stride: walking, it swings about the hip and
+    // the knee gives as it comes through; running, it swings further ahead than behind,
+    // the heel tucked up under the seat as it comes through and the knee driven up,
+    // and the knee never quite straight.
+    const reach = Math.min(1.3, pace) * (1 - sit), run = running(w) * (1 - sit);
+    const leg = (at, k) => ({
+      thigh: (1 - run) * Math.sin(at) * 0.42 * reach + run * (0.25 + 0.6 * Math.sin(at)),
+      shin: -((1 - run) * Math.max(0, -Math.sin(at + 0.9)) * 0.9 * reach + run * (0.3 + 1.5 * Math.max(0, Math.cos(at - 0.3)))),
+      k,
     });
+    for (const { thigh, shin, k } of [leg(phase, 'L'), leg(phase + Math.PI, 'R')]) {
+      pose[`thigh_${k}`] = thigh;
+      pose[`shin_${k}`] = shin;
+    }
+    pose.lean = RUN_LEAN * run;
   }
   if (sit > 0) {
     // Thighs out along the seat; shins hanging - no lower than the room under the seat
@@ -449,7 +471,7 @@ export function posture(w, phase, now, room = Infinity) {
 // How each arm is held, ride by ride: the upper arm forward, the forearm bent up from the
 // elbow and the arm out from the side - holding a swing's chains, the handles of a
 // seesaw or a rider, a car's wheel, a roundabout's rail, the sides of a chute.
-const REST_ARM = [0.3, 0.55, -0.04];
+const REST_ARM = [0.15, 0.4, -0.04];
 const HOLDS = {
   swing: [0.35, 1.7, 0.12],
   rock: [0.8, 0.9, -0.05],
@@ -477,10 +499,13 @@ function arms(pose, w, phase, sit, kick) {
     const [f, o] = pose[`upperarm_${side}`], [b] = pose[`forearm_${side}`];
     set(side, f + (forward - f) * k, b + (bend - b) * k, o + (out - o) * k);
   };
-  const swing = Math.sin(phase) * 0.45 * Math.min(1.3, pace) * (1 - sit), running = Math.max(0, pace - 1.1) * 1.8;
-  // At rest a little forward and bent at the elbow, the hands before the thighs.
-  set('L', REST_ARM[0] - swing, REST_ARM[1] + Math.max(0, -swing) * 0.6 + running, REST_ARM[2]);
-  set('R', REST_ARM[0] + swing, REST_ARM[1] + Math.max(0, swing) * 0.6 + running, REST_ARM[2]);
+  // At rest a little forward and bent at the elbow, the hands before the thighs;
+  // walking, swinging against the legs; running, pumping from the shoulder, bent near
+  // square at the elbow, the hands passing the hips.
+  const run = running(w) * (1 - sit), swing = Math.sin(phase) * (0.3 + 0.1 * run) * Math.min(1.3, pace) * (1 - sit);
+  const forward = REST_ARM[0] + (0.05 - REST_ARM[0]) * run, bent = REST_ARM[1] + (1.3 - REST_ARM[1]) * run;
+  set('L', forward - swing, bent + Math.max(0, -swing) * 0.3, REST_ARM[2]);
+  set('R', forward + swing, bent + Math.max(0, swing) * 0.3, REST_ARM[2]);
   pose.twist = -swing * 0.25;
   if (!p.ground && !r && sit === 0) {
     set('L', 0.35, 0.5, 0.5);
@@ -503,9 +528,9 @@ function arms(pose, w, phase, sit, kick) {
     towards('L', 0.9, 0.6, 0.3, kick);
     towards('R', -0.6, 0.3, 0.6, kick);
   }
-  // Seen from behind, a ball is carried before the chest in both hands. A tool is held
-  // where the view holds it (Body.reach).
-  if (w.thirdPerson && !r && w.ballHeld) {
+  // Seen from behind or looking down, a ball is carried before the chest in both hands. A
+  // tool is held where the view holds it (Body.reach).
+  if (w.bodyHolds && !r && w.ballHeld) {
     towards('L', 1.0, 1.1, -0.25, 1);
     towards('R', 1.0, 1.1, -0.25, 1);
     pose.grip_L = pose.grip_R = BALL_GRIP;

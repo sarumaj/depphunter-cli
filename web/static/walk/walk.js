@@ -1172,17 +1172,18 @@ export class Walker {
   /**
    * Looking down past ARMS_DOWN, what is held before the eye - a tool, a ball - sinks
    * out of the view, and once it is gone the body's own arms are the ones drawn
-   * (body.js): one pair of hands at a time, and always on the shoulders.
+   * (body.js), holding it: one pair of hands at a time, and always on the shoulders.
    */
   lowerArms() {
     const t = clamp((-this.p.pitch - ARMS_DOWN[0]) / (ARMS_DOWN[1] - ARMS_DOWN[0]), 0, 1), down = t * t * (3 - 2 * t);
+    // Seen from behind, or looking down, the body holds what is in hand.
+    this.bodyHolds = this.thirdPerson || down >= 1;
     for (const held of [this.held, this.ballView]) {
       if (!held) continue;
       held.position.y = -down * SUNK;
-      // Seen from behind, nothing is held before the eye: the body holds it.
-      held.visible = down < 1 && !this.thirdPerson;
+      held.visible = !this.bodyHolds;
     }
-    if (this.ballHeld) this.ballHeld.mesh.visible = this.thirdPerson;
+    if (this.ballHeld) this.ballHeld.mesh.visible = this.bodyHolds;
   }
 
   /**

@@ -626,6 +626,14 @@ describe('what the walker wears, and how their legs go', () => {
     assert.ok(astride.thigh_L_out < -0.5 && astride.thigh_R_out > 0.5 && astride.thigh_L > 1.3, `astride a car ${JSON.stringify(astride)}`);
     // The arms swing against the legs walking, hold on to a ride, and are thrown
     // forward and back against a kick.
+    // Running, the knees come higher, the heels kick up further, the body leans
+    // forward and the elbows bend near square.
+    const most = (pace, joint, sign) => Math.max(...Array.from({ length: 64 }, (_, k) => sign * posture(at({ pace }), k * Math.PI / 32, 0)[joint]));
+    assert.ok(most(1.5, 'thigh_L', 1) > most(1, 'thigh_L', 1) + 0.25, 'running, the knee is no higher');
+    assert.ok(most(1.5, 'shin_L', -1) > most(1, 'shin_L', -1) + 0.6, 'running, the heel kicks up no further');
+    const sprint = posture(at({ pace: 1.5 }), 0, 0);
+    assert.ok(sprint.lean > 0.1 && !posture(at(), 0, 0).lean, 'running, the body does not lean into it');
+    assert.ok(sprint.forearm_L[0] > 1.2, `running, the elbow bends ${sprint.forearm_L[0].toFixed(2)}`);
     const walking = posture(at(), 0.5, 0);
     assert.ok(walking.thigh_L > 0 && walking.upperarm_L[0] < walking.upperarm_R[0], 'the left arm swings with the left leg');
     const seated = posture(at({ riding: { entry: { ride: 'drive' }, blend: 1 } }), 0, 0);
@@ -711,7 +719,7 @@ describe('empty hands', () => {
   });
 
   // Verifies: REQ-WALK-059
-  it('shows one pair of hands: what is held before the eye, or the body\'s own arms looking down', () => {
+  it('shows one pair of hands: what is held before the eye, or the body\'s own arms holding it looking down', () => {
     const w = holding();
     const camera = new THREE.PerspectiveCamera();
     Object.assign(w, {
@@ -725,6 +733,8 @@ describe('empty hands', () => {
       w.lowerArms();
       assert.equal(w.held.visible, held, `looking ${pitch} down, the tool is ${w.held.visible ? '' : 'not '}in view`);
       assert.equal(w.bodyArms(), !held, 'two pairs of hands, or none');
+      // Gone from the view, the tool is in the body's hands: never in neither.
+      assert.equal(w.bodyHolds, !held, `looking ${pitch} down, nothing holds the tool`);
     }
     w.p.pitch = -0.7;
     w.lowerArms();
