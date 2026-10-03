@@ -23,6 +23,8 @@ import { CONTACT } from './body.js';
 const RIDE_REACH = 0.5;     // how near a seat, a deck or a ladder has to be to get on
 const SIT = 0.22;           // the eye over a seat
 const BESIDE_BAR = 0.04;    // a roundabout's rider from the bar they hold on to
+const CLIMB_REACH = 0.42;   // how far over their feet a climber reaches for a rung ...
+const CLIMB_LOW = 0.12;     // ... and how near them a rung is too low to hold
 const REAL_G = 2.76;        // gravity in units, a unit being 3.55 m: what a swing swings by
 const BALL_G = 4;           // ... and a ball falls by, a little brisker than the truth
 const PICK = 0.45;          // how near a ball has to be to pick up, or to kick
@@ -63,7 +65,7 @@ const floorKey = (gx, gz) => (gx + 32768) * 65536 + (gz + 32768);
 
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), v4 = new THREE.Vector3();
 const m1 = new THREE.Matrix4();
-const GRIPS = [new THREE.Vector3(), new THREE.Vector3()];
+const GRIPS = [0, 1].map(() => ({ at: new THREE.Vector3(), along: new THREE.Vector3() }));
 
 /**
  * Which of the STRENGTH levels a ball is sent at after the button has been held `held`
@@ -478,25 +480,69 @@ export const play = {
   /**
    * What the hands hold on to on a ride - a swing's chains, a seesaw's or a spring
    * rider's handles, a car's wheel, the bar of a roundabout nearest where the walker
-   * stands - as world points, the left hand's first; null for a ride with none.
+   * stands, a slide's ladder's rungs climbing it - as where in the world each hand goes
+   * (`at`) and which way what it holds runs there (`along`), the left hand's first, or
+   * null for a hand that holds nothing; null for a ride, or a part of one, with nothing
+   * to hold.
    */
   rideGrips() {
     const r = this.riding, e = r?.entry;
-    let grips = e?.grips;
-    if (e?.bars) {
+    if (!e) return null;
+    let grips = e.grips, along = e.along || [0, 1, 0];
+    if (e.bars) {
       // Along the nearest bar, either side of the point on it nearest the walker.
       const bar = Math.round(r.spot / e.bars.every) * e.bars.every, out = e.r * Math.cos(r.spot - bar);
       grips = [-1, 1].map(s => {
-        const along = Math.min(e.bars.to, Math.max(0.03, out + s * 0.025));
-        return [Math.cos(bar) * along, e.bars.y, Math.sin(bar) * along];
+        const reach = Math.min(e.bars.to, Math.max(0.03, out + s * 0.025));
+        return [Math.cos(bar) * reach, e.bars.y, Math.sin(bar) * reach];
       });
+      along = [Math.cos(bar), 0, Math.sin(bar)];
     }
+    if (e.rungs) return r.s < r.marks.top ? this.rungGrips(r) : null;
     if (!grips) return null;
     const at = (local, out) => (e.ride === 'drive' ? this.carPoint(r.it, e, local, out) : rigPoint(r.it, r.it.spec, r.rig, r.angle, local, out));
-    const [a, b] = grips.map((local, i) => at(local, GRIPS[i]));
-    // The left hand's is the one further to the body's left.
-    const yaw = this.rideYaw(), right = (v) => v.x * Math.cos(yaw) - v.z * Math.sin(yaw);
-    return right(a) <= right(b) ? GRIPS : [b, a];
+    const out = this.leftFirst(grips.map((local, i) => {
+      const point = at(local, GRIPS[i].at);
+      const ahead = at(local.map((c, k) => c + along[k] * 0.01), v1);
+      GRIPS[i].along.subVectors(ahead, point).normalize();
+      return GRIPS[i];
+    }));
+    // A roundabout's bar runs by the walker's one side: the hand on that side holds it,
+    // not one reaching across the body.
+    if (e.bars) {
+      const yaw = this.rideYaw(), side = (out[0].at.x + out[1].at.x) / 2 - this.p.x, across = side * Math.cos(yaw) - ((out[0].at.z + out[1].at.z) / 2 - this.p.z) * Math.sin(yaw);
+      return across < 0 ? [out[0], null] : [null, out[1]];
+    }
+    return out;
+  },
+
+  /**
+   * Climbing a slide's ladder, hand over hand: each hand on the highest rung it reaches,
+   * the left on every other one and the right on those between; at the top, with no
+   * rung left over the feet, nothing.
+   */
+  rungGrips(r) {
+    const e = r.entry, it = r.it, a = it.spec, top = this.p.feet + CLIMB_REACH;
+    const best = [null, null];
+    e.rungs.forEach((rung, k) => {
+      const y = onAmenity(it, a, rung, v1).y;
+      if (y <= top && y > this.p.feet + CLIMB_LOW && (!best[k % 2] || y > best[k % 2].y)) best[k % 2] = { y, rung };
+    });
+    if (!best[0] || !best[1]) return null;
+    const out = best.map(({ rung }, i) => {
+      const side = i ? 1 : -1, local = [rung[0], rung[1], rung[2] + side * e.rungHalf * 0.55];
+      onAmenity(it, a, local, GRIPS[i].at);
+      const ahead = onAmenity(it, a, [local[0], local[1], local[2] + 0.01], v1);
+      GRIPS[i].along.subVectors(ahead, GRIPS[i].at).normalize();
+      return GRIPS[i];
+    });
+    return this.leftFirst(out);
+  },
+
+  // The two grips, the one further to the body's left first.
+  leftFirst([a, b]) {
+    const yaw = this.rideYaw(), right = g => g.at.x * Math.cos(yaw) - g.at.z * Math.sin(yaw);
+    return right(a) <= right(b) ? [a, b] : [b, a];
   },
 
   /** Where an amenity's car is: off its spot once driven - { x, z, yaw, speed }, as its model has them. */

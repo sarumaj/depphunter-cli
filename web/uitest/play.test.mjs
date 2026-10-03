@@ -49,10 +49,12 @@ function walker(a, at, to, turn = 0) {
 /** Steps the walker's play for `seconds`, the keys in `keys` held. */
 /** That the walker on a ride has something to hold on to within reach, left hand on the left: `what` names it. */
 function holdsOn(w, what) {
-  const grips = w.rideGrips();
-  assert.ok(grips, `nothing to hold on to on ${what}`);
+  const both = w.rideGrips(), grips = both?.filter(Boolean).map(g => g.at);
+  assert.ok(grips?.length, `nothing to hold on to on ${what}`);
   const facing = w.rideYaw(), across = v => (v.x - w.p.x) * Math.cos(facing) - (v.z - w.p.z) * Math.sin(facing);
-  assert.ok(across(grips[0]) <= across(grips[1]) + 1e-9, `the hands cross on ${what}`);
+  if (grips.length === 2) assert.ok(across(grips[0]) <= across(grips[1]) + 1e-9, `the hands cross on ${what}`);
+  // A hand on one side only holds on on that side.
+  else assert.ok(both[0] ? across(grips[0]) < 0 : across(grips[0]) > 0, `a hand reaches across the body on ${what}`);
   for (const g of grips) {
     const off = Math.hypot(g.x - w.p.x, g.z - w.p.z), up = g.y - w.p.feet;
     assert.ok(off < 0.4 && up > 0.1 && up < EYE, `a hand on ${what} ${off.toFixed(2)} away and ${up.toFixed(2)} up`);
@@ -132,6 +134,9 @@ describe('playing in the parks', () => {
   it('pumps a swing higher and flings the walker off it, and turns a walker with a roundabout', () => {
     const { w } = walker(PLAYGROUND, seat, [1, 0, swing.pivot[2]]);
     w.playClick();
+    run(w, 0.5); // sat down
+    holdsOn(w, 'a swing');
+    assert.ok(w.rideGrips().every(g => Math.abs(g.along.y) > 0.9), 'a swing\'s chains held as if they ran across');
     let highest = 0;
     for (let t = 0; t < 12; t += FRAME) {
       w.keys.add('KeyW');
@@ -184,11 +189,24 @@ describe('playing in the parks', () => {
     const slide = PLAYGROUND.play.find(e => e.ride === 'slide');
     const { w } = walker(PLAYGROUND, slide.path[0], slide.path[1]);
     assert.equal(w.playClick(), true);
-    let top = 0;
+    let top = 0, held = 0;
     for (let t = 0; t < 10 && w.riding; t += FRAME) {
       w.rideStep(FRAME);
       top = Math.max(top, w.p.feet);
+      // Up the ladder hand over hand: each hand on a rung of its own, within reach.
+      if (w.riding && w.riding.s < w.riding.marks.top && w.p.feet > 0.05) {
+        const [left, right] = w.rideGrips() || [];
+        if (w.p.feet < 0.22) assert.ok(left && right, `nothing to climb by at ${w.p.feet.toFixed(2)} up`);
+        if (!left) continue;
+        for (const g of [left, right]) {
+          assert.ok(g.at.y > w.p.feet && g.at.y <= w.p.feet + 0.43, `a hand on a rung ${(g.at.y - w.p.feet).toFixed(2)} over the feet`);
+          assert.ok(Math.abs(g.along.y) < 0.1, 'a rung that is not across the ladder');
+        }
+        assert.ok(Math.abs(left.at.y - right.at.y) > 0.05, 'both hands on the one rung');
+        held++;
+      }
     }
+    assert.ok(held > 10, 'the ladder was not climbed by the hands');
     assert.equal(w.riding, null, 'still on the slide after ten seconds');
     assert.ok(top > 0.4, `the walker climbed to ${top.toFixed(2)}`);
     const end = onAmenity({ x: 0, y: 0, z: 0, turn: 0 }, PLAYGROUND, slide.path.at(-1));
@@ -217,6 +235,7 @@ describe('playing in the parks', () => {
     }
     assert.ok(most > 0.1, `the transistor rocked ${most.toFixed(2)}`);
     holdsOn(w, 'a transistor');
+    assert.ok(w.rideGrips().every(g => Math.abs(g.along.y) < 0.2), 'a handlebar held as if it ran up and down');
   });
 
   // Verifies: REQ-WALK-057
@@ -283,7 +302,7 @@ describe('playing in the parks', () => {
     }
     w.p.yaw = w.rideYaw();
     // The hands on the wheel: a little ahead of the driver, one either side of it.
-    const facing = w.rideYaw(), [leftHand, rightHand] = w.rideGrips();
+    const facing = w.rideYaw(), [leftHand, rightHand] = w.rideGrips().map(g => g.at);
     const across = v => (v.x - w.p.x) * Math.cos(facing) - (v.z - w.p.z) * Math.sin(facing);
     const ahead = v => -(v.x - w.p.x) * Math.sin(facing) - (v.z - w.p.z) * Math.cos(facing);
     assert.ok(across(leftHand) < 0 && across(rightHand) > 0, 'the hands crossed on the wheel');

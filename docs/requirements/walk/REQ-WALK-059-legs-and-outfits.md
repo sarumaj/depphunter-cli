@@ -108,8 +108,11 @@ where the walker is as plainly as the sky does.
    hands are on the wheel.
 9. Looking down empty-handed shows the same hand, glove and cuff as holding a
    tool does, the fingers a little curled; holding on to a ride, closed.
-10. On a swing, a seesaw, a spring rider, a roundabout and a bobby car the hands
-    are on its chains, handles, handlebar, bar or wheel, one each side; on a
-    roundabout the walker stands beside the bar they hold.
+10. On a swing, a seesaw, a spring rider and a bobby car the hands are on its
+    chains, handles, handlebar or wheel, one each side; on a roundabout the walker
+    stands beside the bar they hold, with the hand on that side; up a slide's
+    ladder, hand over hand on its rungs. Each fist is closed round what it holds,
+    the chain, bar or rung running across the palm, not the wrist on it and the
+    fingers in the air.
 11. The body is a person's - a face, shoulders, elbows and knees as a body has
     them - in every style, and the edges of what is worn run straight round it.

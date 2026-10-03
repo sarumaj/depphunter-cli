@@ -35,7 +35,7 @@ function shifted(entry, dx, dz, base) {
   const out = {};
   for (const [key, v] of Object.entries(entry)) {
     if (key === 'rig') out.rig = v + base;
-    else if (key === 'seat' || key === 'grips') out[key] = v;
+    else if (key === 'seat' || key === 'grips' || key === 'along') out[key] = v;
     else if (key === 'area') out.area = [v[0] + dx, v[1] + dz, v[2] + dx, v[3] + dz];
     else if (isPoint(v)) out[key] = moved(v, dx, dz);
     else if (Array.isArray(v) && v.length && v.every(isPoint)) out[key] = v.map(p => moved(p, dx, dz));
@@ -84,7 +84,7 @@ function domeEdges(r) {
 
 // ------------------------------------------------------------------ playground pieces
 
-const GRIP_UP = 0.05; // a swing's chains held this far over its seat
+const GRIP_UP = 0.075; // a swing's chains held this far over its seat
 
 // A swing set: an A-frame at each end of a beam along z, a seat hanging from the beam
 // for each of `seats` (their z), swinging along x.
@@ -102,7 +102,7 @@ function swings(kit, { seats = [-0.13, 0.13], h = 0.32, seatY = 0.07, nest = fal
     p.rigs.push({ geo, at: [0, h, z], axis: 'z' });
     // Held by its chains, a little over the seat; a nest is lain in, not held.
     const grips = nest ? undefined : [-0.04, 0.04].map(cz => [0, GRIP_UP - length, cz]);
-    p.play.push({ ride: 'swing', rig: p.rigs.length - 1, pivot: [0, h, z], length, grips });
+    p.play.push({ ride: 'swing', rig: p.rigs.length - 1, pivot: [0, h, z], length, grips, along: [0, 1, 0] });
   }
   p.glows.push(...(kit.glowsOn?.swings?.(h, z0, z1) || []));
   return p;
@@ -128,14 +128,18 @@ function chute(h, run, hex) {
   return painted(geo, hex);
 }
 
+// A ladder's rungs up to `h`, each the middle of one: every 6 cm, leaning back from `x`
+// at its foot by `lean` at its top, across z at `z`.
+const ladder = (h, x, lean, z) => Array.from({ length: Math.floor(h / 0.06) }, (_, i) => {
+  const y = 0.06 * (i + 1);
+  return [x + lean * y / h, y, z];
+});
+
 function slide(kit, { h = 0.24, run = 0.38, tower = false } = {}) {
   const curve = Array.from({ length: CHUTE_STEPS + 1 }, (_, i) => chuteAt(h, run, i / CHUTE_STEPS));
   const head = [
     kit.leg([-0.1, 0, -0.05], [-0.01, h, -0.05]), kit.leg([-0.1, 0, 0.05], [-0.01, h, 0.05]),
-    ...Array.from({ length: Math.floor(h / 0.06) }, (_, i) => {
-      const y = 0.06 * (i + 1), x = -0.1 + 0.09 * y / h;
-      return kit.rung([x, y, -0.05], [x, y, 0.05]);
-    }),
+    ...ladder(h, -0.1, 0.09, 0).map(([x, y, z]) => kit.rung([x, y, z - 0.05], [x, y, z + 0.05])),
     ...[[0, -0.06], [0, 0.06], [0.12, -0.06], [0.12, 0.06]].map(([x, z]) => kit.leg([x, 0, z], [x, h, z])),
     block(0.14, 0.015, 0.14, 0.06, h, 0, kit.deck),
     kit.chute?.(h, run) || chute(h, run, kit.slide),
@@ -152,6 +156,7 @@ function slide(kit, { h = 0.24, run = 0.38, tower = false } = {}) {
   p.play.push({
     ride: 'slide', sit: 2,
     path: [[-0.14, 0, 0], [-0.03, h + 0.015, 0], [0.12, h + 0.012, 0], ...curve.slice(1).map(([x, y]) => [x, y + 0.004, 0]), [0.24 + run, PAINT, 0]],
+    rungs: ladder(h, -0.1, 0.09, 0), rungHalf: 0.05,
   });
   p.glows.push(...(kit.glowsOn?.slide?.(h, run) || []));
   return p;
@@ -192,7 +197,7 @@ function seesaw(kit, { length = 0.5 } = {}) {
   p.rigs.push({ geo: plank, at: [0, 0.055, 0], axis: 'z', rest: 0.12 });
   for (const s of [-1, 1]) {
     const grips = [-0.018, 0.018].map(cz => [s * (half - 0.07), 0.06, cz]);
-    p.play.push({ ride: 'rock', rig: 0, pivot: [0, 0.055, 0], seat: [s * (half - 0.035), 0.012, 0], reach: 0.2, grips });
+    p.play.push({ ride: 'rock', rig: 0, pivot: [0, 0.055, 0], seat: [s * (half - 0.035), 0.012, 0], reach: 0.2, grips, along: [0, 0, 1] });
   }
   return p;
 }
@@ -206,7 +211,7 @@ function springRider(kit) {
   // Held by the handlebar, at each end of it.
   const [x, y, half] = kit.handlebar ?? [0.045, 0.13, 0.03];
   const grips = [[x, y, -half * 0.8], [x, y, half * 0.8]];
-  p.play.push({ ride: 'rock', rig: 0, pivot: [0, 0, 0], seat: [0, kit.saddle ?? 0.115, 0], reach: 0.3, grips });
+  p.play.push({ ride: 'rock', rig: 0, pivot: [0, 0, 0], seat: [0, kit.saddle ?? 0.115, 0], reach: 0.3, grips, along: [0, 0, 1] });
   return p;
 }
 
@@ -240,10 +245,7 @@ function pipeSlide(kit) {
     ...[[-0.43, z - 0.06], [-0.43, z + 0.06], [-0.31, z - 0.06], [-0.31, z + 0.06]].map(([x, lz]) => kit.leg([x, 0, lz], [x, h, lz])),
     block(0.14, 0.015, 0.14, -0.37, h, z, kit.deck),
     ...[-0.045, 0.045].map(dz => kit.leg([-0.53, 0, z + dz], [-0.43, h, z + dz])),
-    ...Array.from({ length: Math.floor(h / 0.06) }, (_, i) => {
-      const y = 0.06 * (i + 1), x = -0.53 + 0.1 * y / h;
-      return kit.rung([x, y, z - 0.045], [x, y, z + 0.045]);
-    }),
+    ...ladder(h, -0.53, 0.1, z).map(([x, y, rz]) => kit.rung([x, y, rz - 0.045], [x, y, rz + 0.045])),
     // The bridge to the pipe's mouth, railed.
     block(0.36, 0.015, 0.1, -0.12, h, z, kit.deck),
     ...[-0.05, 0.05].flatMap(dz => [kit.rail([-0.3, h + 0.07, z + dz], [0.04, h + 0.07, z + dz]),
@@ -253,6 +255,7 @@ function pipeSlide(kit) {
   p.play.push({
     ride: 'slide', sit: 2, slick: true,
     path: [[-0.56, 0, z], [-0.43, h + 0.015, z], [-0.01, h + 0.012, z], ...bed.map(([x, y, bz]) => [x, y + 0.004, bz]), [0.38, PAINT, z]],
+    rungs: ladder(h, -0.53, 0.1, z), rungHalf: 0.045,
   });
   return p;
 }
@@ -278,8 +281,8 @@ function bobbyCar(kit) {
   ]);
   const p = piece([]);
   p.rigs.push({ geo: car, at: [0, 0, 0], axis: 'y', rest: Math.PI });
-  // The wheel held at each side of its rim.
-  p.play.push({ ride: 'drive', rig: 0, seat: [-0.03, 0.056, 0], grips: [[0.035, 0.085, -0.018], [0.035, 0.085, 0.018]] });
+  // The wheel held at each side of its rim, where the rim runs up and forward.
+  p.play.push({ ride: 'drive', rig: 0, seat: [-0.03, 0.056, 0], grips: [[0.035, 0.085, -0.018], [0.035, 0.085, 0.018]], along: [0.48, 0.88, 0] });
   return p;
 }
 

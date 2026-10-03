@@ -81,6 +81,7 @@ export class Body {
     this.phase = 0;     // the stride
     this.showHead = false; // the head, for a view from outside the walker's own eye
     this.carried = { L: null, R: null }; // what each hand holds seen from behind
+    this.eased = { L: null, R: null };   // where each hand is holding on to a ride
     // Lit as the hand held before the eye is, by the same lights from where the view
     // is (update): nothing else in the map is lit, so these reach only the body and a
     // tool carried in its hand.
@@ -199,9 +200,21 @@ export class Body {
       this.bones.get(`upperarm_${side}`)?.bone.scale.setScalar(arms ? 1 : 1e-4);
     }
     // On a ride, the hands on what it has to hold on to (play.js rideGrips): as far as
-    // the walker is sat on it, or at once on a roundabout, which is stood on.
-    const holding = r?.entry.ride === 'spin' ? r.blend : sit, grips = holding > 0 && w.rideGrips?.();
-    if (grips) for (const [i, side] of ['L', 'R'].entries()) this.armTo(side, grips[i], holding);
+    // the walker is sat on it, or as far as they have got to it on a roundabout, which is
+    // stood on, and up a ladder, which is climbed.
+    const climbing = r?.entry.ride === 'slide' && r.s < r.marks.top;
+    const holding = r?.entry.ride === 'spin' || climbing ? r.blend : sit, grips = holding > 0 && w.rideGrips?.();
+    for (const [i, side] of ['L', 'R'].entries()) {
+      const grip = grips?.[i];
+      if (!grip) {
+        this.eased[side] = null;
+        continue;
+      }
+      // Eased to a new hold - the next rung up - rather than jumping there.
+      const eased = (this.eased[side] ||= grip.at.clone());
+      eased.lerp(grip.at, Math.min(1, deltaTime * 14));
+      this.grip(side, eased, grip.along, holding);
+    }
     // Seen from behind, the tools are in the body's hands, which close round them;
     // otherwise the hands are as the pose has them.
     const holds = w.bodyHolds && !w.riding && !w.ballHeld;
@@ -302,6 +315,36 @@ export class Body {
   }
 
   /**
+   * Holds on with the hand on `side`, `k` of the way from where the pose has it, to a
+   * bar through `at` running `along`: the fist round it, the bar across the palm.
+   */
+  grip(side, at, along, k) {
+    const wrist = this.bones.get(`hand_${side}`)?.bone, knuckle = this.bones.get(`middle-finger-phalanx-proximal_${side}`)?.bone;
+    if (!wrist || !knuckle) return;
+    this.rig.updateMatrixWorld(true);
+    const posed = wrist.getWorldPosition(POSED);
+    handToBone();
+    // Twice over: where the fist is depends on how the hand is turned, and how it is
+    // turned on where the arm has put it.
+    for (let pass = 0; pass < 2; pass++) {
+      // The fist's middle: at the knuckles, in toward the palm.
+      wrist.getWorldQuaternion(TURNED);
+      const fist = knuckle.getWorldPosition(FIST_AT).sub(wrist.getWorldPosition(AT))
+        .addScaledVector(PALM.set(0, 0, -1).applyQuaternion(TURNED), PALM_DEPTH * handScale);
+      this.armTo(side, GRIP_GOAL.subVectors(at, fist).sub(posed).multiplyScalar(k).add(posed));
+      // The hand turned, by the least turn, so the bar runs across it.
+      wrist.getWorldQuaternion(TURNED);
+      const across = ACROSS.set(1, 0, 0).applyQuaternion(TURNED), bar = BAR.copy(along);
+      if (across.dot(bar) < 0) bar.negate();
+      SWING.setFromUnitVectors(across, bar);
+      SWING.slerp(NO_TURN, 1 - k);
+      wrist.parent.getWorldQuaternion(PARENT);
+      wrist.quaternion.copy(PARENT.invert().multiply(SWING).multiply(TURNED));
+      wrist.updateMatrixWorld(true);
+    }
+  }
+
+  /**
    * Reaches the arm on `side` for `target`, a world point for the wrist, `k` of the way
    * from where the pose has it: the elbow where the arm's lengths put it, bent down and
    * out, and the arm straight toward it when it is out of reach.
@@ -354,6 +397,11 @@ const GOAL = new THREE.Matrix4(), BONE_GOAL = new THREE.Matrix4(), SCALED = new 
 const EYE_AT = new THREE.Vector3(), EYE_TURN = new THREE.Quaternion(), LOOK = new THREE.Euler(), ONE = new THREE.Vector3(1, 1, 1);
 const TARGET = new THREE.Vector3(), TURNED = new THREE.Quaternion(), SIZE = new THREE.Vector3(), POLE = new THREE.Vector3();
 const SHOULDER = new THREE.Vector3(), ELBOW = new THREE.Vector3();
+const POSED = new THREE.Vector3(), FIST_AT = new THREE.Vector3(), PALM = new THREE.Vector3(), GRIP_GOAL = new THREE.Vector3();
+const ACROSS = new THREE.Vector3(), BAR = new THREE.Vector3(), NO_TURN = new THREE.Quaternion();
+// How far in from the knuckles toward the palm a fist's middle is, in the hand model's
+// units (tools.js FIST).
+const PALM_DEPTH = 0.028;
 const FROM = new THREE.Vector3(), TO = new THREE.Vector3(), SWING = new THREE.Quaternion(), PARENT = new THREE.Quaternion();
 
 // Turns `bone`, whose head is at `head`, so that its child (`tip`, or its first bone)
