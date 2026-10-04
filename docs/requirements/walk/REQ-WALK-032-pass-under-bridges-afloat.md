@@ -21,4 +21,4 @@ walker onto every deck they passed beneath was wrong.
 
 ## Acceptance criteria
 
-1. Walking the water on skimmers passes under a bridge instead of over it.
+1. Swimming the water in the swim ring passes under a bridge instead of over it.

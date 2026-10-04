@@ -23,7 +23,7 @@ railing is there to be gone over rather than through.
 
 ## Acceptance criteria
 
-1. A walker without skimmers can walk off a shore into the bay and drowns unless
+1. A walker without the swim ring can walk off a shore into the bay and drowns unless
    they reach a shore again.
 2. A bridge deck cannot be walked off into the water; a jump off it lands in the
    water.

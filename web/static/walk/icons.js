@@ -42,9 +42,10 @@ const ICONS = {
   // Two tanks on a frame, and the jets under them.
   jetpack: '<rect x="4.5" y="3" width="6" height="12" rx="3"/><rect x="13.5" y="3" width="6" height="12" rx="3"/>'
     + '<path d="M10.5 7.5h3"/><path class="accent" d="M5.8 16.5h3.4L7.5 21.5zM14.8 16.5h3.4l-1.7 5z"/>',
-  // Two skis on the water, the waves under them.
-  skimmers: '<path d="M3 8.5h13.2a3.6 3.6 0 0 0 3.4-2.4"/><path d="M5 12.5h13.2a3.6 3.6 0 0 0 3.4-2.4"/>'
-    + '<path class="accent-line" d="M2 18.2q2.5-2 5 0t5 0 5 0 5 0"/>',
+  // A swim ring, striped, on the water.
+  ring: '<ellipse cx="12" cy="10" rx="8.5" ry="5"/><ellipse cx="12" cy="10" rx="4" ry="2"/>'
+    + '<path d="M6 6.4l1.6 2.2M18 6.4l-1.6 2.2M8 14.4l1-2M16 14.4l-1-2"/>'
+    + '<path class="accent-line" d="M2 19q2.5-2 5 0t5 0 5 0 5 0"/>',
   // An open hand, holding nothing.
   none: '<path d="M7.5 12V6.5a1.5 1.5 0 0 1 3 0V11V4.8a1.5 1.5 0 0 1 3 0V11V6a1.5 1.5 0 0 1 3 0v5.5V9a1.5 1.5 0 0 1 3 0v5.2c0 4-2.8 7.3-6.6 7.3-2.4 0-3.9-.9-5.2-2.6L4.4 15a1.5 1.5 0 0 1 2.3-1.9L7.5 14"/>',
 };

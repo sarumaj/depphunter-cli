@@ -376,20 +376,23 @@ main { position: relative; flex: 1; min-height: 0; }
    of the one in hand. A shooter's row, for the same reason - which tool is out is a
    thing to see rather than to read. */
 #walk-hud .w-foot {
-  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  /* Room for the tracker in the left corner, and as much again on the right so the
+     column stays centered; the readout that used to hold the right corner now stacks
+     in this column instead (setWalking in app.js). Pinned at both sides rather than
+     shifted back by half its width, which would cap the row at half the window. */
+  position: absolute; left: 150px; right: 150px; bottom: 14px;
   display: flex; flex-direction: column; align-items: center; gap: 5px;
-  /* Room for the tracker in the left corner; the readout that used to hold the
-     right one now stacks in this column instead (setWalking in app.js). */
-  max-width: calc(100% - 300px);
 }
 /* The files / lines / imports readout, while it is stacked here rather than lying
    over the tool row in the corner they both wanted. */
 #walk-hud .w-foot > #status {
   position: static; pointer-events: auto; text-align: center;
 }
-/* Ten slots is more than a narrow window has room for in one line, so the row wraps
-   rather than running off the side of the screen. */
-#walk-hud .w-slots { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; justify-content: center; }
+/* One line when it fits. Eleven slots is more than a narrow window has room for, so
+   the row then wraps rather than running off the side of the screen - between the two
+   hands' groups only, never inside one: the left hand's tools over the right's. */
+#walk-hud .w-slots { display: flex; gap: 5px 12px; align-items: center; flex-wrap: wrap; justify-content: center; }
+#walk-hud .w-hand-group { display: flex; gap: 5px; align-items: center; flex-wrap: nowrap; }
 /* The two kinds, kept apart: a primary tool does something to the map and a secondary
    one does something to you, and reaching for the wrong one should look like a mistake
    before it is made.
@@ -429,7 +432,7 @@ main { position: relative; flex: 1; min-height: 0; }
   background: var(--surface);
   box-shadow: var(--shadow);
 }
-#walk-hud .w-slot[aria-selected="true"] .w-slot-name { display: inline; font-weight: 600; }
+#walk-hud .w-slot[aria-selected="true"] .w-slot-name { display: inline; font-weight: 600; white-space: nowrap; }
 /* A carried tool wears the color of the things that move you, and its slot is drawn
    with the dashed edge of something worn rather than wielded. */
 #walk-hud .w-slot[data-kind="secondary"] { border-style: dashed; }
@@ -447,7 +450,7 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .w-slot[data-tool="extinguisher"] { --tool-accent: #c0231f; }
 #walk-hud .w-slot[data-tool="bubbles"] { --tool-accent: #7fc8f0; }
 #walk-hud .w-slot[data-tool="jetpack"] { --tool-accent: #f29a38; }
-#walk-hud .w-slot[data-tool="parachute"], #walk-hud .w-slot[data-tool="skimmers"] { --tool-accent: #59b0e6; }
+#walk-hud .w-slot[data-tool="parachute"], #walk-hud .w-slot[data-tool="ring"] { --tool-accent: #59b0e6; }
 
 /* Held (M33): the street is waiting on something else - a panel being read, a menu,
    the toolbar over it - so it is softened and whatever took the mouse away is what

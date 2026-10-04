@@ -10,7 +10,7 @@
 //       leaves the hand empty: there is always something to hunt with.
 //   Q   the next tool for the left hand, which is what carries you - and, at the end
 //       of that ring, nothing at all. Putting the jet backpack away is how you come
-//       down and stepping off the skimmers is how you go in the water, so an empty
+//       down and taking off the swim ring is how you go in the water, so an empty
 //       hand is a choice like any other and belongs in the ring with the rest.
 //   R   the wheel: every tool at once, laid out where its hand is, picked by pointing
 //       at it. Held down it is a flick and a release; tapped it stays up to be read.

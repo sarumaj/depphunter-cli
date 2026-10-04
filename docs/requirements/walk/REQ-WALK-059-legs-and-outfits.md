@@ -28,8 +28,9 @@ it, turned the way the walker looks.
 
 The legs **shall** be posed:
 
-- striding as they walk, the lower foot on the ground; running, quicker and
-  longer, the knee driven up ahead, the heel tucked up behind as the leg comes
+- striding as they walk, the lower foot on the ground, the strides coming as
+  fast as the walker goes over the ground - slowing as they slow, stopping
+  against a wall; running, quicker and longer, the knee driven up ahead, the heel tucked up behind as the leg comes
   through and the body leaning into it, the head kept level; tucked in the
   air; a leg at a time up a ladder;
 - sitting on a swing - on the seat, thighs along it however far it swings,

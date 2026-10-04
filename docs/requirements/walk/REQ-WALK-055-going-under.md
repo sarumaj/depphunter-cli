@@ -18,7 +18,7 @@ show them going under, in step with the health the water is taking: the eye
 there is still fight in them; the water **shall** close over the view from the
 bottom of the screen until it covers it when the health is gone; bubbles
 **shall** rise through it, fewer as the walker tires; and the held tools
-**shall** dip and sway. Reaching a shore, a line or the skimmers in time
+**shall** dip and sway. Reaching a shore, a line or the swim ring in time
 **shall** drain it away again over about a second. What rises is the style's
 water: the bay in the city; on a circuit board the live backplane, dark and
 buzzing, with sparks climbing it; in the galaxy the void, starred and rimmed

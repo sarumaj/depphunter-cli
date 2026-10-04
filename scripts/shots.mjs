@@ -603,7 +603,7 @@ const SCENES = {
   // Every tool in its hand (tools.js TOOL_IDS), then the four that throw something
   // caught in the air: a dart, a bobber on its line, a nail and a grapple on its rope.
   ...Object.fromEntries(['rod', 'net', 'camera', 'bubbles', 'extinguisher', 'dart', 'nailer', 'grapple', 'jetpack',
-    'skimmers', 'parachute'].map(id => [`hold-${id}`, async page => { await walk(page); await hold(page, id); }])),
+    'ring', 'parachute'].map(id => [`hold-${id}`, async page => { await walk(page); await hold(page, id); }])),
   'shot-dart': async page => { await walk(page); return shoot(page, 'dart', 6); },
   'shot-bobber': async page => { await walk(page); return shoot(page, 'rod', 6); },
   'shot-nail': async page => { await walk(page); return shoot(page, 'nailer', 2); },

@@ -30,11 +30,13 @@ Seen from behind:
 - what a tool wears rather than holds **shall** be worn: the jet backpack on
   the back, its flames out below it while it flies; the parachute's container
   on its harness, the canopy's risers leaving it on top of the shoulders once it
-  is open; a skimmer's float strapped under each foot - seen looking down, too -
-  rather than one carried in the hand;
+  is open; the swim ring round the chest - seen looking down, too - its
+  pacifier in the left hand as the eye's view has it;
 - what is aimed **shall** be aimed as from the eye, along the view, so the
   crosshair means the same either way, and what is fired **shall** leave the
   muzzle of the tool in the body's hand;
+- reeled in on a line, the body **shall** fly along it, turned to the hook and
+  laid out behind the arm that holds the line, which reaches toward it;
 - sat on a ride, the view **shall** turn freely round the walker.
 
 ## Rationale
@@ -51,6 +53,9 @@ better from a step behind than from inside the head.
 3. From behind, a tool held is not drawn before the eye but in the body's
    right hand, the off hand's in its left, held as from the eye; a basketball
    picked up is seen between the hands.
-4. From behind, the jet backpack, the parachute's container and the skimmers'
-   floats are on the back and under the feet, not in a hand; an open canopy's
-   lines come down to the harness; a grapple's line leaves the gun's muzzle.
+4. From behind, the jet backpack and the parachute's container are on the back
+   and the swim ring round the chest, not in a hand; an open canopy's lines come
+   down to the harness; a grapple's line leaves the gun's muzzle.
+5. From behind, reeled in on a grapple's or a rod's line, the body flies along
+   it - turned to the hook, laid out behind the arm that holds the line, which
+   reaches toward it, the legs trailing - rather than standing upright.

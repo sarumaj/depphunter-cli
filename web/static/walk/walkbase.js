@@ -7,11 +7,16 @@ import * as THREE from '../vendor/three.module.min.js';
 // A story is 0.84 units (buildings.js STORY and FACADE): the walker stands a little
 // over half as tall, a door a little taller than them.
 export const EYE = 0.45;    // eye height above the feet
+// Implements: REQ-WALK-004
+export const WALK = 3.2, RUN = 8.5; // on foot, units per second
 // A curb, a ramp's slope and a bridge's arch are walked, a terrace wall (0.28 in
 // layout.js) is not - that takes the ramp or a jump.
 // Implements: REQ-WALK-006
 export const STEP = 0.15;   // highest ledge walked up without jumping
 export const WATER = -0.45; // the water surface (layout LAND_H below the mainland)
+// Swimming in the swim ring: how far below the surface the feet hang, the ring on the
+// water round the chest and the eye a hand's breadth over it.
+export const SWIM_SINK = 0.31;
 export const REACH = 90;    // aiming distance
 /** Walker.height's probes for a point rather than a body: what a ball rests on. */
 export const POINT = [0, 0];

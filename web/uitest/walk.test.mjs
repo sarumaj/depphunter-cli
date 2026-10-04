@@ -266,14 +266,26 @@ describe('the two kinds of tool', () => {
       assert.ok(tool.fuel.full > 5, `${id} runs out before it is any use`);
       assert.ok(tool.fuel.fills >= tool.fuel.full, `${id} fills faster than it empties`);
     }
-    assert.ok(TOOLS.jetpack.fuel && TOOLS.skimmers.fuel, 'the two that hold the walker up should both run out');
+    assert.ok(TOOLS.jetpack.fuel && TOOLS.ring.fuel, 'the two that hold the walker up should both run out');
     assert.ok(!TOOLS.grapple.fuel, 'a line does not run out');
   });
 
   // Verifies: REQ-TOOL-023, REQ-TOOL-025
   it('flies and floats on a carried tool and on nothing else', () => {
     assert.deepEqual(TOOL_IDS.filter(id => toolFor(id).flies), ['jetpack']);
-    assert.deepEqual(TOOL_IDS.filter(id => toolFor(id).floats), ['skimmers']);
+    assert.deepEqual(TOOL_IDS.filter(id => toolFor(id).floats), ['ring']);
+    // The ring was a pair of water skimmers: a choice saved under that name is the ring.
+    assert.equal(toolFor('skimmers').id, 'ring');
+    // Afloat in it, the walker is down in the water swimming - over a moment, so coming
+    // ashore is climbing out rather than a jump - and out of it, back on their feet.
+    const swimmer = { swim: 0, onWater: () => true };
+    const once = WALK.Walker.prototype.swimming.call(swimmer, 0.05);
+    assert.ok(once > 0 && once < 1, `in the water at once: ${once}`);
+    for (let i = 0; i < 40; i++) WALK.Walker.prototype.swimming.call(swimmer, 0.05);
+    assert.ok(swimmer.swim > 0.99);
+    swimmer.onWater = () => false;
+    for (let i = 0; i < 40; i++) WALK.Walker.prototype.swimming.call(swimmer, 0.05);
+    assert.ok(swimmer.swim < 0.01);
   });
 
   // Verifies: REQ-TOOL-027, REQ-TOOL-041
@@ -690,7 +702,7 @@ describe('what the tools reach and how long they last', () => {
   });
 
   // Verifies: REQ-TOOL-052
-  it('keeps the jet going longer than the skimmers on a full tank', () => {
+  it('keeps the jet going longer than a swim on a full tank', () => {
     /** Seconds of use a full tank gives, burned a frame at a time the way walk.js does. */
     const lasts = id => {
       const walker = {
@@ -702,8 +714,8 @@ describe('what the tools reach and how long they last', () => {
       assert.ok(walker.dry.has(id), `${id} never ran dry`);
       return t;
     };
-    const jet = lasts('jetpack'), skim = lasts('skimmers');
-    assert.ok(jet > skim, `the jet lasts ${jet.toFixed(1)}s against the skimmers' ${skim.toFixed(1)}s`);
+    const jet = lasts('jetpack'), swim = lasts('ring');
+    assert.ok(jet > swim, `the jet lasts ${jet.toFixed(1)}s against a swim's ${swim.toFixed(1)}s`);
   });
 
   // Verifies: REQ-TOOL-050

@@ -2,7 +2,7 @@
 //
 // It is the one secondary tool that is used once and then has to be put back
 // together. The jet holds the walker up for as long as its tank lasts and the
-// skimmers for as long as theirs; a parachute holds them up for exactly one descent,
+// swim ring for as long as theirs; a parachute holds them up for exactly one descent,
 // and afterwards it is a heap of nylon on the ground that takes a while to repack.
 // So its tank is the pack itself (tools.js, fuel.once): full is packed and ready,
 // opening it spends all of it at once, and it fills again only once the canopy is

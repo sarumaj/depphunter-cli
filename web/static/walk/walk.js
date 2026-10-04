@@ -10,7 +10,7 @@
 // camera and swing when used, so the gesture is visible rather than implied.
 //
 // The secondary tools do none of that. They are how the walker gets about: a line to
-// a wall, a jet to fly on, floats to cross the bay with. One of each is carried at a
+// a wall, a jet to fly on, a ring to swim the bay in. One of each is carried at a
 // time, one to a hand - the primary in the right and the secondary in the left - so a
 // walker can fly over the map and net what they find without putting either down.
 // Which secondary is in the off hand is what decides whether the walker flies or the
@@ -24,7 +24,7 @@
 
 import * as THREE from '../vendor/three.module.min.js';
 import { clamp, ease } from '../core/numbers.js';
-import { EYE, STEP, WATER, REACH, reducedMotion } from './walkbase.js';
+import { EYE, STEP, WATER, REACH, WALK, RUN, SWIM_SINK, reducedMotion } from './walkbase.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds, RAIL_H } from '../map/city.js';
 import { Health } from './health.js';
 import { Wind } from './wind.js';
@@ -44,8 +44,10 @@ import { toolIcon } from './icons.js';
 import { inBlaze } from '../hunt/flames.js';
 import { massTop } from '../map/details.js';
 
-// Implements: REQ-WALK-004
-const WALK = 3.2, RUN = 8.5, FLY = 10; // units per second
+const FLY = 10; // units per second
+// How fast swimming goes, of walking or running.
+// Implements: REQ-TOOL-025
+const SWIM_PACE = 0.55;
 // A jump clears a curb and a terrace wall and nothing more. At this gravity it tops
 // out about 0.4 units up, which against a story of 0.84 is a person leaving the ground
 // rather than one clearing a tree.
@@ -109,7 +111,7 @@ const SUNK = 0.3;              // ... this far, in the camera's units
 const SWING = 0.45;         // seconds a tool takes to swing and settle
 // How far the view rides up and down, and how fast, for each of the two things that
 // carry the walker: the long slow heave of a jet holding them up, and the swell of
-// water under a pair of floats. Feet on solid ground do not ride at all - a bob on
+// water round a swim ring. Feet on solid ground do not ride at all - a bob on
 // every footfall is what makes people put a first-person view down. It is the view
 // alone: nothing about where the walker is or what they can reach moves with it.
 // Implements: REQ-WALK-036
@@ -138,7 +140,7 @@ const SHOWING = 4.2, LIFTING = 0.6;
 const BURST = 0.9, BURST_SPEED = 3;
 // Out of your depth: how fast the water takes a walker who is in it with nothing to
 // hold them up. A couple of seconds, so wading ashore is possible and standing in the
-// bay when the skimmers go away is not.
+// bay when the ring comes off is not.
 // Implements: REQ-WALK-031
 const DROWN = 45;
 // Going under, as it looks (drowningView): how high the eye is still above the water
@@ -315,6 +317,7 @@ export class Walker {
     this.wind = new Wind(hud);
     this.blown = false; // ... and whether the walker has been told they are out of it
     this.rideLift = 0;   // how far the view is currently riding, eased rather than switched
+    this.swim = 0;       // how far the walker is down in the water swimming, eased (swimming)
     this.ridePhase = 0;  // ... and where in the swell it is
     this.showing = null; // a photograph being looked at on the back of the camera
     this.dying = null;    // seconds into the red, null while the walker is alive
@@ -516,6 +519,7 @@ export class Walker {
     this.wind.reset();
     this.blown = false;
     this.rideLift = 0;
+    this.swim = 0;
     this.ridePhase = 0;
     this.hud.classList.remove('dead');
     this.hud.style.removeProperty('--dead');
@@ -905,11 +909,19 @@ export class Walker {
     // The same list the digits count along, so laying the row out is what numbers it.
     const order = rowOrder();
     if (row.querySelectorAll('.w-slot').length !== order.length) {
-      const slots = [];
+      // Each hand's tools in a group of their own, which is kept on one line: a row too
+      // wide for the window puts the left hand's over the right's (style.css) rather
+      // than breaking either.
+      const groups = [];
+      let group = null;
       order.forEach((id, n) => {
         const tool = toolFor(id);
         const hand = tool.kind === 'secondary' ? 'left' : 'right';
         if (!n || toolFor(order[n - 1]).kind !== tool.kind) {
+          group = { el: document.createElement('div'), slots: [] };
+          group.el.className = 'w-hand-group';
+          group.el.setAttribute('role', 'presentation');
+          groups.push(group);
           const mark = document.createElement('span');
           mark.className = 'w-hand';
           mark.dataset.hand = hand;
@@ -917,7 +929,7 @@ export class Walker {
           mark.title = hand === 'left'
             ? 'Your left hand: what carries you'
             : 'Your right hand: what the hunt is done with';
-          slots.push(mark);
+          group.slots.push(mark);
         }
         const el = document.createElement('div');
         el.className = 'w-slot';
@@ -932,9 +944,10 @@ export class Walker {
           toolIcon(id),
           Object.assign(document.createElement('span'), { className: 'w-slot-name', textContent: tool.label }),
         );
-        slots.push(el);
+        group.slots.push(el);
       });
-      row.replaceChildren(...slots);
+      for (const { el, slots } of groups) el.replaceChildren(...slots);
+      row.replaceChildren(...groups.map(({ el }) => el));
     }
     // Two of them are in hand at once now, so two of them are lit.
     for (const el of row.querySelectorAll('.w-slot')) {
@@ -958,7 +971,7 @@ export class Walker {
   /**
    * Q: the next tool for the off hand, and after the last of them, nothing. An empty
    * hand belongs in that ring rather than outside it: putting the jet backpack away
-   * is how a walker comes down and stepping off the skimmers is how they go in the
+   * is how a walker comes down and taking off the swim ring is how they go in the
    * water, so "nothing" is a thing to reach for and not just what is left when you
    * stop reaching.
    *
@@ -1869,7 +1882,7 @@ export class Walker {
       this.bank(deltaTime);
       const under = this.drown(deltaTime, now);
       const hang = this.hang();
-      const eye = EYE + this.ride(deltaTime) + under + hang.eye + this.eyeShift;
+      const eye = EYE + this.ride(deltaTime) + under + hang.eye + this.eyeShift - SWIM_SINK * this.swimming(deltaTime);
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, eye,
         this.p.yaw, this.p.pitch + hang.pitch, this.roll + hang.roll, this.thirdPerson && !this.arrival ? this.thirdEye(eye, deltaTime) : null);
       // Dressed for the map: the hands' sleeves and gloves, and the body.
@@ -1930,7 +1943,7 @@ export class Walker {
 
   /**
    * How far the eye is riding above where it would otherwise be. A jet holds the walker
-   * up on something that breathes and water swells under a pair of floats, so the view
+   * up on something that breathes and water swells round a swim ring, so the view
    * moves even when the walker's feet do not - and does not move at all when those feet
    * are on the ground, whatever they are doing.
    *
@@ -1993,7 +2006,7 @@ export class Walker {
    * the bottom of the screen with bubbles rising through it, and the hands dip and
    * flail. How far along is how much of the health they went in with is gone, so it
    * reaches the end exactly when the water does. Out of it again - a shore, a line,
-   * the skimmers - it all drains away; dead, it stays under the red.
+   * the swim ring - it all drains away; dead, it stays under the red.
    *
    * Returns how far below its usual height the eye is this frame.
    *
@@ -2052,13 +2065,13 @@ export class Walker {
     this.confine();
 
     // What the walker is standing on - or the surface of the water, while the
-    // skimmers are out and there is nothing under it.
+    // swim ring is on and there is nothing under it.
     const floor = this.height(p.x, p.z, p.feet);
     // Running dry takes effect on the next frame rather than this one, so the walker
     // reads the flash before the ground arrives.
     // Only what the tool is actually doing costs anything: the jet burns while it is
     // holding the walker off the ground, not while they stand on a roof wearing it, and
-    // the skimmers only while the water is the only thing under them.
+    // the ring only while the water is the only thing under them.
     // Implements: REQ-TOOL-047, REQ-TOOL-049
     this.burn(deltaTime, (p.fly && p.feet > floor + 0.02) || (afloat && floor <= WATER));
     p.fly = this.flying();
@@ -2119,8 +2132,9 @@ export class Walker {
     // A burst on the jet backpack runs down whether or not it is being used to go
     // anywhere, so opening the throttle is a decision rather than a switch.
     this.burst = Math.max(0, this.burst - deltaTime);
+    // Swimming is slower going than walking, and sprinting in a swim ring slower still.
     const speed = (p.fly ? (run ? FLY * 2.5 : FLY) : (run ? RUN : WALK) * this.footwork())
-      * (this.burst > 0 ? BURST_SPEED : 1);
+      * (this.burst > 0 ? BURST_SPEED : 1) * (1 - (1 - SWIM_PACE) * this.swim);
     // On foot, W and S move level; flying, they move where the view points (look
     // down and press W to dive), and Space and C add straight up and down.
     const lift = p.fly ? (k.has('Space') ? 1 : 0) - (k.has('KeyC') ? 1 : 0) : 0;
@@ -2149,9 +2163,9 @@ export class Walker {
     const wet = !p.fly && this.height(p.x, p.z, p.feet) <= WATER;
     const afloat = !p.fly && this.floating();
     // ... and getting out is the one thing that needs help: the shore stands further
-    // above the surface than a step, so anybody down there - on a pair of floats or in
-    // it - carries an allowance to climb it. It is the water that gives this and not
-    // the skimmers, so wearing them on a street is not a reason to climb higher walls.
+    // above the surface than a step, so anybody down there - swimming in a ring or
+    // wading - carries an allowance to climb it. It is the water that gives this and not
+    // the ring, so wearing it on a street is not a reason to climb higher walls.
     const inWater = p.ground && (wet || this.onWater());
     // Implements: REQ-WALK-040
     const climb = p.feet + (p.ground || p.fly ? STEP : 0.05) + (inWater ? WADE : 0);
@@ -2204,7 +2218,7 @@ export class Walker {
   /**
    * The water, for a walker with nothing holding them up. It takes a couple of seconds,
    * which is long enough to wade ashore from the shallows and nowhere near long enough
-   * to cross the bay - so stowing the skimmers out over the water is the end of it,
+   * to cross the bay - so taking off the ring out over the water is the end of it,
    * which is the whole reason to look where you are going before you do.
    *
    * Implements: REQ-WALK-031
@@ -2265,6 +2279,20 @@ export class Walker {
   }
 
   /**
+   * How far the walker is down in the water, swimming in the ring, 0 to 1 - eased, so
+   * wading ashore is climbing out of it rather than a jump: the body hangs SWIM_SINK
+   * below the surface (body.js) and the eye comes down with it, a hand's breadth over
+   * the water. Like the ride, it is the view alone that comes down; what is reached and
+   * aimed at is still measured from the feet.
+   *
+   * Implements: REQ-TOOL-025
+   */
+  swimming(deltaTime = 0) {
+    this.swim += ((this.onWater() ? 1 : 0) - this.swim) * Math.min(1, deltaTime * 4);
+    return this.swim;
+  }
+
+  /**
    * The gauge for whatever is being carried, beside the health bar. It is hidden when
    * the off hand is empty or holding something that never runs out, so the row says
    * nothing rather than saying "full" about a grapple line.
@@ -2308,7 +2336,7 @@ export class Walker {
   /**
    * The tanks, over one frame. Whatever is in the off hand and doing its work burns;
    * everything else fills. A tool that runs dry stops working where it stands, which
-   * for the jet is a fall and for the skimmers is the water - so it is said out loud
+   * for the jet is a fall and for the ring is the water - so it is said out loud
    * before it happens rather than after.
    *
    * Implements: REQ-TOOL-047, REQ-TOOL-049, REQ-TOOL-050
@@ -2560,7 +2588,7 @@ export class Walker {
    *
    * `from` is where the body already is, and a bridge deck more than a step above that
    * is a bridge the body is under rather than one it is on. Without it, walking the
-   * water on skimmers put the walker on top of every deck they passed beneath, which
+   * water in the ring put the walker on top of every deck they passed beneath, which
    * is the one place on the map where there is somewhere to be underneath.
    *
    * Implements: REQ-WALK-002, REQ-WALK-032, REQ-WALK-035, REQ-CITY-018, REQ-CITY-028, REQ-CITY-034, REQ-PERF-008
@@ -2760,7 +2788,7 @@ export class Walker {
     }
     if (tool.floats) {
       const wet = this.height(this.p.x, this.p.z) <= WATER;
-      this.flash(wet ? 'Riding the water' : 'The skimmers want water under them');
+      this.flash(wet ? 'Swimming' : 'The ring wants water to swim in');
       if (wet) this.quip('skim');
       return;
     }

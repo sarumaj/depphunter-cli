@@ -18,11 +18,12 @@ than sit at the height of the fist.
 
 ## Rationale
 
-The extinguisher's bottle is under the hand and the skimmer's float below its
-strap; a part wider than a fist at fist height is drawn through the fingers.
+The extinguisher's bottle is under the hand and the swim ring's pacifier hangs
+by its handle; a part wider than a fist at fist height is drawn through the
+fingers.
 
 ## Acceptance criteria
 
 1. The extinguisher is held by its handle with the bottle below the hand.
-2. The skimmer is held by its strap with the float below.
+2. The swim ring's pacifier is held by its handle, the shield and teat below.
 3. No part of the jet backpack's thruster is level with the grip.

@@ -12,8 +12,8 @@ verification:
 ## Statement
 
 When the jet backpack's tank runs dry in the air, the walker **shall** stop
-flying and fall; when the skimmers run dry on the water, the water **shall**
-stop holding the walker.
+flying and fall; when the swimmer runs out of breath in the swim ring, the water
+**shall** stop holding the walker.
 
 ## Rationale
 

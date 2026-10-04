@@ -21,4 +21,4 @@ far up it had got, in one frame.
 
 ## Acceptance criteria
 
-1. The view does not drop as the skimmers reach a shore.
+1. The view does not drop as a swimmer reaches a shore.

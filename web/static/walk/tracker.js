@@ -73,6 +73,7 @@ export const tracker = {
 
     // Everything is placed in the walker's frame: forward is up.
     const sin = Math.sin(yaw), cos = Math.cos(yaw);
+    drawGround(g, this.boxes, { px, pz, sin, cos }, c, R, k, v);
     const place = (x, z) => {
       const dx = x - px, dz = z - pz;
       const u = dx * cos - dz * sin, f = -dx * sin - dz * cos;
@@ -267,6 +268,47 @@ function drawSweep(g, c, R, camera, v) {
     g.arc(c, c, r, 0, Math.PI * 2);
     g.stroke();
   }
+}
+
+// What of the map is drawn under the sweep, faded: the land and its terraces, and on
+// them the buildings - and how strongly.
+const GROUND = [
+  { kinds: new Set(['land', 'terrace']), alpha: 0.08 },
+  { kinds: new Set(['district', 'building', 'package']), alpha: 0.16 },
+];
+
+/**
+ * The map under the sweep, faded right back so the dots stay what is read: the islands'
+ * outlines against the water, and the buildings standing on them, so the walker can
+ * tell where they are and which way the shore is. `frame` turns the map into the
+ * walker's frame (forward up), `k` is the dial's scale.
+ *
+ * Implements: REQ-HUNT-021
+ */
+function drawGround(g, boxes, { px, pz, sin, cos }, c, R, k, v) {
+  if (!boxes?.length) return;
+  const far = R / k;
+  g.save();
+  g.beginPath();
+  g.arc(c, c, R, 0, Math.PI * 2);
+  g.clip();
+  g.fillStyle = v('--text');
+  for (const { kinds, alpha } of GROUND) {
+    g.beginPath();
+    for (const b of boxes) {
+      if (!kinds.has(b.kind) || Math.abs(b.x - px) - b.w / 2 > far || Math.abs(b.z - pz) - b.d / 2 > far) continue;
+      for (const [i, [sx, sz]] of [[-1, -1], [1, -1], [1, 1], [-1, 1]].entries()) {
+        const dx = b.x + (sx * b.w) / 2 - px, dz = b.z + (sz * b.d) / 2 - pz;
+        const x = c + (dx * cos - dz * sin) * k, y = c + (dx * sin + dz * cos) * k;
+        if (i) g.lineTo(x, y);
+        else g.moveTo(x, y);
+      }
+      g.closePath();
+    }
+    g.globalAlpha = alpha;
+    g.fill();
+  }
+  g.restore();
 }
 
 /** An arrow on the sweep's rim at `q`, pointing the way to what is out of range. */

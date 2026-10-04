@@ -77,7 +77,7 @@ browser.
   shot over the edge is the way down. Its claw closes on a parapet, not on a
   flat wall: a hook that strikes more than two stories below a roof's edge
   glances off, tumbles down and is reeled back in, and pulls nobody anywhere;
-  the jet backpack flies; the water skimmers make the bay walkable, passing
+  the jet backpack flies; the swim ring lets the bay be swum, passing
   under the bridges rather than over them and stepping back up onto a shore that
   stands half a unit above the water. The latter two run on a tank, which
   empties only while the tool is doing its work and fills again whenever it is
@@ -109,7 +109,7 @@ browser.
   right, each group behind a small hand of its own, because a row read at a
   glance in the middle of something else should not have to be parsed. The rod
   climbs too, from the hunting hand, which leaves the other free for the jet or
-  the skimmers: a cast that comes down on a roof winds the walker up onto it,
+  the swim ring: a cast that comes down on a roof winds the walker up onto it,
   more slowly than the grapple and on a shorter line. A fish hook is not made
   for brick, though, so a cast at a wall, however high, always skips off the way
   a glancing grapple does. The right button holds
@@ -131,9 +131,9 @@ browser.
   nothing to float on takes all of it in a couple of seconds, the walker going
   under as it does: the view sinks and bobs, the water closes over it from the
   bottom of the screen with bubbles rising through it, and all of it drains away
-  again if a shore is reached in time — so stowing the
-  skimmers out over the bay is the end of that walk, and so is walking into it
-  without them unless a shore is reached first. The bay is not a wall around the
+  again if a shore is reached in time — so taking the
+  swim ring off out over the bay is the end of that walk, and so is walking into it
+  without it unless a shore is reached first. The bay is not a wall around the
   map: it is ground half a unit below the shore, so it can be stepped down into
   the way a curb can, waded about in, and — because the shore is further up than
   a step — climbed back out of, whether by something in it or something on a
@@ -347,7 +347,7 @@ ui:
   expand_depth: 0
   tool: rod                       # walk mode: rod, net, camera, bubbles,
                                   # extinguisher, dart, nailer, parachute,
-                                  # grapple, jetpack, skimmers
+                                  # grapple, jetpack, ring
   hide_languages: [Markdown]      # filters, as the Filters panel sets them
   hide_islands: [npm]
   path_filter: "!**/testdata/**"
@@ -777,7 +777,7 @@ In walk mode:
 | `W` `A` `S` `D`/arrows  | move and turn; `Shift` runs, which spends the walker's wind                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `Space`                 | jump, which costs a little wind; while flying, ascend; under a parachute, flare                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Jet backpack in hand    | flight. While flying, `W` and `S` move along the view direction — looking down and pressing `W` descends — and `C` descends vertically. `F` (or middle click) opens the throttle for a burst. The view banks into turns and sideways moves, and levels out again on landing                                                                                                                                                                                                                                                                                                                                |
-| Water skimmers in hand  | the surface of the water is walkable, passing under the bridges rather than over them; stowing them over deep water drowns the walker                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Swim ring worn          | the bay can be swum, slower than walking, down in the water to the chest, passing under the bridges rather than over them; taking it off over deep water drowns the walker                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Parachute in hand       | `F` (or `C`, or middle click) throws it open off a roof or out of the jet; it takes about a second to open. Under the canopy `A` `D`/arrows steer, `W` `S` trim faster or slower, and `Space` flares; the landing costs the touchdown speed, and a flare about two meters up costs nothing. Putting it away while open cuts it loose                                                                                                                                                                                                                                                                       |
 | Click                   | use the right hand; held down, the nail gun and the extinguisher keep firing. A module within reach is selected, and a bug that is caught is displayed and retained                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `F`, `C` / middle click | use the left hand. A secondary tool selects and catches nothing: the grapple hooks the building being looked at, the jet gives a burst of thrust. While flying, `C` descends instead                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -797,7 +797,7 @@ selected on the map in the interim, in which case the walker is placed at that
 node instead, with the parachute packed.
 
 On foot the bay can be stepped down into and waded in, but deep water drowns a
-walker without the water skimmers, and every island is reachable by bridge; the
+walker without the swim ring, and every island is reachable by bridge; the
 walker may travel at most 3 units out over the water. The ground beneath the
 walker is never a target, so aiming at the street selects nothing. While a bug
 is being caught, the street softens around it for the second the catch takes,

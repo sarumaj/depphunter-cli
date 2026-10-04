@@ -54,8 +54,8 @@
 //                     will still pull from, and whether it sets them on top of what
 //                     it caught or leaves them against it.
 //   flies / floats /  what carrying a secondary tool does to the walker: the jet
-//   glides            backpack holds them in the air, the skimmers hold them on the
-//                     water, and the parachute, once it is thrown open, lets them
+//   glides            backpack holds them in the air, the swim ring holds them up
+//                     in the water, and the parachute, once it is thrown open, lets them
 //                     down under a canopy (parachute.js). walk.js reads all three
 //                     off whatever is in hand.
 //   fuel              how long it will do it for, and how long it takes to come back:
@@ -657,7 +657,7 @@ const rod = {
   // that roof the way the grapple does - slower, and on a shorter line, because past
   // a point the sensible thing is to walk. On a wall it always skips off (walk.js
   // holds). So it climbs from the hunting hand, which leaves the other free for the
-  // jet or the skimmers, but it wants a clean shot at the roof where the grapple
+  // jet or the swim ring, but it wants a clean shot at the roof where the grapple
   // forgives two stories of facade.
   reel: { speed: 11, stop: 0.25, max: 28, onto: true, roof: true },
 };
@@ -1519,7 +1519,7 @@ const jetpack = {
       // than placed beside it, so they sit on it wherever it is pointed - laid out
       // separately they drift off it the moment the hose is angled.
       const feed = linkPart(heel, new THREE.Vector3(0.026, -0.215, 0.365), 0.013, '#3c444d');
-      feed.userData.onBack = true; // seen from behind, the pack is on the back (gear.js)
+      feed.userData.worn = true; // seen from behind, the pack is on the back (gear.js)
       frame.add(feed);
       for (const t of [-0.34, -0.17, 0, 0.17, 0.34]) {
         const band = part(new THREE.TorusGeometry(0.016, 0.0035, 5, 10), '#6d7782');
@@ -1537,7 +1537,7 @@ const jetpack = {
       pod.position.set(0.085, -0.36, 0.11);
       pod.rotation.set(-0.22, 0, 0.14);
       pod.updateMatrix(); // the arm below is measured against it
-      pod.userData.onBack = true;
+      pod.userData.worn = true;
       frame.add(pod);
       pod.add(part(new THREE.CylinderGeometry(0.052, 0.052, 0.17, 14), '#48525c'));
       pod.add(part(new THREE.SphereGeometry(0.052, 14, 8).scale(1, 0.55, 1).translate(0, 0.085, 0), '#5a6068'));
@@ -1557,12 +1557,12 @@ const jetpack = {
       // both the grip and the tank.
       const collar = new THREE.Vector3(-0.022, 0.05, 0).applyMatrix4(pod.matrix);
       const strut = linkPart(heel, collar, 0.011, '#5a6068');
-      strut.userData.onBack = true;
+      strut.userData.worn = true;
       frame.add(strut);
       for (const end of [heel, collar]) {
         const boss = part(new THREE.SphereGeometry(0.017, 10, 8), '#48525c');
         boss.position.copy(end);
-        boss.userData.onBack = end === collar;
+        boss.userData.worn = end === collar;
         frame.add(boss);
       }
 
@@ -1629,79 +1629,86 @@ const jetpack = {
   projectile: null, // the thrust is the walker's, not something thrown
 };
 
-// How far below the fist the float hangs, and how long it is.
-const FLOAT_AT = -0.24, FLOAT_LEN = 0.34;
+// Where the swim ring is in the frame: round the walker's chest, the near edge of it
+// showing below the hand the way the jet's thruster does - in the viewmodel's own frame,
+// because it is worn and not held - and how big it is there.
+const RING_AT = new THREE.Vector3(-0.12, -0.5, 0.12), RING_RADIUS = 0.3, RING_TUBE = 0.075;
 
 /**
- * Water skimmers: a pair of floats, one of them carried in your off hand and the other
- * being the one you are standing on. Carrying them is the whole of using them - the
- * water holds while they are in hand, so the bay becomes a street and the islands stop
- * being somewhere only a bridge reaches. Put them away over deep water and you are in
- * it, which is the reason to look where you are going.
- *
- * What runs through the fist is the binding strap, the way anyone carries a boot or a
- * ski: the float itself hangs below the hand, because a hull wide enough to stand on
- * is far too wide for a hand to close around.
+ * A swim ring: a yellow rubber ring round the chest and, on a cord from it, the gummy
+ * pacifier the ring came with, held in the off hand. Wearing it is the whole of using
+ * it - the bay can be swum, so the islands stop being somewhere only a bridge reaches.
+ * Put it away over deep water and you go under, which is the reason to look where you
+ * are going. What runs down is the swimmer: a swim tires them, and they get their
+ * breath back on dry land (fuel).
  *
  * Implements: REQ-TOOL-025, REQ-TOOL-035, REQ-TOOL-052
  */
-const skimmers = {
-  id: 'skimmers',
-  label: 'Water skimmers',
-  verb: 'Skim',
-  noun: 'skimmed',
-  hint: 'Carrying them is walking on water; stow them over the bay and it will not hold you',
+const ring = {
+  id: 'ring',
+  label: 'Swim ring',
+  verb: 'Swim',
+  noun: 'swum',
+  hint: 'Wearing it, the bay can be swum; take it off over the water and you go under',
   reticle: 'ripple',
   slot: 11,
   kind: 'secondary',
   floats: true,
-  // Floats waterlog, and quickly: the bay is a thing to cross rather than a place to
-  // be, so they last a dash to the far shore and no more, and are slower to dry out
-  // than a tank is to fill.
+  // A swim tires the swimmer, and quickly: the bay is a thing to cross rather than a
+  // place to be, so it lasts a dash to the far shore and no more, and the breath for the
+  // next one comes back slower than a tank fills.
   fuel: { full: 7, fills: 18 },
   hold: { x: 0.21, y: -0.17, z: -0.52, along: [0.05, 1, 0.26], back: [0.4, -0.3, 1] },
   grip: SWUNG,
   viewmodel() {
     return viewmodel(g => {
-      const float = armed(g, this, tool => { tool.name = 'float'; });
+      const held = armed(g, this, tool => { tool.name = 'pacifier'; });
 
-      // The strap through the fist, and the two risers down to the deck.
-      float.add(rodPart(0.019, 0.019, 0.13, '#2b3138'));
-      for (const side of [-1, 1]) {
-        const riser = rodPart(0.01, 0.01, 0.13, '#2b3138');
-        riser.position.set(side * 0.035, -0.09, 0);
-        riser.rotation.z = side * 0.3;
-        float.add(riser);
+      // The pacifier, hung from the fist by its handle: the handle's loop, the shield
+      // under it and the teat out of the shield's far side.
+      const loop = part(new THREE.TorusGeometry(0.022, 0.006, 6, 14), '#e8641f');
+      loop.rotation.y = Math.PI / 2;
+      held.add(loop);
+      const shield = part(new THREE.SphereGeometry(0.04, 14, 8).scale(1, 0.65, 0.3), '#f2c21b');
+      shield.position.y = -0.045;
+      held.add(shield);
+      const teat = part(new THREE.CapsuleGeometry(0.012, 0.02, 4, 10), '#e9b77a', { transparent: true, opacity: 0.85 });
+      teat.position.set(0, -0.045, 0.026);
+      teat.rotation.x = Math.PI / 2;
+      held.add(teat);
+
+      // The ring round the chest, its near edge in the bottom of the view ...
+      const worn = new THREE.Group();
+      worn.name = 'ring';
+      worn.userData.worn = true; // seen from behind, the body wears it (gear.js)
+      worn.position.copy(RING_AT);
+      worn.rotation.set(Math.PI / 2 + 0.25, 0, 0.1);
+      g.add(worn);
+      worn.add(part(new THREE.TorusGeometry(RING_RADIUS, RING_TUBE, 10, 28), '#f2c21b'));
+      for (let i = 0; i < 4; i++) {
+        // ... in the stripes a ring like that has.
+        const stripe = part(new THREE.TorusGeometry(RING_RADIUS, RING_TUBE * 1.02, 10, 4, Math.PI / 8), '#e8641f');
+        stripe.rotation.z = (i * Math.PI) / 2;
+        worn.add(stripe);
       }
 
-      // The hull: long, rounded at the nose, flat on top, in the orange everything
-      // meant to be found in the water is painted.
-      const hull = part(new THREE.CapsuleGeometry(0.048, FLOAT_LEN - 0.1, 5, 10), '#e8641f');
-      hull.position.y = FLOAT_AT;
-      float.add(hull);
-      const deck = part(new THREE.BoxGeometry(0.072, 0.012, 0.22)
-        .translate(0, FLOAT_AT + 0.04, 0), '#f1efe8');
-      deck.rotation.y = Math.PI / 2;
-      float.add(deck);
-      // The binding on the deck, and a skeg under the tail.
-      const bind = part(new THREE.TorusGeometry(0.038, 0.008, 6, 14), '#2b3138');
-      bind.rotation.x = Math.PI / 2;
-      bind.position.y = FLOAT_AT + 0.05;
-      float.add(bind);
-      float.add(part(new THREE.BoxGeometry(0.01, 0.045, 0.07)
-        .translate(0, FLOAT_AT - FLOAT_LEN / 2 - 0.01, 0.02), '#2f353c'));
+      // ... and the cord from it to the pacifier, measured from one to the other as
+      // they are placed, so it arrives at both.
+      g.updateMatrixWorld(true);
+      const tied = held.worldToLocal(worn.localToWorld(new THREE.Vector3(0, -RING_RADIUS, 0)));
+      const cord = linkPart(new THREE.Vector3(0, -0.06, 0), tied, 0.004, '#e8641f');
+      cord.userData.worn = true;
+      held.add(cord);
     });
   },
-  // Nothing is fired, so using them is a look at them: the float is turned over in
-  // the hand and set down again.
+  // Nothing is fired, so using it is a squeeze of the pacifier, which squeaks.
   pose(vm, u) {
     const k = press(u);
-    const float = vm.getObjectByName('float');
-    float.rotation.z = k * 0.5;
-    float.rotation.x = -k * 0.35;
-    vm.position.y = vm.userData.restY + k * 0.06;
-    vm.rotation.z = REST.rz - k * 0.18;
-    grip(vm, 0.3 + k * 0.3);
+    const pacifier = vm.getObjectByName('pacifier');
+    pacifier.scale.setScalar(1 - k * 0.12);
+    vm.position.y = vm.userData.restY + k * 0.04;
+    vm.rotation.z = REST.rz - k * 0.12;
+    grip(vm, 0.5 + k * 0.4);
   },
   projectile: null,
 };
@@ -1718,8 +1725,8 @@ const POUCH_AT = new THREE.Vector3(-0.11, -0.13, -0.03);
  * A parachute: a ram-air canopy packed into a container on the walker's back, thrown
  * open off a roof or out of the jet and flown down. It is the one secondary tool that
  * is spent whole in one use - the pack is its tank (fuel.once) - and the one that is
- * flown rather than ridden: the jet goes where it is pointed and the skimmers where
- * they are walked, but a canopy has its own speed and its own heading, and the walker
+ * flown rather than ridden: the jet goes where it is pointed and the ring where
+ * it is swum, but a canopy has its own speed and its own heading, and the walker
  * only trims it and steers it with the toggles.
  *
  * What the hand holds is the part of it a hand holds: packed, the pilot chute's handle
@@ -1760,7 +1767,7 @@ const parachute = {
       // stowed in.
       const container = new THREE.Group();
       container.name = 'container';
-      container.userData.onBack = true; // seen from behind, it is on the back (gear.js)
+      container.userData.worn = true; // seen from behind, it is on the back (gear.js)
       container.position.copy(CONTAINER_AT);
       container.rotation.copy(CONTAINER_TURN);
       g.add(container);
@@ -1786,7 +1793,7 @@ const parachute = {
       g.updateMatrixWorld(true);
       const into = hackey.worldToLocal(container.localToWorld(POUCH_AT.clone()));
       const bridle = linkPart(new THREE.Vector3(0, -0.018, 0), into, 0.0045, '#f2f4f7');
-      bridle.userData.onBack = true;
+      bridle.userData.worn = true;
       hackey.add(bridle);
 
       // Open: the left toggle, a stiffened loop with the steering line leaving its top.
@@ -1860,7 +1867,7 @@ const parachute = {
 };
 
 // Implements: REQ-TOOL-004, REQ-TOOL-005, REQ-TOOL-021
-export const TOOLS = { rod, net, camera, bubbles, extinguisher, dart, nailer, parachute, grapple, jetpack, skimmers };
+export const TOOLS = { rod, net, camera, bubbles, extinguisher, dart, nailer, parachute, grapple, jetpack, ring };
 
 /**
  * The tools in slot order, which is the order each hand cycles through them. The row
@@ -1890,5 +1897,9 @@ export const isSecondary = tool => tool.kind === 'secondary';
 export const isMelee = tool => !tool.projectile && tool.reach != null;
 export const DEFAULT_TOOL = 'rod';
 
-export function toolFor(id) { return TOOLS[id] || TOOLS[DEFAULT_TOOL]; }
+// What a tool used to be called, for a choice saved under its old name: the swim ring
+// was a pair of water skimmers.
+const RENAMED = { skimmers: 'ring' };
+
+export function toolFor(id) { return TOOLS[id] || TOOLS[RENAMED[id]] || TOOLS[DEFAULT_TOOL]; }
 export { idle as idleTool, part as litPart };

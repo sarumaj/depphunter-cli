@@ -1,7 +1,7 @@
 // What the walker wears for a tool that is not only held: the jet backpack on the back,
-// the parachute's container on its harness, and a skimmer's float under each foot.
+// the parachute's container on its harness, and the swim ring round the chest.
 // The view sees only the part of each that reaches round into it (tools.js); seen from
-// behind, or looking down at the feet, the body wears the rest (body.js).
+// behind, or looking down, the body wears the rest (body.js).
 //
 // Built in the body's own frame as it stands at rest - feet at 0, facing -z, its units
 // the body's, an eye 0.45 over the ground - for body.js to hang on its bones.
@@ -16,11 +16,10 @@ const SHOULDER_TOP = 0.39, STRAP_X = 0.03;
 
 /**
  * How what is worn fits the outfit `mesh` of `rig` (body.js), as it stands at rest:
- * the back and the front of the chest, and the soles' depth and length - a spacesuit
- * is thicker than a T-shirt and its boots are bigger than sneakers.
+ * the back and the front of the chest - a spacesuit is thicker than a T-shirt.
  */
 export function fitOf(mesh, rig) {
-  const fit = { back: 0, chest: 0, sole: 0, toe: 0, heel: 0 };
+  const fit = { back: 0, chest: 0 };
   const position = mesh.geometry.getAttribute('position'), at = new THREE.Vector3();
   const toRig = new THREE.Matrix4().copy(rig.matrixWorld).invert().multiply(mesh.matrixWorld);
   for (let i = 0; i < position.count; i++) {
@@ -28,11 +27,6 @@ export function fitOf(mesh, rig) {
     if (Math.abs(at.x) < 0.035 && at.y > 0.27 && at.y < 0.39) {
       fit.back = Math.max(fit.back, at.z);
       fit.chest = Math.max(fit.chest, -at.z);
-    }
-    if (at.y < 0.03) {
-      fit.sole = Math.min(fit.sole, at.y);
-      fit.toe = Math.min(fit.toe, at.z);
-      fit.heel = Math.max(fit.heel, at.z);
     }
   }
   fit.back += 0.002;
@@ -128,40 +122,38 @@ function container(fit) {
   return g;
 }
 
-// How deep a float's hull is, under the sole.
-const HULL = 0.014;
+// The swim ring round the chest: how high, how thick its tube is, and how much wider
+// than deep it is round a body.
+const RING_Y = 0.315, RING_TUBE = 0.019, RING_WIDE = 1.35;
 
 /**
- * A skimmer's float under the foot on `side` (-1 left, 1 right): the hull under the
- * sole and a little longer than the shoe, the deck the shoe stands on, the binding
- * round it and a skeg under the tail.
+ * The swim ring round the chest, under the arms: a fat yellow tube on an ellipse a
+ * little clear of the outfit all round, striped orange, the cord's loop on its front.
  */
-function float({ sole, toe, heel }, side) {
+function swimRing({ back, chest }) {
   const g = new THREE.Group();
-  g.name = 'float';
-  const x = side * 0.03, length = heel - toe + 0.04, middle = (heel + toe) / 2 - 0.01;
-  const hull = litPart(new THREE.CapsuleGeometry(0.012, length - 0.024, 4, 10).rotateX(Math.PI / 2), '#e8641f');
-  hull.scale.set(1.3, HULL / 0.024, 1);
-  g.add(place(hull, [x, sole - 0.002 - HULL / 2, middle]));
-  g.add(box(0.026, 0.002, length * 0.8, '#f1efe8', [x, sole - 0.001, middle]));
-  g.add(place(litPart(new THREE.TorusGeometry(0.02, 0.003, 5, 14).rotateX(Math.PI / 2), '#2b3138'), [x, sole + 0.012, middle - 0.004]));
-  g.add(box(0.003, 0.012, 0.02, '#2f353c', [x, sole - HULL - 0.006, heel]));
+  g.name = 'ring';
+  const deep = (back + chest) / 2 + RING_TUBE + 0.004, middle = (back - chest) / 2;
+  const at = a => new THREE.Vector3(Math.sin(a) * deep * RING_WIDE, RING_Y, middle - Math.cos(a) * deep);
+  const arc = (from, to, steps) => Array.from({ length: steps + 1 }, (_, i) => at(from + ((to - from) * i) / steps));
+  g.add(litPart(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(arc(0, Math.PI * 2, 48).slice(0, -1), true), 64, RING_TUBE, 10, true), '#f2c21b'));
+  for (let i = 0; i < 4; i++) {
+    const from = Math.PI / 4 + (i * Math.PI) / 2 - 0.22;
+    g.add(litPart(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(arc(from, from + 0.44, 6)), 8, RING_TUBE * 1.04, 10, false), '#e8641f'));
+  }
+  g.add(place(litPart(new THREE.TorusGeometry(0.006, 0.0015, 5, 10), '#e8641f'), [0.02, RING_Y - RING_TUBE * 0.6, middle - deep - 0.002]));
   return g;
 }
 
 /** Everything worn, fitted (fitOf), each at rest in the body's frame and hidden until it is worn. */
 export function buildGear(fit) {
-  const gear = { jetpack: jetPack(fit), container: container(fit), floats: [float(fit, -1), float(fit, 1)] };
-  // How far the floats raise the feet off what is under them: the hulls' bottoms a
-  // little into it, as they ride in the water.
-  gear.lift = -(fit.sole - 0.002 - HULL) - HULL * 0.4;
-  for (const part of [gear.jetpack, gear.container, ...gear.floats]) {
+  const gear = { jetpack: jetPack(fit), container: container(fit), ring: swimRing(fit) };
+  for (const part of [gear.jetpack, gear.container, gear.ring]) {
     part.visible = false;
     part.traverse(o => { o.frustumCulled = false; });
   }
   return gear;
 }
-
 
 /** The jet's flames, licking - `burn` longer while the throttle is open - at `now`. */
 export function lick(jetpack, burn, now) {

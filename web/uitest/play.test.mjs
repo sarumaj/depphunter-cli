@@ -823,34 +823,41 @@ describe('empty hands', () => {
   });
 
   // Verifies: REQ-WALK-061
-  it('wears the jet backpack, the parachute and the skimmers seen from behind, and fires from the body\'s hand', async () => {
+  it('wears the jet backpack, the parachute and the swim ring seen from behind, and fires from the body\'s hand', async () => {
     const { Body } = await import('../static/walk/body.js');
     const { buildGear } = await import('../static/walk/gear.js');
     const body = new Body({ scene: new THREE.Scene() });
-    body.gear = buildGear({ back: 0.03, chest: 0.045, sole: -0.004, toe: -0.056, heel: 0.023 });
+    body.gear = buildGear({ back: 0.03, chest: 0.045 });
     body.group.visible = true;
     const w = (secondary, extra = {}) => ({ secondary: TOOLS[secondary] || null, thirdPerson: true, p: { fly: true }, chute: null, ...extra });
-    const worn = () => ({ jet: body.gear.jetpack.visible, pack: body.gear.container.visible, floats: body.gear.floats.every(f => f.visible) });
-    body.dress(w('jetpack'), false);
-    assert.deepEqual(worn(), { jet: true, pack: false, floats: false });
+    const worn = () => ({ jet: body.gear.jetpack.visible, pack: body.gear.container.visible, ring: body.gear.ring.visible });
+    body.dress(w('jetpack'));
+    assert.deepEqual(worn(), { jet: true, pack: false, ring: false });
     assert.ok(body.gear.jetpack.userData.flames.every(f => f.visible), 'a jet flying without its flames');
-    body.dress(w('jetpack', { thirdPerson: false }), false);
+    body.dress(w('jetpack', { thirdPerson: false }));
     assert.equal(worn().jet, false, 'a pack on the back drawn into the eye\'s own view');
-    body.dress(w('parachute'), false);
-    assert.deepEqual(worn(), { jet: false, pack: true, floats: false });
+    body.dress(w('parachute'));
+    assert.deepEqual(worn(), { jet: false, pack: true, ring: false });
     // The canopy out: the container still worn, whatever is in hand, its flap open, and
     // the risers leaving it on top of the shoulders.
-    body.dress(w(null, { chute: { phase: 'flying' } }), false);
+    body.dress(w(null, { chute: { phase: 'flying' } }));
     assert.ok(worn().pack && body.gear.container.getObjectByName('flap').rotation.x > 0.5);
     const risers = body.risers([]);
     assert.equal(risers.length, 4);
     for (const at of risers) assert.ok(at.y > 0.37 && Math.abs(at.x) < 0.05, `a riser leaves the harness at ${at.toArray()}`);
-    body.dress(w('skimmers', { thirdPerson: false }), true);
-    assert.deepEqual(worn(), { jet: false, pack: false, floats: true });
-    // What reaches round from the back into the eye's view is not carried in the hand.
-    const onBack = vm => { const parts = []; vm.traverse(o => { if (o.userData.onBack) parts.push(o); }); return parts; };
-    assert.ok(onBack(TOOLS.jetpack.viewmodel()).some(o => o.getObjectByName('flare')), 'the thruster is carried in the hand');
-    assert.ok(onBack(TOOLS.parachute.viewmodel()).some(o => o.name === 'container'), 'the container is carried in the hand');
+    // The ring round the chest, seen looking down too, but not into the eye's own view,
+    // which has its own edge of it.
+    body.dress(w('ring', { thirdPerson: false, bodyHolds: true }));
+    assert.deepEqual(worn(), { jet: false, pack: false, ring: true });
+    body.dress(w('ring', { thirdPerson: false, bodyHolds: false }));
+    assert.equal(worn().ring, false, 'the body\'s ring drawn under the view\'s own');
+    // What reaches round from the body into the eye's view is not carried in the hand;
+    // the ring's pacifier is, either way.
+    const wornIn = vm => { const parts = []; vm.traverse(o => { if (o.userData.worn) parts.push(o); }); return parts; };
+    assert.ok(wornIn(TOOLS.jetpack.viewmodel()).some(o => o.getObjectByName('flare')), 'the thruster is carried in the hand');
+    assert.ok(wornIn(TOOLS.parachute.viewmodel()).some(o => o.name === 'container'), 'the container is carried in the hand');
+    const ringed = TOOLS.ring.viewmodel();
+    assert.ok(wornIn(ringed).some(o => o.name === 'ring') && !wornIn(ringed).some(o => o.name === 'pacifier'), 'the pacifier is not in the hand');
     // A shot leaves the muzzle of the tool in the body's hand, not the one before the eye.
     const shooter = holding(), vm = new THREE.Group(), copy = new THREE.Group(), muzzle = new THREE.Object3D();
     muzzle.name = 'muzzle';

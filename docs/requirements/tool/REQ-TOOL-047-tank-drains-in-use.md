@@ -1,6 +1,6 @@
 ---
 id: REQ-TOOL-047
-title: Jet and skimmers run on a tank
+title: Jet and swim ring run on a tank
 scope: tool
 type: functional
 priority: must
@@ -12,9 +12,10 @@ verification:
 
 ## Statement
 
-The jet backpack and the water skimmers **shall** each have a tank that drains
-only while the tool is doing its work (the jet holding the walker off the
-ground, the skimmers with only water under them) and refills whenever it is not.
+The jet backpack and the swim ring **shall** each have a tank - for the ring,
+the swimmer's breath - that drains only while the tool is doing its work (the
+jet holding the walker off the ground, the ring with only water under it) and
+refills whenever it is not.
 
 ## Rationale
 

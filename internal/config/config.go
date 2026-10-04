@@ -62,9 +62,10 @@ func (u UI) Validate() error {
 			}
 			return oneOf("tool", u.Tool,
 				// The primary tools, which hunt, and then the secondary ones, which
-				// carry the walker (web/static/walk/tools.js).
+				// carry the walker (web/static/walk/tools.js) - and "skimmers", the swim
+				// ring's old name, which the browser still reads as the ring.
 				"rod", "net", "camera", "bubbles", "extinguisher", "dart", "nailer",
-				"parachute", "grapple", "jetpack", "skimmers")
+				"parachute", "grapple", "jetpack", "ring", "skimmers")
 		}(),
 	)
 }

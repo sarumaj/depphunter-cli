@@ -25,7 +25,7 @@ import { closeHand, closeFinger } from './hands.js';
 import { viewLights, skinMaterial } from './tools.js';
 import { buildGear, fitOf, lick } from './gear.js';
 import { aloft } from './parachute.js';
-import { EYE } from './walkbase.js';
+import { EYE, WALK, RUN, SWIM_SINK } from './walkbase.js';
 
 // The body as scripts/body.py builds it, on MakeHuman's joints (scripts/human.py).
 const HIP = 0.256;   // the hips over the feet
@@ -86,6 +86,11 @@ export class Body {
     this.eased = { L: null, R: null };   // where each hand is holding on to a ride
     this.fists = { L: null, R: null };   // the middle of each fist, which holds on
     this.reaching = 0;                   // how far the torso leans in for a hold
+    this.towing = 0;                     // how far a line is towing the body (tow) ...
+    this.towYaw = 0;                     // ... toward the hook, and laid out how far
+    this.towLean = 0;
+    this.speed = 0;                      // how fast the feet are carrying the walker (gait)
+    this.lastAt = null;
     // Lit as the hand held before the eye is, by the same lights from where the view
     // is (update): nothing else in the map is lit, so these reach only the body and a
     // tool carried in its hand.
@@ -136,8 +141,8 @@ export class Body {
     this.carried = { L: null, R: null };
     this.rig = rig;
     this.group.add(rig);
-    // What is worn for a tool, on the bones it goes with: the packs on the back, a float
-    // under each foot.
+    // What is worn for a tool, on the bone it goes with: the packs on the back and the
+    // ring round the chest.
     rig.updateMatrixWorld(true);
     this.gear = buildGear(fitOf(pick, rig));
     const hang = (part, bone) => {
@@ -146,11 +151,7 @@ export class Body {
       bone.add(part);
     };
     const spine = this.bones.get('spine')?.bone;
-    if (spine) for (const pack of [this.gear.jetpack, this.gear.container]) hang(pack, spine);
-    for (const [i, side] of ['L', 'R'].entries()) {
-      const foot = this.bones.get(`foot_${side}`)?.bone;
-      if (foot) hang(this.gear.floats[i], foot);
-    }
+    if (spine) for (const part of [this.gear.jetpack, this.gear.container, this.gear.ring]) hang(part, spine);
   }
 
   /**
@@ -168,14 +169,19 @@ export class Body {
     const p = w.p, sit = sitting(w);
     // Sitting, the eye is SIT over the seat and the hips on it.
     const eye = p.feet + EYE + (w.eyeShift || 0), seat = eye - SIT;
-    // On skimmers, stood on the floats.
-    const floats = w.secondary?.id === 'skimmers', lift = floats && this.gear ? this.gear.lift : 0;
-    const y = p.feet + (seat + SEAT_UP - HIP - p.feet) * sit + lift * (1 - sit);
+    // Swimming in the ring, down in the water to the chest.
+    const swim = (w.swim || 0) * (1 - sit);
+    const y = p.feet + (seat + SEAT_UP - HIP - p.feet) * sit - SWIM_SINK * swim;
     const room = seat - w.height(p.x, p.z, seat);
     // Down a chute, the legs out ahead along half its slope, as a rider holds them -
     // turned about the hips, which stay on the seat.
     // Sat, the body faces the seat's way, not where the walker looks.
-    const look = w.rideYaw?.() ?? p.yaw, yaw = p.yaw + Math.atan2(Math.sin(look - p.yaw), Math.cos(look - p.yaw)) * sit;
+    const look = w.rideYaw?.() ?? p.yaw;
+    let yaw = p.yaw + Math.atan2(Math.sin(look - p.yaw), Math.cos(look - p.yaw)) * sit;
+    // Reeled in on a line, seen from outside the eye: hauled along it by the arm that
+    // holds it, the body turned to it and laid out behind that arm.
+    const towed = this.tow(w, deltaTime);
+    yaw += Math.atan2(Math.sin(this.towYaw - yaw), Math.cos(this.towYaw - yaw)) * towed;
     const r = w.riding, slide = r?.entry.ride === 'slide' ? r : null;
     const slope = slide && r.s > r.marks.edge && r.s < r.marks.foot ? r.slopeAt(r.s) : 0;
     this.lean = (this.lean || 0) + (slope * 0.5 * sit - (this.lean || 0)) * Math.min(1, deltaTime * 8);
@@ -184,10 +190,15 @@ export class Body {
     const hipsAt = HIPS.set(p.x + Math.sin(yaw) * behind, y + HIP, p.z + Math.cos(yaw) * behind);
     // On a swing or a seesaw, the legs tipped with the seat, not through it.
     const tipped = (w.rideLean?.() ?? 0) * sit;
-    this.tilt(this.lean + tipped, yaw, hipsAt);
-    // Running, the strides come quicker as well as longer.
-    this.phase = (this.phase + deltaTime * 7.5 * Math.max(0.5, w.pace || 0) * (1 + 0.15 * running(w))) % (Math.PI * 2);
-    const pose = posture(w, this.phase, performance.now(), room);
+    this.tilt(this.lean + tipped + this.towLean * towed, yaw, hipsAt);
+    // The stride as fast as the walker is going over the ground - measured, so the legs
+    // stop against a wall and slow as the walker does - each stride a gait's length:
+    // running, the strides come longer as well as quicker.
+    const gait = this.gait(w, deltaTime);
+    this.phase = (this.phase + deltaTime * Math.PI * 2 * this.speed / (STRIDE.walk + (STRIDE.run - STRIDE.walk) * running(w, gait))) % (Math.PI * 2);
+    const pose = posture(w, this.phase, performance.now(), room, gait);
+    if (towed > 0) towPose(pose, w.pull?.hand === w.offhand ? 'L' : 'R', towed);
+    if (swim > 0) swimPose(pose, performance.now() / 1000, Math.min(1, this.speed / WALK), swim);
     for (const name of ['thigh_L', 'thigh_R', 'shin_L', 'shin_R', 'foot_L', 'foot_R']) this.turn(name, pose[name] || 0, pose[`${name}_out`] || 0);
     // Sat, no foot goes under what is beneath it - the chute ahead, the ground: the
     // legs are lifted about the hips until the lower one clears it.
@@ -260,15 +271,16 @@ export class Body {
       this.grip(side, held.at, grip.along, holding);
     }
     // Seen from behind, the tools are in the body's hands, which close round them;
-    // otherwise the hands are as the pose has them. Skimmers are stood on, not held.
+    // otherwise the hands are as the pose has them.
     const holds = w.bodyHolds && !w.riding && !w.ballHeld;
     this.carry('R', holds ? w.viewmodel : null);
-    this.carry('L', holds && !floats ? w.offhand : null);
+    this.carry('L', holds ? w.offhand : null);
     for (const side of ['L', 'R']) {
       const held = this.carried[side];
       if (held) {
         this.follow(held);
         this.reach(side, held, w);
+        if (towed > 0 && held.vm === w.pull?.hand) this.haul(side, w.pull.to, towed);
       }
       closeHand(this.hands[side], held ? held.grip : pose[`grip_${side}`] ?? RELAXED);
       if (held?.trigger != null) closeFinger(this.hands[side], 0, held.trigger);
@@ -278,18 +290,19 @@ export class Body {
     // ... level however the body leans, running or reaching for a hold.
     this.turn('head', Math.max(-0.9, Math.min(0.7, p.pitch)) + (pose.lean || 0) + this.reaching, glance);
     this.bones.get('head')?.bone.scale.setScalar(this.showHead || w.thirdPerson ? 1 : 1e-4);
-    this.dress(w, floats);
+    this.dress(w);
     // A ball the body carries is between the hands.
     if (w.bodyHolds && w.ballHeld && arms) {
       this.rig.updateMatrixWorld(true);
       const left = this.bones.get('hand_L')?.bone.getWorldPosition(AT), right = this.bones.get('hand_R')?.bone.getWorldPosition(ON);
       if (left && right) w.ballHeld.mesh.position.addVectors(left, right).multiplyScalar(0.5).add(HELD.set(-Math.sin(yaw), 0, -Math.cos(yaw)).multiplyScalar(0.03));
     }
-    // Standing or walking, the lower foot planted on the ground - or on its float.
-    if (p.ground && sit < 1) {
+    // Standing or walking, the lower foot planted on the ground; swimming, they hang in
+    // the water.
+    if (p.ground && sit < 1 && swim < 1) {
       this.rig.updateMatrixWorld(true);
       const low = Math.min(...['foot_L', 'foot_R'].map(n => this.bones.get(n)?.bone.getWorldPosition(AT).y ?? y + SOLE));
-      this.group.position.y += (p.feet + lift - (low - SOLE)) * (1 - sit);
+      this.group.position.y += (p.feet - (low - SOLE)) * (1 - sit) * (1 - swim);
     }
   }
 
@@ -323,7 +336,7 @@ export class Body {
     copy.traverse(o => {
       const from = parts[pairs.length];
       pairs.push([from, o]);
-      if (from.userData.onBack) o.visible = false;
+      if (from.userData.worn) o.visible = false;
     });
     for (const [holding, h] of hands) holding.add(h);
     // ... and laid in the body's hand, mirrored for the left.
@@ -332,7 +345,49 @@ export class Body {
     copy.traverse(o => { o.frustumCulled = false; o.renderOrder = 0; });
     bone.add(copy);
     const rest = holder.userData.restGrip ?? vm.userData.restGrip ?? 0.75;
-    this.carried[side] = { vm, copy, grip: rest, trigger: vm.userData.trigger, pairs: pairs.slice(1).filter(([from]) => !from.userData.onBack) };
+    this.carried[side] = { vm, copy, grip: rest, trigger: vm.userData.trigger, pairs: pairs.slice(1).filter(([from]) => !from.userData.worn) };
+  }
+
+  /**
+   * How far the body is being towed along a line (shots.js reel), eased in and out, 0
+   * to 1 - only seen from outside the eye, which hangs on regardless - and, into
+   * `towYaw` and `towLean`, the way to the hook and how far the body is laid out toward
+   * it: flat along a line across, up along one going up, head first down one going down.
+   */
+  tow(w, deltaTime) {
+    const pull = (w.thirdPerson || this.showHead) && !w.riding ? w.pull : null;
+    if (pull) {
+      const dx = pull.to.x - w.p.x, dy = pull.to.y - w.p.feet - HIP, dz = pull.to.z - w.p.z;
+      this.towYaw = Math.atan2(-dx, -dz);
+      this.towLean = Math.max(0.35, Math.min(1.5, Math.PI / 2 - Math.atan2(dy, Math.hypot(dx, dz)))) * TOWED;
+    }
+    this.towing = (this.towing || 0) + ((pull ? 1 : 0) - (this.towing || 0)) * Math.min(1, deltaTime * 6);
+    return this.towing < 1e-3 ? 0 : this.towing;
+  }
+
+  // The arm on `side` straight out toward the hook `to`, `k` of the way, as the line hauls on it.
+  haul(side, to, k) {
+    const upper = this.bones.get(`upperarm_${side}`)?.bone;
+    if (!upper) return;
+    this.rig.updateMatrixWorld(true);
+    const shoulder = upper.getWorldPosition(SHOULDER);
+    const wrist = this.bones.get(`hand_${side}`).bone.getWorldPosition(POSED);
+    GRIP_GOAL.subVectors(to, shoulder).setLength(0.16).add(shoulder);
+    this.armTo(side, wrist.lerp(GRIP_GOAL, k));
+  }
+
+  /**
+   * How fast the walker's feet are carrying them over the ground this frame, eased into
+   * `speed`, and that as a pace (posture): 1 walking, 1.5 running, and in proportion
+   * between and below - nothing in the air, flying or carried by a ride or a line.
+   */
+  gait(w, deltaTime) {
+    const p = w.p, last = this.lastAt;
+    let speed = 0;
+    if (last && deltaTime > 0 && p.ground && !p.fly && !w.riding) speed = Math.min(RUN * 1.5, Math.hypot(p.x - last.x, p.z - last.z) / deltaTime);
+    this.lastAt = { x: p.x, z: p.z };
+    this.speed += (speed - this.speed) * Math.min(1, deltaTime * 10);
+    return this.speed <= WALK ? this.speed / WALK : 1 + 0.5 * Math.min(1, (this.speed - WALK) / (RUN - WALK));
   }
 
   // A carried copy's parts where the tool's own are this frame: a claw gone, a lever
@@ -348,17 +403,18 @@ export class Body {
 
   /**
    * What is worn for the tool in the off hand: the jet backpack, its flames out while
-   * it flies; the parachute's container, with the canopy out of it or not; the floats
-   * under the feet. The packs are on the back, so they are drawn only for a view from
-   * outside the eye; the floats are seen looking down too.
+   * it flies; the parachute's container, with the canopy out of it or not; the swim
+   * ring. The packs are on the back, so they are drawn only for a view from outside the
+   * eye; the ring is seen looking down too, once the view's own edge of it (tools.js)
+   * has gone with what the view holds.
    */
-  dress(w, floats) {
+  dress(w) {
     const gear = this.gear;
     if (!gear) return;
     const kit = w.secondary?.id, behind = w.thirdPerson || this.showHead, open = aloft(w.chute);
     gear.jetpack.visible = behind && kit === 'jetpack';
     gear.container.visible = behind && (kit === 'parachute' || open);
-    for (const float of gear.floats) float.visible = floats;
+    gear.ring.visible = kit === 'ring' && (behind || !!w.bodyHolds);
     if (gear.jetpack.visible) {
       const flying = !!w.p.fly;
       for (const flame of gear.jetpack.userData.flames) flame.visible = flying;
@@ -596,9 +652,14 @@ function handRest() {
 // How far forward the body leans running.
 const RUN_LEAN = 0.16;
 
-/** How far from walking to running the walker's pace is, 0 to 1. */
-export function running(w) {
-  const t = Math.max(0, Math.min(1, ((w.pace || 0) - 1) / 0.5));
+// How far the walker goes in one stride - both feet - walking and running. The map's
+// walker covers ground far faster than legs their size could: these keep a walking and a
+// running cadence a body could keep, the one about one and a half times the other.
+const STRIDE = { walk: 2.7, run: 4.5 };
+
+/** How far from walking to running the walker's `pace` (w.pace, or Body.gait's) is, 0 to 1. */
+export function running(w, pace = w.pace || 0) {
+  const t = Math.max(0, Math.min(1, (pace - 1) / 0.5));
   return t * t * (3 - 2 * t);
 }
 
@@ -619,8 +680,8 @@ export function sitting(w) {
  * climbing a ladder, walking at `phase` of a stride, and a kick taken lately laid over
  * any of them.
  */
-export function posture(w, phase, now, room = Infinity) {
-  const p = w.p, r = w.riding, ride = r?.entry.ride, pace = w.pace || 0, sit = sitting(w);
+export function posture(w, phase, now, room = Infinity, pace = w.pace || 0) {
+  const p = w.p, r = w.riding, ride = r?.entry.ride, sit = sitting(w);
   const pose = {};
   if (!p.ground && !r && sit === 0) {
     Object.assign(pose, { thigh_L: 0.45, thigh_R: 0.25, shin_L: -0.8, shin_R: -0.55 });
@@ -633,7 +694,7 @@ export function posture(w, phase, now, room = Infinity) {
     // the knee gives as it comes through; running, it swings further ahead than behind,
     // the heel tucked up under the seat as it comes through and the knee driven up,
     // and the knee never quite straight.
-    const reach = Math.min(1.3, pace) * (1 - sit), run = running(w) * (1 - sit);
+    const reach = Math.min(1.3, pace) * (1 - sit), run = running(w, pace) * (1 - sit);
     const leg = (at, k) => ({
       thigh: (1 - run) * Math.sin(at) * 0.42 * reach + run * (0.25 + 0.6 * Math.sin(at)),
       shin: -((1 - run) * Math.max(0, -Math.sin(at + 0.9)) * 0.9 * reach + run * (0.3 + 1.5 * Math.max(0, Math.cos(at - 0.3)))),
@@ -661,7 +722,7 @@ export function posture(w, phase, now, room = Infinity) {
   const since = (now - (w.kicked ?? -Infinity)) / 1000;
   const kicking = since >= 0 && since < KICK_KEYS.at(-1)[0];
   if (kicking) Object.assign(pose, kickPose(since));
-  arms(pose, w, phase, sit, kicking ? Math.sin(Math.PI * since / KICK_KEYS.at(-1)[0]) : 0);
+  arms(pose, w, phase, sit, kicking ? Math.sin(Math.PI * since / KICK_KEYS.at(-1)[0]) : 0, pace);
   // No joint bent further than it goes, nor a knee or an elbow the wrong way.
   for (const [joint, [low, high]] of Object.entries(JOINT_RANGES)) {
     for (const name of [`${joint}_L`, `${joint}_R`]) {
@@ -671,6 +732,40 @@ export function posture(w, phase, now, room = Infinity) {
     }
   }
   return pose;
+}
+
+// How much of the way the body is laid out along a line that tows it.
+const TOWED = 0.8;
+
+/**
+ * Towed (Body.tow), `k` of the way: the legs trailing, a little bent, and the arm that
+ * does not hold the line (`holding`) flung back and out.
+ */
+function towPose(pose, holding, k) {
+  const free = holding === 'L' ? 'R' : 'L';
+  for (const [joint, to] of [['thigh_L', -0.15], ['thigh_R', 0.1], ['shin_L', -0.7], ['shin_R', -0.35], ['foot_L', -0.3], ['foot_R', -0.3]]) {
+    pose[joint] = (pose[joint] || 0) + (to - (pose[joint] || 0)) * k;
+  }
+  const [forward, out] = pose[`upperarm_${free}`], [bend] = pose[`forearm_${free}`];
+  pose[`upperarm_${free}`] = [forward + (-0.6 - forward) * k, out + (0.7 - out) * k];
+  pose[`forearm_${free}`] = [bend + (0.3 - bend) * k, 0];
+}
+
+/**
+ * Swimming in the ring, `k` of the way, at `t` seconds: the legs kicking under the
+ * water, harder as the walker goes (`going`, 0 to 1), and the arms out over the ring.
+ */
+function swimPose(pose, t, going, k) {
+  const rate = 5 + 4 * going, kick = 0.25 + 0.3 * going;
+  for (const [side, at] of [['L', 0], ['R', Math.PI]]) {
+    const beat = Math.sin(t * rate + at);
+    for (const [joint, to] of [[`thigh_${side}`, 0.35 + beat * kick], [`shin_${side}`, -0.5 - Math.max(0, -beat) * 0.5], [`foot_${side}`, -0.5]]) {
+      pose[joint] = (pose[joint] || 0) + (to - (pose[joint] || 0)) * k;
+    }
+    const [forward, out] = pose[`upperarm_${side}`], [bend] = pose[`forearm_${side}`];
+    pose[`upperarm_${side}`] = [forward + (0.45 - forward) * k, out + (0.75 - out) * k];
+    pose[`forearm_${side}`] = [bend + (0.9 - bend) * k, 0];
+  }
 }
 
 // How far each joint bends forward from its rest, in the pose's angles.
@@ -695,8 +790,8 @@ const HOLDS = {
  * ride as far as they are sat on it (`sit`), and one thrown forward and the other back
  * through a kick (`kick`, 0 to 1 and back).
  */
-function arms(pose, w, phase, sit, kick) {
-  const p = w.p, r = w.riding, ride = r?.entry.ride, pace = Math.min(1.6, w.pace || 0);
+function arms(pose, w, phase, sit, kick, gait) {
+  const p = w.p, r = w.riding, ride = r?.entry.ride, pace = Math.min(1.6, gait);
   const set = (side, forward, bend, out = -0.04) => {
     pose[`upperarm_${side}`] = [forward, out];
     pose[`forearm_${side}`] = [bend, 0];
@@ -710,7 +805,7 @@ function arms(pose, w, phase, sit, kick) {
   // At rest a little forward and bent at the elbow, the hands before the thighs;
   // walking, swinging against the legs; running, pumping from the shoulder, bent near
   // square at the elbow, the hands passing the hips.
-  const run = running(w) * (1 - sit), swing = Math.sin(phase) * (0.3 + 0.1 * run) * Math.min(1.3, pace) * (1 - sit);
+  const run = running(w, gait) * (1 - sit), swing = Math.sin(phase) * (0.3 + 0.1 * run) * Math.min(1.3, pace) * (1 - sit);
   const forward = REST_ARM[0] + (0.05 - REST_ARM[0]) * run, bent = REST_ARM[1] + (1.3 - REST_ARM[1]) * run;
   set('L', forward - swing, bent + Math.max(0, -swing) * 0.3, REST_ARM[2]);
   set('R', forward + swing, bent + Math.max(0, swing) * 0.3, REST_ARM[2]);
