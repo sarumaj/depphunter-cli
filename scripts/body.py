@@ -3,9 +3,10 @@
 three outfits the map's styles dress them in, and exports it as glTF, in
 web/static/body.glb: the one model of the walker there is.
 
-Run it with Blender, or with the `bpy` module on the same Python it was built for:
+Run it with Blender, or with the `bpy` module on the same Python it was built for -
+the versions it is built with are pinned in scripts/requirements.txt:
 
-    pip install "numpy<2" bpy
+    python3.11 -m pip install -r scripts/requirements.txt
     python3 scripts/body.py
 
 The body is MakeHuman's base mesh, shaped and stood by scripts/human.py; the hands
@@ -194,14 +195,16 @@ def galaxy(p: Point):
         if p.z < 0.008:
             return ("#5a5f6b", "rubber", 0.011)
         return ("#c8ccd6", "suit", 0.011)  # moon boots
+    # Each ring round the part it belongs to: the arms hang beside the waist, and the
+    # elbows are level with the belly.
     rings = (
-        (a["neck"] - 0.004, a["neck"] + 0.008, 0.009),  # where the helmet locks on
-        (a["waist"] - 0.003, a["waist"] + 0.003, 0.008),
-        (a["knee"] - 0.008, a["knee"] + 0.012, 0.008),
-        (a["elbow"] - 0.002, a["elbow"] + 0.008, 0.008),
+        (a["neck"] - 0.004, a["neck"] + 0.008, 0.009, ""),  # where the helmet locks on
+        (a["waist"] - 0.003, a["waist"] + 0.003, 0.008, ("spine", "hips")),
+        (a["knee"] - 0.008, a["knee"] + 0.012, 0.008, ("thigh", "shin")),
+        (a["elbow"] - 0.002, a["elbow"] + 0.008, 0.008, ("upperarm", "forearm")),
     )
-    for low, high, stand in rings:
-        if p.between(low, high):
+    for low, high, stand, bones in rings:
+        if p.between(low, high) and p.bone.startswith(bones):
             return ("#9aa3b5", "rubber", stand)
     light = a["ankle"] + (a["knee"] - a["ankle"]) * 0.55
     if p.between(light, light + 0.003) and p.bone.startswith("shin"):

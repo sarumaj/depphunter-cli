@@ -1,9 +1,10 @@
 #!/usr/bin/env python3.11
 """Prepares the plants that stand on the city map, and exports them as glTF.
 
-Run it with Blender, or with the `bpy` module on the same Python it was built for:
+Run it with Blender, or with the `bpy` module on the same Python it was built for -
+the versions it is built with are pinned in scripts/requirements.txt:
 
-    pip install "numpy<2" bpy
+    python3.11 -m pip install -r scripts/requirements.txt
     python3 scripts/props.py
 
 Like the hand (scripts/hand.py), the models are not made here: they are from flo-bit's

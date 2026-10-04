@@ -253,6 +253,16 @@ on the map: the walk camera carries its own lights, the body the same from where
 the view is, and every other material is unlit, which preserves the city's flat,
 data-led coloring.
 
+The model scripts run on Blender as a Python module, `bpy`, which is on PyPI for
+one Python version at a time. The versions the models are built with are pinned
+in `scripts/requirements.txt`, so a model rebuilt on another machine is built
+the same:
+
+```sh
+python3.11 -m pip install -r scripts/requirements.txt
+python3.11 scripts/body.py
+```
+
 The trees and bushes follow the same arrangement. `scripts/props.py` takes a CC0
 low-poly nature pack, separates each model into trunk and crown so that the two
 can be colored and tinted independently, decimates it to a cost several thousand

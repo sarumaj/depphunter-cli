@@ -1,0 +1,9 @@
+# What the Blender build scripts run on (body.py, bug.py, play.py, props.py): Blender
+# itself as a Python module, which is published on PyPI for one Python at a time -
+# 5.0.x is for Python 3.11 - and the numpy it was built against. Pinned, so a model
+# built on one machine is built the same on the next.
+#
+#   python3.11 -m pip install -r scripts/requirements.txt
+--extra-index-url https://download.blender.org/pypi/
+bpy==5.0.1; python_version == "3.11"
+numpy==1.26.4; python_version == "3.11"

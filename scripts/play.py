@@ -2,9 +2,10 @@
 """Models the parts of the parks' play equipment that boxes and cylinders do not do
 justice to, and exports them as glTF.
 
-Run it with Blender, or with the `bpy` module on the same Python it was built for:
+Run it with Blender, or with the `bpy` module on the same Python it was built for -
+the versions it is built with are pinned in scripts/requirements.txt:
 
-    pip install "numpy<2" bpy
+    python3.11 -m pip install -r scripts/requirements.txt
     python3 scripts/play.py
 
 The pitches, courts and playgrounds are built in web/static/map/amenities.js out of

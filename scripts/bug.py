@@ -1,9 +1,10 @@
 #!/usr/bin/env python3.11
 """Builds the creatures a finding walks the streets as, and exports them as glTF.
 
-Run it with Blender, or with the `bpy` module on the same Python it was built for:
+Run it with Blender, or with the `bpy` module on the same Python it was built for -
+the versions it is built with are pinned in scripts/requirements.txt:
 
-    pip install "numpy<2" bpy
+    python3.11 -m pip install -r scripts/requirements.txt
     python3 scripts/bug.py
 
 The hand and the plants are models somebody else drew and this fetches (scripts/hand.py,
