@@ -91,7 +91,7 @@ export class Body {
     this.towLean = 0;
     this.towSide = 'L';
     this.speed = 0;                      // how fast the feet are carrying the walker (gait)
-    this.lastAt = null;
+    this.lastAt = { x: 0, z: 0, known: false }; // where the feet were last frame (gait)
     // Lit as the hand held before the eye is, by the same lights from where the view
     // is (update): nothing else in the map is lit, so these reach only the body and a
     // tool carried in its hand.
@@ -170,7 +170,7 @@ export class Body {
     const shown = w.active && !w.arrival && w.dying === null && !!this.rig;
     this.group.visible = this.lights.visible = shown;
     if (!shown) {
-      this.lastAt = null; // nowhere to stride from when it is shown again (gait)
+      this.lastAt.known = false; // nowhere to stride from when it is shown again (gait)
       return;
     }
     const view = this.scene.walkCamera;
@@ -337,7 +337,13 @@ export class Body {
     // ... copied without any of the viewmodel's hands ...
     const hands = (vm.userData.hands || []).map(h => [h, h.userData.hand]).filter(([, h]) => h);
     for (const [, h] of hands) h.removeFromParent();
+    // ... and without what each part keeps in its userData, which a clone copies by way
+    // of JSON: the viewmodel's keeps its hands, and the copy of a hand model as JSON is
+    // megabytes thrown away at every change of hands. The copy has no use for any of it.
+    const kept = [];
+    vm.traverse(o => { kept.push([o, o.userData]); o.userData = {}; });
     const copy = vm.clone();
+    for (const [o, data] of kept) o.userData = data;
     // ... each part paired with the one it was copied from, to move as that does
     // (follow) - but for what reaches round from the back into the view, which the
     // body wears there instead (dress).
@@ -381,7 +387,7 @@ export class Body {
   haul(side, to, k) {
     const upper = this.bones.get(`upperarm_${side}`)?.bone;
     if (!upper) return;
-    this.rig.updateMatrixWorld(true);
+    upper.updateWorldMatrix(true, true);
     const shoulder = upper.getWorldPosition(SHOULDER);
     const wrist = this.bones.get(`hand_${side}`).bone.getWorldPosition(POSED);
     GRIP_GOAL.subVectors(to, shoulder).setLength(0.16).add(shoulder);
@@ -396,8 +402,10 @@ export class Body {
   gait(w, deltaTime) {
     const p = w.p, last = this.lastAt;
     let speed = 0;
-    if (last && deltaTime > 0 && p.ground && !p.fly && !w.riding) speed = Math.min(RUN * 1.5, Math.hypot(p.x - last.x, p.z - last.z) / deltaTime);
-    this.lastAt = { x: p.x, z: p.z };
+    if (last.known && deltaTime > 0 && p.ground && !p.fly && !w.riding) speed = Math.min(RUN * 1.5, Math.hypot(p.x - last.x, p.z - last.z) / deltaTime);
+    last.x = p.x;
+    last.z = p.z;
+    last.known = true;
     this.speed += (speed - this.speed) * Math.min(1, deltaTime * 10);
     return this.speed <= WALK ? this.speed / WALK : 1 + 0.5 * Math.min(1, (this.speed - WALK) / (RUN - WALK));
   }
@@ -474,7 +482,7 @@ export class Body {
     // eye: the body holds a tool that way from the shoulder, a little lower, the elbow
     // bent.
     const upper = this.bones.get(`upperarm_${side}`).bone;
-    this.rig.updateMatrixWorld(true);
+    upper.updateWorldMatrix(true, true);
     const shoulder = upper.getWorldPosition(SHOULDER), reach = shoulder.distanceTo(fore.getWorldPosition(ELBOW)) + ELBOW.distanceTo(wrist.getWorldPosition(AT));
     TARGET.sub(shoulder);
     TARGET.y -= HOLD_LOW * reach;
@@ -495,7 +503,9 @@ export class Body {
     const knuckle = this.bones.get(`middle-finger-phalanx-proximal_${side}`)?.bone, thumb = this.bones.get(`thumb-phalanx-proximal_${side}`)?.bone;
     if (!wrist || !fore || !knuckle || !thumb) return;
     const hand = wrist.bone;
-    this.rig.updateMatrixWorld(true);
+    // Only the arm is moved here, so only the arm - and what it hangs from - is brought
+    // up to date, not the whole rig: this runs several times a frame for each hand.
+    fore.parent.updateWorldMatrix(true, true);
     handToBone();
     // The fist's middle, which the arm reaches with: at the knuckles, in toward the palm.
     const fist = (this.fists[side] ||= new THREE.Object3D());
@@ -557,7 +567,7 @@ export class Body {
   armTo(side, target, k = 1, end = null) {
     const upper = this.bones.get(`upperarm_${side}`)?.bone, fore = this.bones.get(`forearm_${side}`)?.bone, wrist = end || this.bones.get(`hand_${side}`)?.bone;
     if (!upper || !fore || !wrist) return;
-    this.rig.updateMatrixWorld(true);
+    upper.updateWorldMatrix(true, true);
     const shoulder = upper.getWorldPosition(SHOULDER), elbow = fore.getWorldPosition(ELBOW);
     const a = shoulder.distanceTo(elbow), b = elbow.distanceTo(wrist.getWorldPosition(AT));
     const goal = AT.lerp(target, k);

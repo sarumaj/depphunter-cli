@@ -100,6 +100,8 @@ export class MapScene {
     this.maskTarget = null;
     this.maskMaterial = null;
     this.maskData = null;
+    this.maskReading = null; // the readback under way, where it does not wait (handMask)
+    this.maskReady = false;
     this.planet = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 48), waterMaterial(this.curve));
     this.sky = makeSky(this.curve);
     this.planet.visible = this.sky.visible = false;
@@ -956,7 +958,15 @@ export class MapScene {
    * Implements: REQ-MAP-042
    */
   handMask() {
-    if (!this.walking || !this.viewScene.children.length) return null;
+    // Nothing drawn in that pass - seen from behind, or with the hands put away, it
+    // holds only the camera - is nothing to draw again and read back.
+    if (!this.walking || !drawsAnything(this.viewScene)) return null;
+    const { clientWidth: width, clientHeight: height } = this.container;
+    const mask = this.maskReady ? { data: this.maskData, w: MASK_W, h: MASK_H, width, height } : null;
+    // Read back without waiting for it where the renderer can (WebGL 2): the labels
+    // take the mask from their last redraw, a tenth of a second old, rather than the
+    // whole frame waiting on the GPU to finish this one.
+    if (this.maskReading) return mask;
     const r = this.renderer;
     this.maskTarget ||= new THREE.WebGLRenderTarget(MASK_W, MASK_H);
     this.maskMaterial ||= new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
@@ -967,12 +977,18 @@ export class MapScene {
     r.setClearColor(0x000000, 0);
     r.clear();
     r.render(this.viewScene, this.walkCamera);
-    r.readRenderTargetPixels(this.maskTarget, 0, 0, MASK_W, MASK_H, this.maskData);
+    if (r.readRenderTargetPixelsAsync) {
+      this.maskReading = r.readRenderTargetPixelsAsync(this.maskTarget, 0, 0, MASK_W, MASK_H, this.maskData)
+        .then(() => { this.maskReady = true; }, () => {})
+        .finally(() => { this.maskReading = null; });
+    } else {
+      r.readRenderTargetPixels(this.maskTarget, 0, 0, MASK_W, MASK_H, this.maskData);
+      this.maskReady = true;
+    }
     r.setRenderTarget(null);
     r.setClearColor(color, alpha);
     this.viewScene.overrideMaterial = null;
-    const { clientWidth: width, clientHeight: height } = this.container;
-    return { data: this.maskData, w: MASK_W, h: MASK_H, width, height };
+    return this.maskReady ? { data: this.maskData, w: MASK_W, h: MASK_H, width, height } : mask;
   }
 
   /**
@@ -1080,6 +1096,13 @@ const _detail = new THREE.Vector3(); // updateDetails' projections
 // screen, small enough to read back several times a second.
 const MASK_W = 128, MASK_H = 72;
 const _clear = new THREE.Color();
+
+// Whether anything in `scene` would be drawn: a visible mesh, line or point cloud.
+function drawsAnything(scene) {
+  let found = false;
+  scene.traverseVisible(o => { found ||= !!(o.isMesh || o.isLine || o.isPoints); });
+  return found;
+}
 
 // Whether the segment eye->p passes through the sphere (center c, radius r).
 function occludedBySphere(eye, p, c, r) {
