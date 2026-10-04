@@ -84,7 +84,7 @@ function domeEdges(r) {
 
 // ------------------------------------------------------------------ playground pieces
 
-const GRIP_UP = 0.075; // a swing's chains held this far over its seat
+const GRIP_UP = 0.035; // a swing's chains held this far over its seat
 
 // A swing set: an A-frame at each end of a beam along z, a seat hanging from the beam
 // for each of `seats` (their z), swinging along x.
@@ -198,7 +198,7 @@ function seesaw(kit, { length = 0.5 } = {}) {
   p.rigs.push({ geo: plank, at: [0, 0.055, 0], axis: 'z', rest: 0.12 });
   for (const s of [-1, 1]) {
     const grips = [-0.018, 0.018].map(cz => [s * (half - 0.07), 0.06, cz]);
-    p.play.push({ ride: 'rock', rig: 0, pivot: [0, 0.055, 0], seat: [s * (half - 0.035), 0.012, 0], reach: 0.2, grips, along: [0, 0, 1] });
+    p.play.push({ ride: 'rock', seesaw: true, rig: 0, pivot: [0, 0.055, 0], seat: [s * (half - 0.035), 0.012, 0], reach: 0.2, grips, along: [0, 0, 1] });
   }
   return p;
 }
@@ -212,7 +212,8 @@ function springRider(kit) {
   // Held by the handlebar, at each end of it.
   const [x, y, half] = kit.handlebar ?? [0.045, 0.13, 0.03];
   const grips = [[x, y, -half * 0.8], [x, y, half * 0.8]];
-  p.play.push({ ride: 'rock', rig: 0, pivot: [0, 0, 0], seat: [0, kit.saddle ?? 0.115, 0], reach: 0.3, grips, along: [0, 0, 1] });
+  // Sat on the front of the saddle, near enough the handlebar to hold it.
+  p.play.push({ ride: 'rock', rig: 0, pivot: [0, 0, 0], seat: [0.03, kit.saddle ?? 0.115, 0], reach: 0.3, grips, along: [0, 0, 1] });
   return p;
 }
 
@@ -439,13 +440,13 @@ const CIRCUIT = {
     painted(new THREE.CylinderGeometry(0.04, 0.04, 0.15, 14, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).translate(0, 0.09, 0), '#1d1f22', 0, true),
     block(0.15, 0.002, 0.08, 0, 0.089, 0, '#2a2d31'),
     block(0.002, 0.012, 0.03, 0.0755, 0.1, 0, '#cfd5db'),
-    bar([0.05, 0.09, 0], [0.09, 0.07, 0], 0.005, '#cfd5db'), bar([0.09, 0.07, 0], [0.11, 0.19, 0], 0.005, '#cfd5db'),
-    bar([0.11, 0.19, -0.035], [0.11, 0.19, 0.035], 0.005, '#cfd5db'),
-    painted(new THREE.SphereGeometry(0.012, 8, 6).translate(0.11, 0.19, 0), '#a9afb5'),
+    bar([0.05, 0.09, 0], [0.09, 0.07, 0], 0.005, '#cfd5db'), bar([0.09, 0.07, 0], [0.085, 0.175, 0], 0.005, '#cfd5db'),
+    bar([0.085, 0.175, -0.035], [0.085, 0.175, 0.035], 0.005, '#cfd5db'),
+    painted(new THREE.SphereGeometry(0.012, 8, 6).translate(0.085, 0.175, 0), '#a9afb5'),
     bar([-0.05, 0.09, 0], [-0.09, 0.07, 0], 0.005, '#cfd5db'), bar([-0.09, 0.07, 0], [-0.13, 0.13, 0], 0.005, '#cfd5db'),
   ]),
   saddle: 0.13,
-  handlebar: [0.11, 0.19, 0.035],
+  handlebar: [0.085, 0.175, 0.035],
   stem: () => bar([0, 0, 0], [0, 0.09, 0], 0.007, '#cfd5db'),
   pad: () => merge([
     painted(new THREE.CylinderGeometry(0.05, 0.05, 0.004, 16).translate(0, 0.002, 0), '#c8a24a'),

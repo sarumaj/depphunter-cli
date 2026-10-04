@@ -32,7 +32,8 @@ The legs **shall** be posed:
   longer, the knee driven up ahead, the heel tucked up behind as the leg comes
   through and the body leaning into it, the head kept level; tucked in the
   air; a leg at a time up a ladder;
-- sitting on a swing - on the seat, thighs along it, shins hanging - astride a
+- sitting on a swing - on the seat, thighs along it however far it swings,
+  shins hanging - astride a
   seesaw's plank, a spring rider or a bobby car, the thighs turned out round it
   and the feet down beside it, never through it, and out straight down a slide, leaning back along
   its slope; sat, the body faces the way the seat or the car does, whichever
@@ -62,7 +63,9 @@ bent near square at the elbow; go out for balance in the air; climb a ladder han
 to a ride - a swing's chains, a seesaw's or a rider's handles, a car's wheel, a
 roundabout's rail, a chute's sides - as far as the walker is sat on it; and be
 thrown forward and back against a kick. The shoulders **shall** turn a little
-against the stride.
+against the stride. No joint **shall** bend further than a person's does, nor a
+knee or an elbow the wrong way: holding on, the forearm rolls and the wrist
+bends only so far, the thumb going round a bar the easier way.
 
 What the walker wears **shall** follow the map's style, on the body and on the
 hands and arms alike: in a city a T-shirt, shorts and sneakers, the arms bare
@@ -114,6 +117,8 @@ where the walker is as plainly as the sky does.
     ladder, hand over hand on its rungs and last on the platform's edge, never
     reaching over a ladder's top for a rail it does not have. Each fist is closed round what it holds,
     the chain, bar or rung running across the palm, not the wrist on it and the
-    fingers in the air.
+    fingers in the air; the wrists bent no more than a little and the elbows
+    down, never folded up shut or raised before the face.
 11. The body is a person's - a face, shoulders, elbows and knees as a body has
     them - in every style, and the edges of what is worn run straight round it.
+12. Swinging high either way, the thighs stay along the seat, never through it.

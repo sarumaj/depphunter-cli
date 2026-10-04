@@ -669,6 +669,24 @@ describe('what the walker wears, and how their legs go', () => {
     const drop = 0.115 * Math.cos(low.thigh_L) + 0.14 * Math.cos(low.thigh_L + low.shin_L);
     assert.ok(drop <= 0.07, `the feet go ${(drop - 0.07).toFixed(3)} into the ground`);
   });
+
+  // Verifies: REQ-WALK-059
+  it('bends no joint further than a body does, nor a knee or an elbow the wrong way, in any move', () => {
+    const at = (extra = {}) => ({ p: { ground: true }, riding: null, pace: 1, kicked: null, ...extra });
+    const rides = ['swing', 'rock', 'drive', 'spin'].map(ride => ({ entry: { ride, seat: [0, 0.1, 0] }, angle: 1.2, blend: 1 }));
+    const moves = [at(), at({ pace: 1.6 }), at({ p: { ground: false } }), at({ pace: 0, kicked: 0 }), ...rides.map(riding => at({ riding }))];
+    for (const [m, w] of moves.entries()) {
+      for (let k = 0; k < 32; k++) {
+        const pose = posture(w, k * Math.PI / 16, k * 25, k % 2 ? 0.05 : Infinity);
+        for (const side of ['L', 'R']) {
+          assert.ok(pose[`shin_${side}`] === undefined || pose[`shin_${side}`] <= 0, `move ${m}: the knee bends back`);
+          const [bend] = pose[`forearm_${side}`];
+          assert.ok(bend >= 0 && bend <= 2.5, `move ${m}: the elbow bends ${bend.toFixed(2)}`);
+          assert.ok(pose[`thigh_${side}`] === undefined || Math.abs(pose[`thigh_${side}`]) <= 2.2, `move ${m}: the hip bends too far`);
+        }
+      }
+    }
+  });
 });
 
 const { layer, CLOTH } = await import('../static/walk/cloth.js');

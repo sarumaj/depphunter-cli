@@ -82,6 +82,8 @@ export class Body {
     this.showHead = false; // the head, for a view from outside the walker's own eye
     this.carried = { L: null, R: null }; // what each hand holds seen from behind
     this.eased = { L: null, R: null };   // where each hand is holding on to a ride
+    this.fists = { L: null, R: null };   // the middle of each fist, which holds on
+    this.reaching = 0;                   // how far the torso leans in for a hold
     // Lit as the hand held before the eye is, by the same lights from where the view
     // is (update): nothing else in the map is lit, so these reach only the body and a
     // tool carried in its hand.
@@ -161,7 +163,9 @@ export class Body {
     // Looking down from the eye, the head is bent over the chest; seen from behind, it is not.
     const behind = BEHIND + (w.thirdPerson ? 0 : STOOP * Math.min(1, Math.max(0, -p.pitch) / (Math.PI / 2)));
     const hipsAt = HIPS.set(p.x + Math.sin(yaw) * behind, y + HIP, p.z + Math.cos(yaw) * behind);
-    this.tilt(this.lean, yaw, hipsAt);
+    // On a swing or a seesaw, the legs tipped with the seat, not through it.
+    const tipped = (w.rideLean?.() ?? 0) * sit;
+    this.tilt(this.lean + tipped, yaw, hipsAt);
     // Running, the strides come quicker as well as longer.
     this.phase = (this.phase + deltaTime * 7.5 * Math.max(0.5, w.pace || 0) * (1 + 0.15 * running(w))) % (Math.PI * 2);
     const pose = posture(w, this.phase, performance.now(), room);
@@ -182,12 +186,13 @@ export class Body {
       }
       if (short > 0 && reach > 0.05) {
         this.lean -= Math.asin(Math.min(1, short / reach));
-        this.tilt(this.lean, yaw, hipsAt);
+        this.tilt(this.lean + tipped, yaw, hipsAt);
       }
     }
     // The legs lean about the hips; the torso stays upright under the eye - but for a
     // runner's lean - turning a little against the stride as a walker's shoulders do.
-    this.turn('spine', this.lean + (pose.lean || 0), (pose.twist || 0));
+    const upright = this.lean + tipped + (pose.lean || 0);
+    this.turn('spine', upright, (pose.twist || 0));
     // The arms: as they swing or hold on - or folded away, while the hands held before
     // the eye are the ones seen.
     const arms = w.bodyArms?.() ?? true;
@@ -204,6 +209,22 @@ export class Body {
     // stood on, and up a ladder, which is climbed.
     const climbing = r?.entry.ride === 'slide' && r.s < r.marks.top;
     const holding = r?.entry.ride === 'spin' || climbing ? r.blend : sit, grips = holding > 0 && w.rideGrips?.();
+    // Leaning in from the hips for a hold past the arms' reach - a rider's handlebar as
+    // it rocks away, the rung over a climber's head - rather than the arm straining.
+    let short = 0;
+    const spine = this.bones.get('spine')?.bone;
+    if (grips && spine) {
+      this.rig.updateMatrixWorld(true);
+      const bend = spine.getWorldPosition(AT);
+      for (const [i, side] of ['L', 'R'].entries()) {
+        const upper = this.bones.get(`upperarm_${side}`)?.bone;
+        if (!grips[i] || !upper) continue;
+        const shoulder = upper.getWorldPosition(SHOULDER);
+        short = Math.max(short, (shoulder.distanceTo(grips[i].at) - ARM_REACH) / Math.max(0.05, shoulder.y - bend.y));
+      }
+    }
+    this.reaching += (Math.min(MAX_REACH_LEAN, short) * holding - this.reaching) * Math.min(1, deltaTime * 6);
+    if (this.reaching > 1e-3) this.turn('spine', upright - this.reaching, (pose.twist || 0));
     for (const [i, side] of ['L', 'R'].entries()) {
       const grip = grips?.[i];
       if (!grip) {
@@ -232,8 +253,8 @@ export class Body {
     }
     // The head looks where the eye does, as far as a neck turns.
     const glance = Math.max(-1.4, Math.min(1.4, Math.atan2(Math.sin(p.yaw - yaw), Math.cos(p.yaw - yaw))));
-    // ... level however the body leans running.
-    this.turn('head', Math.max(-0.9, Math.min(0.7, p.pitch)) + (pose.lean || 0), glance);
+    // ... level however the body leans, running or reaching for a hold.
+    this.turn('head', Math.max(-0.9, Math.min(0.7, p.pitch)) + (pose.lean || 0) + this.reaching, glance);
     this.bones.get('head')?.bone.scale.setScalar(this.showHead || w.thirdPerson ? 1 : 1e-4);
     // A ball the body carries is between the hands.
     if (w.bodyHolds && w.ballHeld && arms) {
@@ -323,46 +344,80 @@ export class Body {
    * bar through `at` running `along`: the fist round it, the bar across the palm.
    */
   grip(side, at, along, k) {
-    const wrist = this.bones.get(`hand_${side}`)?.bone, knuckle = this.bones.get(`middle-finger-phalanx-proximal_${side}`)?.bone;
-    if (!wrist || !knuckle) return;
+    const wrist = this.bones.get(`hand_${side}`), fore = this.bones.get(`forearm_${side}`)?.bone;
+    const knuckle = this.bones.get(`middle-finger-phalanx-proximal_${side}`)?.bone, thumb = this.bones.get(`thumb-phalanx-proximal_${side}`)?.bone;
+    if (!wrist || !fore || !knuckle || !thumb) return;
+    const hand = wrist.bone;
     this.rig.updateMatrixWorld(true);
-    const posed = wrist.getWorldPosition(POSED);
     handToBone();
-    // Twice over: where the fist is depends on how the hand is turned, and how it is
-    // turned on where the arm has put it.
+    // The fist's middle, which the arm reaches with: at the knuckles, in toward the palm.
+    const fist = (this.fists[side] ||= new THREE.Object3D());
+    if (fist.parent !== hand) hand.add(fist);
+    hand.getWorldQuaternion(TURNED);
+    fist.position.copy(hand.worldToLocal(knuckle.getWorldPosition(FIST_AT)
+      .addScaledVector(PALM.set(0, 0, -1).applyQuaternion(TURNED), PALM_DEPTH * handScale)));
+    fist.updateMatrixWorld(true);
+    const posed = fist.getWorldPosition(POSED), goal = GRIP_GOAL.subVectors(at, posed).multiplyScalar(k).add(posed);
+    // The thumb the way round a bar it goes most easily: up, in toward the body and
+    // forward.
+    THUMB_WAY.set(side === 'L' ? 1 : -1, 1, -0.5).applyQuaternion(this.group.quaternion);
+    const bar = BAR.copy(along).normalize();
+    if (bar.dot(THUMB_WAY) < 0) bar.negate();
+    let rolled = 0;
+    // The fist put round the bar, the hand turned so the bar runs across it, and over
+    // again: how the hand is turned depends on where the arm has put it.
+    this.armTo(side, goal, 1, fist);
     for (let pass = 0; pass < 2; pass++) {
-      // The fist's middle: at the knuckles, in toward the palm.
-      wrist.getWorldQuaternion(TURNED);
-      const fist = knuckle.getWorldPosition(FIST_AT).sub(wrist.getWorldPosition(AT))
-        .addScaledVector(PALM.set(0, 0, -1).applyQuaternion(TURNED), PALM_DEPTH * handScale);
-      this.armTo(side, GRIP_GOAL.subVectors(at, fist).sub(posed).multiplyScalar(k).add(posed));
-      // The hand turned, by the least turn, so the bar runs across it.
-      wrist.getWorldQuaternion(TURNED);
-      const across = ACROSS.set(1, 0, 0).applyQuaternion(TURNED), bar = BAR.copy(along);
-      if (across.dot(bar) < 0) bar.negate();
-      SWING.setFromUnitVectors(across, bar);
-      SWING.slerp(NO_TURN, 1 - k);
-      wrist.parent.getWorldQuaternion(PARENT);
-      wrist.quaternion.copy(PARENT.invert().multiply(SWING).multiply(TURNED));
-      wrist.updateMatrixWorld(true);
+      // From the wrist held straight, the forearm rolled - as far as one rolls - so the
+      // thumb comes round toward the bar...
+      hand.quaternion.copy(wrist.rest);
+      hand.updateMatrixWorld(true);
+      const length = TO.subVectors(hand.getWorldPosition(AT), fore.getWorldPosition(ELBOW)).normalize();
+      const thumbWard = this.thumbWard(hand, thumb);
+      const from = FROM.copy(thumbWard).addScaledVector(length, -thumbWard.dot(length));
+      const to = REACH.copy(bar).addScaledVector(length, -bar.dot(length));
+      const roll = from.lengthSq() > 1e-8 && to.lengthSq() > 1e-8 ? Math.atan2(length.dot(SPUN.crossVectors(from, to)), from.dot(to)) : 0;
+      const kept = Math.max(-MAX_ROLL, Math.min(MAX_ROLL, rolled + roll * k)) - rolled;
+      rolled += kept;
+      fore.getWorldQuaternion(PARENT);
+      fore.parent.getWorldQuaternion(EYE_TURN);
+      fore.quaternion.copy(EYE_TURN.invert().multiply(ROLL.setFromAxisAngle(length, kept)).multiply(PARENT));
+      fore.updateMatrixWorld(true);
+      // ... and the wrist bent the rest of the way, no further than a wrist bends.
+      SWING.setFromUnitVectors(this.thumbWard(hand, thumb), bar);
+      const bend = 2 * Math.acos(Math.min(1, Math.abs(SWING.w)));
+      SWING.slerp(NO_TURN, 1 - Math.min(1, MAX_BEND / Math.max(bend, 1e-6)) * k);
+      hand.getWorldQuaternion(TURNED);
+      hand.quaternion.multiply(BENT.copy(TURNED).invert().multiply(SWING).multiply(TURNED));
+      hand.updateMatrixWorld(true);
+      this.armTo(side, goal, 1, fist);
     }
   }
 
+  // Which way across the hand, in the world, its thumb is.
+  thumbWard(hand, thumb) {
+    hand.getWorldQuaternion(TURNED);
+    const across = ACROSS.set(1, 0, 0).applyQuaternion(TURNED);
+    return thumb.getWorldPosition(SPUN).sub(hand.getWorldPosition(FIST_AT)).dot(across) < 0 ? across.negate() : across;
+  }
+
   /**
-   * Reaches the arm on `side` for `target`, a world point for the wrist, `k` of the way
-   * from where the pose has it: the elbow where the arm's lengths put it, bent down and
-   * out, and the arm straight toward it when it is out of reach.
+   * Reaches the arm on `side` for `target`, a world point for the wrist - or for `end`,
+   * a point the hand carries - `k` of the way from where the pose has it: the elbow where
+   * the arm's lengths put it, bent down and out, and the arm straight toward it when it
+   * is out of reach.
    */
-  armTo(side, target, k = 1) {
-    const upper = this.bones.get(`upperarm_${side}`)?.bone, fore = this.bones.get(`forearm_${side}`)?.bone, wrist = this.bones.get(`hand_${side}`)?.bone;
+  armTo(side, target, k = 1, end = null) {
+    const upper = this.bones.get(`upperarm_${side}`)?.bone, fore = this.bones.get(`forearm_${side}`)?.bone, wrist = end || this.bones.get(`hand_${side}`)?.bone;
     if (!upper || !fore || !wrist) return;
     this.rig.updateMatrixWorld(true);
     const shoulder = upper.getWorldPosition(SHOULDER), elbow = fore.getWorldPosition(ELBOW);
     const a = shoulder.distanceTo(elbow), b = elbow.distanceTo(wrist.getWorldPosition(AT));
     const goal = AT.lerp(target, k);
-    const toward = ON.subVectors(goal, shoulder), d = Math.min(a + b - 1e-4, Math.max(Math.abs(a - b) + 1e-4, toward.length()));
+    const toward = ON.subVectors(goal, shoulder), d = Math.min(a + b - 1e-4, Math.max(Math.abs(a - b) + 1e-4, FOLDED * (a + b), toward.length()));
     toward.normalize();
-    POLE.set(side === 'L' ? -0.6 : 0.6, -1, 0.3).applyQuaternion(this.group.quaternion);
+    // The torso stays upright however the legs tip (update), and the elbow with it.
+    POLE.set(side === 'L' ? -0.6 : 0.6, -1, 0.3).applyAxisAngle(Y, this.group.rotation.y);
     POLE.addScaledVector(toward, -POLE.dot(toward)).normalize();
     const along = (a * a - b * b + d * d) / (2 * d), up = Math.sqrt(Math.max(0, a * a - along * along));
     point(upper, shoulder, HELD.copy(shoulder).addScaledVector(toward, along).addScaledVector(POLE, up));
@@ -405,7 +460,14 @@ const SHOULDER = new THREE.Vector3(), ELBOW = new THREE.Vector3();
 const NEW_HOLD = 0.15;
 const MOVED = new THREE.Vector3();
 const POSED = new THREE.Vector3(), FIST_AT = new THREE.Vector3(), PALM = new THREE.Vector3(), GRIP_GOAL = new THREE.Vector3();
-const ACROSS = new THREE.Vector3(), BAR = new THREE.Vector3(), NO_TURN = new THREE.Quaternion();
+const ACROSS = new THREE.Vector3(), BAR = new THREE.Vector3(), NO_TURN = new THREE.Quaternion(), THUMB_WAY = new THREE.Vector3();
+const ROLL = new THREE.Quaternion(), BENT = new THREE.Quaternion(), REACH = new THREE.Vector3(), SPUN = new THREE.Vector3();
+// How far from the shoulder a hold is held with the arm not straining, and how far the
+// torso leans in for one further off.
+const ARM_REACH = 0.15, MAX_REACH_LEAN = 0.25;
+// How far a forearm rolls, and a wrist bends, holding on; how close to the shoulder,
+// of the arm's reach, the wrist comes with the elbow bent as far as one goes.
+const MAX_ROLL = 1.3, MAX_BEND = 0.8, FOLDED = 0.25;
 // How far in from the knuckles toward the palm a fist's middle is, in the hand model's
 // units (tools.js FIST).
 const PALM_DEPTH = 0.028;
@@ -521,8 +583,19 @@ export function posture(w, phase, now, room = Infinity) {
   const kicking = since >= 0 && since < KICK_KEYS.at(-1)[0];
   if (kicking) Object.assign(pose, kickPose(since));
   arms(pose, w, phase, sit, kicking ? Math.sin(Math.PI * since / KICK_KEYS.at(-1)[0]) : 0);
+  // No joint bent further than it goes, nor a knee or an elbow the wrong way.
+  for (const [joint, [low, high]] of Object.entries(JOINT_RANGES)) {
+    for (const name of [`${joint}_L`, `${joint}_R`]) {
+      const clamp = angle => Math.max(low, Math.min(high, angle));
+      if (Array.isArray(pose[name])) pose[name][0] = clamp(pose[name][0]);
+      else if (pose[name] !== undefined) pose[name] = clamp(pose[name]);
+    }
+  }
   return pose;
 }
+
+// How far each joint bends forward from its rest, in the pose's angles.
+const JOINT_RANGES = { thigh: [-0.8, 2.2], shin: [-2.4, 0], upperarm: [-1, 3], forearm: [0, 2.5] };
 
 // How each arm is held, ride by ride: the upper arm forward, the forearm bent up from the
 // elbow and the arm out from the side - holding a swing's chains, the handles of a

@@ -342,8 +342,8 @@ export const play = {
     }
     // Facing along a swing and a rider (their model's +x), and along a seesaw to its
     // middle.
-    if (entry.ride === 'swing' || (entry.ride === 'rock' && !entry.seat[0])) ride.yawTo = Math.atan2(-Math.cos(it.turn), Math.sin(it.turn));
-    if (entry.ride === 'rock' && entry.seat[0]) {
+    if (entry.ride === 'swing' || (entry.ride === 'rock' && !entry.seesaw)) ride.yawTo = Math.atan2(-Math.cos(it.turn), Math.sin(it.turn));
+    if (entry.seesaw) {
       const middle = onAmenity(it, a, entry.pivot, v1), seat = onAmenity(it, a, [entry.pivot[0] + entry.seat[0], 0, entry.pivot[2]], v2);
       ride.yawTo = Math.atan2(-(middle.x - seat.x), -(middle.z - seat.z));
       ride.angle = -Math.sign(entry.seat[0]) * 0.12;
@@ -387,7 +387,7 @@ export const play = {
       r.angle += r.speed * dt;
       this.p.yaw += r.speed * dt; // turned with the deck
     } else if (e.ride === 'rock') {
-      const seesaw = !!e.seat[0], down = seesaw ? -Math.sign(e.seat[0]) * 0.12 : 0;
+      const seesaw = !!e.seesaw, down = seesaw ? -Math.sign(e.seat[0]) * 0.12 : 0;
       const stiff = seesaw ? 10 : 30, damp = seesaw ? 1.2 : 2;
       r.speed += (-stiff * (r.angle - down) - damp * r.speed) * dt;
       if (push && !r.pushed) {
@@ -463,6 +463,18 @@ export const play = {
     if (r.entry.ride === 'drive') return this.carYaw(r.it, r.car);
     if (r.entry.ride === 'slide') return r.s < r.marks.top ? r.ladderYaw : r.s < r.marks.edge ? r.chuteYaw : r.headingAt(r.s);
     return r.facing;
+  },
+
+  /**
+   * How far a swing's seat, a seesaw's plank or a spring rider is tipped forward, the
+   * way the body faces: the rider sits tipped with it.
+   */
+  rideLean() {
+    const r = this.riding, ride = r?.entry.ride;
+    if (!r?.rig || (ride !== 'swing' && ride !== 'rock')) return 0;
+    const base = rigPoint(r.it, r.it.spec, r.rig, r.angle, [0, 0, 0], v3), up = rigPoint(r.it, r.it.spec, r.rig, r.angle, [0, 1, 0], v4).sub(base);
+    const yaw = this.rideYaw(), ahead = -(up.x * Math.sin(yaw) + up.z * Math.cos(yaw)) / up.length();
+    return Math.asin(Math.max(-1, Math.min(1, ahead)));
   },
 
   /**
