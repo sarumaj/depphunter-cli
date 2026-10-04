@@ -15,8 +15,8 @@ verification:
 `generic-hand` model of the WebXR Input Profiles project, fetched from npm and
 pinned by version and checksum; it **shall** add the forearm the model lacks,
 rebuild its rig as a skeleton with one bone per joint named after the WebXR
-joints, for `scripts/body.py` to export in `web/static/body.glb`. The UI **shall not** download a model
-at run time.
+joints, for `scripts/body.py` to export in `web/static/body.glb`. The UI
+**shall not** download a model at run time.
 
 ## Rationale
 

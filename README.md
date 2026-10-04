@@ -132,8 +132,8 @@ browser.
   under as it does: the view sinks and bobs, the water closes over it from the
   bottom of the screen with bubbles rising through it, and all of it drains away
   again if a shore is reached in time — so taking the
-  swim ring off out over the bay is the end of that walk, and so is walking into it
-  without it unless a shore is reached first. The bay is not a wall around the
+  swim ring off out over the bay is the end of that walk, and so is walking into
+  it without it unless a shore is reached first. The bay is not a wall around the
   map: it is ground half a unit below the shore, so it can be stepped down into
   the way a curb can, waded about in, and — because the shore is further up than
   a step — climbed back out of, whether by something in it or something on a

@@ -30,15 +30,15 @@ The legs **shall** be posed:
 
 - striding as they walk, the lower foot on the ground, the strides coming as
   fast as the walker goes over the ground - slowing as they slow, stopping
-  against a wall; running, quicker and longer, the knee driven up ahead, the heel tucked up behind as the leg comes
-  through and the body leaning into it, the head kept level; tucked in the
-  air; a leg at a time up a ladder;
+  against a wall; running, quicker and longer, the knee driven up ahead, the
+  heel tucked up behind as the leg comes through and the body leaning into it,
+  the head kept level; tucked in the air; a leg at a time up a ladder;
 - sitting on a swing - on the seat, thighs along it however far it swings,
   shins hanging - astride a
   seesaw's plank, a spring rider or a bobby car, the thighs turned out round it
-  and the feet down beside it, never through it, and out straight down a slide, leaning back along
-  its slope; sat, the body faces the way the seat or the car does, whichever
-  way the walker looks;
+  and the feet down beside it, never through it, and out straight down a slide,
+  leaning back along its slope; sat, the body faces the way the seat or the car
+  does, whichever way the walker looks;
   sitting down and getting up over a moment. Sat anywhere, no leg **shall** go
   through the seat, the chute ahead or the ground under it;
 - kicking a ball, the right leg drawn back with the heel up, whipped through at
@@ -58,15 +58,16 @@ while a tool or a ball is held before the eye, those are the hands seen and the
 body's arms are not drawn; empty-handed, or looking down past what is held -
 which sinks out of the view as the eye goes down - the body's own arms are the
 hands, and they hold what was held: a tool before the chest as the view held it,
-a ball between them. The arms **shall** hang a little forward at rest, the hands before the
-thighs; swing against the legs walking, and pump from the shoulder running,
-bent near square at the elbow; go out for balance in the air; climb a ladder hand over hand; hold on
-to a ride - a swing's chains, a seesaw's or a rider's handles, a car's wheel, a
-roundabout's rail, a chute's sides - as far as the walker is sat on it; and be
-thrown forward and back against a kick. The shoulders **shall** turn a little
-against the stride. No joint **shall** bend further than a person's does, nor a
-knee or an elbow the wrong way: holding on, the forearm rolls and the wrist
-bends only so far, the thumb going round a bar the easier way.
+a ball between them. The arms **shall** hang a little forward at rest, the hands
+before the thighs; swing against the legs walking, and pump from the shoulder
+running, bent near square at the elbow; go out for balance in the air; climb a
+ladder hand over hand; hold on to a ride - a swing's chains, a seesaw's or a
+rider's handles, a car's wheel, a roundabout's rail, a chute's sides - as far
+as the walker is sat on it; and be thrown forward and back against a kick. The
+shoulders **shall** turn a little against the stride. No joint **shall** bend
+further than a person's does, nor a knee or an elbow the wrong way: holding on,
+the forearm rolls and the wrist bends only so far, the thumb going round a bar
+the easier way.
 
 What the walker wears **shall** follow the map's style, on the body and on the
 hands and arms alike: in a city a T-shirt, shorts and sneakers, the arms bare
@@ -116,10 +117,10 @@ where the walker is as plainly as the sky does.
     chains, handles, handlebar or wheel, one each side; on a roundabout the walker
     stands beside the bar they hold, with the hand on that side; up a slide's
     ladder, hand over hand on its rungs and last on the platform's edge, never
-    reaching over a ladder's top for a rail it does not have. Each fist is closed round what it holds,
-    the chain, bar or rung running across the palm, not the wrist on it and the
-    fingers in the air; the wrists bent no more than a little and the elbows
-    down, never folded up shut or raised before the face.
+    reaching over a ladder's top for a rail it does not have. Each fist is closed
+    round what it holds, the chain, bar or rung running across the palm, not the
+    wrist on it and the fingers in the air; the wrists bent no more than a little
+    and the elbows down, never folded up shut or raised before the face.
 11. The body is a person's - a face, shoulders, elbows and knees as a body has
     them - in every style, and the edges of what is worn run straight round it.
 12. Swinging high either way, the thighs stay along the seat, never through it.
