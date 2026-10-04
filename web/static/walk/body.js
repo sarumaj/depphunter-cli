@@ -23,6 +23,8 @@ import { clone as cloneRigged } from '../vendor/SkeletonUtils.js';
 import { loadBody } from './bodymodel.js';
 import { closeHand, closeFinger } from './hands.js';
 import { viewLights, skinMaterial } from './tools.js';
+import { buildGear, lick, FLOAT_LIFT } from './gear.js';
+import { aloft } from './parachute.js';
 import { EYE } from './walkbase.js';
 
 // The body as scripts/body.py builds it, on MakeHuman's joints (scripts/human.py).
@@ -134,6 +136,21 @@ export class Body {
     this.carried = { L: null, R: null };
     this.rig = rig;
     this.group.add(rig);
+    // What is worn for a tool, on the bones it goes with: the packs on the back, a float
+    // under each foot.
+    this.gear = buildGear();
+    rig.updateMatrixWorld(true);
+    const hang = (part, bone) => {
+      part.matrixAutoUpdate = false;
+      part.matrix.copy(bone.matrixWorld).invert().multiply(rig.matrixWorld);
+      bone.add(part);
+    };
+    const spine = this.bones.get('spine')?.bone;
+    if (spine) for (const pack of [this.gear.jetpack, this.gear.container]) hang(pack, spine);
+    for (const [i, side] of ['L', 'R'].entries()) {
+      const foot = this.bones.get(`foot_${side}`)?.bone;
+      if (foot) hang(this.gear.floats[i], foot);
+    }
   }
 
   /**
@@ -151,7 +168,9 @@ export class Body {
     const p = w.p, sit = sitting(w);
     // Sitting, the eye is SIT over the seat and the hips on it.
     const eye = p.feet + EYE + (w.eyeShift || 0), seat = eye - SIT;
-    const y = p.feet + (seat + SEAT_UP - HIP - p.feet) * sit;
+    // On skimmers, stood on the floats.
+    const floats = w.secondary?.id === 'skimmers';
+    const y = p.feet + (seat + SEAT_UP - HIP - p.feet) * sit + (floats ? FLOAT_LIFT * (1 - sit) : 0);
     const room = seat - w.height(p.x, p.z, seat);
     // Down a chute, the legs out ahead along half its slope, as a rider holds them -
     // turned about the hips, which stay on the seat.
@@ -241,13 +260,16 @@ export class Body {
       this.grip(side, held.at, grip.along, holding);
     }
     // Seen from behind, the tools are in the body's hands, which close round them;
-    // otherwise the hands are as the pose has them.
+    // otherwise the hands are as the pose has them. Skimmers are stood on, not held.
     const holds = w.bodyHolds && !w.riding && !w.ballHeld;
     this.carry('R', holds ? w.viewmodel : null);
-    this.carry('L', holds ? w.offhand : null);
+    this.carry('L', holds && !floats ? w.offhand : null);
     for (const side of ['L', 'R']) {
       const held = this.carried[side];
-      if (held) this.reach(side, held, w);
+      if (held) {
+        this.follow(held);
+        this.reach(side, held, w);
+      }
       closeHand(this.hands[side], held ? held.grip : pose[`grip_${side}`] ?? RELAXED);
       if (held?.trigger != null) closeFinger(this.hands[side], 0, held.trigger);
     }
@@ -256,6 +278,7 @@ export class Body {
     // ... level however the body leans, running or reaching for a hold.
     this.turn('head', Math.max(-0.9, Math.min(0.7, p.pitch)) + (pose.lean || 0) + this.reaching, glance);
     this.bones.get('head')?.bone.scale.setScalar(this.showHead || w.thirdPerson ? 1 : 1e-4);
+    this.dress(w, floats);
     // A ball the body carries is between the hands.
     if (w.bodyHolds && w.ballHeld && arms) {
       this.rig.updateMatrixWorld(true);
@@ -292,6 +315,16 @@ export class Body {
     const hands = (vm.userData.hands || []).map(h => [h, h.userData.hand]).filter(([, h]) => h);
     for (const [, h] of hands) h.removeFromParent();
     const copy = vm.clone();
+    // ... each part paired with the one it was copied from, to move as that does
+    // (follow) - but for what reaches round from the back into the view, which the
+    // body wears there instead (dress).
+    const parts = [], pairs = [];
+    vm.traverse(o => parts.push(o));
+    copy.traverse(o => {
+      const from = parts[pairs.length];
+      pairs.push([from, o]);
+      if (from.userData.onBack) o.visible = false;
+    });
     for (const [holding, h] of hands) holding.add(h);
     // ... and laid in the body's hand, mirrored for the left.
     copy.matrixAutoUpdate = false;
@@ -299,7 +332,53 @@ export class Body {
     copy.traverse(o => { o.frustumCulled = false; o.renderOrder = 0; });
     bone.add(copy);
     const rest = holder.userData.restGrip ?? vm.userData.restGrip ?? 0.75;
-    this.carried[side] = { vm, copy, grip: rest, trigger: vm.userData.trigger };
+    this.carried[side] = { vm, copy, grip: rest, trigger: vm.userData.trigger, pairs: pairs.slice(1).filter(([from]) => !from.userData.onBack) };
+  }
+
+  // A carried copy's parts where the tool's own are this frame: a claw gone, a lever
+  // pushed, a handle let go of.
+  follow(held) {
+    for (const [from, to] of held.pairs) {
+      to.position.copy(from.position);
+      to.quaternion.copy(from.quaternion);
+      to.scale.copy(from.scale);
+      to.visible = from.visible;
+    }
+  }
+
+  /**
+   * What is worn for the tool in the off hand: the jet backpack, its flames out while
+   * it flies; the parachute's container, with the canopy out of it or not; the floats
+   * under the feet. The packs are on the back, so they are drawn only for a view from
+   * outside the eye; the floats are seen looking down too.
+   */
+  dress(w, floats) {
+    const gear = this.gear;
+    if (!gear) return;
+    const kit = w.secondary?.id, behind = w.thirdPerson || this.showHead, open = aloft(w.chute);
+    gear.jetpack.visible = behind && kit === 'jetpack';
+    gear.container.visible = behind && (kit === 'parachute' || open);
+    for (const float of gear.floats) float.visible = floats;
+    if (gear.jetpack.visible) {
+      const flying = !!w.p.fly;
+      for (const flame of gear.jetpack.userData.flames) flame.visible = flying;
+      if (flying) lick(gear.jetpack, 1 + (w.burst > 0 ? 1.4 : 0), performance.now());
+    }
+    const flap = gear.container.getObjectByName('flap');
+    if (flap) flap.rotation.x = w.chute && w.chute.phase !== 'packed' ? 1.2 : 0;
+  }
+
+  /**
+   * Where the canopy's four risers leave the harness, in the world, into `out` - or
+   * null while the container is not drawn, and the risers are hung where the eye has
+   * them (canopy.js).
+   */
+  risers(out) {
+    const container = this.gear?.container;
+    if (!container?.visible || !this.group.visible) return null;
+    container.updateWorldMatrix(true, false);
+    container.userData.risers.forEach((at, i) => (out[i] ||= new THREE.Vector3()).copy(at).applyMatrix4(container.matrixWorld));
+    return out;
   }
 
   /**

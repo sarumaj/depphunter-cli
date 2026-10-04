@@ -5,7 +5,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { EYE, STEP, WATER, reducedMotion } from './walkbase.js';
 import { toolFor, viewLights, litPart } from './tools.js';
-import { deployChute, stepChute, aloft, cutAway, lookOf, poseRig, canopyRig, LooseCanopy, MIN_DEPLOY, DRAPE_AHEAD, dropFor } from './parachute.js';
+import { deployChute, stepChute, aloft, cutAway, lookOf, poseRig, canopyRig, LooseCanopy, MIN_DEPLOY, DRAPE_AHEAD, dropFor, LINKS_AT } from './parachute.js';
 
 // Under a canopy: how far below the eye the risers meet the harness, which is where
 // the canopy hangs from, and how much of the walker's swing under it the head keeps
@@ -16,6 +16,7 @@ const SHOULDERS = 0.15, NOD = 0.45;
 const RIG_AT = new THREE.Vector3(), RIG_TURN = new THREE.Euler(), RIG_QUATERNION = new THREE.Quaternion();
 const RIG_SCALE = new THREE.Vector3(1, 1, 1), RIG_MATRIX = new THREE.Matrix4(), RIG_HAND = new THREE.Vector3();
 const HANG = { eye: 0, pitch: 0, roll: 0 }, HANG_NONE = Object.freeze({ eye: 0, pitch: 0, roll: 0 });
+const RISERS = [], RIG_INVERSE = new THREE.Matrix4();
 
 export const canopy = {
   /**
@@ -193,14 +194,17 @@ export const canopy = {
   },
 
   /**
-   * Where the canopy's rig hangs in the world: at the walker's shoulders, turned to
-   * the canopy's heading and tilted by the walker's swing under it (parachute.js),
-   * into `out`.
+   * Where the canopy's rig hangs in the world: at the walker's shoulders - seen from
+   * behind, at the harness the body wears (body.js risers) - turned to the canopy's
+   * heading and tilted by the walker's swing under it (parachute.js), into `out`.
    */
   rigWorld(out) {
     const p = this.p, swing = this.chute.swing;
     RIG_TURN.set(swing.pitch, this.chute.heading, swing.roll, 'YXZ');
-    return out.compose(RIG_AT.set(p.x, p.feet + EYE - SHOULDERS, p.z), RIG_QUATERNION.setFromEuler(RIG_TURN), RIG_SCALE);
+    const harness = this.thirdPerson && this.body?.risers(RISERS);
+    if (harness) RIG_AT.copy(harness[0]).add(harness[1]).add(harness[2]).add(harness[3]).multiplyScalar(0.25);
+    else RIG_AT.set(p.x, p.feet + EYE - SHOULDERS, p.z);
+    return out.compose(RIG_AT, RIG_QUATERNION.setFromEuler(RIG_TURN), RIG_SCALE);
   },
 
   /**
@@ -235,13 +239,49 @@ export const canopy = {
     this.rigWorld(RIG_MATRIX);
     this.rig.matrix.copy(cam.matrixWorld).invert().multiply(RIG_MATRIX);
     this.rig.matrixWorldNeedsUpdate = true;
-    const top = this.offhand?.getObjectByName('toggle-top');
+    // The left toggle in the hand that holds it: the body's, seen from behind.
+    const holder = this.bodyHolds ? this.body?.carried.L?.copy : this.offhand;
+    const top = holder?.getObjectByName('toggle-top');
     let hand = null;
+    RIG_INVERSE.copy(RIG_MATRIX).invert();
     if (top?.parent?.visible) {
       top.updateWorldMatrix(true, false);
-      hand = top.getWorldPosition(RIG_HAND).applyMatrix4(RIG_MATRIX.invert());
+      hand = top.getWorldPosition(RIG_HAND).applyMatrix4(RIG_INVERSE);
     }
     poseRig(this.rig, lookOf(this.chute, now), hand);
+    this.hangRisers(RIG_INVERSE);
+  },
+
+  /**
+   * Seen from behind, the risers run from the harness on the body's shoulders up to the
+   * links, in place of the ones hung for the eye - which start out to the sides of the
+   * head so as to stay out of the view. `inverse` takes the world into the rig.
+   */
+  hangRisers(inverse) {
+    const risers = this.rig.getObjectByName('risers');
+    let strapped = this.rig.getObjectByName('harness-risers');
+    const harness = this.thirdPerson && risers.visible && this.body?.risers(RISERS);
+    if (!harness) {
+      if (strapped) strapped.visible = false;
+      return;
+    }
+    if (!strapped) {
+      strapped = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#2b3138' }));
+      strapped.geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(LINKS_AT.length * 6), 3));
+      strapped.name = 'harness-risers';
+      strapped.frustumCulled = false;
+      strapped.renderOrder = 9;
+      this.rig.add(strapped);
+    }
+    risers.visible = false;
+    strapped.visible = true;
+    const at = strapped.geometry.getAttribute('position');
+    LINKS_AT.forEach((link, i) => {
+      const from = RIG_HAND.copy(harness[i]).applyMatrix4(inverse);
+      at.setXYZ(i * 2, from.x, from.y, from.z);
+      at.setXYZ(i * 2 + 1, link.x, link.y, link.z);
+    });
+    at.needsUpdate = true;
   },
 
   /**

@@ -423,7 +423,7 @@ describe('the canopy as drawn', () => {
     assert.equal(chute.phase, 'flying');
     const w = {
       scene, chute, p: { x: 3, feet: chute.feet, z: -2 }, arrival: null, held: null, offhand: null,
-      rigWorld: W.rigWorld, eye: W.eye, hideTool() {},
+      rigWorld: W.rigWorld, hangRisers: W.hangRisers, eye: W.eye, hideTool() {},
     };
     // The middle of the view: a cone 36 degrees either side of where the eyes point,
     // which is past the top and bottom edges of a 70 degree view.

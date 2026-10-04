@@ -822,6 +822,48 @@ describe('empty hands', () => {
     assert.ok(w.held.visible && !w.bodyArms());
   });
 
+  // Verifies: REQ-WALK-061
+  it('wears the jet backpack, the parachute and the skimmers seen from behind, and fires from the body\'s hand', async () => {
+    const { Body } = await import('../static/walk/body.js');
+    const { buildGear } = await import('../static/walk/gear.js');
+    const body = new Body({ scene: new THREE.Scene() });
+    body.gear = buildGear();
+    body.group.visible = true;
+    const w = (secondary, extra = {}) => ({ secondary: TOOLS[secondary] || null, thirdPerson: true, p: { fly: true }, chute: null, ...extra });
+    const worn = () => ({ jet: body.gear.jetpack.visible, pack: body.gear.container.visible, floats: body.gear.floats.every(f => f.visible) });
+    body.dress(w('jetpack'), false);
+    assert.deepEqual(worn(), { jet: true, pack: false, floats: false });
+    assert.ok(body.gear.jetpack.userData.flames.every(f => f.visible), 'a jet flying without its flames');
+    body.dress(w('jetpack', { thirdPerson: false }), false);
+    assert.equal(worn().jet, false, 'a pack on the back drawn into the eye\'s own view');
+    body.dress(w('parachute'), false);
+    assert.deepEqual(worn(), { jet: false, pack: true, floats: false });
+    // The canopy out: the container still worn, whatever is in hand, its flap open, and
+    // the risers leaving it on top of the shoulders.
+    body.dress(w(null, { chute: { phase: 'flying' } }), false);
+    assert.ok(worn().pack && body.gear.container.getObjectByName('flap').rotation.x > 0.5);
+    const risers = body.risers([]);
+    assert.equal(risers.length, 4);
+    for (const at of risers) assert.ok(at.y > 0.37 && Math.abs(at.x) < 0.05, `a riser leaves the harness at ${at.toArray()}`);
+    body.dress(w('skimmers', { thirdPerson: false }), true);
+    assert.deepEqual(worn(), { jet: false, pack: false, floats: true });
+    // What reaches round from the back into the eye's view is not carried in the hand.
+    const onBack = vm => { const parts = []; vm.traverse(o => { if (o.userData.onBack) parts.push(o); }); return parts; };
+    assert.ok(onBack(TOOLS.jetpack.viewmodel()).some(o => o.getObjectByName('flare')), 'the thruster is carried in the hand');
+    assert.ok(onBack(TOOLS.parachute.viewmodel()).some(o => o.name === 'container'), 'the container is carried in the hand');
+    // A shot leaves the muzzle of the tool in the body's hand, not the one before the eye.
+    const shooter = holding(), vm = new THREE.Group(), copy = new THREE.Group(), muzzle = new THREE.Object3D();
+    muzzle.name = 'muzzle';
+    muzzle.position.set(1, 2, 3);
+    copy.add(muzzle);
+    vm.add(muzzle.clone());
+    Object.assign(shooter, { bodyHolds: true, body: { carried: { L: { vm, copy: copy.clone() } } } });
+    shooter.body.carried.L.copy.children[0].position.set(4, 5, 6);
+    assert.deepEqual(shooter.muzzle(vm).toArray(), [4, 5, 6]);
+    shooter.bodyHolds = false;
+    assert.deepEqual(shooter.muzzle(vm).toArray(), [1, 2, 3]);
+  });
+
   // Verifies: REQ-TOOL-032
   it('puts the right hand\'s tool down on its own key, and its key takes it out', () => {
     const w = holding();

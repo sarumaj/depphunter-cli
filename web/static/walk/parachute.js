@@ -415,6 +415,8 @@ const BRAKE_AT = [0.18, 0.42, 0.66, 0.92];
 const SHOULDER = 0.17, SHOULDER_BACK = 0.03, LINK_X = 0.25, LINKS = 0.42, CASCADE = 0.55;
 // The links' depth, front riser and back.
 const FRONT_LINK = -0.02, BACK_LINK = 0.035;
+/** The links the risers end at, in the rig's frame: front then back, left then right. */
+export const LINKS_AT = [-1, 1].flatMap(side => [FRONT_LINK, BACK_LINK].map(z => new THREE.Vector3(side * LINK_X, LINKS, z)));
 // The risers as webbing: how wide and thick the strap is, and how far up it the strap
 // fades in - the part of it that passes the eyes is nearer the lens than anything
 // else hanging there, and at full strength it would be a bar across the view.

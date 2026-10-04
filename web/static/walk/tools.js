@@ -1519,6 +1519,7 @@ const jetpack = {
       // than placed beside it, so they sit on it wherever it is pointed - laid out
       // separately they drift off it the moment the hose is angled.
       const feed = linkPart(heel, new THREE.Vector3(0.026, -0.215, 0.365), 0.013, '#3c444d');
+      feed.userData.onBack = true; // seen from behind, the pack is on the back (gear.js)
       frame.add(feed);
       for (const t of [-0.34, -0.17, 0, 0.17, 0.34]) {
         const band = part(new THREE.TorusGeometry(0.016, 0.0035, 5, 10), '#6d7782');
@@ -1536,6 +1537,7 @@ const jetpack = {
       pod.position.set(0.085, -0.36, 0.11);
       pod.rotation.set(-0.22, 0, 0.14);
       pod.updateMatrix(); // the arm below is measured against it
+      pod.userData.onBack = true;
       frame.add(pod);
       pod.add(part(new THREE.CylinderGeometry(0.052, 0.052, 0.17, 14), '#48525c'));
       pod.add(part(new THREE.SphereGeometry(0.052, 14, 8).scale(1, 0.55, 1).translate(0, 0.085, 0), '#5a6068'));
@@ -1554,10 +1556,13 @@ const jetpack = {
       // length runs out - which up to now was in mid-air, a hand's breadth short of
       // both the grip and the tank.
       const collar = new THREE.Vector3(-0.022, 0.05, 0).applyMatrix4(pod.matrix);
-      frame.add(linkPart(heel, collar, 0.011, '#5a6068'));
+      const strut = linkPart(heel, collar, 0.011, '#5a6068');
+      strut.userData.onBack = true;
+      frame.add(strut);
       for (const end of [heel, collar]) {
         const boss = part(new THREE.SphereGeometry(0.017, 10, 8), '#48525c');
         boss.position.copy(end);
+        boss.userData.onBack = end === collar;
         frame.add(boss);
       }
 
@@ -1755,6 +1760,7 @@ const parachute = {
       // stowed in.
       const container = new THREE.Group();
       container.name = 'container';
+      container.userData.onBack = true; // seen from behind, it is on the back (gear.js)
       container.position.copy(CONTAINER_AT);
       container.rotation.copy(CONTAINER_TURN);
       g.add(container);
@@ -1779,7 +1785,9 @@ const parachute = {
       hackey.add(part(new THREE.SphereGeometry(0.024, 12, 9), '#e4402f'));
       g.updateMatrixWorld(true);
       const into = hackey.worldToLocal(container.localToWorld(POUCH_AT.clone()));
-      hackey.add(linkPart(new THREE.Vector3(0, -0.018, 0), into, 0.0045, '#f2f4f7'));
+      const bridle = linkPart(new THREE.Vector3(0, -0.018, 0), into, 0.0045, '#f2f4f7');
+      bridle.userData.onBack = true;
+      hackey.add(bridle);
 
       // Open: the left toggle, a stiffened loop with the steering line leaving its top.
       // walk.js reads `toggle-top` for where the line starts.

@@ -1872,7 +1872,6 @@ export class Walker {
       const eye = EYE + this.ride(deltaTime) + under + hang.eye + this.eyeShift;
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, eye,
         this.p.yaw, this.p.pitch + hang.pitch, this.roll + hang.roll, this.thirdPerson && !this.arrival ? this.thirdEye(eye, deltaTime) : null);
-      this.hangCanopy(now);
       // Dressed for the map: the hands' sleeves and gloves, and the body.
       if (this.scene.style !== this.dressedFor) {
         this.dressedFor = this.scene.style;
@@ -1881,6 +1880,8 @@ export class Walker {
       }
       this.body.wear(this.scene.style);
       this.body.update(this, deltaTime);
+      // The canopy after the body, whose harness it hangs from seen from behind.
+      this.hangCanopy(now);
       if (!this.still && !this.arrival) this.updateAim();
       this.drawPath();
       this.drawLine();
@@ -2717,7 +2718,10 @@ export class Walker {
    * Implements: REQ-TOOL-038
    */
   muzzle(vm = this.viewmodel, out = new THREE.Vector3()) {
-    const m = vm?.getObjectByName('muzzle');
+    // Seen from behind, or looking down, the tool is in the body's hand, and leaves
+    // from there.
+    const carried = this.bodyHolds ? Object.values(this.body?.carried || {}).find(held => held?.vm === vm) : null;
+    const m = (carried?.copy || vm)?.getObjectByName('muzzle');
     if (!m) return null;
     m.updateWorldMatrix(true, false);
     return m.getWorldPosition(out);
