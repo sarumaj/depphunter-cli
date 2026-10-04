@@ -44,7 +44,7 @@ export const TOUR = [
     title: 'The map is also a place',
     body: `Press V to walk into it. You explore in first person on a small planet,
       holding a tool in each hand: one for the hunt, one to carry you — a grapple line,
-      a jet backpack, a pair of floats for the water. Using a tool on a building selects
+      a jet backpack, a swim ring for the water. Using a tool on a building selects
       that module and marks it with a beacon, so the walk and the map view are the same
       session seen two ways.`,
   },

@@ -15,7 +15,7 @@ export const WALK = 3.2, RUN = 8.5; // on foot, units per second
 export const STEP = 0.15;   // highest ledge walked up without jumping
 export const WATER = -0.45; // the water surface (layout LAND_H below the mainland)
 // Swimming in the swim ring: how far below the surface the feet hang, the ring on the
-// water round the chest and the eye a hand's breadth over it.
+// water round the chest and the head out over it.
 export const SWIM_SINK = 0.31;
 export const REACH = 90;    // aiming distance
 /** Walker.height's probes for a point rather than a body: what a ball rests on. */

@@ -261,6 +261,8 @@ export const canopy = {
     const risers = this.rig.getObjectByName('risers');
     let strapped = this.rig.getObjectByName('harness-risers');
     const harness = this.thirdPerson && risers.visible && this.body?.risers(RISERS);
+    // Only the webbing is redrawn: the links and the stowed toggle stay where they are.
+    for (const riser of risers.children) if (riser.name === 'riser') riser.visible = !harness;
     if (!harness) {
       if (strapped) strapped.visible = false;
       return;
@@ -273,7 +275,6 @@ export const canopy = {
       strapped.renderOrder = 9;
       this.rig.add(strapped);
     }
-    risers.visible = false;
     strapped.visible = true;
     const at = strapped.geometry.getAttribute('position');
     LINKS_AT.forEach((link, i) => {

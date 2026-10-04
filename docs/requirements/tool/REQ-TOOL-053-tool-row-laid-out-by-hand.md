@@ -6,6 +6,7 @@ type: functional
 priority: must
 status: implemented
 verification:
+  - unit
   - e2e
   - manual
 ---

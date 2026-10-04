@@ -113,8 +113,11 @@ def fetch() -> str:
     )
     if not os.path.exists(cache):
         print(f"fetching {TARBALL}")
-        with urllib.request.urlopen(TARBALL) as r, open(cache, "wb") as f:
+        # Downloaded beside it and moved into place whole, so a download cut short is
+        # fetched again next time rather than failing its checksum for good.
+        with urllib.request.urlopen(TARBALL) as r, open(cache + ".part", "wb") as f:
             f.write(r.read())
+        os.replace(cache + ".part", cache)
     with open(cache, "rb") as f:
         digest = hashlib.sha256(f.read()).hexdigest()
     if digest != DIGEST:

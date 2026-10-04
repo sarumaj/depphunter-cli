@@ -286,6 +286,11 @@ describe('the two kinds of tool', () => {
     swimmer.onWater = () => false;
     for (let i = 0; i < 40; i++) WALK.Walker.prototype.swimming.call(swimmer, 0.05);
     assert.ok(swimmer.swim < 0.01);
+    // Swimming, there is nothing to jump off; ashore, Space jumps again.
+    const jumper = { keys: new Set(['Space']), p: { ground: true }, onWater: () => true };
+    assert.equal(WALK.Walker.prototype.jumps.call(jumper), false, 'a swimmer jumped');
+    jumper.onWater = () => false;
+    assert.equal(WALK.Walker.prototype.jumps.call(jumper), true, 'ashore, Space does not jump');
   });
 
   // Verifies: REQ-TOOL-027, REQ-TOOL-041
@@ -559,6 +564,47 @@ describe('the lights the walk camera carries', () => {
 });
 
 describe('the tool switcher', () => {
+  // Verifies: REQ-TOOL-053
+  it('draws the row as one group of slots per hand, the left hand\'s first', () => {
+    // Just enough of the page for drawSlots to build the row into: the groups are
+    // what style.css keeps whole, so a narrow window puts the left hand's over the
+    // right's rather than breaking either.
+    const element = tag => {
+      const el = {
+        tag, className: '', dataset: {}, children: [], attributes: {},
+        setAttribute(name, value) { el.attributes[name] = value; },
+        append(...kids) { el.children.push(...kids); },
+        replaceChildren(...kids) { el.children = kids; },
+        querySelectorAll(selector) {
+          const name = selector.slice(1), found = [];
+          const walk = node => { for (const kid of node.children || []) { if (kid.className === name) found.push(kid); walk(kid); } };
+          walk(el);
+          return found;
+        },
+      };
+      return el;
+    };
+    const saved = globalThis.document;
+    globalThis.document = { ...saved, createElement: element, createElementNS: (ns, tag) => element(tag) };
+    try {
+      const row = element('div');
+      const w = Object.assign(Object.create(WALK.Walker.prototype), {
+        hud: { querySelector: q => (q === '.w-slots' ? row : null) },
+        primary: TOOLS.rod, secondary: TOOLS.grapple, bare: false,
+      });
+      w.drawSlots();
+      assert.deepEqual(row.children.map(g => g.className), ['w-hand-group', 'w-hand-group'], 'the row is not two groups');
+      const [left, right] = row.children.map(g => g.children.filter(el => el.className === 'w-slot'));
+      assert.deepEqual(left.map(el => el.dataset.tool), SECONDARY_IDS, 'the left hand\'s group is not its tools');
+      assert.deepEqual(right.map(el => el.dataset.tool), PRIMARY_IDS, 'the right hand\'s group is not its tools');
+      assert.equal(row.children[0].children[0].dataset.hand, 'left', 'the left hand\'s group does not start with its hand');
+      const lit = row.querySelectorAll('.w-slot').filter(el => el.attributes['aria-selected'] === 'true').map(el => el.dataset.tool);
+      assert.deepEqual(lit, ['grapple', 'rod']);
+    } finally {
+      globalThis.document = saved;
+    }
+  });
+
   // Verifies: REQ-TOOL-054, REQ-TOOL-055, REQ-TOOL-070
   it('numbers the row it draws, left to right', () => {
     // The fix this all exists for. The row is laid out with the carried tools on the
@@ -840,6 +886,45 @@ describe('the wheel, flicked', () => {
     assert.ok(w.wheel.open, 'a tap shut the wheel');
     assert.equal(w.secondary, null);
     assert.equal(w.primary.id, DEFAULT_TOOL);
+  });
+});
+
+describe('the tracker', () => {
+  // Verifies: REQ-HUNT-021
+  it('draws the map faded under the sweep, near the walker and turned with them', async () => {
+    const { drawGround } = await import('../static/walk/tracker.js');
+    const { box } = await import('./stub.mjs');
+    // A drawing context that keeps each fill: its alpha, and the corners of each shape.
+    const fills = [];
+    let shapes = [], shape = null;
+    const g = {
+      save() {}, restore() {}, clip() {}, arc() {},
+      beginPath() { shapes = []; },
+      moveTo(x, y) { shape = [[x, y]]; shapes.push(shape); },
+      lineTo(x, y) { shape.push([x, y]); },
+      closePath() {},
+      fill() { fills.push({ alpha: g.globalAlpha, shapes }); },
+    };
+    const boxes = [
+      box('land', 0, 0, 40, 40),
+      box('building', 0, -5, 2, 2), // ahead of a walker facing -z
+      box('building', 300, 0, 2, 2), // far off the dial
+    ];
+    const c = 50, R = 40, k = R / 20;
+    drawGround(g, boxes, { px: 0, pz: 0, sin: 0, cos: 1 }, c, R, k, () => '#000');
+    assert.equal(fills.length, 2, 'the land and the buildings are not drawn apart');
+    const [land, buildings] = fills;
+    assert.ok(land.alpha < buildings.alpha && buildings.alpha <= 0.25, 'not faded, or the buildings no stronger than the land');
+    assert.equal(land.shapes.length, 1);
+    assert.equal(buildings.shapes.length, 1, 'a building off the dial is drawn');
+    // Ahead is up the dial.
+    const middle = buildings.shapes[0].reduce((m, [x, y]) => [m[0] + x / 4, m[1] + y / 4], [0, 0]);
+    assert.ok(Math.abs(middle[0] - c) < 1e-6 && middle[1] < c - 5, `the building ahead is drawn at ${middle}`);
+    // Turned about: the same building is behind, down the dial.
+    fills.length = 0;
+    drawGround(g, boxes, { px: 0, pz: 0, sin: Math.sin(Math.PI), cos: Math.cos(Math.PI) }, c, R, k, () => '#000');
+    const behind = fills[1].shapes[0].reduce((m, [x, y]) => [m[0] + x / 4, m[1] + y / 4], [0, 0]);
+    assert.ok(behind[1] > c + 5, `turned about, the building is drawn at ${behind}`);
   });
 });
 

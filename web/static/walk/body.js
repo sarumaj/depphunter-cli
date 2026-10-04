@@ -89,6 +89,7 @@ export class Body {
     this.towing = 0;                     // how far a line is towing the body (tow) ...
     this.towYaw = 0;                     // ... toward the hook, and laid out how far
     this.towLean = 0;
+    this.towSide = 'L';
     this.speed = 0;                      // how fast the feet are carrying the walker (gait)
     this.lastAt = null;
     // Lit as the hand held before the eye is, by the same lights from where the view
@@ -108,6 +109,12 @@ export class Body {
     }
     this.worn = style;
     if (this.rig) this.group.remove(this.rig);
+    // What was worn for the last style goes with its rig.
+    if (this.gear) {
+      for (const part of [this.gear.jetpack, this.gear.container, this.gear.ring]) {
+        part.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); });
+      }
+    }
     const rig = cloneRigged(model);
     const wanted = `body_${style}`, fallback = 'body_city';
     const meshes = [];
@@ -162,7 +169,10 @@ export class Body {
   update(w, deltaTime) {
     const shown = w.active && !w.arrival && w.dying === null && !!this.rig;
     this.group.visible = this.lights.visible = shown;
-    if (!shown) return;
+    if (!shown) {
+      this.lastAt = null; // nowhere to stride from when it is shown again (gait)
+      return;
+    }
     const view = this.scene.walkCamera;
     view.updateWorldMatrix(true, false);
     view.matrixWorld.decompose(this.lights.position, this.lights.quaternion, AT);
@@ -197,7 +207,7 @@ export class Body {
     const gait = this.gait(w, deltaTime);
     this.phase = (this.phase + deltaTime * Math.PI * 2 * this.speed / (STRIDE.walk + (STRIDE.run - STRIDE.walk) * running(w, gait))) % (Math.PI * 2);
     const pose = posture(w, this.phase, performance.now(), room, gait);
-    if (towed > 0) towPose(pose, w.pull?.hand === w.offhand ? 'L' : 'R', towed);
+    if (towed > 0) towPose(pose, this.towSide, towed);
     if (swim > 0) swimPose(pose, performance.now() / 1000, Math.min(1, this.speed / WALK), swim);
     for (const name of ['thigh_L', 'thigh_R', 'shin_L', 'shin_R', 'foot_L', 'foot_R']) this.turn(name, pose[name] || 0, pose[`${name}_out`] || 0);
     // Sat, no foot goes under what is beneath it - the chute ahead, the ground: the
@@ -216,7 +226,7 @@ export class Body {
       }
       if (short > 0 && reach > 0.05) {
         this.lean -= Math.asin(Math.min(1, short / reach));
-        this.tilt(this.lean + tipped, yaw, hipsAt);
+        this.tilt(this.lean + tipped + this.towLean * towed, yaw, hipsAt);
       }
     }
     // The legs lean about the hips; the torso stays upright under the eye - but for a
@@ -360,6 +370,8 @@ export class Body {
       const dx = pull.to.x - w.p.x, dy = pull.to.y - w.p.feet - HIP, dz = pull.to.z - w.p.z;
       this.towYaw = Math.atan2(-dx, -dz);
       this.towLean = Math.max(0.35, Math.min(1.5, Math.PI / 2 - Math.atan2(dy, Math.hypot(dx, dz)))) * TOWED;
+      // Which hand holds the line, kept while the body comes upright again after it.
+      this.towSide = pull.hand === w.offhand ? 'L' : 'R';
     }
     this.towing = (this.towing || 0) + ((pull ? 1 : 0) - (this.towing || 0)) * Math.min(1, deltaTime * 6);
     return this.towing < 1e-3 ? 0 : this.towing;
@@ -451,7 +463,7 @@ export class Body {
     GOAL.copy(view.matrixWorld).invert().multiply(hand.matrixWorld);
     // ... before the walker's own eye, at the body's scale: where the hand bone goes.
     const p = w.p, rest = handRest(), s = handScale;
-    EYE_AT.set(p.x, p.feet + EYE + (w.eyeShift || 0), p.z);
+    EYE_AT.set(p.x, p.feet + EYE + (w.eyeShift || 0) - SWIM_SINK * (w.swim || 0), p.z);
     // Looking down, the hands stay before the chest, where the eye looks down at them.
     EYE_TURN.setFromEuler(LOOK.set(Math.max(p.pitch, HOLD_PITCH), p.yaw, 0, 'YXZ'));
     BONE_GOAL.compose(EYE_AT, EYE_TURN, ONE).multiply(SCALED.makeScale(s, s, s)).multiply(GOAL)
@@ -741,7 +753,7 @@ const TOWED = 0.8;
  * Towed (Body.tow), `k` of the way: the legs trailing, a little bent, and the arm that
  * does not hold the line (`holding`) flung back and out.
  */
-function towPose(pose, holding, k) {
+export function towPose(pose, holding, k) {
   const free = holding === 'L' ? 'R' : 'L';
   for (const [joint, to] of [['thigh_L', -0.15], ['thigh_R', 0.1], ['shin_L', -0.7], ['shin_R', -0.35], ['foot_L', -0.3], ['foot_R', -0.3]]) {
     pose[joint] = (pose[joint] || 0) + (to - (pose[joint] || 0)) * k;
@@ -755,7 +767,7 @@ function towPose(pose, holding, k) {
  * Swimming in the ring, `k` of the way, at `t` seconds: the legs kicking under the
  * water, harder as the walker goes (`going`, 0 to 1), and the arms out over the ring.
  */
-function swimPose(pose, t, going, k) {
+export function swimPose(pose, t, going, k) {
   const rate = 5 + 4 * going, kick = 0.25 + 0.3 * going;
   for (const [side, at] of [['L', 0], ['R', Math.PI]]) {
     const beat = Math.sin(t * rate + at);

@@ -136,8 +136,8 @@ browser.
   it without it unless a shore is reached first. The bay is not a wall around the
   map: it is ground half a unit below the shore, so it can be stepped down into
   the way a curb can, waded about in, and — because the shore is further up than
-  a step — climbed back out of, whether by something in it or something on a
-  pair of floats. A bridge deck is where that stops. Walking off an edge into a
+  a step — climbed back out of, whether by somebody wading or somebody swimming
+  in the ring. A bridge deck is where that stops. Walking off an edge into a
   drop is not a thing anybody means to do, so the railings have to be gone over
   rather than through: off a deck, or off anything else standing well above the
   surface, the water has to be jumped into. Every bug

@@ -286,7 +286,9 @@ export class Walker {
     this.releasedAt = -Infinity; // when it last stopped being (performance.now())
     // One tool to a hand: the hunt in the right, whatever carries the walker in the
     // left. There is always a primary; the off hand may be empty.
-    this.primary = toolFor(hooks.tool?.() || DEFAULT_TOOL);
+    // A saved choice that is a carried tool is no tool to hunt with.
+    const saved = toolFor(hooks.tool?.() || DEFAULT_TOOL);
+    this.primary = saved.kind === 'primary' ? saved : toolFor(DEFAULT_TOOL);
     this.secondary = null;
     // The wheel, which is the third way of changing hands and the only one that shows
     // all eleven at once. It builds its own face the first time it comes up, and while
@@ -2085,7 +2087,7 @@ export class Walker {
       return;
     }
     // Implements: REQ-WALK-005, REQ-WALK-038
-    if (k.has('Space') && p.ground && this.wind.spend(Wind.jumpCost)) p.vy = JUMP;
+    if (this.jumps() && this.wind.spend(Wind.jumpCost)) p.vy = JUMP;
     // Said once, when it happens: a bar at nought explains why running and jumping
     // stopped working, but only to somebody already looking at it.
     if (this.wind.spent && !this.blown) {
@@ -2132,7 +2134,7 @@ export class Walker {
     // A burst on the jet backpack runs down whether or not it is being used to go
     // anywhere, so opening the throttle is a decision rather than a switch.
     this.burst = Math.max(0, this.burst - deltaTime);
-    // Swimming is slower going than walking, and sprinting in a swim ring slower still.
+    // Swimming is slower going than walking or running, by the same share.
     const speed = (p.fly ? (run ? FLY * 2.5 : FLY) : (run ? RUN : WALK) * this.footwork())
       * (this.burst > 0 ? BURST_SPEED : 1) * (1 - (1 - SWIM_PACE) * this.swim);
     // On foot, W and S move level; flying, they move where the view points (look
@@ -2272,7 +2274,17 @@ export class Walker {
     return false;
   }
 
-  /** Whether the walker is standing on the water itself, rather than merely shod for it. */
+  /**
+   * Whether Space jumps this frame: off the ground, and not swimming, where there is
+   * nothing to push off.
+   *
+   * Implements: REQ-WALK-005, REQ-TOOL-025
+   */
+  jumps() {
+    return this.keys.has('Space') && this.p.ground && !this.onWater();
+  }
+
+  /** Whether the walker is swimming in the ring, rather than merely wearing it. */
   onWater() {
     const p = this.p;
     return !p.fly && p.ground && p.feet <= WATER + 0.02 && this.floating();
@@ -2281,7 +2293,7 @@ export class Walker {
   /**
    * How far the walker is down in the water, swimming in the ring, 0 to 1 - eased, so
    * wading ashore is climbing out of it rather than a jump: the body hangs SWIM_SINK
-   * below the surface (body.js) and the eye comes down with it, a hand's breadth over
+   * below the surface (body.js) and the eye comes down with it, the head out over
    * the water. Like the ride, it is the view alone that comes down; what is reached and
    * aimed at is still measured from the feet.
    *

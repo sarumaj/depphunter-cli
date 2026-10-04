@@ -438,6 +438,16 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .w-slot[data-kind="secondary"] { border-style: dashed; }
 #walk-hud .w-slot[data-kind="secondary"][aria-selected="true"] { border-color: #59b0e6; color: #cfe8f8; }
 #walk-hud .w-slot[data-kind="secondary"][aria-selected="true"] .w-slot-name { color: #59b0e6; }
+/* After the rules above, which they override. Narrower than a group at full size, the slots draw in rather than the group spilling
+   over the tracker beside it: the chosen tool's name goes first, then the padding. */
+#walk-hud .w-foot { container-type: inline-size; }
+@container (max-width: 600px) {
+  #walk-hud .w-slot[aria-selected="true"] .w-slot-name { display: none; }
+}
+@container (max-width: 460px) {
+  #walk-hud .w-hand-group { gap: 3px; }
+  #walk-hud .w-slot { padding: 3px 4px; gap: 3px; }
+}
 /* Each slot wears its tool's icon (walk/icons.js), drawn in the slot's color with
    the part that names it picked out in the tool's own. */
 #walk-hud .w-icon {

@@ -137,12 +137,15 @@ describe('playing in the parks', () => {
     run(w, 0.5); // sat down
     holdsOn(w, 'a swing');
     assert.ok(w.rideGrips().every(g => Math.abs(g.along.y) > 0.9), 'a swing\'s chains held as if they ran across');
-    let highest = 0;
+    let highest = 0, tipped = 0;
     for (let t = 0; t < 12; t += FRAME) {
       w.keys.add('KeyW');
       w.rideStep(FRAME);
       highest = Math.max(highest, Math.abs(w.riding.angle));
+      // The seat tips as the swing swings, and the rider's legs with it (body.js).
+      tipped = Math.max(tipped, Math.abs(Math.abs(w.rideLean()) - Math.abs(w.riding.angle)));
     }
+    assert.ok(tipped < 0.02, `the rider is tipped ${tipped.toFixed(3)} off the seat`);
     w.keys.clear();
     assert.ok(highest > 0.7, `pumped for twelve seconds, the swing went ${highest.toFixed(2)} radians`);
     // Off at the bottom of the swing, going fast: carried on, and up.
@@ -156,6 +159,7 @@ describe('playing in the parks', () => {
     const spin = ROUNDABOUT.play.find(e => e.ride === 'spin');
     const r = walker(ROUNDABOUT, [spin.pivot[0] + spin.r, 0, spin.pivot[2]], spin.pivot).w;
     assert.equal(r.playClick(), true);
+    assert.equal(r.rideLean(), 0, 'a roundabout tips its rider');
     const yaw = r.p.yaw;
     run(r, 2, ['KeyW']);
     assert.ok(r.riding.speed > 2, `pushed for two seconds the roundabout turns at ${r.riding.speed}`);
@@ -644,9 +648,9 @@ describe('what the walker wears, and how their legs go', () => {
     const astride = posture(at({ riding: { entry: { ride: 'drive' }, blend: 1 } }), 0, 0);
     assert.ok(astride.thigh_L_out < -0.5 && astride.thigh_R_out > 0.5 && astride.thigh_L > 1.3, `astride a car ${JSON.stringify(astride)}`);
     // ... and a seesaw's plank and a spring rider, the feet beside them and not through.
-    for (const seat of [[0.2, 0, 0], [0, 0.115, 0]]) {
-      const plank = posture(at({ riding: { entry: { ride: 'rock', seat }, angle: 0, blend: 1 } }), 0, 0);
-      assert.ok(plank.thigh_L_out < -0.5 && plank.thigh_R_out > 0.5, `not astride a ${seat[0] ? 'seesaw' : 'rider'}`);
+    for (const [seat, seesaw] of [[[0.2, 0, 0], true], [[0.03, 0.115, 0], false]]) {
+      const plank = posture(at({ riding: { entry: { ride: 'rock', seat, seesaw }, angle: 0, blend: 1 } }), 0, 0);
+      assert.ok(plank.thigh_L_out < -0.5 && plank.thigh_R_out > 0.5, `not astride a ${seesaw ? 'seesaw' : 'rider'}`);
     }
     // The arms swing against the legs walking, hold on to a ride, and are thrown
     // forward and back against a kick.
@@ -671,7 +675,7 @@ describe('what the walker wears, and how their legs go', () => {
   });
 
   // Verifies: REQ-WALK-059
-  it('bends no joint further than a body does, nor a knee or an elbow the wrong way, in any move', () => {
+  it('bends no joint further than a body does, nor a knee or an elbow the wrong way, in any move', async () => {
     const at = (extra = {}) => ({ p: { ground: true }, riding: null, pace: 1, kicked: null, ...extra });
     const rides = ['swing', 'rock', 'drive', 'spin'].map(ride => ({ entry: { ride, seat: [0, 0.1, 0] }, angle: 1.2, blend: 1 }));
     const moves = [at(), at({ pace: 1.6 }), at({ p: { ground: false } }), at({ pace: 0, kicked: 0 }), ...rides.map(riding => at({ riding }))];
@@ -683,6 +687,20 @@ describe('what the walker wears, and how their legs go', () => {
           const [bend] = pose[`forearm_${side}`];
           assert.ok(bend >= 0 && bend <= 2.5, `move ${m}: the elbow bends ${bend.toFixed(2)}`);
           assert.ok(pose[`thigh_${side}`] === undefined || Math.abs(pose[`thigh_${side}`]) <= 2.2, `move ${m}: the hip bends too far`);
+        }
+      }
+    }
+    // ... and the poses laid over posture's afterwards: towed along a line, swimming.
+    const { towPose, swimPose } = await import('../static/walk/body.js');
+    for (let k = 0; k <= 10; k++) {
+      for (const [name, lay] of [['towed', pose => towPose(pose, 'L', k / 10)], ['swimming', pose => swimPose(pose, k * 0.37, k / 10, 1)]]) {
+        const pose = posture(at({ pace: 1.6 }), k, 0);
+        lay(pose);
+        for (const side of ['L', 'R']) {
+          assert.ok(pose[`shin_${side}`] <= 0 && pose[`shin_${side}`] >= -2.4, `${name}: the knee bends ${pose[`shin_${side}`]}`);
+          assert.ok(Math.abs(pose[`thigh_${side}`]) <= 2.2, `${name}: the hip bends ${pose[`thigh_${side}`]}`);
+          const [bend] = pose[`forearm_${side}`];
+          assert.ok(bend >= 0 && bend <= 2.5, `${name}: the elbow bends ${bend}`);
         }
       }
     }
@@ -869,6 +887,40 @@ describe('empty hands', () => {
     assert.deepEqual(shooter.muzzle(vm).toArray(), [4, 5, 6]);
     shooter.bodyHolds = false;
     assert.deepEqual(shooter.muzzle(vm).toArray(), [1, 2, 3]);
+  });
+
+  // Verifies: REQ-WALK-059, REQ-WALK-061
+  it('strides as fast as the walker goes, and seen from behind is towed along a line', async () => {
+    const { Body } = await import('../static/walk/body.js');
+    const { WALK: WALKING, RUN } = await import('../static/walk/walkbase.js');
+    const body = new Body({ scene: new THREE.Scene() });
+    // The pace the legs take is the speed the feet are going, measured: walking is 1,
+    // running 1.5, standing or against a wall 0, and nothing in the air.
+    const w = { p: { x: 0, z: 0, ground: true, fly: false }, riding: null };
+    const goAt = (speed, seconds = 1) => {
+      let pace = 0;
+      for (let t = 0; t < seconds; t += 0.05) {
+        w.p.x += speed * 0.05;
+        pace = body.gait(w, 0.05);
+      }
+      return pace;
+    };
+    assert.ok(Math.abs(goAt(WALKING) - 1) < 0.02, 'walking is not paced as a walk');
+    assert.ok(Math.abs(goAt(RUN) - 1.5) < 0.02, 'running is not paced as a run');
+    assert.ok(goAt(0) < 0.02, 'standing still, the legs still stride');
+    w.p.ground = false;
+    assert.ok(goAt(RUN) < 0.02, 'in the air, the legs stride');
+    // Reeled in on a line, seen from behind: turned to the hook and laid out along the
+    // line, over a moment; from the eye, not at all.
+    const towing = { thirdPerson: true, riding: null, p: { x: 0, z: 0, feet: 0 }, pull: { to: new THREE.Vector3(-5, 0.3, 0) } };
+    let towed = 0;
+    for (let i = 0; i < 40; i++) towed = body.tow(towing, 0.05);
+    assert.ok(towed > 0.99, `towed ${towed}`);
+    assert.ok(Math.abs(body.towYaw - Math.PI / 2) < 1e-6, `facing ${body.towYaw} rather than the hook`);
+    assert.ok(body.towLean > 0.9, `a line across the street leaves the body upright: ${body.towLean}`);
+    towing.thirdPerson = false;
+    for (let i = 0; i < 40; i++) towed = body.tow(towing, 0.05);
+    assert.equal(towed, 0, 'towed in the eye\'s own view');
   });
 
   // Verifies: REQ-TOOL-032

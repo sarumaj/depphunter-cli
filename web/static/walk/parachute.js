@@ -642,7 +642,9 @@ export function canopyRig(make, lineMaterial, lit = true) {
   for (const side of [-1, 1]) {
     for (const [z0, z1] of [[SHOULDER_BACK - 0.012, FRONT_LINK], [SHOULDER_BACK + 0.012, BACK_LINK]]) {
       const from = new THREE.Vector3(side * SHOULDER, 0, z0), to = new THREE.Vector3(side * LINK_X, LINKS, z1);
-      risers.add(strap(make, from, to, RISER_COLOR, RISER_FADE));
+      const riser = strap(make, from, to, RISER_COLOR, RISER_FADE);
+      riser.name = 'riser'; // the webbing itself, which canopy.js redraws from the harness seen from behind
+      risers.add(riser);
       const link = make(new THREE.TorusGeometry(0.006, 0.0016, 5, 10), LINK_COLOR, { shininess: 8 });
       link.position.copy(to);
       risers.add(link);

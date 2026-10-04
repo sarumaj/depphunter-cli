@@ -285,7 +285,7 @@ const GROUND = [
  *
  * Implements: REQ-HUNT-021
  */
-function drawGround(g, boxes, { px, pz, sin, cos }, c, R, k, v) {
+export function drawGround(g, boxes, { px, pz, sin, cos }, c, R, k, v) {
   if (!boxes?.length) return;
   const far = R / k;
   g.save();

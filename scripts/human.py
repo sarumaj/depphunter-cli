@@ -83,8 +83,11 @@ def fetch(path: str, url: str = URL, digest: str = "") -> str:
     cache = os.path.join(tempfile.gettempdir(), f"makehuman-{digest[:16]}")
     if not os.path.exists(cache):
         print(f"fetching {url}{path}")
-        with urllib.request.urlopen(url + path) as r, open(cache, "wb") as f:
+        # Downloaded beside it and moved into place whole, so a download cut short is
+        # fetched again next time rather than failing its checksum for good.
+        with urllib.request.urlopen(url + path) as r, open(cache + ".part", "wb") as f:
             f.write(r.read())
+        os.replace(cache + ".part", cache)
     with open(cache, "rb") as f:
         found = hashlib.sha256(f.read()).hexdigest()
     if found != digest:
