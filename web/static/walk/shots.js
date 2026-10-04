@@ -286,11 +286,19 @@ export const shots = {
     p.z += (dz / d) * step;
     p.vy = 0;
     p.ground = false;
-    // The hook stays where it bit, and the line follows the hand to it.
-    if (this.pull.mesh) this.pull.mesh.position.copy(to);
-    if (this.pull.rope) {
-      const tip = this.muzzle(this.pull.hand) || new THREE.Vector3(p.x, p.feet + EYE - 0.05, p.z);
-      this.pull.rope.geometry.setFromPoints([tip, to.clone()]);
+  },
+
+  /**
+   * The line being reeled in on, once a frame after the hands are posed: the hook stays
+   * where it bit, and the line follows the hand to it.
+   */
+  drawPull() {
+    const pull = this.pull, p = this.p;
+    if (!pull) return;
+    if (pull.mesh) pull.mesh.position.copy(pull.to);
+    if (pull.rope) {
+      const tip = this.muzzle(pull.hand) || new THREE.Vector3(p.x, p.feet + EYE - 0.05, p.z);
+      pull.rope.geometry.setFromPoints([tip, pull.to.clone()]);
     }
   },
 

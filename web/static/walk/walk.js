@@ -1866,16 +1866,10 @@ export class Walker {
       this.air.at(now / 1000, this.airNow);
       this.scene.driftClouds?.(this.airNow, deltaTime);
       this.drawAir();
-      this.updateDarts(deltaTime);
       this.updatePuffs(deltaTime);
       this.updateCanopies(deltaTime);
       this.updatePlay(deltaTime);
-      // The walker's eye, for the catches that draw a bug in towards them - and the
-      // hoop of the net, for the one catch that carries a bug somewhere else.
-      const hoop = this.primary.catchAs === 'net' ? this.muzzle(this.viewmodel, HOOP_AT) : null;
-      this.bugs?.update(deltaTime, now, this.eye(EYE_AT), hoop);
       this.douse(deltaTime);
-      this.drawRadar(now, deltaTime);
       this.health.draw(now); // the wash a hit leaves has to come off by itself
       this.drawFuel();
       this.poseTool(deltaTime, now);
@@ -1895,8 +1889,18 @@ export class Walker {
       }
       this.body.wear(this.scene.style);
       this.body.update(this, deltaTime);
-      // The canopy after the body, whose harness it hangs from seen from behind.
+      // The canopy after the body, whose harness it hangs from seen from behind - and
+      // what leaves a hand after the body too, which seen from behind is the hand that
+      // holds it, posed this frame rather than where it was the last: the shots and
+      // their lines, the line being reeled in on, the net's hoop.
       this.hangCanopy(now);
+      this.updateDarts(deltaTime);
+      this.drawPull();
+      // The walker's eye, for the catches that draw a bug in towards them - and the
+      // hoop of the net, for the one catch that carries a bug somewhere else.
+      const hoop = this.primary.catchAs === 'net' ? this.muzzle(this.viewmodel, HOOP_AT) : null;
+      this.bugs?.update(deltaTime, now, this.eye(EYE_AT), hoop);
+      this.drawRadar(now, deltaTime);
       if (!this.still && !this.arrival) this.updateAim();
       this.drawPath();
       this.drawLine();
@@ -2759,8 +2763,8 @@ export class Walker {
    */
   muzzle(vm = this.viewmodel, out = new THREE.Vector3()) {
     // Seen from behind, or looking down, the tool is in the body's hand, and leaves
-    // from there.
-    const carried = this.bodyHolds ? Object.values(this.body?.carried || {}).find(held => held?.vm === vm) : null;
+    // from there - while the body is drawn: hidden, its hands stay where they were.
+    const carried = this.bodyHolds && this.body?.group.visible ? Object.values(this.body.carried).find(held => held?.vm === vm) : null;
     const m = (carried?.copy || vm)?.getObjectByName('muzzle');
     if (!m) return null;
     m.updateWorldMatrix(true, false);

@@ -882,9 +882,14 @@ describe('empty hands', () => {
     muzzle.position.set(1, 2, 3);
     copy.add(muzzle);
     vm.add(muzzle.clone());
-    Object.assign(shooter, { bodyHolds: true, body: { carried: { L: { vm, copy: copy.clone() } } } });
+    Object.assign(shooter, { bodyHolds: true, body: { group: { visible: true }, carried: { L: { vm, copy: copy.clone() } } } });
     shooter.body.carried.L.copy.children[0].position.set(4, 5, 6);
     assert.deepEqual(shooter.muzzle(vm).toArray(), [4, 5, 6]);
+    // ... but not from a body that is not drawn - arriving, dying - whose hands are
+    // wherever they were last.
+    shooter.body.group.visible = false;
+    assert.deepEqual(shooter.muzzle(vm).toArray(), [1, 2, 3]);
+    shooter.body.group.visible = true;
     shooter.bodyHolds = false;
     assert.deepEqual(shooter.muzzle(vm).toArray(), [1, 2, 3]);
   });
