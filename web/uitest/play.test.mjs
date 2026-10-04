@@ -827,7 +827,7 @@ describe('empty hands', () => {
     const { Body } = await import('../static/walk/body.js');
     const { buildGear } = await import('../static/walk/gear.js');
     const body = new Body({ scene: new THREE.Scene() });
-    body.gear = buildGear();
+    body.gear = buildGear({ back: 0.03, chest: 0.045, sole: -0.004, toe: -0.056, heel: 0.023 });
     body.group.visible = true;
     const w = (secondary, extra = {}) => ({ secondary: TOOLS[secondary] || null, thirdPerson: true, p: { fly: true }, chute: null, ...extra });
     const worn = () => ({ jet: body.gear.jetpack.visible, pack: body.gear.container.visible, floats: body.gear.floats.every(f => f.visible) });

@@ -23,7 +23,7 @@ import { clone as cloneRigged } from '../vendor/SkeletonUtils.js';
 import { loadBody } from './bodymodel.js';
 import { closeHand, closeFinger } from './hands.js';
 import { viewLights, skinMaterial } from './tools.js';
-import { buildGear, lick, FLOAT_LIFT } from './gear.js';
+import { buildGear, fitOf, lick } from './gear.js';
 import { aloft } from './parachute.js';
 import { EYE } from './walkbase.js';
 
@@ -138,8 +138,8 @@ export class Body {
     this.group.add(rig);
     // What is worn for a tool, on the bones it goes with: the packs on the back, a float
     // under each foot.
-    this.gear = buildGear();
     rig.updateMatrixWorld(true);
+    this.gear = buildGear(fitOf(pick, rig));
     const hang = (part, bone) => {
       part.matrixAutoUpdate = false;
       part.matrix.copy(bone.matrixWorld).invert().multiply(rig.matrixWorld);
@@ -169,8 +169,8 @@ export class Body {
     // Sitting, the eye is SIT over the seat and the hips on it.
     const eye = p.feet + EYE + (w.eyeShift || 0), seat = eye - SIT;
     // On skimmers, stood on the floats.
-    const floats = w.secondary?.id === 'skimmers';
-    const y = p.feet + (seat + SEAT_UP - HIP - p.feet) * sit + (floats ? FLOAT_LIFT * (1 - sit) : 0);
+    const floats = w.secondary?.id === 'skimmers', lift = floats && this.gear ? this.gear.lift : 0;
+    const y = p.feet + (seat + SEAT_UP - HIP - p.feet) * sit + lift * (1 - sit);
     const room = seat - w.height(p.x, p.z, seat);
     // Down a chute, the legs out ahead along half its slope, as a rider holds them -
     // turned about the hips, which stay on the seat.
@@ -285,11 +285,11 @@ export class Body {
       const left = this.bones.get('hand_L')?.bone.getWorldPosition(AT), right = this.bones.get('hand_R')?.bone.getWorldPosition(ON);
       if (left && right) w.ballHeld.mesh.position.addVectors(left, right).multiplyScalar(0.5).add(HELD.set(-Math.sin(yaw), 0, -Math.cos(yaw)).multiplyScalar(0.03));
     }
-    // Standing or walking, the lower foot planted on the ground.
+    // Standing or walking, the lower foot planted on the ground - or on its float.
     if (p.ground && sit < 1) {
       this.rig.updateMatrixWorld(true);
       const low = Math.min(...['foot_L', 'foot_R'].map(n => this.bones.get(n)?.bone.getWorldPosition(AT).y ?? y + SOLE));
-      this.group.position.y += (p.feet - (low - SOLE)) * (1 - sit);
+      this.group.position.y += (p.feet + lift - (low - SOLE)) * (1 - sit);
     }
   }
 

@@ -11,8 +11,34 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { litPart } from './tools.js';
 
-// The back of the chest, and where the straps go over the shoulders.
-const BACK = 0.026, CHEST = 0.035, SHOULDER_TOP = 0.39, STRAP_X = 0.03;
+// Where the straps go over the shoulders.
+const SHOULDER_TOP = 0.39, STRAP_X = 0.03;
+
+/**
+ * How what is worn fits the outfit `mesh` of `rig` (body.js), as it stands at rest:
+ * the back and the front of the chest, and the soles' depth and length - a spacesuit
+ * is thicker than a T-shirt and its boots are bigger than sneakers.
+ */
+export function fitOf(mesh, rig) {
+  const fit = { back: 0, chest: 0, sole: 0, toe: 0, heel: 0 };
+  const position = mesh.geometry.getAttribute('position'), at = new THREE.Vector3();
+  const toRig = new THREE.Matrix4().copy(rig.matrixWorld).invert().multiply(mesh.matrixWorld);
+  for (let i = 0; i < position.count; i++) {
+    at.fromBufferAttribute(position, i).applyMatrix4(toRig);
+    if (Math.abs(at.x) < 0.035 && at.y > 0.27 && at.y < 0.39) {
+      fit.back = Math.max(fit.back, at.z);
+      fit.chest = Math.max(fit.chest, -at.z);
+    }
+    if (at.y < 0.03) {
+      fit.sole = Math.min(fit.sole, at.y);
+      fit.toe = Math.min(fit.toe, at.z);
+      fit.heel = Math.max(fit.heel, at.z);
+    }
+  }
+  fit.back += 0.002;
+  fit.chest += 0.002;
+  return fit;
+}
 
 const tube = (r0, r1, height, color, at, segments = 12) =>
   place(litPart(new THREE.CylinderGeometry(r0, r1, height, segments), color), at);
@@ -34,14 +60,14 @@ function band(from, to, width, color) {
 
 // The harness both packs hang on: a strap over each shoulder from the top of the pack
 // down the front of the chest, and a belt round the waist.
-function harness(top, bottom, color) {
+function harness({ back, chest }, top, bottom, color) {
   const g = new THREE.Group();
   for (const side of [-1, 1]) {
     const x = side * STRAP_X;
     const over = new THREE.Vector3(x, SHOULDER_TOP, 0);
-    g.add(band(new THREE.Vector3(x, top, BACK + 0.004), over, 0.009, color));
-    g.add(band(over, new THREE.Vector3(x * 1.1, 0.31, -CHEST - 0.003), 0.009, color));
-    g.add(band(new THREE.Vector3(x * 1.1, 0.31, -CHEST - 0.003), new THREE.Vector3(x * 1.2, bottom, BACK + 0.002), 0.008, color));
+    g.add(band(new THREE.Vector3(x, top, back + 0.002), over, 0.009, color));
+    g.add(band(over, new THREE.Vector3(x * 1.1, 0.31, -chest), 0.009, color));
+    g.add(band(new THREE.Vector3(x * 1.1, 0.31, -chest), new THREE.Vector3(x * 1.2, bottom, back), 0.008, color));
   }
   return g;
 }
@@ -51,13 +77,14 @@ function harness(top, bottom, color) {
  * bell, and the flame below each bell - `flames`, for update to lick and to show only
  * while it is flying.
  */
-function jetPack() {
+function jetPack(fit) {
+  const { back } = fit;
   const g = new THREE.Group();
   g.name = 'jetpack';
-  g.add(box(0.064, 0.1, 0.008, '#3c444d', [0, 0.32, BACK + 0.004]));
+  g.add(box(0.064, 0.1, 0.008, '#3c444d', [0, 0.32, back + 0.004]));
   const flames = [];
   for (const side of [-1, 1]) {
-    const x = side * 0.019, z = BACK + 0.024;
+    const x = side * 0.019, z = back + 0.024;
     g.add(tube(0.017, 0.017, 0.085, '#48525c', [x, 0.325, z]));
     g.add(place(litPart(new THREE.SphereGeometry(0.017, 12, 8).scale(1, 0.6, 1), '#5a6068'), [x, 0.3675, z]));
     for (const y of [0.345, 0.315]) g.add(tube(0.0175, 0.0175, 0.003, '#39424c', [x, y, z]));
@@ -73,7 +100,7 @@ function jetPack() {
     g.add(flame);
     flames.push(flame);
   }
-  g.add(harness(0.36, 0.27, '#2b3138'));
+  g.add(harness(fit, 0.36, 0.27, '#2b3138'));
   g.userData.flames = flames;
   return g;
 }
@@ -83,40 +110,51 @@ function jetPack() {
  * hangs open once the canopy is out of it - the pilot chute's pouch at its bottom, and
  * `userData.risers`, where the four risers leave the harness on top of the shoulders.
  */
-function container() {
+function container(fit) {
+  const { back } = fit;
   const g = new THREE.Group();
   g.name = 'container';
-  g.add(box(0.07, 0.095, 0.03, '#2b3138', [0, 0.322, BACK + 0.016]));
-  g.add(box(0.072, 0.004, 0.032, '#59636e', [0, 0.37, BACK + 0.016]));
+  g.add(box(0.07, 0.095, 0.03, '#2b3138', [0, 0.322, back + 0.016]));
+  g.add(box(0.072, 0.004, 0.032, '#59636e', [0, 0.37, back + 0.016]));
   const flap = box(0.06, 0.035, 0.004, '#39424c', [0, -0.0175, 0]);
   const hinge = new THREE.Group();
   hinge.name = 'flap';
-  hinge.position.set(0, 0.368, BACK + 0.033);
+  hinge.position.set(0, 0.368, back + 0.033);
   hinge.add(flap);
   g.add(hinge);
-  g.add(place(litPart(new THREE.CylinderGeometry(0.009, 0.009, 0.02, 10).rotateZ(Math.PI / 2), '#39424c'), [0.022, 0.28, BACK + 0.034]));
-  g.add(harness(0.37, 0.27, '#4a3f35'));
+  g.add(place(litPart(new THREE.CylinderGeometry(0.009, 0.009, 0.02, 10).rotateZ(Math.PI / 2), '#39424c'), [0.022, 0.28, back + 0.034]));
+  g.add(harness(fit, 0.37, 0.27, '#4a3f35'));
   g.userData.risers = [-1, 1].flatMap(side => [-0.006, 0.006].map(dz => new THREE.Vector3(side * STRAP_X, SHOULDER_TOP + 0.004, dz)));
   return g;
 }
 
-/** A skimmer's float under the foot on `side` (-1 left, 1 right), the binding round the shoe. */
-function float(side) {
+// How deep a float's hull is, under the sole.
+const HULL = 0.014;
+
+/**
+ * A skimmer's float under the foot on `side` (-1 left, 1 right): the hull under the
+ * sole and a little longer than the shoe, the deck the shoe stands on, the binding
+ * round it and a skeg under the tail.
+ */
+function float({ sole, toe, heel }, side) {
   const g = new THREE.Group();
   g.name = 'float';
-  const x = side * 0.03;
-  const hull = litPart(new THREE.CapsuleGeometry(0.012, 0.085, 4, 10).rotateX(Math.PI / 2), '#e8641f');
-  hull.scale.set(1.3, 0.75, 1);
-  g.add(place(hull, [x, -0.003, -0.016]));
-  g.add(box(0.026, 0.003, 0.085, '#f1efe8', [x, 0.006, -0.016]));
-  g.add(place(litPart(new THREE.TorusGeometry(0.017, 0.003, 5, 14).rotateX(Math.PI / 2), '#2b3138'), [x, 0.016, -0.02]));
-  g.add(box(0.003, 0.012, 0.02, '#2f353c', [x, -0.015, 0.025]));
+  const x = side * 0.03, length = heel - toe + 0.04, middle = (heel + toe) / 2 - 0.01;
+  const hull = litPart(new THREE.CapsuleGeometry(0.012, length - 0.024, 4, 10).rotateX(Math.PI / 2), '#e8641f');
+  hull.scale.set(1.3, HULL / 0.024, 1);
+  g.add(place(hull, [x, sole - 0.002 - HULL / 2, middle]));
+  g.add(box(0.026, 0.002, length * 0.8, '#f1efe8', [x, sole - 0.001, middle]));
+  g.add(place(litPart(new THREE.TorusGeometry(0.02, 0.003, 5, 14).rotateX(Math.PI / 2), '#2b3138'), [x, sole + 0.012, middle - 0.004]));
+  g.add(box(0.003, 0.012, 0.02, '#2f353c', [x, sole - HULL - 0.006, heel]));
   return g;
 }
 
-/** Everything worn, each at rest in the body's frame and hidden until it is worn. */
-export function buildGear() {
-  const gear = { jetpack: jetPack(), container: container(), floats: [float(-1), float(1)] };
+/** Everything worn, fitted (fitOf), each at rest in the body's frame and hidden until it is worn. */
+export function buildGear(fit) {
+  const gear = { jetpack: jetPack(fit), container: container(fit), floats: [float(fit, -1), float(fit, 1)] };
+  // How far the floats raise the feet off what is under them: the hulls' bottoms a
+  // little into it, as they ride in the water.
+  gear.lift = -(fit.sole - 0.002 - HULL) - HULL * 0.4;
   for (const part of [gear.jetpack, gear.container, ...gear.floats]) {
     part.visible = false;
     part.traverse(o => { o.frustumCulled = false; });
@@ -124,8 +162,6 @@ export function buildGear() {
   return gear;
 }
 
-// How far the floats raise the feet off what is under them.
-export const FLOAT_LIFT = 0.012;
 
 /** The jet's flames, licking - `burn` longer while the throttle is open - at `now`. */
 export function lick(jetpack, burn, now) {
