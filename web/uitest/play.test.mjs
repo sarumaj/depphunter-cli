@@ -692,11 +692,13 @@ describe('what the walker wears, and how their legs go', () => {
     }
     // ... and the poses laid over posture's afterwards: towed along a line, swimming,
     // flying every way there is to fly.
-    const { towPose, swimPose, flightPose } = await import('../static/walk/body.js');
+    const { towPose, swimPose, flightPose, drownPose } = await import('../static/walk/body.js');
     for (let k = 0; k <= 10; k++) {
       const flying = ([lean, roll]) => pose => flightPose(pose, lean, roll, k / 10);
-      for (const [name, lay] of [['towed', pose => towPose(pose, 'L', k / 10)], ['swimming', pose => swimPose(pose, k * 0.37, k / 10, 1)],
-        ...[[0, 0], [1.4, 0], [-0.8, 0], [0, 1.4], [0, -1.4], [1, -1]].map(way => [`flying ${way}`, flying(way)])]) {
+      for (const [name, lay] of [['towed', pose => towPose(pose, 'L', k / 10)], ...[[1, 0], [-1, 0], [0, 1], [0, -1], [0.6, -0.8]].flatMap(([ahead, across]) => [0, 0.5, 1].map(hard =>
+          [`swimming ${ahead},${across} ${hard}`, pose => swimPose(pose, k * 1.37, { going: hard ? 1 : k / 10, hard, ahead, across }, 1)])),
+        ...[[0, 0], [1.4, 0], [-0.8, 0], [0, 1.4], [0, -1.4], [1, -1]].map(way => [`flying ${way}`, flying(way)]),
+        ['drowning', pose => drownPose(pose, k * 1.37, k / 10)], ['drowning, reduced motion', pose => drownPose(pose, k * 1.37, k / 10, true)]]) {
         const pose = posture(at({ pace: 1.6 }), k, 0);
         lay(pose);
         for (const side of ['L', 'R']) {
@@ -931,6 +933,68 @@ describe('empty hands', () => {
     assert.equal(towed, 0, 'towed in the eye\'s own view');
   });
 
+  // Verifies: REQ-TOOL-025
+  it('swims treading water, at a swim and flat out, each its own way', async () => {
+    const { swimWay, swimPose } = await import('../static/walk/body.js');
+    const { WALK: WALKING, RUN, SWIM_PACE } = await import('../static/walk/walkbase.js');
+    // Facing -z: how far into a swim and a dash, and which way, from the speed.
+    const at = (x, z) => swimWay(new THREE.Vector3(x, 0, z), 0);
+    assert.deepEqual(at(0, 0), { going: 0, hard: 0, ahead: 1, across: 0 });
+    const swim = at(0, -WALKING * SWIM_PACE), dash = at(0, -RUN * SWIM_PACE), right = at(WALKING * SWIM_PACE, 0), back = at(0, WALKING * SWIM_PACE);
+    assert.ok(swim.going === 1 && swim.hard === 0 && swim.ahead === 1, `at a swim ${JSON.stringify(swim)}`);
+    assert.ok(dash.going === 1 && dash.hard === 1, `flat out ${JSON.stringify(dash)}`);
+    assert.ok(right.across === 1 && Math.abs(right.ahead) < 1e-9 && back.ahead === -1, `right ${JSON.stringify(right)}, back ${JSON.stringify(back)}`);
+    // Over a whole stroke, how far each joint goes from one end to the other.
+    const ranges = way => {
+      const seen = {};
+      for (let phase = 0; phase < Math.PI * 4; phase += 0.05) {
+        const pose = { upperarm_L: [0, 0], upperarm_R: [0, 0], forearm_L: [0, 0], forearm_R: [0, 0] };
+        swimPose(pose, phase, way, 1);
+        for (const [joint, value] of [['thigh', pose.thigh_L], ['arm', pose.upperarm_L[0]], ['spread', pose.thigh_L_spread]]) {
+          const [low, high] = seen[joint] || [Infinity, -Infinity];
+          seen[joint] = [Math.min(low, value), Math.max(high, value)];
+        }
+      }
+      return Object.fromEntries(Object.entries(seen).map(([joint, [low, high]]) => [joint, { low, high, swing: high - low }]));
+    };
+    const treading = ranges(at(0, 0)), swimming = ranges(swim), flat = ranges(dash), backward = ranges(back), sideways = ranges(right);
+    // Flat out the arms come over the ring, swimming they paddle, treading water they rest on it.
+    assert.ok(flat.arm.swing > swimming.arm.swing && swimming.arm.swing > treading.arm.swing, `arms ${treading.arm.swing}, ${swimming.arm.swing}, ${flat.arm.swing}`);
+    assert.ok(flat.arm.high > 2, 'flat out, the arms do not come over the ring');
+    // ... and the kick is harder flat out than at a swim.
+    assert.ok(flat.thigh.swing > swimming.thigh.swing, `kick ${swimming.thigh.swing} at a swim, ${flat.thigh.swing} flat out`);
+    // Treading water the legs are under the body; swimming forward they are behind it, and back, ahead.
+    assert.ok(swimming.thigh.high < treading.thigh.low + 0.3 && backward.thigh.low > swimming.thigh.high, `legs ${JSON.stringify({ treading: treading.thigh, swimming: swimming.thigh, backward: backward.thigh })}`);
+    // Sideways, the legs are swept out to the side; otherwise they are not.
+    assert.ok(Math.max(Math.abs(sideways.spread.low), Math.abs(sideways.spread.high)) > 0.2 && swimming.spread.swing === 0, `spread ${JSON.stringify(sideways.spread)}`);
+  });
+
+  // Verifies: REQ-WALK-055
+  it('goes under from treading water, fighting it and then limp', async () => {
+    const { swimPose, drownPose } = await import('../static/walk/body.js');
+    /** The body going under, `progress` of the way, at each point of a stroke. */
+    const under = (progress, reduced = false) => Array.from({ length: 60 }, (_, i) => {
+      const pose = { upperarm_L: [0, 0], upperarm_R: [0, 0], forearm_L: [0, 0], forearm_R: [0, 0] };
+      swimPose(pose, i * 0.1, {}, 1);
+      const treading = pose.upperarm_L[0];
+      drownPose(pose, i * 0.1, progress, reduced);
+      return { treading, arm: pose.upperarm_L[0], thigh: pose.thigh_L, head: pose.head };
+    });
+    const swing = (poses, joint) => Math.max(...poses.map(o => o[joint])) - Math.min(...poses.map(o => o[joint]));
+    // Just in, still treading water as a swimmer does.
+    const start = under(0.01);
+    assert.ok(start.every(o => Math.abs(o.arm - o.treading) < 0.2), 'going in is not from treading water');
+    // Fighting it: the arms up over the head and thrashing, the legs pedalling, the head back.
+    const fight = under(0.35);
+    assert.ok(fight.every(o => o.arm > 1.5) && swing(fight, 'arm') > 0.5 && swing(fight, 'thigh') > 0.3, 'the walker does not fight the water');
+    assert.ok(fight.every(o => o.head > 0.2), 'fighting it, the head is not back for air');
+    // Gone: limp, hardly moving, the chin down.
+    const gone = under(1);
+    assert.ok(swing(gone, 'arm') < 0.25 && swing(gone, 'thigh') === 0 && gone.every(o => o.head < -0.3), 'at the end the walker still fights');
+    // Reduced motion: nothing thrashes.
+    assert.equal(swing(under(0.35, true), 'arm'), 0);
+  });
+
   // Verifies: REQ-WALK-061
   it('seen from behind, flies leaning the way it goes, and hangs under a canopy swinging with it', async () => {
     const { Body, flightPose } = await import('../static/walk/body.js');
@@ -943,6 +1007,7 @@ describe('empty hands', () => {
         flyer.p.x += x * 0.05;
         flyer.p.feet += y * 0.05;
         flyer.p.z += z * 0.05;
+        body.measure(flyer, 0.05);
         flown = body.flight(flyer, 0.05);
       }
       return { flown, lean: body.flightLean, roll: body.flightRoll };

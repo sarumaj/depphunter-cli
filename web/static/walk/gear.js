@@ -142,6 +142,7 @@ function swimRing({ back, chest }) {
     g.add(litPart(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(arc(from, from + 0.44, 6)), 8, RING_TUBE * 1.04, 10, false), '#e8641f'));
   }
   g.add(place(litPart(new THREE.TorusGeometry(0.006, 0.0015, 5, 10), '#e8641f'), [0.02, RING_Y - RING_TUBE * 0.6, middle - deep - 0.002]));
+  g.userData.center = new THREE.Vector3(0, RING_Y, middle); // what it is kept level about (body.js float)
   return g;
 }
 

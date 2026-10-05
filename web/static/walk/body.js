@@ -25,7 +25,7 @@ import { closeHand, closeFinger } from './hands.js';
 import { viewLights, skinMaterial } from './tools.js';
 import { buildGear, fitOf, lick } from './gear.js';
 import { aloft } from './parachute.js';
-import { EYE, WALK, RUN, SWIM_SINK } from './walkbase.js';
+import { EYE, WALK, RUN, SWIM_SINK, SWIM_PACE, reducedMotion } from './walkbase.js';
 
 // The body as scripts/body.py builds it, on MakeHuman's joints (scripts/human.py).
 const HIP = 0.256;   // the hips over the feet
@@ -94,8 +94,10 @@ export class Body {
     this.flightYaw = null;               // ... turned which way, if not where the walker looks,
     this.flightLean = 0;                 // and laid out how far, and over to which side
     this.flightRoll = 0;
-    this.flewFrom = { x: 0, y: 0, z: 0, known: false }; // where it was last frame (flight)
-    this.flightVelocity = new THREE.Vector3();
+    this.movedFrom = { x: 0, y: 0, z: 0, known: false }; // where the walker was last frame (measure) ...
+    this.velocity = new THREE.Vector3();                 // ... and how fast they are going, eased
+    this.swimPhase = 0;                  // the stroke (swimPose)
+    this.adrift = 0;                     // how far down in the water with nothing to float on, eased
     this.speed = 0;                      // how fast the feet are carrying the walker (gait)
     this.lastAt = { x: 0, z: 0, known: false }; // where the feet were last frame (gait)
     // Lit as the hand held before the eye is, by the same lights from where the view
@@ -177,18 +179,22 @@ export class Body {
     this.group.visible = this.lights.visible = shown;
     if (!shown) {
       this.lastAt.known = false; // nowhere to stride from when it is shown again (gait)
-      this.flewFrom.known = false; // ... nor to fly from (flight)
+      this.movedFrom.known = false; // ... nor to fly or swim from (measure)
       return;
     }
     const view = this.scene.walkCamera;
     view.updateWorldMatrix(true, false);
     view.matrixWorld.decompose(this.lights.position, this.lights.quaternion, AT);
     const p = w.p, sit = sitting(w);
+    this.measure(w, deltaTime);
     // Sitting, the eye is SIT over the seat and the hips on it.
     const eye = p.feet + EYE + (w.eyeShift || 0), seat = eye - SIT;
-    // Swimming in the ring, down in the water to the chest.
-    const swim = (w.swim || 0) * (1 - sit);
-    const y = p.feet + (seat + SEAT_UP - HIP - p.feet) * sit - SWIM_SINK * swim;
+    // Swimming in the ring, down in the water to the chest - and with nothing to float
+    // on, the same at first, then going under as the walker's view does (walk.js drown).
+    const swim = (w.swim || 0) * (1 - sit), drowning = (w.sunk || 0) * (1 - sit);
+    this.adrift += ((w.sinking ? 1 : 0) - this.adrift) * Math.min(1, deltaTime * 4);
+    const under = drowning * drowning * (3 - 2 * drowning), wet = Math.max(swim, this.adrift, Math.min(1, drowning * DROWN_IN));
+    const y = p.feet + (seat + SEAT_UP - HIP - p.feet) * sit - SWIM_SINK * wet - DROWN_DEPTH * under;
     const room = seat - w.height(p.x, p.z, seat);
     // Down a chute, the legs out ahead along half its slope, as a rider holds them -
     // turned about the hips, which stay on the seat.
@@ -203,7 +209,11 @@ export class Body {
     // and a line towing it takes over from that.
     const flown = this.flight(w, deltaTime) * (1 - towed);
     if (this.flightYaw !== null) yaw += Math.atan2(Math.sin(this.flightYaw - yaw), Math.cos(this.flightYaw - yaw)) * flown;
-    const laid = this.towLean * towed + this.flightLean * flown, rolled = this.flightRoll * flown;
+    // Swimming, leant into the ring the way the walker swims, further flat out.
+    const way = swimWay(this.velocity, p.yaw), stroking = swim * way.going;
+    const swimLean = Math.max(-SWIM_BACK, way.ahead * (SWIM_LEAN + SWIM_DASH * way.hard)) * stroking;
+    const laid = this.towLean * towed + this.flightLean * flown + swimLean + DROWN_LEAN * under;
+    const rolled = this.flightRoll * flown - way.across * SWIM_ROLL * stroking;
     const r = w.riding, slide = r?.entry.ride === 'slide' ? r : null;
     const slope = slide && r.s > r.marks.edge && r.s < r.marks.foot ? r.slopeAt(r.s) : 0;
     this.lean = (this.lean || 0) + (slope * 0.5 * sit - (this.lean || 0)) * Math.min(1, deltaTime * 8);
@@ -221,7 +231,12 @@ export class Body {
     const pose = posture(w, this.phase, performance.now(), room, gait);
     if (towed > 0) towPose(pose, this.towSide, towed);
     if (flown > 0) flightPose(pose, this.flightLean, this.flightRoll, flown);
-    if (swim > 0) swimPose(pose, performance.now() / 1000, Math.min(1, this.speed / WALK), swim);
+    // The stroke on a phase of its own, so it quickens without jumping.
+    // The stroke on a phase of its own, so it quickens without jumping - frantic, going under.
+    const fighting = drowning * (1 - under);
+    this.swimPhase = (this.swimPhase + deltaTime * (SWIM_RATE.tread + SWIM_RATE.swim * way.going + SWIM_RATE.dash * Math.max(way.hard, fighting))) % (Math.PI * 4);
+    if (wet > 0) swimPose(pose, this.swimPhase, way, wet);
+    if (drowning > 0) drownPose(pose, this.swimPhase, drowning, reducedMotion());
     for (const name of ['thigh_L', 'thigh_R', 'shin_L', 'shin_R', 'foot_L', 'foot_R']) this.turn(name, pose[name] || 0, pose[`${name}_out`] || 0, pose[`${name}_spread`] || 0);
     // Sat, no foot goes under what is beneath it - the chute ahead, the ground: the
     // legs are lifted about the hips until the lower one clears it.
@@ -302,7 +317,8 @@ export class Body {
       const held = this.carried[side];
       if (held) {
         this.follow(held);
-        this.reach(side, held, w);
+        // Swimming somewhere, the hands are swimming, whatever they hold.
+        this.reach(side, held, w, 1 - Math.max(stroking, Math.min(1, drowning * DROWN_IN)));
         if (towed > 0 && held.vm === w.pull?.hand) this.haul(side, w.pull.to, towed);
       }
       closeHand(this.hands[side], held ? held.grip : pose[`grip_${side}`] ?? RELAXED);
@@ -312,10 +328,11 @@ export class Body {
     const glance = Math.max(-1.4, Math.min(1.4, Math.atan2(Math.sin(p.yaw - yaw), Math.cos(p.yaw - yaw))));
     // ... level however the body leans, running or reaching for a hold.
     // Laid out in flight, it is raised to look the way the body goes, as far as a neck bends back.
-    const raised = Math.max(-0.4, Math.min(0.8, this.flightLean * flown));
-    this.turn('head', Math.max(-0.9, Math.min(0.7, p.pitch)) + (pose.lean || 0) + this.reaching + raised, glance);
+    const raised = Math.max(-0.4, Math.min(0.8, this.flightLean * flown + swimLean));
+    this.turn('head', Math.max(-0.9, Math.min(0.7, p.pitch)) + (pose.lean || 0) + this.reaching + raised + (pose.head || 0), glance);
     this.bones.get('head')?.bone.scale.setScalar(this.showHead || w.thirdPerson ? 1 : 1e-4);
     this.dress(w);
+    this.float(swim);
     // A ball the body carries is between the hands.
     if (w.bodyHolds && w.ballHeld && arms) {
       this.rig.updateMatrixWorld(true);
@@ -324,10 +341,10 @@ export class Body {
     }
     // Standing or walking, the lower foot planted on the ground; swimming, they hang in
     // the water.
-    if (p.ground && sit < 1 && swim < 1) {
+    if (p.ground && sit < 1 && wet < 1) {
       this.rig.updateMatrixWorld(true);
       const low = Math.min(...['foot_L', 'foot_R'].map(n => this.bones.get(n)?.bone.getWorldPosition(AT).y ?? y + SOLE));
-      this.group.position.y += (p.feet - (low - SOLE)) * (1 - sit) * (1 - swim);
+      this.group.position.y += (p.feet - (low - SOLE)) * (1 - sit) * (1 - wet);
     }
   }
 
@@ -408,17 +425,8 @@ export class Body {
    * canopy flies (`flightYaw`) and swinging with it under the lines (parachute.js).
    */
   flight(w, deltaTime) {
-    const p = w.p, open = aloft(w.chute);
+    const p = w.p, open = aloft(w.chute), velocity = this.velocity;
     const flies = (w.thirdPerson || this.showHead) && !w.riding && (open || (!!p.fly && !p.ground));
-    const from = this.flewFrom, velocity = this.flightVelocity;
-    // The flight's speed is measured, as the stride's is, and eased: a body swings round
-    // to a new way behind the jet rather than snapping to it.
-    if (!flies) velocity.set(0, 0, 0);
-    else if (from.known && deltaTime > 0) velocity.lerp(MOVED.set(p.x - from.x, p.feet - from.y, p.z - from.z).divideScalar(deltaTime), Math.min(1, deltaTime * 5));
-    from.x = p.x;
-    from.y = p.feet;
-    from.z = p.z;
-    from.known = flies;
     if (flies) {
       // Measured against the way the body faces: the canopy's heading under one, where
       // the walker looks on the jet.
@@ -442,6 +450,43 @@ export class Body {
     }
     this.flown += ((flies ? 1 : 0) - this.flown) * Math.min(1, deltaTime * 6);
     return this.flown < 1e-3 ? 0 : this.flown;
+  }
+
+  /**
+   * How fast and which way the walker is going, into `velocity`: measured, as the
+   * stride's speed is, and eased, so a body swings round to a new way behind a jet or a
+   * stroke rather than snapping to it. Not on a ride, which carries the walker its own way.
+   */
+  measure(w, deltaTime) {
+    const p = w.p, from = this.movedFrom, known = !w.riding;
+    if (!known) this.velocity.set(0, 0, 0);
+    else if (from.known && deltaTime > 0) this.velocity.lerp(MOVED.set(p.x - from.x, p.feet - from.y, p.z - from.z).divideScalar(deltaTime), Math.min(1, deltaTime * 5));
+    from.x = p.x;
+    from.y = p.feet;
+    from.z = p.z;
+    from.known = known;
+  }
+
+  /**
+   * The swim ring flat on the water round the chest, however the body leans in it - as
+   * far as it is swimming (`swim`); out of the water it is worn as the chest has it.
+   */
+  float(swim) {
+    const ring = this.gear?.ring, spine = this.bones?.get('spine')?.bone;
+    if (!ring?.visible || !spine) return;
+    ring.userData.rest ||= ring.matrix.clone();
+    ring.matrix.copy(ring.userData.rest);
+    if (swim > 0) {
+      spine.updateWorldMatrix(true, false);
+      FLOAT.multiplyMatrices(spine.matrixWorld, ring.matrix).decompose(FLOAT_AT, FLOAT_TURN, FLOAT_SIZE);
+      // About its middle, which stays where the chest has it, turned only the way the body faces.
+      const middle = FLOAT_MIDDLE.copy(ring.userData.center).applyMatrix4(FLOAT);
+      FLOAT_TURN.slerp(LEVEL.setFromAxisAngle(Y, this.group.rotation.y).multiply(this.rig.quaternion), swim);
+      FLOAT.compose(FLOAT_AT.set(0, 0, 0), FLOAT_TURN, FLOAT_SIZE);
+      FLOAT.setPosition(middle.sub(FLOAT_AT.copy(ring.userData.center).applyMatrix4(FLOAT)));
+      ring.matrix.copy(spine.matrixWorld).invert().multiply(FLOAT);
+    }
+    ring.matrixWorldNeedsUpdate = true;
   }
 
   // The arm on `side` straight out toward the hook `to`, `k` of the way, as the line hauls on it.
@@ -523,7 +568,8 @@ export class Body {
    * eye, turned the same way to it, at the body's scale - the arm reaching it with the
    * elbow down and out, as far as it reaches.
    */
-  reach(side, held, w) {
+  reach(side, held, w, k = 1) {
+    if (k <= 1e-3) return;
     const hand = held.vm.userData.hands[0].userData.hand, view = w.held;
     const fore = this.bones.get(`forearm_${side}`)?.bone, wrist = this.bones.get(`hand_${side}`)?.bone;
     if (!view || !fore || !wrist) return;
@@ -548,10 +594,10 @@ export class Body {
     TARGET.sub(shoulder);
     TARGET.y -= HOLD_LOW * reach;
     TARGET.setLength(Math.min(TARGET.length(), HOLD_IN * reach)).add(shoulder);
-    this.armTo(side, TARGET);
+    this.armTo(side, TARGET, k);
     // The hand turned as the view's is.
     fore.getWorldQuaternion(EYE_TURN);
-    wrist.quaternion.copy(EYE_TURN.invert().multiply(TURNED));
+    wrist.quaternion.slerp(EYE_TURN.invert().multiply(TURNED), k);
     wrist.updateMatrixWorld(true);
   }
 
@@ -678,6 +724,8 @@ const SHOULDER = new THREE.Vector3(), ELBOW = new THREE.Vector3();
 // How far what a hand holds goes in a frame before it is a new hold to reach for.
 const NEW_HOLD = 0.15;
 const MOVED = new THREE.Vector3();
+const FLOAT = new THREE.Matrix4(), FLOAT_AT = new THREE.Vector3(), FLOAT_TURN = new THREE.Quaternion(), FLOAT_SIZE = new THREE.Vector3();
+const FLOAT_MIDDLE = new THREE.Vector3(), LEVEL = new THREE.Quaternion();
 const POSED = new THREE.Vector3(), FIST_AT = new THREE.Vector3(), PALM = new THREE.Vector3(), GRIP_GOAL = new THREE.Vector3();
 const ACROSS = new THREE.Vector3(), BAR = new THREE.Vector3(), NO_TURN = new THREE.Quaternion(), THUMB_WAY = new THREE.Vector3();
 const ROLL = new THREE.Quaternion(), BENT = new THREE.Quaternion(), REACH = new THREE.Vector3(), SPUN = new THREE.Vector3();
@@ -870,21 +918,94 @@ export function flightPose(pose, lean, roll, k) {
   }
 }
 
+// Swimming in the ring: how far the body leans into it at a swimmer's pace, how much
+// further flat out, how far back swimming backward and over to the side sideways; and
+// how fast the stroke goes treading water, and how much quicker swimming and flat out.
+const SWIM_LEAN = 0.25, SWIM_DASH = 0.3, SWIM_BACK = 0.3, SWIM_ROLL = 0.2;
+const SWIM_RATE = { tread: 4, swim: 4, dash: 5 };
+
 /**
- * Swimming in the ring, `k` of the way, at `t` seconds: the legs kicking under the
- * water, harder as the walker goes (`going`, 0 to 1), and the arms out over the ring.
+ * The way a swimmer going at `velocity` swims, facing `yaw`: how far they are going
+ * at a swim (`going`, 0 still to 1 at a swimmer's walking pace), how far on from that
+ * to flat out (`hard`, 0 to 1 at a swimmer's run), and which way as the body faces -
+ * `ahead` and `across` to its right, together of length 1.
  */
-export function swimPose(pose, t, going, k) {
-  const rate = 5 + 4 * going, kick = 0.25 + 0.3 * going;
-  for (const [side, at] of [['L', 0], ['R', Math.PI]]) {
-    const beat = Math.sin(t * rate + at);
-    for (const [joint, to] of [[`thigh_${side}`, 0.35 + beat * kick], [`shin_${side}`, -0.5 - Math.max(0, -beat) * 0.5], [`foot_${side}`, -0.5]]) {
-      pose[joint] = (pose[joint] || 0) + (to - (pose[joint] || 0)) * k;
-    }
-    const [forward, out] = pose[`upperarm_${side}`], [bend] = pose[`forearm_${side}`];
-    pose[`upperarm_${side}`] = [forward + (0.45 - forward) * k, out + (0.75 - out) * k];
-    pose[`forearm_${side}`] = [bend + (0.9 - bend) * k, 0];
+export function swimWay(velocity, yaw) {
+  const ahead = -velocity.x * Math.sin(yaw) - velocity.z * Math.cos(yaw);
+  const across = velocity.x * Math.cos(yaw) - velocity.z * Math.sin(yaw);
+  const level = Math.hypot(ahead, across), swim = WALK * SWIM_PACE, dash = RUN * SWIM_PACE;
+  return {
+    going: Math.min(1, level / swim),
+    hard: Math.max(0, Math.min(1, (level - swim) / (dash - swim))),
+    ahead: level > 1e-3 ? ahead / level : 1,
+    across: level > 1e-3 ? across / level : 0,
+  };
+}
+
+/**
+ * Swimming in the ring (swimWay's `way`), `k` of the way, `phase` into the stroke. Still,
+ * treading water: the legs pedalling round under the body, the hands sculling on the
+ * ring. Forward, a flutter kick from the hips behind and the hands paddling in turn
+ * before the ring - flat out, a harder kick and the arms going over the ring in a
+ * crawl. Backward, the legs pedalling ahead and the hands pushing the water forward at
+ * the sides; sideways, the legs swept together away from the way it goes and the arm on
+ * that side reaching out and pulling.
+ */
+export function swimPose(pose, phase, { going = 0, hard = 0, ahead = 1, across = 0 } = {}, k = 1) {
+  const ease = (joint, to) => { pose[joint] = (pose[joint] || 0) + (to - (pose[joint] || 0)) * k; };
+  // How much of it is each: still, forward, back and to the side, adding up to 1.
+  const fore = Math.max(0, ahead), back = Math.max(0, -ahead), side = Math.abs(across), all = fore + back + side || 1;
+  const still = 1 - going, f = (going * fore) / all, b = (going * back) / all, s = (going * side) / all;
+  const kick = 0.2 + 0.25 * hard, sweep = Math.sin(phase);
+  for (const [name, at, out] of [['L', 0, 1], ['R', Math.PI, -1]]) {
+    const beat = Math.sin(phase + at), round = Math.cos(phase + at);
+    ease(`thigh_${name}`, still * (0.55 + 0.15 * beat) + f * (0.1 + beat * kick) + b * (0.9 + 0.3 * beat) + s * (0.35 + 0.1 * beat));
+    ease(`shin_${name}`, still * (-0.9 + 0.3 * round) + f * (-0.25 - Math.max(0, -beat) * (0.35 + 0.2 * hard)) + b * (-1.1 + 0.35 * round) - s * 0.5);
+    ease(`foot_${name}`, -0.3 * still - 0.6 * f - 0.2 * b - 0.4 * s);
+    ease(`thigh_${name}_spread`, -s * Math.sign(across) * LEG_SPREAD * (0.6 + 0.4 * sweep));
+    // The arms: on the ring; paddling, or a crawl's stroke, half as quick as the kick,
+    // over the top and bent on the way back; pushing at the sides; the leading one out.
+    const stroke = phase / 2 + at, pull = Math.sin(stroke), recovering = Math.max(0, Math.cos(stroke));
+    const leads = Math.max(0, -Math.sign(across) * out);
+    const resting = still + s * (1 - leads), paddle = f * (1 - hard), crawl = f * hard;
+    const forward = resting * (0.45 + 0.08 * round) + paddle * (0.95 + 0.35 * beat) + crawl * (1.3 + 1.5 * pull) + b * (0.2 + 0.5 * beat) + s * leads * 0.5;
+    const spread = resting * 0.75 + paddle * 0.3 + crawl * (0.3 + 0.25 * recovering) + b * 0.6 + s * leads * (1.2 + 0.4 * beat);
+    const bend = resting * (0.9 + 0.1 * beat) + paddle * (0.9 - 0.3 * round) + crawl * (0.25 + 0.9 * recovering) + b * (0.5 + 0.3 * round) + s * leads * (0.4 + 0.4 * round);
+    const [was, wasOut] = pose[`upperarm_${name}`], [wasBend] = pose[`forearm_${name}`];
+    pose[`upperarm_${name}`] = [was + (forward - was) * k, wasOut + (spread - wasOut) * k];
+    pose[`forearm_${name}`] = [wasBend + (bend - wasBend) * k, 0];
   }
+}
+
+// Going under with nothing to float on (drownPose): how soon the swim stance it starts
+// in is taken up, as a share of the way under; how much further down than swimming the
+// body is at the end, the head under; and how far it slumps forward, limp.
+const DROWN_IN = 5, DROWN_DEPTH = 0.3, DROWN_LEAN = 0.35;
+
+/**
+ * Going under (walk.js drown), `progress` of the way (0, just in, to 1, gone), `phase`
+ * into the stroke, over the treading of swimPose. First the fight - the arms thrashing
+ * up over the head in turn, the legs pedalling hard, the head thrown back for air -
+ * and then, as it goes out of them, limp: the arms drifting up, the legs hanging, the
+ * chin down. Where the page asks for reduced motion, nothing thrashes.
+ */
+export function drownPose(pose, phase, progress, reduced = false) {
+  const k = Math.min(1, progress * DROWN_IN), limp = progress * progress * (3 - 2 * progress), fight = (1 - limp) * (reduced ? 0 : 1);
+  const ease = (joint, to) => { pose[joint] = (pose[joint] || 0) + (to - (pose[joint] || 0)) * k; };
+  for (const [side, at] of [['L', 0], ['R', Math.PI]]) {
+    const thrash = Math.sin(phase * 1.5 + at), reach = Math.cos(phase * 1.5 + at), pedal = Math.sin(phase * 2 + at), drift = Math.sin(phase / 2 + at);
+    ease(`thigh_${side}`, (1 - limp) * (0.7 + 0.35 * pedal * fight) + limp * (side === 'L' ? 0.35 : 0.2));
+    ease(`shin_${side}`, (1 - limp) * (-1 + 0.4 * Math.cos(phase * 2 + at) * fight) + limp * -0.55);
+    ease(`foot_${side}`, -0.2 * (1 - limp) - 0.45 * limp);
+    const [forward, out] = pose[`upperarm_${side}`], [bend] = pose[`forearm_${side}`];
+    const toForward = (1 - limp) * (2.3 + 0.6 * thrash * fight) + limp * (2.3 + 0.1 * drift * (reduced ? 0 : 1));
+    const toOut = (1 - limp) * (0.6 + 0.3 * reach * fight) + limp * 0.5;
+    const toBend = (1 - limp) * (0.5 + 0.4 * Math.max(0, thrash) * fight) + limp * 0.6;
+    pose[`upperarm_${side}`] = [forward + (toForward - forward) * k, out + (toOut - out) * k];
+    pose[`forearm_${side}`] = [bend + (toBend - bend) * k, 0];
+  }
+  // The head back for air while there is fight, the chin on the chest once there is not.
+  pose.head = (pose.head || 0) + ((1 - limp) * 0.5 - limp * 0.4 - (pose.head || 0)) * k;
 }
 
 // How far each joint bends forward from its rest, in the pose's angles.

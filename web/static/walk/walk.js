@@ -24,7 +24,7 @@
 
 import * as THREE from '../vendor/three.module.min.js';
 import { clamp, ease } from '../core/numbers.js';
-import { EYE, STEP, WATER, REACH, WALK, RUN, SWIM_SINK, reducedMotion } from './walkbase.js';
+import { EYE, STEP, WATER, REACH, WALK, RUN, SWIM_SINK, SWIM_PACE, reducedMotion } from './walkbase.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds, RAIL_H } from '../map/city.js';
 import { Health } from './health.js';
 import { Wind, EFFORT } from './wind.js';
@@ -45,9 +45,6 @@ import { inBlaze } from '../hunt/flames.js';
 import { massTop } from '../map/details.js';
 
 const FLY = 10; // units per second
-// How fast swimming goes, of walking or running.
-// Implements: REQ-TOOL-025
-const SWIM_PACE = 0.55;
 // A jump clears a curb and a terrace wall and nothing more. At this gravity it tops
 // out about 0.4 units up, which against a story of 0.84 is a person leaving the ground
 // rather than one clearing a tree.
