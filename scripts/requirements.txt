@@ -5,5 +5,5 @@
 #
 #   python3.11 -m pip install -r scripts/requirements.txt
 --extra-index-url https://download.blender.org/pypi/
-bpy==5.0.1; python_version == "3.11"
+bpy==5.2.2; python_version == "3.11"
 numpy==1.26.4; python_version == "3.11"
