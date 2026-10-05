@@ -90,6 +90,12 @@ export class Body {
     this.towYaw = 0;                     // ... toward the hook, and laid out how far
     this.towLean = 0;
     this.towSide = 'L';
+    this.flown = 0;                      // how far the body is flying (flight) ...
+    this.flightYaw = null;               // ... turned which way, if not where the walker looks,
+    this.flightLean = 0;                 // and laid out how far, and over to which side
+    this.flightRoll = 0;
+    this.flewFrom = { x: 0, y: 0, z: 0, known: false }; // where it was last frame (flight)
+    this.flightVelocity = new THREE.Vector3();
     this.speed = 0;                      // how fast the feet are carrying the walker (gait)
     this.lastAt = { x: 0, z: 0, known: false }; // where the feet were last frame (gait)
     // Lit as the hand held before the eye is, by the same lights from where the view
@@ -171,6 +177,7 @@ export class Body {
     this.group.visible = this.lights.visible = shown;
     if (!shown) {
       this.lastAt.known = false; // nowhere to stride from when it is shown again (gait)
+      this.flewFrom.known = false; // ... nor to fly from (flight)
       return;
     }
     const view = this.scene.walkCamera;
@@ -192,6 +199,11 @@ export class Body {
     // holds it, the body turned to it and laid out behind that arm.
     const towed = this.tow(w, deltaTime);
     yaw += Math.atan2(Math.sin(this.towYaw - yaw), Math.cos(this.towYaw - yaw)) * towed;
+    // Flying, the same as if the flight were a line pulling the body the way it goes -
+    // and a line towing it takes over from that.
+    const flown = this.flight(w, deltaTime) * (1 - towed);
+    if (this.flightYaw !== null) yaw += Math.atan2(Math.sin(this.flightYaw - yaw), Math.cos(this.flightYaw - yaw)) * flown;
+    const laid = this.towLean * towed + this.flightLean * flown, rolled = this.flightRoll * flown;
     const r = w.riding, slide = r?.entry.ride === 'slide' ? r : null;
     const slope = slide && r.s > r.marks.edge && r.s < r.marks.foot ? r.slopeAt(r.s) : 0;
     this.lean = (this.lean || 0) + (slope * 0.5 * sit - (this.lean || 0)) * Math.min(1, deltaTime * 8);
@@ -200,7 +212,7 @@ export class Body {
     const hipsAt = HIPS.set(p.x + Math.sin(yaw) * behind, y + HIP, p.z + Math.cos(yaw) * behind);
     // On a swing or a seesaw, the legs tipped with the seat, not through it.
     const tipped = (w.rideLean?.() ?? 0) * sit;
-    this.tilt(this.lean + tipped + this.towLean * towed, yaw, hipsAt);
+    this.tilt(this.lean + tipped + laid, yaw, hipsAt, rolled);
     // The stride as fast as the walker is going over the ground - measured, so the legs
     // stop against a wall and slow as the walker does - each stride a gait's length:
     // running, the strides come longer as well as quicker.
@@ -208,8 +220,9 @@ export class Body {
     this.phase = (this.phase + deltaTime * Math.PI * 2 * this.speed / (STRIDE.walk + (STRIDE.run - STRIDE.walk) * running(w, gait))) % (Math.PI * 2);
     const pose = posture(w, this.phase, performance.now(), room, gait);
     if (towed > 0) towPose(pose, this.towSide, towed);
+    if (flown > 0) flightPose(pose, this.flightLean, this.flightRoll, flown);
     if (swim > 0) swimPose(pose, performance.now() / 1000, Math.min(1, this.speed / WALK), swim);
-    for (const name of ['thigh_L', 'thigh_R', 'shin_L', 'shin_R', 'foot_L', 'foot_R']) this.turn(name, pose[name] || 0, pose[`${name}_out`] || 0);
+    for (const name of ['thigh_L', 'thigh_R', 'shin_L', 'shin_R', 'foot_L', 'foot_R']) this.turn(name, pose[name] || 0, pose[`${name}_out`] || 0, pose[`${name}_spread`] || 0);
     // Sat, no foot goes under what is beneath it - the chute ahead, the ground: the
     // legs are lifted about the hips until the lower one clears it.
     if (sit > 0) {
@@ -226,7 +239,7 @@ export class Body {
       }
       if (short > 0 && reach > 0.05) {
         this.lean -= Math.asin(Math.min(1, short / reach));
-        this.tilt(this.lean + tipped + this.towLean * towed, yaw, hipsAt);
+        this.tilt(this.lean + tipped + laid, yaw, hipsAt, rolled);
       }
     }
     // The legs lean about the hips; the torso stays upright under the eye - but for a
@@ -298,7 +311,9 @@ export class Body {
     // The head looks where the eye does, as far as a neck turns.
     const glance = Math.max(-1.4, Math.min(1.4, Math.atan2(Math.sin(p.yaw - yaw), Math.cos(p.yaw - yaw))));
     // ... level however the body leans, running or reaching for a hold.
-    this.turn('head', Math.max(-0.9, Math.min(0.7, p.pitch)) + (pose.lean || 0) + this.reaching, glance);
+    // Laid out in flight, it is raised to look the way the body goes, as far as a neck bends back.
+    const raised = Math.max(-0.4, Math.min(0.8, this.flightLean * flown));
+    this.turn('head', Math.max(-0.9, Math.min(0.7, p.pitch)) + (pose.lean || 0) + this.reaching + raised, glance);
     this.bones.get('head')?.bone.scale.setScalar(this.showHead || w.thirdPerson ? 1 : 1e-4);
     this.dress(w);
     // A ball the body carries is between the hands.
@@ -381,6 +396,52 @@ export class Body {
     }
     this.towing = (this.towing || 0) + ((pull ? 1 : 0) - (this.towing || 0)) * Math.min(1, deltaTime * 6);
     return this.towing < 1e-3 ? 0 : this.towing;
+  }
+
+  /**
+   * How far the body is flying - on the jet backpack, off the ground, or hanging under
+   * an open canopy - eased in and out, 0 to 1, only seen from outside the eye; and, into
+   * `flightLean` and `flightRoll`, how it hangs. On the jet it is as if a line pulled it
+   * the way it goes: the faster, the further it is laid out along the flight - forward
+   * going forward, back going back, over to the side going sideways, upright going
+   * straight up or down. Under a canopy it hangs from that instead, faced the way the
+   * canopy flies (`flightYaw`) and swinging with it under the lines (parachute.js).
+   */
+  flight(w, deltaTime) {
+    const p = w.p, open = aloft(w.chute);
+    const flies = (w.thirdPerson || this.showHead) && !w.riding && (open || (!!p.fly && !p.ground));
+    const from = this.flewFrom, velocity = this.flightVelocity;
+    // The flight's speed is measured, as the stride's is, and eased: a body swings round
+    // to a new way behind the jet rather than snapping to it.
+    if (!flies) velocity.set(0, 0, 0);
+    else if (from.known && deltaTime > 0) velocity.lerp(MOVED.set(p.x - from.x, p.feet - from.y, p.z - from.z).divideScalar(deltaTime), Math.min(1, deltaTime * 5));
+    from.x = p.x;
+    from.y = p.feet;
+    from.z = p.z;
+    from.known = flies;
+    if (flies) {
+      // Measured against the way the body faces: the canopy's heading under one, where
+      // the walker looks on the jet.
+      const facing = open ? w.chute.heading : p.yaw;
+      const ahead = -velocity.x * Math.sin(facing) - velocity.z * Math.cos(facing);
+      const across = velocity.x * Math.cos(facing) - velocity.z * Math.sin(facing);
+      // Under a canopy the way down is the lines' doing and not a pull: only the way it
+      // drifts over the ground lays the body over, and less than a jet's.
+      const up = open ? 0 : velocity.y;
+      const level = Math.hypot(ahead, across), speed = Math.hypot(level, up);
+      // Off the upright toward the way it goes, as far as that is from straight up, and
+      // further the faster - but not about a way that is all but straight up or down,
+      // which has no side to lie over to.
+      const off = Math.min(MAX_FLIGHT_LEAN, Math.atan2(level, up)) * (speed / (speed + FLIGHT_EASE)) * (level / (level + 0.5)) * (open ? CANOPY_LEAN : 1);
+      const lean = level > 1e-6 ? Math.max(-MAX_FLIGHT_BACK, (off * ahead) / level) : 0;
+      const roll = level > 1e-6 ? (-off * across) / level : 0;
+      const swing = open ? w.chute.swing : null;
+      this.flightYaw = open ? facing : null;
+      this.flightLean = lean - (swing?.pitch || 0);
+      this.flightRoll = roll + (swing?.roll || 0);
+    }
+    this.flown += ((flies ? 1 : 0) - this.flown) * Math.min(1, deltaTime * 6);
+    return this.flown < 1e-3 ? 0 : this.flown;
   }
 
   // The arm on `side` straight out toward the hook `to`, `k` of the way, as the line hauls on it.
@@ -581,9 +642,10 @@ export class Body {
     point(fore, fore.getWorldPosition(ELBOW), shoulder.addScaledVector(toward, d), wrist);
   }
 
-  // Turns the body `lean` forward and down about the hips, which are kept at `hips`.
-  tilt(lean, yaw, hips) {
-    this.group.rotation.set(-lean, yaw, 0, 'YXZ');
+  // Turns the body `lean` forward and down about the hips, which are kept at `hips`,
+  // and `roll` over to its left.
+  tilt(lean, yaw, hips, roll = 0) {
+    this.group.rotation.set(-lean, yaw, roll, 'YXZ');
     const from = AT.set(0, HIP, 0).applyEuler(this.group.rotation);
     this.group.position.set(hips.x - from.x, hips.y - from.y, hips.z - from.z);
     this.group.updateMatrixWorld(true);
@@ -771,6 +833,41 @@ export function towPose(pose, holding, k) {
   const [forward, out] = pose[`upperarm_${free}`], [bend] = pose[`forearm_${free}`];
   pose[`upperarm_${free}`] = [forward + (-0.6 - forward) * k, out + (0.7 - out) * k];
   pose[`forearm_${free}`] = [bend + (0.3 - bend) * k, 0];
+}
+
+// How far a jet laid out along its flight is laid out at most, forward and back; the
+// speed at which it is half as far as that; and how much of that drifting under a
+// canopy lays the body over.
+const MAX_FLIGHT_LEAN = 1.4, MAX_FLIGHT_BACK = 0.8, FLIGHT_EASE = 6, CANOPY_LEAN = 0.25;
+// How far the legs swing out to the side, flying sideways - the sign is the bones' own.
+const LEG_SPREAD = -0.35;
+
+/**
+ * Flying (Body.flight), `k` of the way, laid out `lean` forward and `roll` over to the
+ * left - which is the way it goes, so the limbs trail away from it as on a line. Going
+ * nowhere, the legs hang a little bent and the arms are out for balance. Forward, the
+ * legs trail straight behind, the toes pointed, and the arms sweep back along the
+ * sides; backward, the hips lead and the legs and arms trail ahead, bent; sideways,
+ * the legs swing out to the side it comes from and the arm on the side it goes to
+ * reaches out that way.
+ */
+export function flightPose(pose, lean, roll, k) {
+  const ahead = Math.max(0, Math.min(1, lean / 1.2)), back = Math.max(0, Math.min(1, -lean / 0.8));
+  const left = Math.max(-1, Math.min(1, roll / 0.9));
+  const ease = (joint, to) => { pose[joint] = (pose[joint] || 0) + (to - (pose[joint] || 0)) * k; };
+  for (const [side, by, out] of [['L', 0.06, 1], ['R', -0.06, -1]]) {
+    ease(`thigh_${side}`, 0.25 + by - 0.35 * ahead + 0.5 * back);
+    ease(`shin_${side}`, -0.5 + 0.3 * ahead - 0.5 * back);
+    ease(`foot_${side}`, -0.3 - 0.35 * ahead);
+    // Both swung out away from the way it goes.
+    ease(`thigh_${side}_spread`, LEG_SPREAD * left);
+    // The leading arm: the left one going left, the right going right.
+    const leads = Math.max(0, left * out);
+    const [forward, spread] = pose[`upperarm_${side}`], [bend] = pose[`forearm_${side}`];
+    const toForward = 0.35 - 0.85 * ahead + 0.6 * back, toSpread = 0.5 - 0.2 * ahead + 0.7 * leads - 0.3 * Math.max(0, -left * out);
+    pose[`upperarm_${side}`] = [forward + (toForward - forward) * k, spread + (toSpread - spread) * k];
+    pose[`forearm_${side}`] = [bend + (Math.max(0.05, 0.5 - 0.3 * ahead + 0.3 * back - 0.3 * leads) - bend) * k, 0];
+  }
 }
 
 /**

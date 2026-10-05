@@ -690,10 +690,13 @@ describe('what the walker wears, and how their legs go', () => {
         }
       }
     }
-    // ... and the poses laid over posture's afterwards: towed along a line, swimming.
-    const { towPose, swimPose } = await import('../static/walk/body.js');
+    // ... and the poses laid over posture's afterwards: towed along a line, swimming,
+    // flying every way there is to fly.
+    const { towPose, swimPose, flightPose } = await import('../static/walk/body.js');
     for (let k = 0; k <= 10; k++) {
-      for (const [name, lay] of [['towed', pose => towPose(pose, 'L', k / 10)], ['swimming', pose => swimPose(pose, k * 0.37, k / 10, 1)]]) {
+      const flying = ([lean, roll]) => pose => flightPose(pose, lean, roll, k / 10);
+      for (const [name, lay] of [['towed', pose => towPose(pose, 'L', k / 10)], ['swimming', pose => swimPose(pose, k * 0.37, k / 10, 1)],
+        ...[[0, 0], [1.4, 0], [-0.8, 0], [0, 1.4], [0, -1.4], [1, -1]].map(way => [`flying ${way}`, flying(way)])]) {
         const pose = posture(at({ pace: 1.6 }), k, 0);
         lay(pose);
         for (const side of ['L', 'R']) {
@@ -926,6 +929,54 @@ describe('empty hands', () => {
     towing.thirdPerson = false;
     for (let i = 0; i < 40; i++) towed = body.tow(towing, 0.05);
     assert.equal(towed, 0, 'towed in the eye\'s own view');
+  });
+
+  // Verifies: REQ-WALK-061
+  it('seen from behind, flies leaning the way it goes, and hangs under a canopy swinging with it', async () => {
+    const { Body, flightPose } = await import('../static/walk/body.js');
+    const body = new Body({ scene: new THREE.Scene() });
+    // On the jet, facing -z: a second of flying one way, measured as it goes.
+    const flyer = { thirdPerson: true, riding: null, chute: null, p: { x: 0, z: 0, feet: 10, yaw: 0, fly: true, ground: false } };
+    const fly = (x, y, z) => {
+      let flown = 0;
+      for (let i = 0; i < 40; i++) {
+        flyer.p.x += x * 0.05;
+        flyer.p.feet += y * 0.05;
+        flyer.p.z += z * 0.05;
+        flown = body.flight(flyer, 0.05);
+      }
+      return { flown, lean: body.flightLean, roll: body.flightRoll };
+    };
+    const hover = fly(0, 0, 0);
+    assert.ok(hover.flown > 0.99 && Math.abs(hover.lean) < 1e-3 && Math.abs(hover.roll) < 1e-3, `hovering ${JSON.stringify(hover)}`);
+    const forward = fly(0, 0, -10), fast = fly(0, 0, -25);
+    assert.ok(forward.lean > 0.5 && Math.abs(forward.roll) < 0.05, `flying forward ${JSON.stringify(forward)}`);
+    assert.ok(fast.lean > forward.lean, 'flying faster lays the body out no further');
+    const backward = fly(0, 0, 10);
+    assert.ok(backward.lean < -0.3 && Math.abs(backward.roll) < 0.05, `flying backward ${JSON.stringify(backward)}`);
+    // Over to the right is a roll the other way about the body's length than to the left.
+    const right = fly(10, 0, 0), left = fly(-10, 0, 0);
+    assert.ok(right.roll < -0.3 && left.roll > 0.3 && Math.abs(right.lean) < 0.05, `right ${JSON.stringify(right)}, left ${JSON.stringify(left)}`);
+    // Straight up there is no side to lie over to, and diving lays it out further than flying level.
+    assert.ok(Math.abs(fly(0, 10, 0).lean) < 0.05, 'climbing straight up lays the body out');
+    assert.ok(fly(0, -6, -10).lean > fly(0, 0, -10).lean, 'a dive lays the body out no further than level flight');
+    // The legs trail away from the way it goes.
+    const legs = (lean, roll) => {
+      const pose = { upperarm_L: [0, 0], upperarm_R: [0, 0], forearm_L: [0, 0], forearm_R: [0, 0] };
+      flightPose(pose, lean, roll, 1);
+      return pose;
+    };
+    assert.ok(legs(1.2, 0).thigh_L < legs(0, 0).thigh_L && legs(0, 0).thigh_L < legs(-0.8, 0).thigh_L, 'the legs do not trail back going forward and ahead going back');
+    assert.ok(Math.sign(legs(0, 0.9).thigh_L_spread) === -Math.sign(legs(0, -0.9).thigh_L_spread) && legs(0, 0.9).thigh_L_spread !== 0, 'the legs do not swing out sideways');
+    // Under a canopy: faced its way and swinging with it, even with the jet put away.
+    flyer.p.fly = false;
+    flyer.chute = { phase: 'flying', heading: 1, swing: { pitch: 0.2, roll: -0.1 } };
+    const hung = fly(0, -3, 0);
+    assert.ok(hung.flown > 0.99 && body.flightYaw === 1, `under a canopy ${JSON.stringify(hung)}, facing ${body.flightYaw}`);
+    assert.ok(Math.abs(hung.lean + 0.2) < 1e-3 && Math.abs(hung.roll + 0.1) < 1e-3, `not swinging with the canopy: ${JSON.stringify(hung)}`);
+    // From the eye, not at all.
+    flyer.thirdPerson = false;
+    assert.equal(fly(0, 0, -10).flown, 0, 'flying in the eye\'s own view');
   });
 
   // Verifies: REQ-TOOL-032

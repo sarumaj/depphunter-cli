@@ -37,6 +37,12 @@ Seen from behind:
   muzzle of the tool in the body's hand;
 - reeled in on a line, the body **shall** fly along it, turned to the hook and
   laid out behind the arm that holds the line, which reaches toward it;
+- flying on the jet backpack, the body **shall** lean the way it goes, as if
+  a line pulled it there - laid out forward going forward, back going back and
+  over to the side going sideways, further the faster, upright hovering - the
+  legs and arms trailing away from the way it goes; under an open canopy it
+  **shall** hang facing the canopy's way and swing with it, leaning the same
+  way, less, with the way it drifts;
 - sat on a ride, the view **shall** turn freely round the walker.
 
 ## Rationale
@@ -59,3 +65,7 @@ better from a step behind than from inside the head.
 5. From behind, reeled in on a grapple's or a rod's line, the body flies along
    it - turned to the hook, laid out behind the arm that holds the line, which
    reaches toward it, the legs trailing - rather than standing upright.
+6. From behind, flying forward on the jet lays the body out forward, flying
+   backward leans it back and flying sideways leans it over to that side, the
+   legs trailing the other way; hovering, it hangs upright. Under a canopy the
+   body swings with it.
