@@ -27,7 +27,7 @@ import { clamp, ease } from '../core/numbers.js';
 import { EYE, STEP, WATER, REACH, WALK, RUN, SWIM_SINK, reducedMotion } from './walkbase.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds, RAIL_H } from '../map/city.js';
 import { Health } from './health.js';
-import { Wind } from './wind.js';
+import { Wind, EFFORT } from './wind.js';
 import { Breeze, aim as aimShot } from './ballistics.js';
 import { tracker } from './tracker.js';
 import { shots } from './shots.js';
@@ -138,6 +138,9 @@ const SHOWING = 4.2, LIFTING = 0.6;
 // A burst on the jet backpack: how long it lasts and how much faster it goes.
 // Implements: REQ-TOOL-024
 const BURST = 0.9, BURST_SPEED = 3;
+// How much wind a swimmer has left when they are told to make for the shore.
+// Implements: REQ-WALK-062
+const TIRING = 0.3;
 // Out of your depth: how fast the water takes a walker who is in it with nothing to
 // hold them up. A couple of seconds, so wading ashore is possible and standing in the
 // bay when the ring comes off is not.
@@ -2076,10 +2079,10 @@ export class Walker {
     // Running dry takes effect on the next frame rather than this one, so the walker
     // reads the flash before the ground arrives.
     // Only what the tool is actually doing costs anything: the jet burns while it is
-    // holding the walker off the ground, not while they stand on a roof wearing it, and
-    // the ring only while the water is the only thing under them.
+    // holding the walker off the ground, not while they stand on a roof wearing it. The
+    // ring has no tank: a swim is paid for in wind (intent).
     // Implements: REQ-TOOL-047, REQ-TOOL-049
-    this.burn(deltaTime, (p.fly && p.feet > floor + 0.02) || (afloat && floor <= WATER));
+    this.burn(deltaTime, p.fly && p.feet > floor + 0.02);
     p.fly = this.flying();
     if (p.fly) {
       const ceiling = (this.limits?.maxY ?? 0) + SKY_MARGIN;
@@ -2130,11 +2133,14 @@ export class Walker {
     p.yaw += turn * TURN * deltaTime * this.fineTurn();
     const forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
     const side = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
-    // Sprinting is the legs' work, so it is the legs that pay for it; a jet carries
-    // the walker on its own tank and asks nothing of them.
+    // Sprinting is the legs' work, so it is the legs that pay for it, and swimming is
+    // the arms' as well; a jet carries the walker on its own tank and asks nothing of them.
     const wants = k.has('ShiftLeft') || k.has('ShiftRight');
     const run = wants && (p.fly || this.wind.ready);
-    this.wind.breathe(deltaTime, run && !p.fly && (forward !== 0 || side !== 0));
+    const was = this.wind.share;
+    this.wind.breathe(deltaTime, this.effort(run, forward !== 0 || side !== 0));
+    // Out of breath in the water is under it, so a swimmer is told before it comes to that.
+    if (this.onWater() && this.wind.share <= TIRING && was > TIRING) this.flash('Tiring - make for the shore');
     // A burst on the jet backpack runs down whether or not it is being used to go
     // anywhere, so opening the throttle is a decision rather than a switch.
     this.burst = Math.max(0, this.burst - deltaTime);
@@ -2151,6 +2157,23 @@ export class Walker {
     const magnitude = Math.hypot(x, y, z);
     if (magnitude > 1) { x /= magnitude; y /= magnitude; z /= magnitude; }
     return { move: { x, y, z, magnitude }, run, speed };
+  }
+
+  /**
+   * What the walker is putting in this frame, as a share of running (EFFORT): `running`
+   * and `moving` are what the keys ask for. In the swim ring it is dearer than on foot -
+   * even keeping still, to keep afloat - and the ring on dry land is a thing to waddle
+   * in, which costs a little at a walk and more at a run. Flying costs nothing, and so
+   * does anything once the walker has run out, which is when they get it back.
+   *
+   * Implements: REQ-WALK-038, REQ-WALK-062
+   */
+  effort(running, moving) {
+    if (this.p.fly || this.wind.spent) return 0;
+    if (this.onWater()) return moving ? (running ? EFFORT.swimRun : EFFORT.swim) : EFFORT.tread;
+    if (!moving) return 0;
+    const ringed = !!this.secondary?.floats;
+    return running ? (ringed ? EFFORT.ringRun : EFFORT.run) : ringed ? EFFORT.ringWalk : 0;
   }
 
   /**
@@ -2248,10 +2271,11 @@ export class Walker {
 
   // Implements: REQ-TOOL-023, REQ-TOOL-025, REQ-TOOL-049, REQ-TOOL-050
   /** Whether what is in the off hand is doing its work: it has to have something left
-   * in it, and not have run out since it was taken out. */
+   * in it, and not have run out since it was taken out - and for the swim ring, which
+   * has no tank, the swimmer has to have the breath to keep their head up. */
   working(what) {
     const tool = this.secondary;
-    return !!tool?.[what] && !this.dry.has(tool.id) && this.tank(tool) > 0;
+    return !!tool?.[what] && !this.dry.has(tool.id) && this.tank(tool) > 0 && !(what === 'floats' && this.wind.spent);
   }
 
   /** Whether the thing in the off hand is flying the walker right now. */
@@ -2352,8 +2376,7 @@ export class Walker {
   /**
    * The tanks, over one frame. Whatever is in the off hand and doing its work burns;
    * everything else fills. A tool that runs dry stops working where it stands, which
-   * for the jet is a fall and for the ring is the water - so it is said out loud
-   * before it happens rather than after.
+   * for the jet is a fall - so it is said out loud before it happens rather than after.
    *
    * Implements: REQ-TOOL-047, REQ-TOOL-049, REQ-TOOL-050
    */

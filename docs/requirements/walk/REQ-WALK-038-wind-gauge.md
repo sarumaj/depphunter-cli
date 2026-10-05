@@ -15,6 +15,7 @@ verification:
 The HUD **shall** show a wind gauge beside the health bar. Running **shall**
 drain it in 9 s, each jump **shall** take 16 % of it, it **shall** refill over 7
 s while the walker walks or stands, and flying **shall** cost none of it.
+Swimming and the swim ring cost it too (REQ-WALK-062).
 
 ## Rationale
 

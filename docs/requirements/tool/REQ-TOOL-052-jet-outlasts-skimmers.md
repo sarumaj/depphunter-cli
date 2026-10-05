@@ -12,7 +12,7 @@ verification:
 ## Statement
 
 A full jet backpack tank **shall** last longer than a swim in the swim ring on
-full breath.
+a full chest of wind (REQ-WALK-062).
 
 ## Rationale
 

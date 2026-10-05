@@ -1639,10 +1639,10 @@ const RING_AT = new THREE.Vector3(-0.12, -0.5, 0.12), RING_RADIUS = 0.3, RING_TU
  * pacifier the ring came with, held in the off hand. Wearing it is the whole of using
  * it - the bay can be swum, so the islands stop being somewhere only a bridge reaches.
  * Put it away over deep water and you go under, which is the reason to look where you
- * are going. What runs down is the swimmer: a swim tires them, and they get their
- * breath back on dry land (fuel).
+ * are going. It has no tank: what runs down is the swimmer, whose wind a swim spends
+ * (wind.js), and who goes under when it is gone.
  *
- * Implements: REQ-TOOL-025, REQ-TOOL-035, REQ-TOOL-052
+ * Implements: REQ-TOOL-025, REQ-TOOL-035, REQ-WALK-062
  */
 const ring = {
   id: 'ring',
@@ -1654,10 +1654,6 @@ const ring = {
   slot: 11,
   kind: 'secondary',
   floats: true,
-  // A swim tires the swimmer, and quickly: the bay is a thing to cross rather than a
-  // place to be, so it lasts a dash to the far shore and no more, and the breath for the
-  // next one comes back slower than a tank fills.
-  fuel: { full: 7, fills: 18 },
   hold: { x: 0.21, y: -0.17, z: -0.52, along: [0.05, 1, 0.26], back: [0.4, -0.3, 1] },
   grip: SWUNG,
   viewmodel() {

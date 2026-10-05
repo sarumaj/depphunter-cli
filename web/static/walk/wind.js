@@ -18,12 +18,25 @@
 // walk until a quarter of it is back. Flying is not the legs' work and costs nothing:
 // the jet has its own tank, and paying twice for the same flight would only mean
 // landing to catch a breath the walker never took.
+//
+// Swimming is, and it is dearer than anything on foot: in the swim ring even staying
+// up costs a little, getting anywhere more and a flat-out crawl more than a sprint -
+// the bay is a thing to cross, not a place to be. The ring is no help out of the water
+// either, where waddling in it tires a walker who would otherwise walk for free.
 
-// Implements: REQ-WALK-038, REQ-WALK-039
+// Implements: REQ-WALK-038, REQ-WALK-039, REQ-WALK-062, REQ-TOOL-052
 const FULL = 9;        // seconds of flat-out running a walker has in them
 const JUMP = 0.16;     // ... and what one jump takes out of it, as a share
 const RECOVER = 7;     // seconds of not running it takes to get all of it back
 const SECOND_WIND = 0.25; // how much has to be back before they can run again
+
+/**
+ * What each thing a walker does takes out of them, as a share of what running does:
+ * swimming in the ring - treading water, getting along, flat out - and walking and
+ * running with it on out of the water. Walking without it, standing and flying take
+ * nothing, and are when it comes back.
+ */
+export const EFFORT = { run: 1, tread: 0.3, swim: 0.8, swimRun: 1.5, ringWalk: 0.25, ringRun: 1.5 };
 
 /**
  * The walker's wind, and the gauge in the HUD that shows it. Like Health it holds no
@@ -44,6 +57,9 @@ export class Wind {
   /** What a jump costs, so walk.js and the tests can say it without guessing. */
   static get jumpCost() { return JUMP; }
 
+  /** How many seconds a full chest lasts at `effort` (EFFORT), for the tests and the HUD. */
+  static lasts(effort) { return FULL / effort; }
+
   /** Whether there is enough in the walker to start or keep running. */
   get ready() { return !this.spent && this.share > 0; }
 
@@ -55,11 +71,13 @@ export class Wind {
   }
 
   /**
-   * One frame of it. `running` is whether the walker is actually running - flying and
-   * standing about are both worth the same, which is nothing.
+   * One frame of it. `effort` is what the walker is putting in (EFFORT), or true for
+   * running - flying and standing about are both worth the same, which is nothing, and
+   * nothing is when it comes back.
    */
-  breathe(deltaTime, running) {
-    this.set(this.share + (running ? -deltaTime / FULL : deltaTime / RECOVER));
+  breathe(deltaTime, effort) {
+    const spending = +effort;
+    this.set(this.share + (spending > 0 ? (-deltaTime * spending) / FULL : deltaTime / RECOVER));
   }
 
   /**
@@ -95,6 +113,6 @@ export class Wind {
     box.dataset.state = this.spent ? 'empty' : left > 35 ? 'well' : 'low';
     box.title = this.spent
       ? 'Out of breath: you can walk, but not run or jump, until you have got some of it back'
-      : `Wind: ${left}% left. Running spends it, a jump costs a little of it, and it comes back while you are not doing either.`;
+      : `Wind: ${left}% left. Running, jumping and swimming spend it - and so does the swim ring on dry land - and it comes back while you are not doing any of those.`;
   }
 }

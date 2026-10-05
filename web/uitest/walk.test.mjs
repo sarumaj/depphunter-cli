@@ -14,7 +14,7 @@ import { describe, it, mock } from 'node:test';
 import './stub.mjs';
 
 const { Health } = await import('../static/walk/health.js');
-const { Wind } = await import('../static/walk/wind.js');
+const { Wind, EFFORT } = await import('../static/walk/wind.js');
 const { TOOLS, TOOL_IDS, PRIMARY_IDS, SECONDARY_IDS, hits, isSecondary, toolFor, idleTool, studyTool, DEFAULT_TOOL } = await import('../static/walk/tools.js');
 const SWITCH = await import('../static/walk/switcher.js');
 const ICONS = await import('../static/walk/icons.js');
@@ -195,6 +195,48 @@ describe('what running costs', () => {
     assert.ok(jumps <= 12, `a rested walker managed ${jumps} jumps, which is a staircase`);
   });
 
+  // Verifies: REQ-WALK-062
+  it('charges a swim more than a walk, and the ring on dry land', () => {
+    /** What a frame costs a walker doing this, through walk.js's own effort. */
+    const effort = ({ water = false, ring = false, fly = false, spent = false }, running, moving) =>
+      WALK.Walker.prototype.effort.call({
+        p: { fly }, wind: { spent }, secondary: ring || water ? TOOLS.ring : null, onWater: () => water,
+      }, running, moving);
+    // Walking costs nothing, and swimming costs something even keeping still.
+    assert.equal(effort({}, false, true), 0);
+    assert.equal(effort({}, true, true), EFFORT.run);
+    const tread = effort({ water: true }, false, false), swim = effort({ water: true }, false, true), crawl = effort({ water: true }, true, true);
+    assert.ok(tread > 0 && tread < swim && swim < crawl, `keeping afloat ${tread}, swimming ${swim}, flat out ${crawl}`);
+    assert.ok(crawl > EFFORT.run, 'a flat-out swim is no harder than a sprint');
+    // The ring out of the water: walking in it tires, running in it more than running.
+    assert.ok(effort({ ring: true }, false, true) > 0, 'the ring is free to walk in');
+    assert.ok(effort({ ring: true }, true, true) > EFFORT.run, 'the ring is no harder to run in');
+    assert.equal(effort({ ring: true }, false, false), 0, 'standing in the ring tires');
+    // Flying is the jet's, and a walker out of breath gets it back whatever they do.
+    assert.equal(effort({ fly: true }, true, true), 0);
+    assert.equal(effort({ water: true, spent: true }, false, true), 0);
+    // A gauge drained at a swim's effort runs out sooner than at a walk with the ring on.
+    const lasts = cost => {
+      const w = blown();
+      w.reset();
+      let t = 0;
+      while (!w.spent && t < 600) { w.breathe(0.05, cost); t += 0.05; }
+      return t;
+    };
+    assert.ok(lasts(swim) < lasts(effort({ ring: true }, false, true)));
+    assert.ok(Math.abs(lasts(swim) - Wind.lasts(swim)) < 0.1, `${lasts(swim)} against ${Wind.lasts(swim)}`);
+  });
+
+  // Verifies: REQ-TOOL-049, REQ-WALK-062
+  it('lets a swimmer out of breath go under', () => {
+    const swimmer = { secondary: TOOLS.ring, dry: new Set(), tanks: new Map(), wind: { spent: false }, tank: WALK.Walker.prototype.tank };
+    assert.equal(WALK.Walker.prototype.working.call(swimmer, 'floats'), true);
+    swimmer.wind.spent = true;
+    assert.equal(WALK.Walker.prototype.working.call(swimmer, 'floats'), false, 'the ring held up a swimmer out of breath');
+    // Out of breath is the legs', not the jet's.
+    assert.equal(WALK.Walker.prototype.working.call({ ...swimmer, secondary: TOOLS.jetpack }, 'flies'), true);
+  });
+
   // Verifies: REQ-WALK-038
   it('fills again, and no further', () => {
     const w = blown();
@@ -251,12 +293,12 @@ describe('the two kinds of tool', () => {
 
   // Verifies: REQ-TOOL-047
   it('puts a tank on what carries the walker, and on nothing else', () => {
-    // A line does not run out; a jet and a pair of floats do, or flying is simply the
-    // way you get about and the walk has no shape to it.
+    // A line does not run out; a jet does, or flying is simply the way you get about and
+    // the walk has no shape to it. A swim runs the swimmer out instead (wind.js).
     for (const id of TOOL_IDS) {
       const tool = toolFor(id);
       if (!tool.fuel) continue;
-      assert.ok(tool.flies || tool.floats || tool.glides, `${id} has a tank and nothing to spend it on`);
+      assert.ok(tool.flies || tool.glides, `${id} has a tank and nothing to spend it on`);
       // A parachute is spent whole in one use, and its tank is only how long it takes
       // to repack.
       if (tool.fuel.once) {
@@ -266,7 +308,8 @@ describe('the two kinds of tool', () => {
       assert.ok(tool.fuel.full > 5, `${id} runs out before it is any use`);
       assert.ok(tool.fuel.fills >= tool.fuel.full, `${id} fills faster than it empties`);
     }
-    assert.ok(TOOLS.jetpack.fuel && TOOLS.ring.fuel, 'the two that hold the walker up should both run out');
+    assert.ok(TOOLS.jetpack.fuel, 'the jet should run out');
+    assert.ok(!TOOLS.ring.fuel, 'the ring has a tank, where the swimmer is what tires');
     assert.ok(!TOOLS.grapple.fuel, 'a line does not run out');
   });
 
@@ -749,18 +792,18 @@ describe('what the tools reach and how long they last', () => {
 
   // Verifies: REQ-TOOL-052
   it('keeps the jet going longer than a swim on a full tank', () => {
-    /** Seconds of use a full tank gives, burned a frame at a time the way walk.js does. */
-    const lasts = id => {
-      const walker = {
-        tanks: new Map(), dry: new Set(), secondary: TOOLS[id], flash() {}, quip() {},
-        tank: WALK.Walker.prototype.tank,
-      };
-      let t = 0;
-      while (walker.tank(TOOLS[id]) > 0 && t < 600) { WALK.Walker.prototype.burn.call(walker, 0.05, true); t += 0.05; }
-      assert.ok(walker.dry.has(id), `${id} never ran dry`);
-      return t;
+    // Seconds of flight a full tank gives, burned a frame at a time the way walk.js does.
+    const walker = {
+      tanks: new Map(), dry: new Set(), secondary: TOOLS.jetpack, flash() {}, quip() {},
+      tank: WALK.Walker.prototype.tank,
     };
-    const jet = lasts('jetpack'), swim = lasts('ring');
+    let jet = 0;
+    while (walker.tank(TOOLS.jetpack) > 0 && jet < 600) { WALK.Walker.prototype.burn.call(walker, 0.05, true); jet += 0.05; }
+    assert.ok(walker.dry.has('jetpack'), 'the jet never ran dry');
+    // ... and of swimming a rested walker has in them, a frame at a time the same way.
+    const wind = new Wind({ querySelector: () => null });
+    let swim = 0;
+    while (!wind.spent && swim < 600) { wind.breathe(0.05, EFFORT.swim); swim += 0.05; }
     assert.ok(jet > swim, `the jet lasts ${jet.toFixed(1)}s against a swim's ${swim.toFixed(1)}s`);
   });
 
