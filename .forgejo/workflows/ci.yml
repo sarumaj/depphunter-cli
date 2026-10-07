@@ -67,7 +67,7 @@ jobs:
       run: go vet ./...
     - name: staticcheck
       run: go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...
-    - uses: https://github.com/actions/setup-node@v4
+    - uses: https://github.com/actions/setup-node@v7
       with:
         node-version: 22
     - name: JavaScript syntax
@@ -90,7 +90,7 @@ jobs:
     - uses: https://github.com/actions/setup-go@v5
       with:
         go-version: stable
-    - uses: https://github.com/actions/setup-node@v4
+    - uses: https://github.com/actions/setup-node@v7
       with:
         node-version: 22
         cache: npm
