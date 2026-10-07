@@ -34,7 +34,7 @@ jobs:
       GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go != 'oldest' && matrix.go || '' }}
           go-version-file: ${{ matrix.go == 'oldest' && 'go.mod' || '' }}
@@ -58,7 +58,7 @@ jobs:
       GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           # staticcheck must be built with a Go at least as new as go.mod's.
           go-version-file: go.mod
@@ -109,7 +109,7 @@ jobs:
           if grep -rlx 'version https://git-lfs.github.com/spec/v1' web/static; then
             echo "::error::LFS pointers instead of content (above)"; exit 1
           fi
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       - uses: actions/setup-node@v4
@@ -150,7 +150,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           # Release binaries are built with the current Go; scan what users run.
           go-version: stable
@@ -175,7 +175,7 @@ jobs:
           if grep -rlx 'version https://git-lfs.github.com/spec/v1' web/static; then
             echo "::error::LFS pointers instead of content (above)"; exit 1
           fi
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       # Implements: REQ-DIST-015
