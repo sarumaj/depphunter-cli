@@ -40,7 +40,7 @@ jobs:
         run: |
           tar -xzf dist/depphunter_*_linux_amd64.tar.gz -C "$RUNNER_TEMP"
           "$RUNNER_TEMP"/depphunter_*_linux_amd64/depphunter --version | grep -F "${{ github.ref_name }}"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
