@@ -14,6 +14,11 @@ export const WALK = 3.2, RUN = 8.5; // on foot, units per second
 // Implements: REQ-WALK-006
 export const STEP = 0.15;   // highest ledge walked up without jumping
 export const WATER = -0.45; // the water surface (layout LAND_H below the mainland)
+// A jump clears a curb and a terrace wall and nothing more. At this gravity it tops
+// out about 0.4 units up, which against a story of 0.84 is a person leaving the ground
+// rather than one clearing a tree.
+// Implements: REQ-WALK-005
+export const JUMP = 3.2, GRAVITY = 13;
 // Swimming in the swim ring: how far below the surface the feet hang, the ring on the
 // water round the chest and the head out over it.
 export const SWIM_SINK = 0.31;

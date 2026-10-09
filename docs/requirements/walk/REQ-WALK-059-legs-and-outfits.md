@@ -32,7 +32,8 @@ The legs **shall** be posed:
   fast as the walker goes over the ground - slowing as they slow, stopping
   against a wall; running, quicker and longer, the knee driven up ahead, the
   heel tucked up behind as the leg comes through and the body leaning into it,
-  the head kept level; tucked in the air; a leg at a time up a ladder;
+  the head kept level; through a jump as REQ-WALK-063 has them; a leg at a
+  time up a ladder;
 - sitting on a swing - on the seat, thighs along it however far it swings,
   shins hanging - astride a
   seesaw's plank, a spring rider or a bobby car, the thighs turned out round it

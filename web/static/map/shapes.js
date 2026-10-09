@@ -83,3 +83,70 @@ export const block = (w, h, d, x, y, z, hex) => painted(new THREE.BoxGeometry(w,
 // point, for each [radius, strength].
 export const lit = (points, shells) => shells.map(([r, opacity]) => [
   merge(points.map(([x, y, z]) => shaded(new THREE.SphereGeometry(r, 9, 6).translate(x, y, z)))), opacity]);
+
+// ------------------------------------------------------------------ contact shadows
+
+// Where something stands on the ground, the ground is darker - most under its middle,
+// fading out to nothing at its rim. There are no lights in the map and so no shadow
+// maps (cityglsl.js): a shadow is a disc multiplied over whatever it lies on, white
+// leaving it be and gray darkening it, and over every painted patch, line and ring.
+export const SHADOW_LIFT = 0.011;
+// How dark a shadow is under its middle, as what the ground is multiplied by.
+export const SHADOW_DARK = 0.55;
+
+/**
+ * A shadow on the ground: a disc `rx` by `rz` across its middle at (x, z), of rings
+ * whose vertex colors fall off from `dark` in the middle to white at the rim - in
+ * linear color, which the output turns back into `dark` on screen.
+ */
+export function shadowSpot(rx = 1, rz = rx, x = 0, z = 0, dark = SHADOW_DARK) {
+  const RINGS = [[0, 1], [0.3, 0.95], [0.55, 0.75], [0.78, 0.38], [1, 0]], SEGMENTS = 24;
+  const at = (ring, k) => {
+    const [r] = RINGS[ring], a = k / SEGMENTS * Math.PI * 2;
+    return [x + Math.cos(a) * r * rx, SHADOW_LIFT, z + Math.sin(a) * r * rz];
+  };
+  const shade = ring => Math.pow(1 - (1 - dark) * RINGS[ring][1], 2.2);
+  const positions = [], colors = [];
+  const vertex = (ring, k) => {
+    positions.push(...at(ring, k));
+    const c = shade(ring);
+    colors.push(c, c, c);
+  };
+  for (let ring = 0; ring + 1 < RINGS.length; ring++) {
+    for (let k = 0; k < SEGMENTS; k++) {
+      vertex(ring, k); vertex(ring + 1, k + 1); vertex(ring + 1, k);
+      if (ring) { vertex(ring, k); vertex(ring, k + 1); vertex(ring + 1, k + 1); }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  return geo;
+}
+
+/**
+ * Makes `material` (bendable or not, with vertex colors) draw a shadow: multiplied over
+ * what is drawn already, writing no depth, and drawn over the surface it lies in. Fog
+ * fades it to white - to nothing - rather than to the fog's color, which multiplied
+ * over the ground would tint it.
+ */
+export function shadowMaterial(material) {
+  const before = material.onBeforeCompile, key = material.customProgramCacheKey;
+  material.onBeforeCompile = (shader, renderer) => {
+    before?.call(material, shader, renderer);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <fog_fragment>', `
+#ifdef USE_FOG
+  #ifdef FOG_EXP2
+    float fogFactor = 1.0 - exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
+  #else
+    float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+  #endif
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), fogFactor);
+#endif`);
+  };
+  material.customProgramCacheKey = () => `${key.call(material)}-shadow`;
+  return Object.assign(material, {
+    transparent: true, depthWrite: false, blending: THREE.MultiplyBlending, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  });
+}

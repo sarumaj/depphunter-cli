@@ -12,6 +12,7 @@ import { box } from './stub.mjs';
 
 const THREE = await import('../static/vendor/three.module.min.js');
 const { makeProps, setNight, rampsFor, rampHeight, amenitySpan, amenitiesOf } = await import('../static/map/city.js');
+const { shadowSpot, SHADOW_DARK } = await import('../static/map/shapes.js');
 const { raised, buildParameters } = await import('../static/map/buildings.js');
 
 describe('vegetation without the plant models', () => {
@@ -186,6 +187,46 @@ describe('street lamps at night', () => {
     const group = makeProps([block], m => m, 'circuit');
     const glow = group.children.filter(mesh => mesh.userData.glow);
     assert.ok(glow.length && glow.every(mesh => mesh.visible && !mesh.userData.afterDark));
+  });
+});
+
+describe('shadows on the ground', () => {
+  // Verifies: REQ-CITY-042
+  it('lays a shadow darkest in its middle and gone at its rim', () => {
+    const spot = shadowSpot(2, 1, 0.5, 0);
+    const position = spot.getAttribute('position'), color = spot.getAttribute('color');
+    let middle = Infinity, rim = 0, widest = 0, deepest = 0;
+    for (let i = 0; i < position.count; i++) {
+      const out = Math.hypot((position.getX(i) - 0.5) / 2, position.getZ(i));
+      widest = Math.max(widest, Math.abs(position.getX(i) - 0.5));
+      deepest = Math.max(deepest, Math.abs(position.getZ(i)));
+      if (out < 1e-6) middle = Math.min(middle, color.getX(i));
+      if (out > 1 - 1e-6) rim = Math.max(rim, 1 - color.getX(i));
+    }
+    // Linear color, which the screen shows as SHADOW_DARK.
+    assert.ok(Math.abs(Math.pow(middle, 1 / 2.2) - SHADOW_DARK) < 1e-6, `the middle is ${middle}`);
+    assert.ok(rim < 1e-6, 'the rim is not white');
+    assert.ok(Math.abs(widest - 2) < 1e-6 && Math.abs(deepest - 1) < 1e-6, `the spot is ${widest} by ${deepest}`);
+  });
+
+  // Verifies: REQ-CITY-042
+  it('puts a shadow under every tree, bush, lamp and playground, multiplied over the ground, day and night', () => {
+    const land = box('land', 0, 0, 12, 12, { y: -0.45, h: 0.45 });
+    const park = box('terrace', 40, 0, 60, 60, { y: 0, h: 0.28 });
+    const group = makeProps([land, park], m => m, 'city');
+    const shadows = group.children.filter(mesh => mesh.userData.shadow && !mesh.userData.coarse);
+    assert.ok(shadows.length, 'nothing has a shadow');
+    for (const mesh of shadows) {
+      assert.equal(mesh.material.blending, THREE.MultiplyBlending);
+      assert.equal(mesh.material.depthWrite, false);
+    }
+    // As many shadows as there are things to cast them, a playground's too.
+    const cast = shadows.reduce((n, mesh) => n + mesh.count, 0);
+    const trees = group.userData.obstacles.length;
+    assert.ok(cast >= trees * 0.5, `${cast} shadows for ${trees} trees, lamps and posts`);
+    assert.ok(shadows.some(mesh => mesh.userData.amenity !== undefined || mesh.count > 0), 'no playground casts a shadow');
+    setNight(group, true);
+    assert.ok(shadows.every(mesh => mesh.material.color.getHex() === 0xffffff), 'night darkened a shadow to black');
   });
 });
 

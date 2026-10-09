@@ -13,7 +13,7 @@ const { amenitiesFor, onAmenity, inAmenity } = await import('../static/map/ameni
 const { PAINT } = await import('../static/map/shapes.js');
 const WALK = await import('../static/walk/walk.js');
 const { strength, level, STRENGTH } = await import('../static/walk/play.js');
-const { EYE, POINT } = await import('../static/walk/walkbase.js');
+const { EYE, POINT, JUMP, GRAVITY } = await import('../static/walk/walkbase.js');
 
 const CITY = amenitiesFor('city');
 const [PITCH, COURT, VOLLEY, PLAYGROUND, ROUNDABOUT] = CITY;
@@ -674,11 +674,55 @@ describe('what the walker wears, and how their legs go', () => {
     assert.ok(drop <= 0.07, `the feet go ${(drop - 0.07).toFixed(3)} into the ground`);
   });
 
-  // Verifies: REQ-WALK-059
+  // Verifies: REQ-WALK-063
+  it('pushes off straight, tucks the knees at the top, reaches down falling, and gives at the knees landing', () => {
+    const at = (extra = {}) => ({ p: { ground: true, vy: 0 }, riding: null, pace: 0, kicked: null, ...extra });
+    const up = vy => posture(at({ p: { ground: false, vy } }), 0, 0);
+    const push = up(JUMP), top = up(0), down = up(-JUMP);
+    assert.ok(push.shin_L > -0.3 && push.foot_L < -0.4, `not pushing off: ${JSON.stringify(push)}`);
+    assert.ok(top.shin_L < -1.2 && top.thigh_L > 0.7, `not tucked at the top: ${JSON.stringify(top)}`);
+    assert.ok(down.shin_L > top.shin_L + 0.6 && down.shin_L < -0.3, `not reaching down: ${down.shin_L}`);
+    assert.ok(push.upperarm_L[0] > top.upperarm_L[0] + 0.3, 'the arms do not swing up with the push');
+    // Over the whole arc, no joint jumps from one frame to the next.
+    let worst = 0;
+    for (let vy = JUMP; vy > -2 * JUMP; vy -= GRAVITY / 60) {
+      const [a, b] = [up(vy), up(vy - GRAVITY / 60)];
+      for (const joint of ['thigh_L', 'shin_L', 'foot_L', 'thigh_R', 'shin_R', 'foot_R']) worst = Math.max(worst, Math.abs(b[joint] - a[joint]));
+    }
+    assert.ok(worst < 0.2, `a joint turns ${worst.toFixed(2)} in a frame in the air`);
+    // Half way off the ground (Body.air), half way to the air's pose.
+    const half = posture(at({ p: { ground: false, vy: 0 } }), 0, 0, Infinity, 0, 0.5);
+    assert.ok(Math.abs(half.shin_L - top.shin_L / 2) < 1e-9, `half off the ground ${half.shin_L}`);
+    // Landing, the knees give, deeper and longer the harder the feet came down, the
+    // feet staying under the hips, and are straight again before long.
+    const hips = q => 0.115 * Math.cos(q.thigh_L) + 0.14 * Math.cos(q.thigh_L + q.shin_L);
+    const ahead = q => 0.115 * Math.sin(q.thigh_L) + 0.14 * Math.sin(q.thigh_L + q.shin_L);
+    const dip = (speed, s) => 0.255 - hips(posture(at({ landed: { at: 0, speed } }), 0, s * 1000));
+    const deepest = speed => Math.max(...Array.from({ length: 60 }, (_, k) => dip(speed, k / 100)));
+    assert.ok(deepest(0.5) < 0.002, `a step off a curb buckles the knees ${deepest(0.5)}`);
+    assert.ok(deepest(JUMP) > 0.04, `a jump's landing barely bends the knees ${deepest(JUMP)}`);
+    assert.ok(deepest(8) > deepest(JUMP) + 0.04, 'a hard landing gives no more than a jump');
+    assert.ok(dip(8, 0.25) > dip(JUMP, 0.25), 'a hard landing is not taken longer');
+    assert.equal(dip(8, 1.2), 0, 'the knees stay bent');
+    const crouched = posture(at({ landed: { at: 0, speed: 8 } }), 0, 110);
+    assert.ok(Math.abs(ahead(crouched)) < 0.005, `the feet are ${ahead(crouched).toFixed(3)} out from under the hips`);
+    assert.ok(crouched.lean > 0.1, 'the body does not lean over its knees');
+    let jolt = 0;
+    for (let t = 0; t < 1; t += 1 / 60) jolt = Math.max(jolt, Math.abs(dip(8, t + 1 / 60) - dip(8, t)));
+    // ... going down no faster than they were falling, and coming up slower.
+    assert.ok(jolt * 60 < 8, `the hips drop ${(jolt * 60).toFixed(2)} a second`);
+    // On a ride, nothing of either.
+    const seated = posture(at({ p: { ground: false, vy: 0 }, landed: { at: 0, speed: 8 }, riding: { entry: { ride: 'swing' }, angle: 0, blend: 1 } }), 0, 100);
+    assert.ok(seated.thigh_L > 1.3, 'sat on a swing, the legs are in the air');
+  });
+
+  // Verifies: REQ-WALK-059, REQ-WALK-063
   it('bends no joint further than a body does, nor a knee or an elbow the wrong way, in any move', async () => {
     const at = (extra = {}) => ({ p: { ground: true }, riding: null, pace: 1, kicked: null, ...extra });
     const rides = ['swing', 'rock', 'drive', 'spin'].map(ride => ({ entry: { ride, seat: [0, 0.1, 0] }, angle: 1.2, blend: 1 }));
-    const moves = [at(), at({ pace: 1.6 }), at({ p: { ground: false } }), at({ pace: 0, kicked: 0 }), ...rides.map(riding => at({ riding }))];
+    const moves = [at(), at({ pace: 1.6 }), at({ p: { ground: false } }), at({ pace: 0, kicked: 0 }), ...rides.map(riding => at({ riding })),
+      ...[JUMP, 1, 0, -2, -10].map(vy => at({ p: { ground: false, vy } })), at({ p: { ground: false, fly: true } }),
+      ...[1, JUMP, 20].map(speed => at({ landed: { at: 0, speed } })), at({ pace: 1.6, landed: { at: 0, speed: 20 } })];
     for (const [m, w] of moves.entries()) {
       for (let k = 0; k < 32; k++) {
         const pose = posture(w, k * Math.PI / 16, k * 25, k % 2 ? 0.05 : Infinity);

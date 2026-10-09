@@ -1543,3 +1543,82 @@ describe('the tracker closing in', () => {
     assert.ok(sweep().at(30).radarRange < 80);
   });
 });
+
+const { Shadows, shadowOf } = await import('../static/walk/shadows.js');
+
+describe('shadows of what moves', () => {
+  /** Shadows over a flat street at `ground`, a ramp rising along x past x = 5. */
+  function shadows(ground = 0) {
+    const added = [];
+    const s = new Shadows({ scene: { add: o => added.push(o) }, bendable: m => m });
+    const w = {
+      p: { x: 0, z: 0, feet: ground, ground: true },
+      body: { group: { visible: true } },
+      balls: new Map(),
+      bugs: null,
+      height: (x) => ground + Math.max(0, x - 5) * 0.3,
+    };
+    return { s, w, added };
+  }
+  const placed = (s, i) => {
+    const m = new THREE.Matrix4(), at = new THREE.Vector3(), turn = new THREE.Quaternion(), size = new THREE.Vector3();
+    s.mesh.getMatrixAt(i, m);
+    m.decompose(at, turn, size);
+    return { at, turn, size, dark: s.dark.array[i] };
+  };
+
+  // Verifies: REQ-WALK-064
+  it('fades and widens a shadow the higher its caster, gone at its height', () => {
+    const near = shadowOf(0, 0.1, 2), mid = shadowOf(1, 0.1, 2), gone = shadowOf(2, 0.1, 2);
+    assert.equal(near.dark, 1);
+    assert.ok(mid.dark < near.dark && mid.dark > 0 && mid.size > near.size, `half way up ${JSON.stringify(mid)}`);
+    assert.equal(gone.dark, 0);
+    assert.equal(shadowOf(-1, 0.1, 2).dark, 1, 'below the ground');
+  });
+
+  // Verifies: REQ-WALK-064
+  it('lays the walker\'s shadow under their feet, fainter in the air, on the slope of a ramp', () => {
+    const { s, w, added } = shadows(0.28);
+    assert.ok(added.includes(s.mesh));
+    s.update(w);
+    assert.equal(s.mesh.count, 1);
+    const standing = placed(s, 0);
+    assert.ok(Math.abs(standing.at.y - 0.28) < 1e-6 && standing.dark === 1, `standing ${JSON.stringify(standing)}`);
+    // Jumping, the shadow stays on the ground, fainter and wider.
+    Object.assign(w.p, { feet: 0.28 + 0.4, ground: false });
+    s.update(w);
+    const up = placed(s, 0);
+    assert.ok(Math.abs(up.at.y - 0.28) < 1e-6, 'the shadow went up with the walker');
+    assert.ok(up.dark < 1 && up.size.x > standing.size.x, `in the air ${JSON.stringify(up)}`);
+    // On the ramp, it lies along its slope rather than flat into it.
+    Object.assign(w.p, { x: 7, feet: w.height(7), ground: true });
+    s.update(w);
+    const tilt = new THREE.Vector3(0, 1, 0).applyQuaternion(placed(s, 0).turn);
+    assert.ok(tilt.x < -0.2, `flat on a ramp ${tilt.toArray()}`);
+    // No body drawn, no shadow; out of walk mode, none at all.
+    w.body.group.visible = false;
+    s.update(w);
+    assert.equal(s.mesh.count, 0);
+    assert.equal(s.mesh.visible, false);
+  });
+
+  // Verifies: REQ-WALK-064
+  it('casts a ball\'s and a bug\'s shadow, a bug on a wall onto the wall', () => {
+    const { s, w } = shadows();
+    w.body.group.visible = false;
+    w.balls.set('court', { r: 0.05, mesh: { visible: true, position: new THREE.Vector3(1, 0.05, 1) } });
+    const wall = { position: new THREE.Vector3(2, 1, 0), up: new THREE.Vector3(1, 0, 0), scale: 1, caught: false };
+    const caught = { position: new THREE.Vector3(2, 1, 1), up: new THREE.Vector3(0, 1, 0), scale: 1, caught: true };
+    const far = { position: new THREE.Vector3(200, 0, 0), up: new THREE.Vector3(0, 1, 0), scale: 1, caught: false };
+    w.bugs = { group: { visible: true }, bugs: [wall, caught, far] };
+    s.update(w);
+    assert.equal(s.mesh.count, 2, 'a caught bug or one far off casts a shadow');
+    const ball = placed(s, 0), bug = placed(s, 1);
+    assert.ok(ball.dark === 1 && Math.abs(ball.at.x - 1) < 1e-6, `the ball's ${JSON.stringify(ball)}`);
+    const facing = new THREE.Vector3(0, 1, 0).applyQuaternion(bug.turn);
+    assert.ok(facing.x > 0.99, `a bug on a wall casts onto ${facing.toArray()}`);
+    assert.ok(bug.at.x < 2, 'the shadow is not on the wall under the bug');
+    s.hide();
+    assert.equal(s.mesh.visible, false);
+  });
+});

@@ -25,7 +25,7 @@ import { closeHand, closeFinger } from './hands.js';
 import { viewLights, skinMaterial } from './tools.js';
 import { buildGear, fitOf, lick } from './gear.js';
 import { aloft } from './parachute.js';
-import { EYE, WALK, RUN, SWIM_SINK, SWIM_PACE, reducedMotion } from './walkbase.js';
+import { EYE, WALK, RUN, JUMP, SWIM_SINK, SWIM_PACE, reducedMotion } from './walkbase.js';
 
 // The body as scripts/body.py builds it, on MakeHuman's joints (scripts/human.py).
 const HIP = 0.256;   // the hips over the feet
@@ -54,6 +54,24 @@ const KICK_KEYS = [
   [0.66, 0, 0, 0, 0, 0],
 ];
 const KICK_JOINTS = ['thigh_R', 'shin_R', 'foot_R', 'thigh_L', 'shin_L'];
+
+// A jump's legs, by how fast the walker is going up (walkbase.js JUMP): each thigh, shin
+// and foot, left then right. Pushing off, the legs straight and the toes pointed, one
+// trailing; at the top, the knees tucked up; coming down, reaching for the ground
+// under the hips, bent ready to take it. Hanging under a jet, as before any of that.
+const AIR_LEGS = {
+  push: [0.2, -0.15, -0.55, -0.1, -0.35, -0.6],
+  tuck: [0.85, -1.4, -0.15, 0.6, -1.15, -0.15],
+  reach: [0.35, -0.5, -0.1, 0.18, -0.32, -0.1],
+  hang: [0.45, -0.8, 0, 0.25, -0.55, 0],
+};
+const AIR_JOINTS = ['thigh_L', 'shin_L', 'foot_L', 'thigh_R', 'shin_R', 'foot_R'];
+// Landing: how fast a fall the knees take all the way down and how fast one they do
+// not give under at all, how far a thigh comes forward at the deepest, and how soon the
+// knees are there - later after a harder landing - and up again in eight times that.
+const LAND_HARD = 7, LAND_SOFT = 0.8, CROUCH = 1.2, LAND_PEAK = [0.06, 0.11];
+// How fast the legs go to the air's pose and back, per second.
+const AIR_EASE = 14;
 
 let model = null;
 
@@ -98,6 +116,7 @@ export class Body {
     this.velocity = new THREE.Vector3();                 // ... and how fast they are going, eased
     this.swimPhase = 0;                  // the stroke (swimPose)
     this.adrift = 0;                     // how far down in the water with nothing to float on, eased
+    this.air = 0;                        // how far off the ground the legs are, eased (posture)
     this.speed = 0;                      // how fast the feet are carrying the walker (gait)
     this.lastAt = { x: 0, z: 0, known: false }; // where the feet were last frame (gait)
     // Lit as the hand held before the eye is, by the same lights from where the view
@@ -228,7 +247,9 @@ export class Body {
     // running, the strides come longer as well as quicker.
     const gait = this.gait(w, deltaTime);
     this.phase = (this.phase + deltaTime * Math.PI * 2 * this.speed / (STRIDE.walk + (STRIDE.run - STRIDE.walk) * running(w, gait))) % (Math.PI * 2);
-    const pose = posture(w, this.phase, performance.now(), room, gait);
+    // Off the ground and back on it eased, so a curb stepped off is not a jump.
+    this.air += ((p.ground ? 0 : 1) - this.air) * Math.min(1, deltaTime * AIR_EASE);
+    const pose = posture(w, this.phase, performance.now(), room, gait, this.air);
     if (towed > 0) towPose(pose, this.towSide, towed);
     if (flown > 0) flightPose(pose, this.flightLean, this.flightRoll, flown);
     // The stroke on a phase of its own, so it quickens without jumping.
@@ -808,16 +829,16 @@ export function sitting(w) {
 
 /**
  * How far forward each joint of the legs is bent, radians, for what the walker is
- * doing: sitting (feet kept `room` clear of what is under the seat), in the air,
- * climbing a ladder, walking at `phase` of a stride, and a kick taken lately laid over
- * any of them.
+ * doing: sitting (feet kept `room` clear of what is under the seat), in the air -
+ * `air` of the way there, eased by the body (Body.air) - climbing a ladder, walking at
+ * `phase` of a stride, the knees giving under a landing, and a kick taken lately laid
+ * over any of them.
  */
-export function posture(w, phase, now, room = Infinity, pace = w.pace || 0) {
+export function posture(w, phase, now, room = Infinity, pace = w.pace || 0, air = w.p.ground ? 0 : 1) {
   const p = w.p, r = w.riding, ride = r?.entry.ride, sit = sitting(w);
   const pose = {};
-  if (!p.ground && !r && sit === 0) {
-    Object.assign(pose, { thigh_L: 0.45, thigh_R: 0.25, shin_L: -0.8, shin_R: -0.55 });
-  } else if (ride === 'slide' && r.s < r.marks.top) {
+  air = r || sit > 0 ? 0 : air;
+  if (ride === 'slide' && r.s < r.marks.top) {
     // Climbing: a leg up a rung at a time.
     const up = Math.max(0, Math.sin(phase * 1.3));
     Object.assign(pose, { thigh_L: up * 1.1, thigh_R: (1 - up) * 1.1, shin_L: -up * 1.4, shin_R: -(1 - up) * 1.4 });
@@ -838,6 +859,12 @@ export function posture(w, phase, now, room = Infinity, pace = w.pace || 0) {
     }
     pose.lean = RUN_LEAN * run;
   }
+  if (air > 0) {
+    const legs = airLegs(p);
+    for (const [j, joint] of AIR_JOINTS.entries()) pose[joint] = (pose[joint] || 0) + (legs[j] - (pose[joint] || 0)) * air;
+    pose.lean = (pose.lean || 0) * (1 - air);
+  }
+  if (!r) absorb(pose, w, now);
   if (sit > 0) {
     // Thighs out along the seat; shins hanging - no lower than the room under the seat
     // allows - or out straight down a slide.
@@ -854,7 +881,7 @@ export function posture(w, phase, now, room = Infinity, pace = w.pace || 0) {
   const since = (now - (w.kicked ?? -Infinity)) / 1000;
   const kicking = since >= 0 && since < KICK_KEYS.at(-1)[0];
   if (kicking) Object.assign(pose, kickPose(since));
-  arms(pose, w, phase, sit, kicking ? Math.sin(Math.PI * since / KICK_KEYS.at(-1)[0]) : 0, pace);
+  arms(pose, w, phase, sit, kicking ? Math.sin(Math.PI * since / KICK_KEYS.at(-1)[0]) : 0, pace, air, now);
   // No joint bent further than it goes, nor a knee or an elbow the wrong way.
   for (const [joint, [low, high]] of Object.entries(JOINT_RANGES)) {
     for (const name of [`${joint}_L`, `${joint}_R`]) {
@@ -864,6 +891,58 @@ export function posture(w, phase, now, room = Infinity, pace = w.pace || 0) {
     }
   }
   return pose;
+}
+
+/**
+ * The legs in the air (AIR_LEGS), for `p`'s speed up or down: from the push off the
+ * ground, straight and pointed, through the knees tucked at the top of the jump, to
+ * the legs reaching down for the ground as the walker falls - from a jump, or off an
+ * edge, which starts at the top.
+ *
+ * Implements: REQ-WALK-063
+ */
+export function airLegs(p) {
+  if (p.fly) return AIR_LEGS.hang;
+  const up = Math.max(-1.5, Math.min(1, (p.vy || 0) / JUMP));
+  const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const push = smooth(0.15, 1, up), reach = smooth(0.05, -0.65, up);
+  return AIR_LEGS.tuck.map((tuck, j) => tuck + (AIR_LEGS.push[j] - tuck) * push + (AIR_LEGS.reach[j] - tuck) * reach);
+}
+
+/**
+ * How far the knees are giving under a landing (walk.js landed) `now`, 0 to 1: down
+ * at once, deeper and slower the harder the feet came down, and up again smoothly -
+ * (t/τ)·e^(1 - t/τ), at its deepest at τ.
+ *
+ * Implements: REQ-WALK-063
+ */
+export function landing(w, now) {
+  const { at, speed } = w.landed || {};
+  const depth = Math.sqrt(Math.min(1, Math.max(0, (speed || 0) - LAND_SOFT) / (LAND_HARD - LAND_SOFT)));
+  const peak = LAND_PEAK[0] + (LAND_PEAK[1] - LAND_PEAK[0]) * depth;
+  const t = (now - (at ?? -Infinity)) / 1000 / peak;
+  return t > 0 && t < 8 ? depth * t * Math.exp(1 - t) : 0;
+}
+
+/**
+ * Lays the knees' give under a landing over `pose`: each thigh forward and the shin
+ * back so that the foot stays under the hips, flat on the ground, and the body leaning
+ * a little over its knees. The feet planted (Body.update), bending the knees is what
+ * brings the hips down.
+ *
+ * Implements: REQ-WALK-063
+ */
+function absorb(pose, w, now) {
+  const k = landing(w, now);
+  if (k <= 0) return;
+  const thigh = CROUCH * k, shin = -thigh - Math.asin(Math.min(1, THIGH * Math.sin(thigh) / SHIN));
+  for (const side of ['L', 'R']) {
+    for (const [joint, to] of [['thigh', thigh], ['shin', shin], ['foot', -(thigh + shin)]]) {
+      const name = `${joint}_${side}`;
+      pose[name] = (pose[name] || 0) + (to - (pose[name] || 0)) * Math.min(1, k * 2.5);
+    }
+  }
+  pose.lean = (pose.lean || 0) + 0.2 * k;
 }
 
 // How much of the way the body is laid out along a line that tows it.
@@ -1026,11 +1105,12 @@ const HOLDS = {
 /**
  * The arms, into `pose` as [forward, side] for each joint, and the shoulders' twist:
  * swinging against the legs as the walker walks - further, and bent at the elbow, as
- * they run - out for balance in the air, up a ladder hand over hand, holding on to a
- * ride as far as they are sat on it (`sit`), and one thrown forward and the other back
- * through a kick (`kick`, 0 to 1 and back).
+ * they run - out for balance in the air (`air` of the way), forward against a landing,
+ * up a ladder hand over hand, holding on to a ride as far as they are sat on it
+ * (`sit`), and one thrown forward and the other back through a kick (`kick`, 0 to 1
+ * and back).
  */
-function arms(pose, w, phase, sit, kick, gait) {
+function arms(pose, w, phase, sit, kick, gait, air = w.p.ground ? 0 : 1, now = performance.now()) {
   const p = w.p, r = w.riding, ride = r?.entry.ride, pace = Math.min(1.6, gait);
   const set = (side, forward, bend, out = -0.04) => {
     pose[`upperarm_${side}`] = [forward, out];
@@ -1050,9 +1130,11 @@ function arms(pose, w, phase, sit, kick, gait) {
   set('L', forward - swing, bent + Math.max(0, -swing) * 0.3, REST_ARM[2]);
   set('R', forward + swing, bent + Math.max(0, swing) * 0.3, REST_ARM[2]);
   pose.twist = -swing * 0.25;
-  if (!p.ground && !r && sit === 0) {
-    set('L', 0.35, 0.5, 0.5);
-    set('R', 0.35, 0.5, 0.5);
+  if (air > 0 && !r && sit === 0) {
+    // Out for balance in the air: swung up with the push off the ground, wide coming
+    // down; under a jet, as they hang.
+    const up = p.fly ? 0 : Math.max(0, Math.min(1, (p.vy || 0) / JUMP));
+    for (const side of ['L', 'R']) towards(side, 0.35 + 0.5 * up, 0.5 - 0.05 * up, 0.5 - 0.2 * up, air);
   } else if (ride === 'slide' && r.s < r.marks.top) {
     // Reaching up the ladder, until the hands have a rung (rideGrips) - and at its top,
     // where there is none left, no higher than the shoulders.
@@ -1060,6 +1142,8 @@ function arms(pose, w, phase, sit, kick, gait) {
     set('L', 1.3 + up * 0.2, 0.5);
     set('R', 1.3 - up * 0.2, 0.5);
   }
+  const landed = r ? 0 : landing(w, now);
+  if (landed > 0) for (const side of ['L', 'R']) towards(side, 0.3, 0.45, 0.4, landed);
   const hold = HOLDS[ride], k = ride === 'spin' ? 1 : sit;
   if (hold && k > 0) {
     for (const side of ['L', 'R']) towards(side, ...hold, k);

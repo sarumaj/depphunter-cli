@@ -31,7 +31,7 @@ import { plants } from './models.js';
 import { NOISE_GLSL } from './cityglsl.js';
 import { Scatter } from './lod.js';
 import { raised } from './buildings.js';
-import { rand, shaded, merge } from './shapes.js';
+import { rand, shaded, merge, shadowSpot, shadowMaterial } from './shapes.js';
 import { amenitiesFor, amenityMatrix, rigMatrix } from './amenities.js';
 
 /** Box kinds as the shaders see them (attribute aKind). */
@@ -1149,6 +1149,33 @@ export function* dressing(boxes, bendable, style = 'city') {
       mesh.visible = false;
     }
   }
+  // Each prop's shadow on the ground under it: a tree's as wide as its crown, a bush's
+  // and a lamp post's under them, and a playground's things' over the ground they stand
+  // on, turned with them.
+  // Implements: REQ-CITY-042
+  const shadows = function* (geo, items, place) {
+    for (const mesh of (yield* add(geo, '#ffffff', items, place)).meshes) {
+      shadowMaterial(mesh.material);
+      mesh.userData.shadow = true;
+      mesh.renderOrder = -1; // under the glows and pools, which add to what it leaves
+    }
+  };
+  const spot = shadowSpot();
+  const spread = (r, k = 1) => (it, m) => m.compose(p.set(it.x, it.y, it.z), q.identity(), s.set(r(it) * k, 1, r(it) * k));
+  for (const [kind, t] of set.species.entries()) {
+    yield* shadows(spot, trees.filter(it => it.kind === kind), spread(it => it.s * crown(t.head), 1.15));
+  }
+  for (const [kind, low] of lows.entries()) {
+    yield* shadows(spot, bushes.filter(it => Math.floor(it.r * 7919) % lows.length === kind), spread(it => it.s * crown(low.head), 1.2));
+  }
+  yield* shadows(spot, lamps, spread(() => Math.max(set.post * 3, 0.06)));
+  for (const [kind, a] of (set.amenities || []).entries()) {
+    const box = new THREE.Box3().setFromBufferAttribute(a.head.getAttribute('position'));
+    for (const rig of a.rigs || []) box.union(new THREE.Box3().setFromBufferAttribute(rig.geo.getAttribute('position')).translate(new THREE.Vector3(...rig.at)));
+    const middle = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+    const geo = shadowSpot(size.x * 0.6, size.z * 0.6, middle.x, middle.z, AMENITY_SHADOW);
+    yield* shadows(geo, amenities.filter(it => it.kind === kind), amenityAt);
+  }
   yield;
   group.userData.lod = { cells, scatters };
   // What a walker cannot walk through. A trunk, a capacitor's case, a crystal and a
@@ -1273,13 +1300,26 @@ export function setNight(group, night) {
     if (mesh.userData.glow) mesh.material.opacity = mesh.userData.glow * (night ? 1.5 : 1);
     // A street lamp is off by day: its glow, and the pool it throws, are night's alone.
     if (mesh.userData.afterDark) mesh.visible = night;
-    else if (mesh.userData.glow) continue;
+    else if (mesh.userData.glow || mesh.userData.shadow) continue;
     else if (mesh.userData.heads && night) mesh.material.color.set(group.userData.night);
     else mesh.material.color.set(mesh.userData.day).multiplyScalar(night ? 0.4 : 1);
   }
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
+
+// How dark the ground is under a playground's things: lighter than under a tree, as
+// most of a swing's frame or a goal is air.
+const AMENITY_SHADOW = 0.72;
+// How far out from its middle a model reaches across the ground: its crown's radius.
+const crowns = new WeakMap();
+function crown(geo) {
+  if (!crowns.has(geo)) {
+    const box = new THREE.Box3().setFromBufferAttribute(geo.getAttribute('position'));
+    crowns.set(geo, Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2);
+  }
+  return crowns.get(geo);
+}
 
 // Whether a point is on a ramp's driveway (or within 0.2 of one), where no lamp
 // stands. The driveways are filed by the cells of a grid they reach, so a point is

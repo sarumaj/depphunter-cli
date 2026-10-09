@@ -24,7 +24,7 @@
 
 import * as THREE from '../vendor/three.module.min.js';
 import { clamp, ease } from '../core/numbers.js';
-import { EYE, STEP, WATER, REACH, WALK, RUN, SWIM_SINK, SWIM_PACE, reducedMotion } from './walkbase.js';
+import { EYE, STEP, WATER, REACH, WALK, RUN, JUMP, GRAVITY, SWIM_SINK, SWIM_PACE, reducedMotion } from './walkbase.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds, RAIL_H } from '../map/city.js';
 import { Health } from './health.js';
 import { Wind, EFFORT } from './wind.js';
@@ -36,6 +36,7 @@ import { canopy } from './canopy.js';
 import { play } from './play.js';
 import { quips } from './quips.js';
 import { Body } from './body.js';
+import { Shadows } from './shadows.js';
 import { wear } from './hands.js';
 import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee } from './tools.js';
 import { packedChute, aloft } from './parachute.js';
@@ -45,11 +46,6 @@ import { inBlaze } from '../hunt/flames.js';
 import { massTop } from '../map/details.js';
 
 const FLY = 10; // units per second
-// A jump clears a curb and a terrace wall and nothing more. At this gravity it tops
-// out about 0.4 units up, which against a story of 0.84 is a person leaving the ground
-// rather than one clearing a tree.
-// Implements: REQ-WALK-005
-const JUMP = 3.2, GRAVITY = 13;
 const BODY = 0.12;          // walker radius for collisions
 const CELL = 2;             // spatial grid for box lookups
 // A grid cell as one number rather than "gx,gz". These lookups happen several hundred
@@ -349,6 +345,7 @@ export class Walker {
     this.flung = null;     // how fast a jump off a ride carries them across the map
     this.eyeShift = 0;     // how far the eye still is from where it is going, getting on or off a seat
     this.body = new Body(scene);
+    this.shadows = new Shadows(scene); // the walker's, the balls' and the bugs'
     this.home = null;      // where the walker stood when they last left the street
     this.radius = 40;
     this.shownRadius = 40; // what the planet is drawn at, on its way to radius (easeRadius)
@@ -572,6 +569,7 @@ export class Walker {
     this.endPlay();
     this.drawPlay();
     if (this.body) this.body.group.visible = false;
+    this.shadows?.hide();
     this.bugs?.show(false);
     this.showTarget(null);
     this.hideTool();
@@ -1900,6 +1898,7 @@ export class Walker {
       // hoop of the net, for the one catch that carries a bug somewhere else.
       const hoop = this.primary.catchAs === 'net' ? this.muzzle(this.viewmodel, HOOP_AT) : null;
       this.bugs?.update(deltaTime, now, this.eye(EYE_AT), hoop);
+      this.shadows.update(this);
       this.drawRadar(now, deltaTime);
       if (!this.still && !this.arrival) this.updateAim();
       this.drawPath();
@@ -2105,8 +2104,12 @@ export class Walker {
     // counts from the top of its arc, which is what makes jumping off a roof cost the
     // roof's height and not a hand's breadth more.
     if (p.vy < 0) this.fell = Math.max(this.fell ?? p.feet, p.feet);
+    const wasUp = !p.ground;
     p.ground = p.feet <= floor;
     if (p.ground) {
+      // How hard the feet came down, for the knees to take it (body.js absorb): only
+      // off the ground, not the frame-by-frame settle of a walker already standing.
+      if (wasUp) this.landed = { at: performance.now(), speed: -p.vy };
       if (this.fell !== null) this.land(floor);
       p.feet = floor;
       p.vy = 0;
