@@ -16,7 +16,9 @@ verification:
 
 The extension **shall** start every server with `--no-open`, `--addr
 127.0.0.1:0` and `--embed` for each of `vscode-webview:`, `vscode-file:` and
-`https://*.vscode-cdn.net`, and **shall not** offer a setting that changes them.
+`https://*.vscode-cdn.net`, and **shall not** offer a setting that changes them
+other than `depphunter.allowHost`
+([REQ-EXT-038](REQ-EXT-038-allow-host-setting.md)).
 
 ## Rationale
 

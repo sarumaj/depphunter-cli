@@ -6,6 +6,10 @@
 //   --addr 127.0.0.1:0   the operating system picks a free port; nothing is guessed
 //   --embed         without it the page refuses to be shown in a frame at all
 //
+// depphunter.allowHost is the one setting that touches them: for an editor served
+// from elsewhere it passes --allow-host in place of --addr, which names the editor's
+// origin as one more --embed and listens on 0.0.0.0:0.
+//
 // That last one is what makes this work. The built-in browser is a webview, and a
 // page inside a webview is framed by an origin belonging to the editor, so depphunter
 // has to be told that that origin may frame it - and, because a cookie set by the map
@@ -38,9 +42,9 @@ import { editorTemplate } from './launcher';
 //   https://*.vscode-cdn.net the webview in the browser build
 //
 // The browser build's window is whatever page the editor is being served from, which
-// cannot be known from here - one of the two reasons the browser build is not
-// supported (the other is in the README: the server answers to loopback only).
-// Another editor with another scheme can be added with --embed through
+// cannot be known from here - one of the two reasons the browser build needs
+// depphunter.allowHost (the other is that the server otherwise answers to loopback
+// only). Another editor with another scheme can be added with --embed through
 // depphunter.args, which are passed after these.
 // Implements: REQ-EXT-022
 const FRAME_ORIGINS = ['vscode-webview:', 'vscode-file:', 'https://*.vscode-cdn.net'];
@@ -134,11 +138,14 @@ export function start(root: string, home: string | undefined, log: vscode.Output
  *
  * The settings that decide how the map looks are the exception, and go as seeds
  * (--ui-default) rather than as flags - see below for why.
- * Implements: REQ-EXT-022, REQ-EXT-024
+ * Implements: REQ-EXT-022, REQ-EXT-024, REQ-EXT-038
  */
 export function argv(config: vscode.WorkspaceConfiguration, root: string): string[] {
-  const args = ['--no-open', '--addr', '127.0.0.1:0'];
+  const allowHost = (config.get<string[]>('allowHost') ?? []).map(v => v.trim()).filter(v => v);
+  // --allow-host binds every interface only where --addr is not given.
+  const args = allowHost.length ? ['--no-open'] : ['--no-open', '--addr', '127.0.0.1:0'];
   for (const origin of FRAME_ORIGINS) args.push('--embed', origin);
+  for (const origin of allowHost) args.push('--allow-host', origin);
 
   const text = (key: string, flag: string) => {
     const v = (config.get<string>(key) ?? '').trim();

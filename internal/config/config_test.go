@@ -218,15 +218,15 @@ func TestSymlinkedRootAndPaths(t *testing.T) {
 func TestEveryFlagIsBound(t *testing.T) {
 	// The flags that act on their own instead of setting a value. exclude, findings,
 	// private and trust-index add to what the configuration already holds rather than
-	// replacing it, so Load appends them itself; embed is read straight off the flag
-	// set because no file and no variable may turn it on
-	// (TestEmbedComesFromTheCommandLineOnly); ui-default sets a default rather than a
+	// replacing it, so Load appends them itself; embed and allow-host are read
+	// straight off the flag set because no file and no variable may turn them on
+	// (TestEmbedComesFromTheCommandLineOnly, TestAllowHostFramesAndBindsEverywhere); ui-default sets a default rather than a
 	// value, which is a layer under everything a binding would reach
 	// (TestUIDefaultsAreBeatenByTheProjectFile).
 	standalone := map[string]bool{
 		"config": true, "export": true, "output": true, "exclude": true, "findings": true,
 		"private": true, "trust-index": true,
-		"embed": true, "help": true, "version": true, "ui-default": true,
+		"embed": true, "allow-host": true, "help": true, "version": true, "ui-default": true,
 	}
 	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 	RegisterFlags(flags)
@@ -475,6 +475,47 @@ func TestEmbedOriginsAreChecked(t *testing.T) {
 	}
 	if _, err := load(t, []string{"--embed", "'self'", t.TempDir()}, nil, ""); err == nil {
 		t.Error("a bare CSP keyword was accepted as an origin")
+	}
+}
+
+// An editor served from elsewhere loads the map from another machine, so allowing
+// its origin both lets it frame the map and opens the server to the network - the
+// latter only where --addr has not said where to listen.
+//
+// Verifies: REQ-SEC-011
+func TestAllowHostFramesAndBindsEverywhere(t *testing.T) {
+	root, user := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(user, "config.yaml"), "allow_host: [https://evil.test]\n")
+	write(t, filepath.Join(root, ProjectFile), "addr: 127.0.0.1:2\n")
+	config, err := load(t, []string{root}, map[string]string{"DEPPHUNTER_ALLOW_HOST": "https://worst.test"}, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(config.AllowHost) != 0 || len(config.Embed) != 0 || config.Address != "127.0.0.1:2" {
+		t.Errorf("allow-host came from somewhere other than a flag: %v %v %s", config.AllowHost, config.Embed, config.Address)
+	}
+
+	config, err = load(t, []string{"--embed", "vscode-webview:", "--allow-host", "https://example.com", root}, nil, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Address != "0.0.0.0:0" {
+		t.Errorf("address = %s, want 0.0.0.0:0", config.Address)
+	}
+	if !slices.Equal(config.Embed, []string{"vscode-webview:", "https://example.com"}) {
+		t.Errorf("embed = %v", config.Embed)
+	}
+
+	config, err = load(t, []string{"--addr", "0.0.0.0:8080", "--allow-host", "https://example.com", root}, nil, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Address != "0.0.0.0:8080" {
+		t.Errorf("--addr was overridden: %s", config.Address)
+	}
+
+	if _, err := load(t, []string{"--allow-host", "https://example.com/", root}, nil, ""); err == nil {
+		t.Error("an origin with a path was accepted")
 	}
 }
 

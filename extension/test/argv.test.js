@@ -40,6 +40,15 @@ describe('the command line', () => {
     assert.ok(args.includes('--embed'));
   });
 
+  // Verifies: REQ-EXT-038
+  it('hands an editor served from elsewhere to --allow-host in place of --addr', () => {
+    const args = argv(config({ allowHost: ['https://example.com', ' '] }), ROOT);
+    assert.ok(!args.includes('--addr'));
+    assert.strictEqual(args.filter(a => a === '--embed').length, 3);
+    assert.deepStrictEqual(fromSettings({ allowHost: ['https://example.com', ' '] }),
+      ['--allow-host', 'https://example.com', '--watch']);
+  });
+
   // Verifies: REQ-EXT-024
   it('adds nothing but --watch for settings left at their defaults', () => {
     assert.deepStrictEqual(fromSettings({}), ['--watch']);

@@ -26,5 +26,5 @@ A foreign `Host` header means a DNS-rebinding page is talking to the server.
 
 ## Notes
 
-The check is off when the server is bound to a non-loopback address (`--addr`),
-where no fixed set of host names applies.
+The check is off when the server is bound to a non-loopback address (`--addr`,
+`--allow-host`), where no fixed set of host names applies.

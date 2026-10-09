@@ -369,6 +369,16 @@
             "markdownDescription": "What the map's \"Open in editor\" button runs, e.g. `code -g {file}:{line}`. Empty means this editor, when its command-line launcher can be found, and otherwise whatever depphunter detects.",
             "order": 5
           },
+          "depphunter.allowHost": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "scope": "machine",
+            "order": 6,
+            "markdownDescription": "Origins of an editor served from elsewhere that hosts the map, e.g. `https://example.com` for VS Code in a browser (`--allow-host`). Each may frame the map, and the server listens on every interface (`0.0.0.0`) instead of loopback alone, so a browser on another machine can reach it. Anyone who can reach this machine can then reach the server, though not use it without the session token. Machine-wide only: a workspace cannot set it."
+          },
           "depphunter.args": {
             "type": "array",
             "items": {

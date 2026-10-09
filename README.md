@@ -296,6 +296,7 @@ depphunter --export html -o map.html  # write a self-contained map
 | `-h`, `--help`      |                           | list the flags with their defaults                                                            |
 | `--editor`          | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`                                       |
 | `--embed`           |                           | origin permitted to frame the map, e.g. `vscode-webview:`; repeatable                         |
+| `--allow-host`      |                           | origin of an editor served from elsewhere, e.g. `https://example.com`; see below; repeatable  |
 | `--export`          |                           | write `json`, `graphml`, `dot` or `html` and exit                                             |
 | `-o`, `--output`    | stdout                    | output file for `--export`                                                                    |
 
@@ -601,6 +602,7 @@ everything not set here.
 | `depphunter.watch`                                                             | `true`    | `--watch`           | Re-analyze on file change and update the map.                                                                  |
 | `depphunter.config`                                                            | `""`      | `--config`          | A configuration file to read instead of the folder's `.depphunter.yaml`, relative to the folder.               |
 | `depphunter.editorCommand`                                                     | `""`      | `--editor`          | The command **Open in editor** invokes. Empty selects the current editor.                                      |
+| `depphunter.allowHost`                                                         | `[]`      | `--allow-host`      | Origins of an editor served from elsewhere, e.g. `https://example.com`. Machine-wide only. See below.          |
 | `depphunter.args`                                                              | `[]`      |                     | Further arguments, one per entry, appended last. [Usage](#usage) lists them.                                   |
 | **Analysis**                                                                   |           |                     |                                                                                                                |
 | `depphunter.exclude`                                                           | `[]`      | `--exclude`         | Globs of paths to omit.                                                                                        |
@@ -629,9 +631,10 @@ everything not set here.
 | `depphunter.lspTimeout`                                                        | `""`      | `--lsp-timeout`     | Time budget for the language servers, e.g. `90s`.                                                              |
 
 What is left out is left out on purpose: `--addr`, `--no-open` and `--embed`
-are how the extension hosts the map and are not for changing, and `--export`
-(with `--output`) writes a file and exits rather than serving. `--python` has
-no setting of its own; pass it through `depphunter.args`.
+are how the extension hosts the map and are not for changing, except through
+`depphunter.allowHost` ([below](#an-editor-served-from-elsewhere)), and
+`--export` (with `--output`) writes a file and exits rather than serving.
+`--python` has no setting of its own; pass it through `depphunter.args`.
 
 They are ordinary settings, so they can be set per workspace in
 `.vscode/settings.json`:
@@ -713,6 +716,27 @@ reads the address from the server's own output rather than constructing it from
 the port: that address is the only place the token appears. The extension always
 starts the server in this mode, so even a map it opens in an external browser
 keeps the token in the address.
+
+### An editor served from elsewhere
+
+The browser build of the editor (VS Code served at `https://example.com`, say)
+frames the map from the page it is served from, which the extension cannot
+know, and loads it from the browser's machine rather than the server's. Name
+that page's origin in `depphunter.allowHost`, or pass it to the command-line
+tool:
+
+```sh
+depphunter --no-open --allow-host https://example.com
+# the same as
+depphunter --no-open --addr 0.0.0.0:0 --embed https://example.com
+```
+
+`--allow-host` adds the origin to those `--embed` names and listens on every
+interface, on a free port, unless `--addr` says otherwise. Anyone who can reach
+the machine can then reach the server, though not use it without the session
+token. Like `--embed` it is accepted only on the command line, and the setting
+only in user or remote-machine settings, never a workspace's, since either
+would otherwise let a repository open the server to the network.
 
 ## The map
 

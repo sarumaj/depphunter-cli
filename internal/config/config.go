@@ -158,6 +158,13 @@ type Config struct {
 	// nor the environment can turn it on behind the user's back.
 	// Implements: REQ-SEC-010
 	Embed []string `yaml:"-" mapstructure:"-"`
+	// AllowHost lists the origins of an editor served from elsewhere - a browser
+	// build of VS Code at https://example.com - that hosts the map. Each is added to
+	// Embed, and unless --addr says otherwise the server listens on every interface
+	// (0.0.0.0:0), since the page is then loaded from a machine other than this
+	// one. Like Embed it comes from flags only.
+	// Implements: REQ-SEC-011
+	AllowHost []string `yaml:"-" mapstructure:"-"`
 }
 
 // Implements: REQ-SEC-001
@@ -226,6 +233,9 @@ func RegisterFlags(flags *pflag.FlagSet) {
 	flags.String("editor", "", `editor command template, e.g. "code -g {file}:{line}" (default: auto-detect)`)
 	flags.StringArray("embed", nil,
 		"origin allowed to show the map in a frame, e.g. vscode-webview: for an editor's browser; repeatable")
+	flags.StringArray("allow-host", nil,
+		"origin of an editor served from elsewhere that hosts the map, e.g. https://example.com; "+
+			"as --embed <origin> plus --addr 0.0.0.0:0 unless --addr is given; repeatable")
 	flags.String("export", "", "write the graph as json, graphml, dot or html and exit instead of serving")
 	flags.StringP("output", "o", "", "output file for --export (default: stdout)")
 }
@@ -357,6 +367,13 @@ func Load(flags *pflag.FlagSet, arguments []string, userDirectory string) (Confi
 	flagTrust, _ := flags.GetStringArray("trust-index")
 	config.TrustIndexes = append(config.TrustIndexes, flagTrust...)
 	config.Embed, _ = flags.GetStringArray("embed")
+	config.AllowHost, _ = flags.GetStringArray("allow-host")
+	if len(config.AllowHost) > 0 {
+		config.Embed = append(config.Embed, config.AllowHost...)
+		if !flags.Changed("addr") {
+			config.Address = "0.0.0.0:0"
+		}
+	}
 	config.Export, _ = flags.GetString("export")
 	config.Output, _ = flags.GetString("output")
 	return config, config.validate()
@@ -619,6 +636,11 @@ func (c Config) validate() error {
 			return nil
 		}(),
 		func() error {
+			for _, origin := range c.AllowHost {
+				if !frameOrigin(origin) {
+					return fmt.Errorf("allow-host: %q is not a scheme or an origin, e.g. https://example.com", origin)
+				}
+			}
 			for _, origin := range c.Embed {
 				if !frameOrigin(origin) {
 					return fmt.Errorf("embed: %q is not a scheme or an origin, e.g. vscode-webview: or https://example.test", origin)
