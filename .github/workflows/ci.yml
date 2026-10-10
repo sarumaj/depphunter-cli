@@ -139,7 +139,7 @@ jobs:
           unzip -p depphunter.vsix extension/bin/depphunter > packaged
           chmod +x packaged
           ./packaged --version
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: depphunter-vscode-${{ github.sha }}
           path: depphunter.vsix
@@ -193,7 +193,7 @@ jobs:
           (cd dist && sha256sum -c checksums.txt)
           tar -xzf dist/depphunter_*_linux_amd64.tar.gz -C "$RUNNER_TEMP"
           "$RUNNER_TEMP"/depphunter_*_linux_amd64/depphunter --version
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: depphunter-${{ github.sha }}
           path: dist/
