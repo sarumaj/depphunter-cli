@@ -42,7 +42,7 @@ jobs:
           "$RUNNER_TEMP"/depphunter_*_linux_amd64/depphunter --version | grep -F "${{ github.ref_name }}"
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - name: Build the VS Code extension
         id: vsix
