@@ -12,7 +12,7 @@ import { describe, it, beforeEach } from 'node:test';
 
 import './stub.mjs';
 
-const { TOUR, WALK_TOUR, startTour, startWalkTour, walkTourPending } = await import('../static/panels/tour.js');
+const { TOUR, WALK_TOUR, cardsFor, startTour, startWalkTour, walkTourPending } = await import('../static/panels/tour.js');
 
 const IDS = ['tour', 'tour-dots', 'tour-title', 'tour-body', 'tour-shot', 'tour-back', 'tour-next', 'tour-skip'];
 
@@ -188,5 +188,14 @@ describe('the introduction', () => {
     assert.equal(startTour(), false);
     // And asking for it from the help still works, and still does not throw.
     assert.equal(startTour(true), true);
+  });
+
+  // Verifies: REQ-MAP-066
+  it('leaves the street out where the map cannot be walked into, and says what the findings are from above', () => {
+    assert.equal(cardsFor(true), TOUR);
+    const cards = cardsFor(false);
+    assert.equal(cards.length, TOUR.length - 1);
+    for (const card of cards) assert.doesNotMatch(card.body, /Press V|walk into|patrolling|bite/, `"${card.title}" still speaks of the street`);
+    assert.match(cards.find(card => /findings/.test(card.title)).body, /pin over the building/);
   });
 });

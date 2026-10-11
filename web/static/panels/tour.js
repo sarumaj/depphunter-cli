@@ -39,6 +39,7 @@ export const TOUR = [
       file to see its functions as plots on a terrace.`,
   },
   {
+    walk: true, // nothing to say where the map cannot be walked into (startTour)
     shot: 'street',
     alt: 'Walk mode: the same map seen from a street inside it, with a tool held in each hand.',
     title: 'The map is also a place',
@@ -55,6 +56,12 @@ export const TOUR = [
       critical one, a beetle for the middle of the range, a mite for a note. Catch one
       and it tells you what was reported, and goes into your backpack until the source
       is fixed. They bite, so watch your health. From above, L lists them all.`,
+    // ... and where there is no street for them to patrol.
+    plain: `Point depphunter at the reports your scanners already produce and every
+      finding becomes a pin over the building it belongs to, in the color of the worst
+      thing reported there and taller the more there are. Point at one for the tally,
+      or select it to read them; L lists them all, and + puts one in your backpack
+      until the source is fixed.`,
   },
   {
     title: 'Press ? at any time',
@@ -139,7 +146,15 @@ const WALK_SEEN = 'depphunter.introduced.walk';
  * it again, which is what `forced` is for.
  * Implements: REQ-UI-004
  */
-export const startTour = (forced = false) => show(TOUR, TOUR_SEEN, forced);
+export const startTour = (forced = false, walk = true) => show(cardsFor(walk), TOUR_SEEN, forced);
+
+/**
+ * The map's cards for a map that can be walked into, or for one that cannot - drawn
+ * without WebGL (flat.js) - which leaves out the street and says what the findings
+ * are from above.
+ * Implements: REQ-MAP-066
+ */
+export const cardsFor = walk => (walk ? TOUR : TOUR.filter(card => !card.walk).map(card => (card.plain ? { ...card, body: card.plain } : card)));
 
 /**
  * Walk mode's, the first time somebody walks in. `done` is called once it is out of the

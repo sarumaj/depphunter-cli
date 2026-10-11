@@ -1171,6 +1171,26 @@ describe('what the walker says', () => {
     w.bugs.counts.caught = 3;
     w.caughtOne();
     assert.ok(QUIPS.allCaught.includes(said.at(-1)), 'the last bug caught, said nothing of it');
+    // Three caught one after another is a run of them; the wind getting up is remarked on once.
+    wait();
+    w.bugs.counts.total = 9;
+    w.catches = [];
+    w.caughtOne();
+    assert.ok(QUIPS.caught.includes(said.at(-1)));
+    wait();
+    w.catches = w.catches.map(() => performance.now() / 1000);
+    w.caughtOne();
+    wait();
+    w.catches = w.catches.map(() => performance.now() / 1000);
+    w.caughtOne();
+    assert.ok(QUIPS.streak.includes(said.at(-1)), `three in a row: ${said.at(-1)}`);
+    wait();
+    const calm = said.length;
+    w.gusts(1);
+    w.gusts(3);
+    w.gusts(3.1);
+    assert.equal(said.length, calm + 1);
+    assert.ok(QUIPS.gust.includes(said.at(-1)));
     // Stood still: a line after a while, and only the one.
     wait();
     const before = said.length;

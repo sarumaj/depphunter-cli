@@ -651,7 +651,7 @@ export class Walker {
     Object.assign(this.p, { x, z, feet, yaw, pitch, vy: 0 });
     if (!landed) return;
     if (!this.handsOff) this.showTool();
-    this.quip('arrive');
+    this.quip(a.kind === 'rise' ? 'revived' : 'arrive');
     this.drawHud();
   }
 
@@ -1121,6 +1121,7 @@ export class Walker {
     this.showTarget(null);
     this.hooks.onAim(-1);
     this.flash(`Photograph ${photo.n}${photo.where ? ` - ${photo.where}` : ''} - click to put it away`);
+    this.quip('album');
     this.drawHud();
     return true;
   }
@@ -1251,6 +1252,7 @@ export class Walker {
     this.camReach = 1;
     try { localStorage.setItem(VIEW_KEY, on ? 'third' : 'first'); } catch { /* not remembered */ }
     this.flash(on ? 'Seen from behind - Y for your own eyes again' : 'Through your own eyes - Y to see yourself from behind');
+    if (on) this.quip('mirror');
   }
 
   /**
@@ -1904,6 +1906,7 @@ export class Walker {
       this.air.at(now / 1000, this.airNow);
       this.scene.driftClouds?.(this.airNow, deltaTime);
       this.drawAir();
+      this.gusts(Math.hypot(this.airNow.x, this.airNow.z));
       this.updatePuffs(deltaTime);
       this.updateCanopies(deltaTime);
       this.updatePlay(deltaTime);
@@ -2441,7 +2444,10 @@ export class Walker {
         if (this.dry.has(id) && now >= (tool.fuel.once ? 1 : REFILLED)) {
           this.dry.delete(id);
           if (tool.glides) this.chute = packedChute();
-          if (tool === this.secondary) this.flash(tool.fuel.once ? `${tool.label} packed - ready again` : `${tool.label} has filled - ready again`);
+          if (tool === this.secondary) {
+            this.flash(tool.fuel.once ? `${tool.label} packed - ready again` : `${tool.label} has filled - ready again`);
+            this.quip('refilled');
+          }
         }
         continue;
       }
@@ -2552,6 +2558,7 @@ export class Walker {
    */
   reanchor(a, b) {
     const p = this.p, was = p.feet;
+    if (this.active) this.quip('rebuilt');
     const map = (v, c, s, c2, s2) => {
       const d = v - c, half = s / 2;
       return Math.abs(d) > half ? c2 + Math.sign(d) * (s2 / 2 + Math.abs(d) - half) : c2 + d * (s2 / Math.max(1e-6, s));

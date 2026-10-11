@@ -14,6 +14,7 @@ import { OrbitControls } from '../vendor/OrbitControls.js';
 import { clamp } from '../core/numbers.js';
 import { buildParameters, isGround } from './buildings.js';
 import { Details, tiersOf } from './details.js';
+import { FlatRenderer, hasWebGL } from './flat.js';
 import { cull } from './lod.js';
 import { Resolution } from './resolution.js';
 import { kindCode, makeSky, waterMaterial, dressing, setNight, roadUniforms, setRoads } from './city.js';
@@ -35,10 +36,32 @@ const MOVES = new Set(['circuit', 'galaxy']);
 const CLOUD_DRIFT = 0.01;
 
 export class MapScene {
-  constructor(container) {
+  /**
+   * `flat` draws the map without WebGL (flat.js) whether or not there is any, which
+   * is otherwise what happens only where the browser has none to give: `flat` is
+   * then true, the isometric map is drawn plain, and there is no walk mode.
+   *
+   * Implements: REQ-MAP-066
+   */
+  constructor(container, { flat = false } = {}) {
     this.container = container;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.pixelRatio = Math.min(window.devicePixelRatio, 2);
+    this.flat = flat || !hasWebGL();
+    if (!this.flat) {
+      // A context can be refused even where the browser says it has them.
+      try {
+        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        // ... and one that was given can be taken away again: the GPU's process dies,
+        // the driver is reset, the machine is reached over a remote desktop.
+        this.renderer.domElement.addEventListener('webglcontextlost', () => this.goFlat());
+      } catch {
+        this.flat = true;
+      }
+    }
+    this.onFlat = null; // told when WebGL is lost while the map is open (goFlat)
+    if (this.flat) this.renderer = new FlatRenderer();
+    // Every pixel is filled on the CPU without it, so there are no more of them than
+    // the page has.
+    this.pixelRatio = this.flat ? 1 : Math.min(window.devicePixelRatio, 2);
     this.renderer.setPixelRatio(this.pixelRatio);
     this.resolution = new Resolution();
     this.drawn = -Infinity; // when the last frame asked for was drawn
@@ -120,6 +143,40 @@ export class MapScene {
     this.setIso(0);
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
+  }
+
+  /**
+   * Carries on without WebGL, from wherever the map is: the canvas is replaced with
+   * one drawn on the CPU (flat.js), the controls are moved over to it, and what only a
+   * shader could draw or animate is dropped. It stays that way for as long as the page
+   * is open - a context that comes back is not taken up again, since one that has gone
+   * once goes again. `onFlat` is then called, for what else has to follow: leaving
+   * the street, and saying so.
+   *
+   * Implements: REQ-MAP-066
+   */
+  goFlat() {
+    if (this.flat) return;
+    const lost = this.renderer, canvas = lost.domElement;
+    this.flat = true;
+    this.renderer = new FlatRenderer();
+    this.pixelRatio = 1;
+    this.resolution.rest();
+    canvas.replaceWith(this.renderer.domElement);
+    this.controls.disconnect();
+    this.controls.domElement = this.renderer.domElement;
+    this.controls.connect();
+    // Nothing ticks without it (setAnimated), and the props are not drawn (dressLater).
+    clearInterval(this.ticker);
+    this.ticker = 0;
+    this.animated = false;
+    this.undressed = null;
+    this.dropProps();
+    lost.dispose();
+    // The arcs are stroked rather than modeled there (setArcs).
+    if (this.arcs) this.setArcs(this.arcs);
+    this.resize();
+    this.onFlat?.();
   }
 
   resize() {
@@ -221,7 +278,8 @@ export class MapScene {
     // separately and the map keeps drawing while any of them stands.
     this.wants ||= new Set();
     if (on) this.wants.add(why); else this.wants.delete(why);
-    on = this.wants.size > 0;
+    // Nothing drawn without WebGL moves - the drift and the flames are shaders'.
+    on = this.wants.size > 0 && !this.flat;
     if (this.animated === on) return;
     this.animated = on;
     clearInterval(this.ticker);
@@ -272,6 +330,7 @@ export class MapScene {
    * Implements: REQ-CITY-030
    */
   setWalking(on, radius) {
+    if (on && this.flat) return; // the street is all shader (flat.js)
     this.walking = on;
     this.curve.uBend.value = on ? 1 : 0;
     this.resolution.rest();
@@ -298,7 +357,7 @@ export class MapScene {
    */
   warmUp() {
     const run = this.warming = (this.warming || 0) + 1; // a later layout's warm-up replaces this one
-    if (this.walking || !this.mesh) return Promise.resolve();
+    if (this.walking || !this.mesh || this.flat) return Promise.resolve();
     const steps = [
       () => this.precompile(this.scene, this.style, true),
       ...Object.keys(STYLE_CODES).filter(style => style !== this.style).map(style => () => this.precompile(this.mesh, style, false)),
@@ -417,6 +476,7 @@ export class MapScene {
    * Implements: REQ-PERF-015
    */
   dressLater(boxes) {
+    if (this.flat) return; // far too many triangles to fill by hand, for what is decoration
     const steps = dressing(boxes, m => this.bendable(m), this.style);
     // Takes the steps until they are done or `budget` milliseconds have gone; true
     // once the props are up, or once a later layout has taken over.
@@ -692,6 +752,7 @@ export class MapScene {
   /** arcs: [{from: box, to: box, color, count}] - drawn as raised curves with an arrow head at the target. */
   // Implements: REQ-MAP-009, REQ-MAP-026
   setArcs(arcs) {
+    this.arcs = arcs; // kept, to be drawn again another way should WebGL go (goFlat)
     for (const c of this.edgeGroup.children) c.geometry.dispose();
     this.edgeGroup.clear();
     const mats = new Map();
@@ -707,7 +768,12 @@ export class MapScene {
       mid.y = Math.max(p0.y, p2.y) + 1.5 + dist * 0.3;
       const curve = new THREE.QuadraticBezierCurve3(p0, mid, p2);
       const r = 0.05 + 0.035 * Math.log2(1 + a.count);
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 32, r, 5, false), mat(a.color));
+      // Without WebGL a tube that thin falls between the pixels: the curve is stroked
+      // instead (flat.js), as many pixels wide as the tube is thick against the others.
+      const tube = this.flat
+        ? new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(curve.getPoints(32).flatMap((p, k, all) => (k ? [all[k - 1], p] : []))),
+          new THREE.LineBasicMaterial({ color: a.color, transparent: true, opacity: 0.9, linewidth: r / 0.05 }))
+        : new THREE.Mesh(new THREE.TubeGeometry(curve, 32, r, 5, false), mat(a.color));
       tube.frustumCulled = false; // bounds are flat; walk mode draws the tube bent
       this.edgeGroup.add(tube);
 
@@ -810,6 +876,13 @@ export class MapScene {
     if (this.walking && !sharp) this.resolution.frame(performance.now());
     const ratio = this.pixelRatio * (sharp ? 1 : this.resolution.scale);
     if (r.getPixelRatio() !== ratio) r.setPixelRatio(ratio);
+    // Without WebGL: the boxes and what stands on them, in their plain colors, over
+    // the sea's - which is a shader's plane, like the sky and the planet.
+    if (this.flat) {
+      r.render(this.scene, this.camera, { background: this.sea.material.color, skip: this.unshaded ||= new Set([this.sea, this.planet, this.sky, this.details.group]) });
+      this.stats?.frame(performance.now(), performance.now() - started, r.info.render);
+      return r.domElement;
+    }
     // Whatever moves by itself - clouds, water, the drift of the void - reads this,
     // so it has to be set per frame and not only where the walker is placed.
     this.curve.uTime.value = performance.now() / 1000;

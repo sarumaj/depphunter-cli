@@ -42,6 +42,7 @@ export const canopy = {
     const clear = p.feet - this.height(p.x, p.z, p.feet);
     if (p.ground || clear < MIN_DEPLOY) {
       this.flash('Too low to open it - it wants a roof or a jet under you');
+      this.quip('tooLow');
       return;
     }
     this.cutLine();

@@ -27,9 +27,12 @@ landing under it, meeting a wall under it or cutting it away, a fall that
 hurts, running out of breath, a grapple line going out or running out,
 something out of reach, tagging a module, taking a photograph, putting a fire
 out, being bitten - by a critical bug in its own words -, catching a bug,
-catching the last one on the map, burning, sinking, standing stock still for
-half a minute and dying. Hurt with under a third of their health left, what
-hurts them **shall** be remarked on as how they feel.
+catching three in twenty seconds, catching the last one on the map, burning,
+sinking, standing stock still for half a minute, dying and walking in again
+afterwards, seeing themselves from behind, looking at a photograph, a spent
+tool ready again, a parachute pulled too low to open, the city laid out again
+round them and the wind getting up. Hurt with under a third of their health
+left, what hurts them **shall** be remarked on as how they feel.
 
 Each **shall** have several lines to choose from, none said about two things,
 short enough to read at a glance, and the walker **shall** not chatter: one
@@ -52,3 +55,5 @@ recurs every few seconds stops being a joke, so the restraint is half of it.
 4. Bitten with a fifth of their health left, the walker says how they feel;
    catching the last bug on the map is remarked on as such; standing still for
    half a minute says so, once.
+5. A third bug caught within twenty seconds is remarked on as a run of them,
+   and the wind getting up is remarked on once as it does.

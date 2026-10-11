@@ -551,6 +551,18 @@ describe('arcs', () => {
     });
   });
 
+  // Verifies: REQ-MAP-066
+  it('are curves to stroke where there is no WebGL to draw a tube with', () => {
+    const { model, vis, L } = draw(repository(), { expanded: ['d:src'] });
+    const { arcs } = focusArcs(model, model.byId.get('f:main.go'), focusOptions(L, vis, { outColor: '#ff0000' }));
+    const fake = { flat: true, edgeGroup: new THREE.Group(), bendable: m => m, requestRender() {} };
+    MapScene.prototype.setArcs.call(fake, arcs);
+    const curve = fake.edgeGroup.children[0], at = curve.geometry.getAttribute('position');
+    assert.ok(curve.isLineSegments && at.count === 64, 'an arc is not 32 segments of a line');
+    assert.ok(Math.abs(at.getX(0) - arcs[0].from.x) < 1e-6 && Math.abs(at.getX(63) - arcs[0].to.x) < 1e-6, 'the curve does not run from the source to the target');
+    assert.equal(fake.edgeGroup.children[1].geometry.type, 'ConeGeometry');
+  });
+
   // Verifies: REQ-MAP-013
   it('from a directory aggregate its files, one per pair and direction with a count', () => {
     const { model, vis, L } = draw(repository()); // src/ collapsed

@@ -95,7 +95,19 @@ async function main() {
   $('repo-name').textContent = model.root.name;
   setLevel(settings.expandDepth < 0 ? maxDepth : settings.expandDepth || autoLevel(), false);
 
-  scene = new MapScene($('map'));
+  // Without WebGL the map is drawn plain, on the CPU (flat.js) - which ?flat asks for
+  // where there is some, to see it or to get round a driver that draws it wrong - and
+  // walk mode, which nothing but a shader can draw, is not offered.
+  // Implements: REQ-MAP-066
+  scene = new MapScene($('map'), { flat: new URLSearchParams(location.search).has('flat') });
+  if (scene.flat) withoutWalk();
+  // ... and it can go while the map is open, wherever the reader is by then.
+  scene.onFlat = () => {
+    if (walker?.active) walker.exit();
+    withoutWalk();
+    avatar?.show(false);
+    updateStatus();
+  };
   if (statsWanted(location.search)) scene.stats = new Stats(scene, document.body);
   labels = new Labels($('labels'), scene);
   // Walk mode renders continuously; labels are laid out greedily over all boxes, so
@@ -315,7 +327,7 @@ async function main() {
   updateStatus();
   // Last, so that what is being explained is already behind the dialog rather than
   // arriving under it.
-  startTour();
+  startTour(false, !scene.flat);
   // The stream is worth having whether or not the file system is being watched: it
   // is also how a selection made in the editor's side panel, or a backpack changed
   // there, reaches this page. Without a server there is nothing to connect to.
@@ -390,7 +402,11 @@ function applyFindings(set) {
  * thinking; on the map it asks for the redraw as well, through the same reason-held
  * animation a drifting style uses.
  */
-let fireFrame = 0, fireAt = 0;
+let fireFrame = 0, fireAt = 0, fireDrawn = 0;
+// How often a fire is redrawn where every pixel of the map is filled on the CPU
+// (flat.js): nothing there can put one out, so it burns for as long as the map is
+// open, and a frame every time the display refreshes would be a core spent on it.
+const FLAT_FIRE = 250;
 function runFire(now) {
   fireFrame = 0;
   const deltaTime = Math.min(0.1, (now - (fireAt || now)) / 1000); // a tab left in the background does not burn down
@@ -398,7 +414,12 @@ function runFire(now) {
   fires.step(deltaTime);
   flames.place([...fires.entries()], id => L?.byNode.get(id));
   flames.step(deltaTime);
-  if (!walker.active) scene.requestRender();
+  // As the ticker asks, there: a frame that is slow on purpose says nothing of how
+  // fast the map can be drawn (resolution.js).
+  // Implements: REQ-MAP-066
+  if (scene.flat) {
+    if (now - fireDrawn >= FLAT_FIRE) { fireDrawn = now; scene.requestRender(true); }
+  } else if (!walker.active) scene.requestRender();
   if (fires.burning) fireFrame = requestAnimationFrame(runFire);
   else { fireAt = 0; scene.setAnimated(false, 'fire'); }
 }
@@ -990,7 +1011,7 @@ function updateStatus(note = '') {
     ? ` · ${fmt.format(state.findings.all.length)} findings${state.findings.partial ? ' (partial)' : ''}`
     : state.findingsStatus === 'loading' ? ' · reading scanner reports…' : '';
   $('status-text').textContent = `${fmt.format(fileCount)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}${historyText}${references}${found}` +
-    (note ? ` · ${note}` : '');
+    (scene?.flat ? ' · drawn without WebGL' : '') + (note ? ` · ${note}` : '');
 }
 
 // ---------------------------------------------------------------- filters
@@ -1200,8 +1221,22 @@ function readAway() {
   document.exitPointerLock?.();
 }
 
+/**
+ * The page with no street to walk into, which is the page without WebGL (flat.js):
+ * the button says why, and the help leaves out what cannot be done (style.css).
+ *
+ * Implements: REQ-MAP-066
+ */
+function withoutWalk() {
+  const walk = $('walk');
+  walk.disabled = true;
+  walk.title = 'Walk mode needs WebGL, which this browser is not giving the page: the map is drawn without it';
+  document.body.classList.add('flat');
+}
+
 // Implements: REQ-WALK-001, REQ-WALK-023, REQ-UI-011, REQ-UI-013
 function setWalking(on) {
+  if (on && scene.flat) return; // nothing to walk in without WebGL (flat.js)
   if (on && !walker.active) {
     hideTooltip();
     // A first walk is explained on the way in, where there is something to try it on -
@@ -1244,7 +1279,7 @@ function setWalking(on) {
   pins.show(!on && !!state.findings);
   // ... and the walker, who is only worth drawing when you are not being them.
   avatar.set(walker.stance(), pal.avatar);
-  avatar.show(!on);
+  avatar.show(!on && !scene.flat); // nobody stands anywhere on a map that cannot be walked
   // The photographs gain and lose their "show" button with the street.
   if (stash.count) drawStash();
   // The map view must never keep the pointer captured: the cursor would be invisible.
@@ -1274,7 +1309,7 @@ function relayout() {
   const to = anchor && representativeOf(anchor.node);
   if (to) walker.reanchor(anchor, to);
   avatar.set(walker.stance(), pal.avatar);
-  avatar.show(!walker.active);
+  avatar.show(!walker.active && !scene.flat);
   refreshFocus();
 }
 
@@ -1695,7 +1730,7 @@ function bindControls() {
     $('help').close();
     // Whichever introduction fits where the reader is: the street has its own.
     if (walker.active) startWalkTour(true, () => walker.active && walker.lockPointer());
-    else startTour(true);
+    else startTour(true, !scene.flat);
   };
   // Help frees the pointer; closing it captures it again for a walker (a click on
   // Close allows that; Esc does not, then the HUD asks for a click on the map).

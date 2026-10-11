@@ -237,7 +237,7 @@
         <tr><th>Right-drag</th><td>Orbit the view.</td></tr>
         <tr><th>Wheel</th><td>Zoom towards the cursor.</td></tr>
         <tr><th>Click</th><td>Select a building and show what it depends on and what depends on it, as arcs over the map.</td></tr>
-        <tr><th>Double-click</th><td>Expand or collapse a directory or a file; a file expands into its symbols. On open ground it walks you into the map instead.</td></tr>
+        <tr><th>Double-click</th><td>Expand or collapse a directory or a file; a file expands into its symbols.<span data-walk-only> On open ground it walks you into the map instead.</span></td></tr>
         <tr><th>Enter / Backspace</th><td>Expand or collapse the selection; select its parent.</td></tr>
         <tr><th>Q / E</th><td>Rotate the map by ninety degrees.</td></tr>
         <tr><th>Home</th><td>Fit the whole map to the window.</td></tr>
@@ -254,9 +254,12 @@
         <tr><th>G</th><td>Open the photographs the camera has taken. They are kept for the session only, so the ones worth having are saved from there, one at a time, as PNG files. From the street each one can also be put up on the camera and looked at there.</td></tr>
         <tr><th>Legend click</th><td>Hide or show a language.</td></tr>
         <tr><th>Pins</th><td>A marker stands over every building the scanners reported something on, in the color of the worst of them and taller the more there are. Point at one for the tally, or select it to read them.</td></tr>
-        <tr><th>The figure</th><td>Where you were last standing in walk mode, facing the direction you faced — or hanging, under a canopy, if you left under one. <kbd>V</kbd> puts you back there.</td></tr>
+        <tr data-walk-only><th>The figure</th><td>Where you were last standing in walk mode, facing the direction you faced — or hanging, under a canopy, if you left under one. <kbd>V</kbd> puts you back there.</td></tr>
       </table>
 
+      <!-- Implements: REQ-MAP-066 -->
+      <p class="hint" data-flat-only>This browser is not giving the page WebGL, so the map is drawn plain — no facades, streets or water — and walk mode, with its tools and its hunt, is switched off. Everything above works as it says.</p>
+      <div data-walk-only>
       <h2>Walk mode (V)</h2>
       <p>Walk mode presents the same map in first person, bent around a small planet. You
         carry two tools at once, one in each hand: a primary tool for the hunt in your
@@ -322,6 +325,7 @@
         <tr><th>Tracker</th><td>The sweep in the corner turns with you: one dot per bug still out there, one ring per module already tagged in the color of its worst finding, and an arrow at the rim for anything beyond its range. It tightens as you close on a bug, so the last part of the approach can be made on the sweep rather than by guesswork.</td></tr>
         <tr><th>Backpack</th><td>What you catch is kept, and stays kept across a re-layout, a change of depth and a reload. An entry is retained until the scanners stop reporting it, at which point it is struck through rather than removed.</td></tr>
       </table>
+      </div>
       <p class="hint">Height encodes lines of code. Directories collapse into districts whose footprint grows with the number of files.</p>
       <form method="dialog"><button type="button" id="help-tour">Show the introduction</button><button>Close</button></form>
     </dialog>
