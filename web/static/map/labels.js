@@ -81,6 +81,11 @@ export class Labels {
     for (let i = used; i < this.pool.length; i++) this.pool[i].hidden = true;
   }
 
+  /** Takes every label off the screen until the next draw. */
+  hide() {
+    for (const el of this.pool) el.hidden = true;
+  }
+
   /** The labels on screen, for painting them into a screenshot. */
   visible() {
     return this.pool.filter(el => !el.hidden);

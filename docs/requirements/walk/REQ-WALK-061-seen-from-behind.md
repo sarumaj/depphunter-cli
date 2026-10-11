@@ -43,7 +43,11 @@ Seen from behind:
   legs and arms trailing away from the way it goes; under an open canopy it
   **shall** hang facing the canopy's way and swing with it, leaning the same
   way, less, with the way it drifts;
-- sat on a ride, the view **shall** turn freely round the walker.
+- sat on a ride, the view **shall** turn freely round the walker;
+- a photograph **shall** be taken from the walker's own eyes, where the camera
+  is held, as the camera's live view is, and without the body in it; one looked
+  at (REQ-HUNT-042) **shall** be looked at from the walker's own eyes, the view
+  going back behind them once it is put down.
 
 ## Rationale
 
@@ -69,3 +73,6 @@ better from a step behind than from inside the head.
    backward leans it back and flying sideways leans it over to that side, the
    legs trailing the other way; hovering, it hangs upright. Under a canopy the
    body swings with it.
+7. From behind, a photograph taken shows what the walker's eyes see, not the
+   walker; showing one moves the view to the eye, the camera raised before it,
+   and back behind the walker when it goes down.

@@ -109,6 +109,11 @@ describe('labels', () => {
     const shown = labels.visible();
     assert.ok(shown.length > 5, `only ${shown.length} labels placed`);
     assert.ok(shown.length < boxes.length, 'nothing was dropped: the test crowds nothing');
+    // Hidden - round a photograph being looked at - they are all gone until drawn again.
+    labels.hide();
+    assert.equal(labels.visible().length, 0, 'labels left up after being hidden');
+    labels.draw();
+    assert.equal(labels.visible().length, shown.length);
     const rectangles = shown.map(rect);
     for (let i = 0; i < rectangles.length; i++) {
       for (let j = i + 1; j < rectangles.length; j++) {

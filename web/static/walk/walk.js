@@ -335,8 +335,8 @@ export class Walker {
     this.stowed = null;    // what the left hand held before H put everything down
     this.riding = null;    // the ride the walker is on (play.js)
     // Seen from the eye, or from behind (Y): the eye unless this viewer chose otherwise.
-    this.thirdPerson = false;
-    try { this.thirdPerson = localStorage.getItem(VIEW_KEY) === 'third'; } catch { /* no storage: the eye */ }
+    this.behind = false;
+    try { this.behind = localStorage.getItem(VIEW_KEY) === 'third'; } catch { /* no storage: the eye */ }
     this.camReach = 1;     // how much of the way back the camera has room for
     this.charging = null;  // a ball being wound up by the held button (play.js)
     this.ballHeld = null;  // the ball in their hands
@@ -1115,6 +1115,11 @@ export class Walker {
     this.showing = { t: 0, texture, was };
     this.hangPhoto();
     this.setFrozen(false);
+    // Nothing is aimed at from behind a picture, so what the crosshair was on gives
+    // up its hover card, as it does for a panel being read (setFrozen).
+    this.aim = { i: -1, point: null, bug: null, box: null };
+    this.showTarget(null);
+    this.hooks.onAim(-1);
     this.flash(`Photograph ${photo.n}${photo.where ? ` - ${photo.where}` : ''} - click to put it away`);
     this.drawHud();
     return true;
@@ -1162,7 +1167,7 @@ export class Walker {
 
   /**
    * The lens the camera tool's screen looks through: the walk camera's place and
-   * heading, a little tighter, so the picture on the back is what a camera held up
+   * heading - at the walker's eye, seen from behind too (fromEye) - a little tighter, so the picture on the back is what a camera held up
    * would actually be framing rather than the whole view.
    */
   lens() {
@@ -1200,6 +1205,41 @@ export class Walker {
   }
 
   /**
+   * Whether the walker is seen from behind this frame: where this viewer chose to be,
+   * but for a photograph being looked at, which is held up at the walker's own face
+   * and is read from their own eyes - the view goes back behind them once it is down.
+   *
+   * Implements: REQ-WALK-061
+   */
+  get thirdPerson() {
+    return this.behind && !this.showing;
+  }
+
+  /**
+   * Runs `take` with the view at the walker's own eyes, wherever it is seen from: what
+   * a camera held up at the face is pointed at, which from behind is not what is on
+   * the screen. The body is left out of it, being posed for a view from outside - its
+   * head round the eye and its arm holding the camera up before it.
+   *
+   * Implements: REQ-WALK-061, REQ-HUNT-039
+   */
+  fromEye(take) {
+    if (!this.thirdPerson || !this.eyeAt) return take();
+    const cam = this.scene.walkCamera, body = this.body.group, shown = body.visible;
+    const from = (this.seenFrom ||= new THREE.Vector3()).copy(cam.position);
+    cam.position.copy(this.eyeAt);
+    cam.updateMatrixWorld();
+    body.visible = false;
+    try {
+      return take();
+    } finally {
+      cam.position.copy(from);
+      cam.updateMatrixWorld();
+      body.visible = shown;
+    }
+  }
+
+  /**
    * Sees the walker from the eye, or from behind them: the whole body then, head and
    * all, what is in the hands held in the body's, and the camera over the shoulder.
    * Remembered for this viewer.
@@ -1207,7 +1247,7 @@ export class Walker {
    * Implements: REQ-WALK-061
    */
   setThirdPerson(on) {
-    this.thirdPerson = on;
+    this.behind = on;
     this.camReach = 1;
     try { localStorage.setItem(VIEW_KEY, on ? 'third' : 'first'); } catch { /* not remembered */ }
     this.flash(on ? 'Seen from behind - Y for your own eyes again' : 'Through your own eyes - Y to see yourself from behind');
@@ -1258,7 +1298,7 @@ export class Walker {
   /** One hand's frame; returns how far into its gesture it now is, -1 once it is over. */
   poseOne(vm, tool, swing, deltaTime, now, live) {
     if (!vm || !tool) return -1;
-    if (live && tool.live) tool.live(vm, this.scene, this.lens());
+    if (live && tool.live) this.fromEye(() => tool.live(vm, this.scene, this.lens()));
     if (swing >= 0) {
       swing += deltaTime;
       const u = swing / SWING;
@@ -1877,6 +1917,7 @@ export class Walker {
       const under = this.drown(deltaTime, now);
       const hang = this.hang();
       const eye = EYE + this.ride(deltaTime) + under + hang.eye + this.eyeShift - SWIM_SINK * this.swimming(deltaTime);
+      (this.eyeAt ||= new THREE.Vector3()).set(this.p.x, this.p.feet + eye, this.p.z);
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, eye,
         this.p.yaw, this.p.pitch + hang.pitch, this.roll + hang.roll, this.thirdPerson && !this.arrival ? this.thirdEye(eye, deltaTime) : null);
       // Dressed for the map: the hands' sleeves and gloves, and the body.
@@ -1900,7 +1941,7 @@ export class Walker {
       this.bugs?.update(deltaTime, now, this.eye(EYE_AT), hoop);
       this.shadows.update(this);
       this.drawRadar(now, deltaTime);
-      if (!this.still && !this.arrival) this.updateAim();
+      if (!this.still && !this.arrival && !this.showing) this.updateAim();
       this.drawPath();
       this.drawLine();
       this.scene.renderNow(true, this.resting(now));
@@ -2109,7 +2150,7 @@ export class Walker {
     if (p.ground) {
       // How hard the feet came down, for the knees to take it (body.js absorb): only
       // off the ground, not the frame-by-frame settle of a walker already standing.
-      if (wasUp) this.landed = { at: performance.now(), speed: -p.vy };
+      if (wasUp) this.cameDown = { at: performance.now(), speed: -p.vy };
       if (this.fell !== null) this.land(floor);
       p.feet = floor;
       p.vy = 0;
@@ -3022,6 +3063,8 @@ export class Walker {
           : this.p.fly ? 'flying'
             : this.sinking ? 'sinking'
               : this.onWater() ? 'afloat' : '';
+    // A photograph held up fills the view: there is nothing to aim at through it.
+    this.hud.classList.toggle('looking', !!this.showing);
     const modeChip = this.hud.querySelector('.w-mode');
     modeChip.hidden = !mode;
     modeChip.textContent = mode;

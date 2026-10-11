@@ -102,7 +102,7 @@ async function main() {
   // they are redrawn a few times a second rather than on every frame. The walker
   // draws its own frames, so its hook must go through the same throttle as the map's
   // renderer - drawing from it directly meant a layout per frame.
-  // Implements: REQ-PERF-003
+  // Implements: REQ-PERF-003, REQ-HUNT-042
   let labelsAt = 0;
   const drawLabels = () => {
     if (walker?.active) {
@@ -111,8 +111,10 @@ async function main() {
       labelsAt = now;
     }
     // Nothing is labeled across what the walker is holding, which is drawn in the
-    // canvas under the labels' own layer.
-    labels.draw(walker?.active ? scene.handMask() : []);
+    // canvas under the labels' own layer - and nothing at all round a photograph
+    // being looked at, which is not of the street behind it.
+    if (walker?.active && walker.showing) labels.hide();
+    else labels.draw(walker?.active ? scene.handMask() : []);
   };
   scene.onRender = () => { drawLabels(); pins?.follow(); avatar?.follow(); };
   walker = new Walker(scene, $('walk-hud'), {
@@ -172,12 +174,15 @@ async function main() {
     // interface has drawn on the map - a module tagged a minute ago should not be lit
     // in a picture of the street it stands on, and the arcs over the rooftops belong
     // to the map view rather than to the place.
-    // Implements: REQ-HUNT-034, REQ-HUNT-039, REQ-HUNT-040
+    //
+    // It is taken from the walker's own eyes, where the camera is held, wherever the
+    // walker is being seen from.
+    // Implements: REQ-HUNT-034, REQ-HUNT-039, REQ-HUNT-040, REQ-WALK-061
     onPhoto: where => {
-      plain(() => frame(blob => {
+      plain(() => walker.fromEye(() => frame(blob => {
         const it = stash.add(blob, where);
         walker.flash(`Photograph ${it.n} kept - G opens them`);
-      }, false));
+      }, false)));
       return true;
     },
     // What the walker's health is built on: a full backpack is a walker who can stand

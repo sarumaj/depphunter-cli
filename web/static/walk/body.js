@@ -910,14 +910,14 @@ export function airLegs(p) {
 }
 
 /**
- * How far the knees are giving under a landing (walk.js landed) `now`, 0 to 1: down
+ * How far the knees are giving under a landing (walk.js cameDown) `now`, 0 to 1: down
  * at once, deeper and slower the harder the feet came down, and up again smoothly -
  * (t/τ)·e^(1 - t/τ), at its deepest at τ.
  *
  * Implements: REQ-WALK-063
  */
 export function landing(w, now) {
-  const { at, speed } = w.landed || {};
+  const { at, speed } = w.cameDown || {};
   const depth = Math.sqrt(Math.min(1, Math.max(0, (speed || 0) - LAND_SOFT) / (LAND_HARD - LAND_SOFT)));
   const peak = LAND_PEAK[0] + (LAND_PEAK[1] - LAND_PEAK[0]) * depth;
   const t = (now - (at ?? -Infinity)) / 1000 / peak;

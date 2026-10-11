@@ -697,14 +697,14 @@ describe('what the walker wears, and how their legs go', () => {
     // feet staying under the hips, and are straight again before long.
     const hips = q => 0.115 * Math.cos(q.thigh_L) + 0.14 * Math.cos(q.thigh_L + q.shin_L);
     const ahead = q => 0.115 * Math.sin(q.thigh_L) + 0.14 * Math.sin(q.thigh_L + q.shin_L);
-    const dip = (speed, s) => 0.255 - hips(posture(at({ landed: { at: 0, speed } }), 0, s * 1000));
+    const dip = (speed, s) => 0.255 - hips(posture(at({ cameDown: { at: 0, speed } }), 0, s * 1000));
     const deepest = speed => Math.max(...Array.from({ length: 60 }, (_, k) => dip(speed, k / 100)));
     assert.ok(deepest(0.5) < 0.002, `a step off a curb buckles the knees ${deepest(0.5)}`);
     assert.ok(deepest(JUMP) > 0.04, `a jump's landing barely bends the knees ${deepest(JUMP)}`);
     assert.ok(deepest(8) > deepest(JUMP) + 0.04, 'a hard landing gives no more than a jump');
     assert.ok(dip(8, 0.25) > dip(JUMP, 0.25), 'a hard landing is not taken longer');
     assert.equal(dip(8, 1.2), 0, 'the knees stay bent');
-    const crouched = posture(at({ landed: { at: 0, speed: 8 } }), 0, 110);
+    const crouched = posture(at({ cameDown: { at: 0, speed: 8 } }), 0, 110);
     assert.ok(Math.abs(ahead(crouched)) < 0.005, `the feet are ${ahead(crouched).toFixed(3)} out from under the hips`);
     assert.ok(crouched.lean > 0.1, 'the body does not lean over its knees');
     let jolt = 0;
@@ -712,7 +712,7 @@ describe('what the walker wears, and how their legs go', () => {
     // ... going down no faster than they were falling, and coming up slower.
     assert.ok(jolt * 60 < 8, `the hips drop ${(jolt * 60).toFixed(2)} a second`);
     // On a ride, nothing of either.
-    const seated = posture(at({ p: { ground: false, vy: 0 }, landed: { at: 0, speed: 8 }, riding: { entry: { ride: 'swing' }, angle: 0, blend: 1 } }), 0, 100);
+    const seated = posture(at({ p: { ground: false, vy: 0 }, cameDown: { at: 0, speed: 8 }, riding: { entry: { ride: 'swing' }, angle: 0, blend: 1 } }), 0, 100);
     assert.ok(seated.thigh_L > 1.3, 'sat on a swing, the legs are in the air');
   });
 
@@ -883,6 +883,21 @@ describe('empty hands', () => {
     w.boxAt = v => (v.z > 0.3 ? {} : null);
     const near = w.thirdEye(EYE, FRAME);
     assert.ok(near.z <= 0.3, `the camera is in the wall behind, at ${near.z}`);
+    // A photograph is taken from the eye, without the body, and the view put back.
+    w.body = { group: new THREE.Group() };
+    w.eyeAt = new THREE.Vector3(0, EYE, 0);
+    camera.position.copy(near);
+    const behind = camera.position.clone();
+    const taken = w.fromEye(() => ({ at: camera.position.clone(), body: w.body.group.visible }));
+    assert.ok(taken.at.equals(w.eyeAt) && !taken.body, `photographed from ${taken.at.toArray()}, the body ${taken.body ? 'in' : 'out of'} the picture`);
+    assert.ok(camera.position.equals(behind) && w.body.group.visible, 'the view did not go back behind the walker');
+    // One looked at is looked at from the eye, the camera before it, and then from behind again.
+    w.showing = { t: 0, texture: { dispose() {} }, was: null };
+    w.lowerArms();
+    assert.ok(!w.thirdPerson && w.held.visible, 'a photograph is looked at from behind');
+    w.endShow();
+    w.lowerArms();
+    assert.ok(w.thirdPerson && !w.held.visible, 'the view stayed at the eye once the photograph was down');
     // And Y again: the eye's own view, the tool before it again.
     w.setThirdPerson(false);
     w.lowerArms();
