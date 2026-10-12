@@ -1,0 +1,115 @@
+# Converted from .github/workflows/release.yml for Forgejo by
+# scripts/github_to_forgejo.py (HomeLab); --move-ci rewrites it. Jobs needing
+# GitHub, macOS, Windows or secrets Forgejo lacks stay in the GitHub file.
+name: Release
+'on':
+  push:
+    tags:
+    - v*
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.vsix.outputs.version }}
+    steps:
+    - uses: https://github.com/actions/checkout@v7
+      with:
+        lfs: true
+    - name: Check the LFS files are real
+      run: |
+        if grep -rlx 'version https://git-lfs.github.com/spec/v1' web/static; then
+          echo "::error::LFS pointers instead of content (above)"; exit 1
+        fi
+    - uses: https://github.com/actions/setup-go@v7
+      with:
+        go-version: stable
+    - name: Test
+      run: go test -race ./...
+    - name: Build
+      run: scripts/dist.sh "${{ github.ref_name }}"
+    - name: Smoke test
+      run: |
+        tar -xzf dist/depphunter_*_linux_amd64.tar.gz -C "$RUNNER_TEMP"
+        "$RUNNER_TEMP"/depphunter_*_linux_amd64/depphunter --version | grep -F "${{ github.ref_name }}"
+    - uses: https://github.com/actions/setup-node@v7
+      with:
+        node-version: 24
+        cache: npm
+    - name: Build the VS Code extension
+      id: vsix
+      env:
+        TAG: ${{ github.ref_name }}
+      run: |
+        version=${TAG#v}
+        if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "::warning::$TAG is not a plain x.y.z; packaging the manifest version"
+          version=""
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        npm ci
+        # vsce's target, then the Go platform to build the binary it carries.
+        # alpine is musl, which a cgo-free static build runs on unchanged.
+        for spec in \
+          win32-x64:windows:amd64: win32-arm64:windows:arm64: \
+          linux-x64:linux:amd64 linux-arm64:linux:arm64 linux-armhf:linux:arm:7 \
+          darwin-x64:darwin:amd64 darwin-arm64:darwin:arm64 \
+          alpine-x64:linux:amd64 alpine-arm64:linux:arm64
+        do
+          IFS=: read -r target goos goarch goarm <<< "$spec"
+          ext=""; [ "$goos" = windows ] && ext=.exe
+          rm -rf bin && mkdir bin
+          CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch GOARM=$goarm go build -trimpath \
+            -ldflags "-s -w -X main.version=$TAG" -o "bin/depphunter$ext" ./cmd/depphunter
+          npx @vscode/vsce@4 package $version --no-git-tag-version --target "$target" \
+            --out "dist/depphunter_${TAG#v}_vscode_${target}.vsix"
+        done
+        rm -rf bin
+        npx @vscode/vsce@4 package $version --no-git-tag-version \
+          --out "dist/depphunter_${TAG#v}_vscode_universal.vsix"
+        (cd dist && sha256sum depphunter_*_vscode_*.vsix >> checksums.txt)
+    - name: Collect the release files
+      shell: bash
+      run: |
+        mkdir -p .forgejo-release
+        cp -r dist/* .forgejo-release/
+      env:
+        TAG: ${{ github.ref_name }}
+    - name: Write the release notes
+      id: release_notes
+      shell: bash
+      env:
+        TAG: ${{ github.ref_name }}
+      run: |
+        if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+          git fetch --quiet --unshallow --tags
+        else
+          git fetch --quiet --tags
+        fi
+        previous=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+        {
+          echo 'notes<<END_OF_NOTES'
+          git log --no-merges --format='- %s' ${previous:+"$previous.."}"$TAG"
+          echo END_OF_NOTES
+        } >> "$GITHUB_OUTPUT"
+    - name: Publish the release
+      uses: https://code.forgejo.org/actions/forgejo-release@v2
+      with:
+        direction: upload
+        url: ${{ github.server_url }}
+        repo: ${{ github.repository }}
+        tag: ${{ github.ref_name }}
+        title: ${{ github.ref_name }}
+        release-dir: .forgejo-release
+        prerelease: false
+        override: true
+        release-notes: ${{ steps.release_notes.outputs.notes }}
+    - name: Publish to Visual Studio Marketplace
+      if: steps.vsix.outputs.version != ''
+      env:
+        VSCE_PAT: ${{ secrets.VS_MARKETPLACE_TOKEN }}
+      run: npx @vscode/vsce@4 publish --skip-duplicate --packagePath dist/*_vscode_*.vsix
+    - name: Publish to Open VSX Registry
+      if: steps.vsix.outputs.version != ''
+      env:
+        OVSX_PAT: ${{ secrets.OPEN_VSX_TOKEN }}
+      run: npx --yes ovsx@1 publish --skip-duplicate --packagePath dist/*_vscode_*.vsix
