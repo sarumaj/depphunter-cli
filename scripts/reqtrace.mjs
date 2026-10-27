@@ -161,7 +161,7 @@ function scanAnnotations(requirements) {
     const lines = text.split('\n');
     // CI workflows count as tests: a job that builds and runs every release target
     // verifies what no unit test can.
-    const test = /(_test\.go|\.test\.m?js|\/uitest\/|\/test\/|^\.github\/workflows\/)/.test(file);
+    const test = /(_test\.go|\.test\.m?js|\/uitest\/|\/test\/|^\.(github|forgejo)\/workflows\/)/.test(file);
     lines.forEach((line, i) => {
       for (const m of line.matchAll(ANNOTATION)) {
         const [, kind, list] = m;

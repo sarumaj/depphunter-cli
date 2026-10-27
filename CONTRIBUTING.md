@@ -23,15 +23,16 @@ go test ./internal/analyze -run '^$' -bench ColdAnalysis -benchtime 3x -cpu 1,4
 The extension has its own edit-and-run cycle, tests and debugging notes, under
 [Working on the extension](#working-on-the-extension).
 
-CI (`.github/workflows/ci.yml`) builds and tests on Linux, macOS and Windows,
+CI (`.forgejo/workflows/ci.yml`, on Forgejo Actions) builds and tests on Linux,
 against the current Go release and against exactly the version `go.mod` states,
 with `GOTOOLCHAIN=local`, so that a `go.mod` declaring less than the code
 requires fails the build. It also checks formatting, `go mod tidy`, vet,
 staticcheck, govulncheck, JavaScript syntax and Markdown, and it type-checks and
 packages the VS Code extension. Pushing a `v*` tag runs
-`.github/workflows/release.yml`, which runs the tests and then publishes
-stripped binaries for every platform listed in
-[Install](README.md#install).
+`.forgejo/workflows/release.yml`, which runs the tests and then publishes a
+Forgejo release with stripped binaries for every platform listed in
+[Install](README.md#install). macOS and Windows are cross-compiled but not tested
+in CI.
 
 Both workflows build the archives with `scripts/dist.sh`, which also works
 locally (it needs `zip`):

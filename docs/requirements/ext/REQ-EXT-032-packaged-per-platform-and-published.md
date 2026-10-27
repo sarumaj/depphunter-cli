@@ -15,7 +15,7 @@ A pushed tag `v*` **shall** package one VSIX per target (`win32-x64`,
 `win32-arm64`, `linux-x64`, `linux-arm64`, `linux-armhf`, `darwin-x64`,
 `darwin-arm64`, `alpine-x64`, `alpine-arm64`), each bundling the depphunter
 binary built for that platform from the same tag, and one universal VSIX without
-a binary; attach them to the tag's GitHub release with their checksums in
+a binary; attach them to the tag's Forgejo release with their checksums in
 `checksums.txt`; and, when the tag is a plain `vX.Y.Z`, package them at version
 `X.Y.Z` and publish every one of them to the Visual Studio Marketplace and to
 the Open VSX Registry.

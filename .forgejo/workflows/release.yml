@@ -7,6 +7,7 @@ name: Release
     tags:
     - v*
 jobs:
+  # Implements: REQ-DIST-008, REQ-DIST-009, REQ-EXT-032
   release:
     runs-on: ubuntu-latest
     outputs:

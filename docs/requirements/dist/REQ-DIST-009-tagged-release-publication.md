@@ -13,7 +13,7 @@ verification:
 
 Pushing a tag `v*` **shall** run the tests, build the archives of every target
 with `scripts/dist.sh`, smoke-test the Linux amd64 binary and publish the
-archives and `checksums.txt` as a GitHub release of that tag.
+archives and `checksums.txt` as a Forgejo release of that tag.
 
 ## Rationale
 

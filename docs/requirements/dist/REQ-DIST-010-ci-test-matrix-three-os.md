@@ -4,7 +4,7 @@ title: CI tests on Linux, macOS and Windows
 scope: dist
 type: non-functional
 priority: must
-status: implemented
+status: partial
 verification:
   - inspection
 ---
@@ -23,3 +23,9 @@ systems.
 
 1. The `test` job runs on `ubuntu-latest`, `macos-latest` and `windows-latest`.
 2. Linux and macOS run `go test -race ./...`; Windows runs `go test ./...`.
+
+## Notes
+
+Partial since CI moved to Forgejo Actions: the runners offer Linux only, so the
+`test` job in `.forgejo/workflows/ci.yml` runs on `ubuntu-latest` alone, with
+the race detector. macOS and Windows are not tested in CI.

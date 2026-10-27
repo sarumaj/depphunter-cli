@@ -198,7 +198,7 @@ The same form is used in YAML and shell (`# Implements: ...`), in CSS
 (`/* Implements: ... */`) and in HTML (`<!-- Implements: ... -->`). Vendored
 code, generated files and test data are never annotated.
 
-A step of a CI workflow (`.github/workflows/`) may carry `# Verifies: ...`
+A step of a CI workflow (`.forgejo/workflows/`) may carry `# Verifies: ...`
 where the job is the automated check, such as building and running every
 release target.
 
