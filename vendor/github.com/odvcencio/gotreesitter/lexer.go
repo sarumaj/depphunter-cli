@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"unicode/utf8"
 	"unsafe"
+
+	"github.com/odvcencio/gotreesitter/internal/incr"
 )
 
 var utf8BOM = []byte{0xef, 0xbb, 0xbf}
@@ -30,8 +32,8 @@ type Token struct {
 	lexerLookaheadEndByte uint32
 	// missingStackRef is a one-based index into the parser's missing-stack
 	// anchor table, which records the stack position before padding for a
-	// synthetic recovery token. Lexed input leaves it zero, so the anchor's
-	// twelve bytes stay out of every lexed token.
+	// synthetic recovery token. Real/EOF tokens normally leave it zero; all
+	// bits set marks a dropped unlexable prefix until token commitment.
 	missingStackRef uint32
 	// ExternalScannerStartByte is the byte offset where that scanner call
 	// began, before scanner-side skip advances moved StartByte forward.
@@ -44,7 +46,7 @@ type Token struct {
 	NoLookahead bool
 	// ExternalScannerToken marks tokens produced by an external scanner.
 	ExternalScannerToken bool
-	// lexFlags packs the six unexported provenance bits; see tokenLexFlags.
+	// lexFlags packs the unexported provenance bits; see tokenLexFlags.
 	lexFlags tokenLexFlags
 }
 
@@ -75,6 +77,13 @@ const (
 	// into called_get_column for a successful external scan only. Internal
 	// DFA tokens never carry it.
 	tokenFlagDependsOnColumn
+	// tokenFlagErrorModeRetried records a normal DFA failure followed by
+	// ERROR_STATE lexing. The token source must retry the external scanner
+	// in that mode before accepting the internal fallback token.
+	tokenFlagErrorModeRetried
+	// tokenFlagExternalErrorFallback marks an external token accepted after
+	// normal DFA lexing failed and the source retried in ERROR_STATE.
+	tokenFlagExternalErrorFallback
 )
 
 // lexFlagIf returns flag when on is true and zero otherwise.
@@ -96,8 +105,10 @@ func (t *Token) setLexFlag(flag tokenLexFlags, on bool) {
 func (t Token) missingDependencyExact() bool { return t.lexFlags&tokenFlagMissingDependencyExact != 0 }
 func (t Token) lexerSkippedPrefix() bool     { return t.lexFlags&tokenFlagSkippedPrefix != 0 }
 func (t Token) lexerErrorModeLexed() bool    { return t.lexFlags&tokenFlagErrorModeLexed != 0 }
-func (t Token) lexerInternalDFALexed() bool  { return t.lexFlags&tokenFlagInternalDFALexed != 0 }
-func (t Token) isKeyword() bool              { return t.lexFlags&tokenFlagKeyword != 0 }
+func (t Token) lexerDroppedInput() bool      { return !t.Missing && t.missingStackRef == ^uint32(0) }
+
+func (t Token) lexerInternalDFALexed() bool { return t.lexFlags&tokenFlagInternalDFALexed != 0 }
+func (t Token) isKeyword() bool             { return t.lexFlags&tokenFlagKeyword != 0 }
 
 // dependsOnColumn reports whether the external scanner read the code-point
 // column while it produced this token. See tokenFlagDependsOnColumn.
@@ -115,6 +126,7 @@ type Lexer struct {
 	// The source owns this aggregate. Lexer snapshots share it so rollback
 	// cannot erase reads from failed or discarded primitive scans.
 	tokenInvariantReadSpanMax *uint32
+	reuseReads                *incr.Reads
 
 	states           []LexState
 	asciiTable       [][128]int32 // ASCII fast-path transition table (nil = not available)
@@ -196,19 +208,34 @@ func (l *Lexer) nextWithFrontier(startState uint32, emitErrorRuns bool, lookahea
 	// lexing; capture it for the errorModeRetry branch below.
 	callStartPos, callStartRow, callStartCol := l.pos, l.row, l.col
 	callStartRangeIdx := l.includedRangeIdx
-	skippedPrefix := false
+	const (
+		prefixSkipped uint8 = 1 << iota
+		prefixFailed
+	)
+	var prefixState uint8
 	for {
 		// EOF check.
 		if l.atLogicalEOF() {
 			lookaheadEndByte = maxUint32(lookaheadEndByte, l.lookaheadEndByteAt(l.pos, false))
 			recordTokenInvariantReadSpan(l.tokenInvariantReadSpanMax, l.pos, l.lookaheadEndByteAt(l.pos, false))
-			return Token{
+			tok := Token{
 				StartByte:             uint32(l.pos),
 				EndByte:               uint32(l.pos),
 				StartPoint:            Point{Row: l.row, Column: l.col},
 				EndPoint:              Point{Row: l.row, Column: l.col},
 				lexerLookaheadEndByte: lookaheadEndByte,
 			}
+			if prefixState&prefixFailed != 0 {
+				tok.missingStackRef = ^uint32(0)
+			}
+			// EOF retains proof of grammar-owned skips, just like a real
+			// token. A failed scan must not certify discarded input as
+			// padding, even if a later skip reaches EOF.
+			if prefixState == prefixSkipped {
+				tok.setLexFlag(tokenFlagSkippedPrefix, true)
+				tok.lexerSkippedPrefixStart = uint32(callStartPos)
+			}
+			return tok
 		}
 
 		tokenStartPos := l.pos
@@ -224,21 +251,25 @@ func (l *Lexer) nextWithFrontier(startState uint32, emitErrorRuns bool, lookahea
 				// advanced past the skipped content to prevent an
 				// infinite loop on zero-width skip matches.
 				if l.pos <= tokenStartPos {
-					skippedPrefix = false
+					prefixState &^= prefixSkipped
+					prefixState |= prefixFailed
 					l.skipOneRune()
 				} else {
-					skippedPrefix = true
+					prefixState |= prefixSkipped
 				}
 				continue
 			}
-			if skippedPrefix {
+			if prefixState&prefixSkipped != 0 {
 				tok.setLexFlag(tokenFlagSkippedPrefix, true)
 				tok.lexerSkippedPrefixStart = uint32(callStartPos)
 			}
 			tok.lexerLookaheadEndByte = lookaheadEndByte
+			if prefixState&prefixFailed != 0 {
+				tok.missingStackRef = ^uint32(0)
+			}
 			return tok
 		}
-		skippedPrefix = false
+		prefixState &^= prefixSkipped
 
 		if emitErrorRuns && l.hasErrorRunLexState && l.errorModeRetry && startState != l.errorRunLexState {
 			// Faithful C error-recovery port: ts_parser__lex retries a failed
@@ -249,12 +280,15 @@ func (l *Lexer) nextWithFrontier(startState uint32, emitErrorRuns bool, lookahea
 			// the error-run branch below on failure instead of recursing.
 			l.pos, l.row, l.col = callStartPos, callStartRow, callStartCol
 			l.includedRangeIdx = callStartRangeIdx
-			return l.nextWithFrontier(l.errorRunLexState, true, lookaheadEndByte)
+			tok := l.nextWithFrontier(l.errorRunLexState, true, lookaheadEndByte)
+			tok.setLexFlag(tokenFlagErrorModeRetried, true)
+			return tok
 		}
 		if emitErrorRuns && l.hasErrorRunLexState && !l.canLexAt(l.errorRunLexState, tokenStartPos, tokenStartRow, tokenStartCol, &lookaheadEndByte) {
 			return l.errorRunToken(&lookaheadEndByte)
 		}
 		// No accepting state was found. Skip one rune as error recovery.
+		prefixState |= prefixFailed
 		l.skipOneRune()
 	}
 }
@@ -363,6 +397,9 @@ func (l *Lexer) scanInto(startState uint32, startPos int, startRow, startCol uin
 	}
 	if l.tokenInvariantReadSpanMax != nil {
 		recordTokenInvariantReadSpan(l.tokenInvariantReadSpanMax, startPos, tokenInvariantExaminedEnd(l.source, tok.lexerLookaheadEndByte))
+	}
+	if l.reuseReads != nil {
+		l.reuseReads.Record(startPos, tokenInvariantExaminedEnd(l.source, tok.lexerLookaheadEndByte))
 	}
 	return ok
 }

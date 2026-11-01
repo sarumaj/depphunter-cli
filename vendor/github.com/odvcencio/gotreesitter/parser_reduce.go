@@ -724,7 +724,13 @@ func (p *Parser) completeConflictReduceFrontier(source []byte, s *glrStack, tok 
 		if maxLiveStacks <= 0 {
 			return true
 		}
-		return liveStacks+len(p.pendingFrontierForkStacks)+len(p.pendingForkStacks) < maxLiveStacks
+		if liveStacks+len(p.pendingFrontierForkStacks)+len(p.pendingForkStacks) >= maxLiveStacks {
+			if p.mergeScratch != nil {
+				p.mergeScratch.policyPruned = true
+			}
+			return false
+		}
+		return true
 	}
 	if seed.action.Type != ParseActionReduce || seed.beforeDepth == 0 || seed.afterDepth == 0 {
 		return
@@ -837,7 +843,7 @@ func (p *Parser) completeConflictReduceFrontier(source []byte, s *glrStack, tok 
 					workCountTopologyPrepareVersionCopy(s, &fork) // work-count-assembly: topology frontier-accept-copy seam
 				}
 				p.noteStopActionDiagnostic("conflict-frontier-fork-accept", &fork, tok, terminal, terminalOrdinal, len(actions), true, step, 0, false)
-				p.applyAcceptAction(&fork)
+				p.applyAcceptAction(&fork, tok, arena)
 				p.noteStopActionResult(&fork)
 				appendTerminalFork(fork)
 				terminalAppended = true
@@ -915,7 +921,7 @@ func (p *Parser) completeConflictReduceFrontier(source []byte, s *glrStack, tok 
 			return
 		case ParseActionAccept:
 			p.noteStopActionDiagnostic("conflict-frontier-accept", s, tok, act, 0, 1, true, step, 0, false)
-			p.applyAcceptAction(s)
+			p.applyAcceptAction(s, tok, arena)
 			p.noteStopActionResult(s)
 			return
 		case ParseActionRecover:
@@ -1038,7 +1044,9 @@ func (p *Parser) pushOrExtendErrorNode(s *glrStack, state StateID, tok Token, no
 		// materializer reads any non-nil, non-self .parent as "already
 		// cloned elsewhere" -- see newRecoveryParentNodeInArena's doc for the
 		// resulting cyclic-transient-tree defect.
-		wrapper := p.newRecoveryParentNodeInArena(arena, errorSymbol, true, []*Node{leaf}, 0)
+		children := arena.allocNodeSliceNoClear(1)
+		children[0] = leaf
+		wrapper := p.newRecoveryParentNodeInArena(arena, errorSymbol, true, children, 0)
 		wrapper.setHasError(true)
 		wrapper.setExtra(arityTransparent)
 		if trackChildErrors != nil {
@@ -1571,6 +1579,22 @@ func (p *Parser) tryResyncErrorRecoveryMode(source []byte, s *glrStack, tok Toke
 		errChildren = append(errChildren, n)
 	}
 	if status == resyncAdvance {
+		// Structural-recovery retries absorb the failed suffix, including
+		// bytes skipped before its lookahead. Ordinary resynchronization
+		// still requires the lookahead to follow the stack without a gap.
+		if opportunisticAdvanceAllowed && tok.StartByte > s.byteOffset && !realTokenAttachmentGapIsParserPadding(source, s, tok, p.included, p.lineContinuationEscapeByte()) {
+			gap := newLeafNodeInArena(arena, errorSymbol, true, s.byteOffset, tok.StartByte, p.parserStackEndPoint(s), tok.StartPoint)
+			p.stampCompactPackedGSSZeroChildReceipt(&gap.rawShape)
+			gap.setHasError(true)
+			if perfCountersEnabled {
+				perfRecordErrorNode()
+			}
+			errChildren = append(errChildren, gap)
+			if nodeCount != nil {
+				*nodeCount = *nodeCount + 1
+			}
+			s.byteOffset = tok.StartByte
+		}
 		if !p.guardRealTokenAttachmentGap(source, s, tok, "resync") {
 			return resyncNone
 		}
@@ -1578,7 +1602,8 @@ func (p *Parser) tryResyncErrorRecoveryMode(source []byte, s *glrStack, tok Toke
 		tokLeaf := newLeafNodeInArena(arena, tok.Symbol, p.isNamedSymbol(tok.Symbol),
 			tok.StartByte, tok.EndByte, tok.StartPoint, tok.EndPoint)
 		p.stampCompactPackedGSSZeroChildReceipt(&tokLeaf.rawShape)
-		tokLeaf.setHasError(true)
+		// The ERROR wrapper owns the recovery cost; an absorbed real token
+		// keeps its ordinary error-free leaf flags, including during reuse.
 		tokLeaf.setExternalScannerToken(tok.ExternalScannerToken)
 		noteTokenColumnDependency(arena, tokLeaf, tok.lexFlags, tok.StartByte, tok.EndByte)
 		errChildren = append(errChildren, tokLeaf)
@@ -2068,6 +2093,9 @@ func (p *Parser) recoverReduceChainCycle(source []byte, s *glrStack, state State
 	}
 	if tok.Symbol == 0 {
 		if p.errorCostCompetitionEnabled() && tok.StartByte == tok.EndByte {
+			if p.language.RecoveryStackVersionOrderEnabled || (s.cEverErrored && p.emptyExternalRecoveryEnabled()) {
+				s.cNodeBaseline = uint32(p.cStackCumulativeNodeCount(s))
+			}
 			s.cPaused = true
 		}
 		return false
@@ -2687,7 +2715,7 @@ func (p *Parser) applyAction(source []byte, s *glrStack, act ParseAction, tok To
 		p.applyReduceActionDispatch(source, s, act, tok, anyReduced, nodeCount, arena, entryScratch, gssScratch, tmpEntries, deferParentLinks, trackChildErrors)
 
 	case ParseActionAccept:
-		p.applyAcceptAction(s)
+		p.applyAcceptAction(s, tok, arena)
 
 	case ParseActionRecover:
 		p.applyRecoverAction(s, act, tok, nodeCount, arena, entryScratch, gssScratch, trackChildErrors)
@@ -2695,6 +2723,13 @@ func (p *Parser) applyAction(source []byte, s *glrStack, act ParseAction, tok To
 }
 
 func (p *Parser) applyShiftAction(s *glrStack, act ParseAction, tok Token, nodeCount *int, arena *nodeArena, entryScratch *glrEntryScratch, gssScratch *gssScratch, trackChildErrors *bool) {
+	if arena != nil && arena.legacyReuseReads != nil {
+		arena.legacyReuseReads.CommitDroppedInput(tok.lexerDroppedInput())
+	}
+	if p.language.RecoveryStackVersionOrderEnabled {
+		s.cPreviousByteOffset = s.byteOffset
+		s.cPreviousByteOffsetValid = true
+	}
 	workCountRecordShift()
 	named := p.isNamedSymbol(tok.Symbol)
 	currentState := s.top().state
@@ -2805,6 +2840,9 @@ func (p *Parser) applyShiftAction(s *glrStack, act ParseAction, tok Token, nodeC
 		}
 		leaf := newLeafNodeInArena(arena, tok.Symbol, named,
 			tok.StartByte, tok.EndByte, tok.StartPoint, tok.EndPoint)
+		if arena != nil && arena.legacyReuseReads != nil {
+			noteLegacyReuseLeaf(leaf, tok)
+		}
 		p.stampCompactPackedGSSZeroChildReceipt(&leaf.rawShape)
 		if isMissing {
 			leaf.setMissing(true)
@@ -2888,7 +2926,10 @@ func (p *Parser) applyReduceActionDispatch(source []byte, s *glrStack, act Parse
 	}
 }
 
-func (p *Parser) applyAcceptAction(s *glrStack) {
+func (p *Parser) applyAcceptAction(s *glrStack, tok Token, arena *nodeArena) {
+	if arena != nil && arena.legacyReuseReads != nil {
+		arena.legacyReuseReads.CommitDroppedInput(tok.lexerDroppedInput())
+	}
 	workCountRecordAccept()
 	s.accepted = true
 	workCountRecordAcceptedHead(p, s, "parse-action accept")
@@ -2900,6 +2941,9 @@ func (p *Parser) applyAcceptAction(s *glrStack) {
 func (p *Parser) applyRecoverAction(s *glrStack, act ParseAction, tok Token, nodeCount *int, arena *nodeArena, entryScratch *glrEntryScratch, gssScratch *gssScratch, trackChildErrors *bool) {
 	workCountRecordExplicitRecover()
 	if tok.Symbol == 0 && tok.StartByte == tok.EndByte {
+		if arena != nil && arena.legacyReuseReads != nil {
+			arena.legacyReuseReads.CommitDroppedInput(tok.lexerDroppedInput())
+		}
 		s.accepted = true
 		workCountRecordAcceptedHead(p, s, "EOF recovery accepted head")
 		return
@@ -2925,6 +2969,17 @@ func extraShiftTargetState(current StateID, act ParseAction) StateID {
 }
 
 func (p *Parser) pushStackNode(s *glrStack, state StateID, node *Node, entryScratch *glrEntryScratch, gssScratch *gssScratch) {
+	// C summarizes hidden missing children before the public tree flattens them.
+	if p.retainExternalFallbackMissingFlags && node != nil && !node.hasError() && rawShapeRefIsArenaBacked(node.rawShape) && node.ownerArena != nil {
+		if shape, ok := node.ownerArena.rawShapeForRef(node.rawShape); ok {
+			for _, child := range node.ownerArena.rawShapeChildren(shape) {
+				if stackEntryNodeHasError(child.entry()) {
+					node.setHasError(true)
+					break
+				}
+			}
+		}
+	}
 	s.push(state, node, entryScratch, gssScratch)
 	if !s.recoverabilityKnown {
 		return
@@ -3259,6 +3314,9 @@ func (p *Parser) rawStackWalkErrorCost(arena *nodeArena, item rawStackWalkEntry)
 	}
 	var cost uint32
 	childCount := stackEntryNodeChildCount(item.entry)
+	if ok && p.language.RecoveryStackVersionOrderEnabled {
+		childCount = shape.childCount()
+	}
 	if stackEntryNodeIsMissing(item.entry) && childCount == 0 {
 		cost = cErrCostPerMissingTree + cErrCostPerRecovery
 	} else {
@@ -3814,7 +3872,7 @@ func appendCStackSliceOrderReduceFork(forks []reduceFork, fork reduceFork) []red
 // exceeds MAX_ITERATOR_COUNT. Completed paths use stack__add_slice order, so
 // every path with the same pop target stays in one physical version group.
 func cWaveReduceWindowsFromGSS(s *glrStack, childCount int) []reduceFork {
-	if s == nil || s.gss.head == nil || childCount < 0 {
+	if s == nil || s.gss.head == nil || childCount < -1 {
 		return nil
 	}
 
@@ -3824,7 +3882,10 @@ func cWaveReduceWindowsFromGSS(s *glrStack, childCount int) []reduceFork {
 		for i, waveSize := 0, len(iterators); i < waveSize; {
 			iterator := iterators[i]
 			node := iterator.node
-			if node != nil && iterator.subtreeCount == childCount {
+			// A count of -1 requests pop-all, whose slices stop at the
+			// linkless base regardless of the paths' differing lengths.
+			complete := node != nil && (iterator.subtreeCount == childCount || (childCount == -1 && node.prev == nil && node.extraLinkCount == 0))
+			if complete {
 				window := make([]stackEntry, len(iterator.revPath))
 				for j := range iterator.revPath {
 					window[j] = iterator.revPath[len(iterator.revPath)-1-j]
@@ -3837,7 +3898,7 @@ func cWaveReduceWindowsFromGSS(s *glrStack, childCount int) []reduceFork {
 			}
 
 			linkCount := 0
-			if node != nil && iterator.subtreeCount != childCount {
+			if node != nil && !complete {
 				linkCount = node.linkCount()
 				// Go represents C's linkless base node as one initial stack
 				// entry with a nil predecessor. Do not traverse that entry.
@@ -3962,6 +4023,9 @@ func (p *Parser) selectedReduceWindowsFromGSSWithBudget(arena *nodeArena, act Pa
 		return nil, 0, false
 	}
 	if workBudget <= 0 {
+		if p.mergeScratch != nil {
+			p.mergeScratch.policyPruned = true
+		}
 		return nil, 0, true
 	}
 
@@ -3981,6 +4045,9 @@ func (p *Parser) selectedReduceWindowsFromGSSWithBudget(arena *nodeArena, act Pa
 				continue
 			}
 			preference := p.reduceForkWindowPreference(arena, act, fork, forks[i])
+			if preference != 0 && p.mergeScratch != nil {
+				p.mergeScratch.policyPruned = true
+			}
 			if workCountInstrumentationEnabled && preference != 0 {
 				workCountTopologyRecordChildElection(s, forks[i], fork, preference) // work-count-assembly: topology child-election seam
 			}
@@ -4002,6 +4069,8 @@ func (p *Parser) selectedReduceWindowsFromGSSWithBudget(arena *nodeArena, act Pa
 		}
 		if insertAt >= 0 || len(forks) < maxGroups {
 			forks = insertReduceFork(forks, insertAt, fork)
+		} else if p.mergeScratch != nil {
+			p.mergeScratch.policyPruned = true
 		}
 	}
 
@@ -4056,6 +4125,9 @@ func (p *Parser) selectedReduceWindowsFromGSSWithBudget(arena *nodeArena, act Pa
 	}
 
 	dfs(s.gss.head, childCount)
+	if capped && p.mergeScratch != nil {
+		p.mergeScratch.policyPruned = true
+	}
 	workCountRecordReduceWindow(p, s, len(forks), work, workBudget, capped)
 	return forks, work, capped
 }
@@ -4615,6 +4687,9 @@ func (p *Parser) applyReduceActionForked(source []byte, s *glrStack, act ParseAc
 				end++
 			}
 			group := allForks[start:end]
+			if len(group) > 1 && p.mergeScratch != nil {
+				p.mergeScratch.policyPruned = true
+			}
 			selected := 0
 			for i := 1; i < len(group); i++ {
 				if p.reduceForkWindowPreference(arena, act, group[i], group[selected]) < 0 {
@@ -4629,6 +4704,9 @@ func (p *Parser) applyReduceActionForked(source []byte, s *glrStack, act ParseAc
 		forks = p.selectedReduceWindowsFromGSS(arena, act, s, int(act.ChildCount), maxStacksPerMergeKey)
 	}
 	if limit := p.cRecoveryReductionForkLimit; limit > 0 && len(forks) > limit {
+		if p.mergeScratch != nil {
+			p.mergeScratch.policyPruned = true
+		}
 		forks = forks[:limit]
 		if packedGroups != nil {
 			packedGroups = packedGroups[:limit]
@@ -6281,6 +6359,8 @@ func extendParentSpanToWindow(parent *Node, entries []stackEntry, start, reduced
 	// contiguous only after a later sibling has already pulled startByte back.
 	// The same reverse scan is still safe for endByte growth because the
 	// contiguity checks below prevent phantom gaps from inflating the span.
+	// Empty layout tokens can carry preceding scanner padding. They do not
+	// consume a line ending, so include that padding in the parent's extent.
 	for i := reducedEnd - 1; i >= start; i-- {
 		n := stackEntryNode(entries[i])
 		if n == nil || n.isExtra() {
@@ -6293,7 +6373,7 @@ func extendParentSpanToWindow(parent *Node, entries []stackEntry, start, reduced
 		if visible {
 			continue // visible children are already represented in parent's children
 		}
-		if symbolMarked(nonSpanExtendingInvisibleSymbols, n.symbol) {
+		if symbolMarked(nonSpanExtendingInvisibleSymbols, n.symbol) && n.startByte != n.endByte {
 			continue
 		}
 		// Invisible entries (with or without children) may have span that
@@ -6328,7 +6408,7 @@ func extendParentSpanToWindow(parent *Node, entries []stackEntry, start, reduced
 		if visible {
 			continue
 		}
-		if symbolMarked(nonSpanExtendingInvisibleSymbols, n.symbol) {
+		if symbolMarked(nonSpanExtendingInvisibleSymbols, n.symbol) && n.startByte != n.endByte {
 			continue
 		}
 		spanExtending := symbolMarked(spanExtendingInvisibleSymbols, n.symbol)
@@ -7668,6 +7748,10 @@ func applyDirectFieldToUnassignedFlattenedSpan(children []*Node, fieldIDs []Fiel
 		assignAllUnassignedFlattenedFields(children, fieldIDs, fieldSources, start, end, fid, source, false)
 	case namedTargets == 1:
 		assignAllUnassignedFlattenedFields(children, fieldIDs, fieldSources, start, end, fid, source, true)
+	case totalTargets > 1:
+		// A direct field carries through every child of its hidden slot,
+		// including a span made entirely of anonymous tokens.
+		assignAllUnassignedFlattenedFields(children, fieldIDs, fieldSources, start, end, fid, source, false)
 	default:
 		assignFirstUnassignedFlattenedField(children, fieldIDs, fieldSources, start, end, fid, source, preferNamed)
 	}
@@ -9167,6 +9251,9 @@ func aliasedNodeInArena(arena *nodeArena, lang *Language, n *Node, alias Symbol)
 				// Materialization already clones the hidden node. Apply the alias
 				// to that new node instead of cloning it a second time.
 				n = materializeHiddenNodeForAlias(arena, lang, n)
+				if n.ownerArena != nil && n.ownerArena.legacyReuseReads != nil {
+					recordLegacyReuseAliasSymbol(n, lang)
+				}
 				n.symbol = alias
 				if int(alias) < len(lang.SymbolMetadata) {
 					n.setNamed(lang.SymbolMetadata[alias].Named)
@@ -9207,6 +9294,10 @@ func aliasedNodeInArena(arena *nodeArena, lang *Language, n *Node, alias Symbol)
 	cloned.ownerArena = arena
 	copyMissingNodeDependencyForClone(cloned, n)
 	copyCompactReuseDependency(cloned, n)
+	if n.ownerArena != nil && n.ownerArena.legacyReuseReads != nil {
+		copyLegacyReuseLeafReceipt(cloned, n)
+		recordLegacyReuseAliasSymbolFrom(cloned, n, lang)
+	}
 	copyExternalScannerCheckpointToNode(cloned, n)
 	return cloned
 }
@@ -9268,6 +9359,9 @@ func materializeAnonymousLeafAliasWrapper(arena *nodeArena, lang *Language, n *N
 		}
 	}
 	child := cloneNodeInArena(arena, n)
+	if n.ownerArena != nil && n.ownerArena.legacyReuseReads != nil {
+		recordLegacyReuseAliasSymbolFrom(child, n, lang)
+	}
 	child.symbol = alias
 	child.setNamed(named)
 	wrapper := newParentNodeInArena(arena, alias, named, []*Node{child}, nil, n.productionID)
@@ -9397,6 +9491,9 @@ func cloneNodeInArena(arena *nodeArena, n *Node) *Node {
 	cloneNodeFieldMetadataHeaderInto(cloned, n, arena)
 	copyMissingNodeDependencyForClone(cloned, n)
 	copyCompactReuseDependency(cloned, n)
+	if n.ownerArena != nil && n.ownerArena.legacyReuseReads != nil {
+		copyLegacyReuseLeafReceipt(cloned, n)
+	}
 	copyExternalScannerCheckpointToNode(cloned, n)
 	if nodeHasFinalChildRefs(n) {
 		childCount := nodeChildCountNoMaterialize(n)

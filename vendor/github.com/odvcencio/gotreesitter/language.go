@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/odvcencio/gotreesitter/internal/sched"
 )
 
 // Symbol is a grammar symbol ID (terminal or nonterminal).
@@ -235,6 +237,12 @@ type CheckpointedExternalScanner interface {
 	UsesExternalScannerCheckpoints() bool
 }
 
+// checkpointedNonLeafReusePolicy lets a checkpointed scanner decline composite
+// subtree reuse when its state transitions cannot be inferred from tree nodes.
+type checkpointedNonLeafReusePolicy interface {
+	SupportsCheckpointedNonLeafReuse() bool
+}
+
 // IncrementalPrefixFrontierExternalScanner is an optional refinement for a
 // checkpointed scanner whose state can depend on reductions before the next
 // top-level sibling. A changed-length or changed-point edit before that
@@ -362,6 +370,9 @@ const (
 	// processed" is "highest symbol id" for this shape. See
 	// declaredReduceReduceHighestSymbolConflictChoice.
 	ConflictPolicyDeclaredReduceReduceHighestSymbol
+	// ConflictPolicyDeclaredSelfReduceReduceLongest keeps the wider production
+	// in a certified same-symbol conflict with equal precedence and field maps.
+	ConflictPolicyDeclaredSelfReduceReduceLongest
 )
 
 // ConflictPolicy describes one table row/lookahead conflict that can be
@@ -424,6 +435,25 @@ const (
 	// by the first retry ladder is authoritative. The parser retains that exact
 	// selected tree and does not schedule the extra external-scanner retry.
 	ExternalScannerFullParseRetrySkipRepeat
+)
+
+// LegacyMergeAdmissionPolicy selects Go-only refusals that the legacy GLR
+// merge drops for one grammar artifact. tree-sitter C's ts_stack_can_merge
+// compares only version status, head state, byte position, error cost, and
+// external scanner state. The zero value keeps every Go-only refusal.
+type LegacyMergeAdmissionPolicy uint8
+
+const (
+	// LegacyMergeAdmitDynamicPrecedence merges versions whose cumulative
+	// dynamic precedence differs, as C does. The merged version keeps the
+	// higher precedence, and reduce-time and result-time selection order the
+	// packed alternatives by precedence.
+	LegacyMergeAdmitDynamicPrecedence LegacyMergeAdmissionPolicy = 1 << iota
+
+	// LegacyMergeAdmitMixedRepresentation merges a flat version into a
+	// graph-structured version at the same head. C keeps every version in its
+	// stack graph, so it has no representation gate.
+	LegacyMergeAdmitMixedRepresentation
 )
 
 // FullParseAcceptedErrorRetryProfile certifies narrow full-parse retry
@@ -762,11 +792,10 @@ type Language struct {
 	corridorProgram     any   // *ParserCoreCorridorProgram under the default build
 	corridorProgramErr  error // the compile error, memoized alongside corridorProgram
 
-	// parserDerivedOnce memoizes the per-language derived parser tables that
-	// NewParser previously rebuilt on every call. The tables are pure functions
-	// of the decoded grammar tables (ParseTable, SmallParseTable, ParseActions,
-	// SymbolMetadata), which are immutable after decode. The cache lives on the
-	// Language for the same retention reason as compactTables above.
+	// parserDerivedOnce memoizes the per-language parser tables that NewParser
+	// previously rebuilt on every call. The tables come from decoded grammar
+	// tables and remain read-only after build. The cache lives on the Language
+	// for the same retention reason as compactTables above.
 	parserDerivedOnce sync.Once
 	parserDerived     *parserDerivedTables
 
@@ -814,6 +843,17 @@ type Language struct {
 	// one also enables this behavior for a fresh full parse.
 	FullParseGSSConvergenceEnabled bool
 
+	// RecoveryStackVersionOrderEnabled opts a certified artifact into C physical
+	// version dispatch, closed ERROR link merging, pause progress, and captured
+	// subtree costs. False retains the conservative recovery representation.
+	RecoveryStackVersionOrderEnabled bool
+
+	// RecoveryMissingVersionTurnsCertified permits deferring an eagerly shifted
+	// missing-token version until C would visit its physical version. Built-in
+	// artifacts receive this only through an exact-blob profile with locked-C
+	// recovery witnesses. False retains the conservative cost competition.
+	RecoveryMissingVersionTurnsCertified bool
+
 	// NativeResultCompatibility identifies result-tree shapes produced natively
 	// by this exact language artifact. Zero keeps conservative post-parse
 	// compatibility fallbacks for legacy blobs, generated grammars, caller-built
@@ -859,6 +899,13 @@ type Language struct {
 	// and stale artifacts retain the false default.
 	CompactMixedGSSMergeCertified bool
 
+	// LegacyMergeAdmission drops selected Go-only refusals from the legacy
+	// GLR merge for one grammar artifact. Exact built-in profiles set bits
+	// only after locked-C parity and counter receipts hold for that artifact.
+	// Custom, adapted, and stale artifacts keep the zero value, which keeps
+	// every refusal.
+	LegacyMergeAdmission LegacyMergeAdmissionPolicy
+
 	// CompactLexerSkippedPrefixTilingCertified permits an internal compact
 	// reduction gap when the next accepted terminal carries exact DFA evidence
 	// for the complete skipped prefix. Exact built-in profiles set this only
@@ -881,6 +928,11 @@ type Language struct {
 	// certify the complete bundle. Custom, adapted, and stale artifacts retain
 	// the false default.
 	CompactPackedGSSVersionOrderCertified bool
+
+	// ConflictActionVersionOrderCertified gives the last conflict action
+	// the source version priority while retaining every alternative. Exact grammar
+	// profiles certify this narrower order without packed deterministic reductions.
+	ConflictActionVersionOrderCertified bool
 
 	// CompactStrategy2ErrorRegionCertified permits the compact fresh-full route
 	// to attempt native strategy-2 recovery (error-region absorb and
@@ -1010,6 +1062,10 @@ type Language struct {
 	// grammars/runtime_profiles.go). Custom, adapted, and generated languages
 	// default to zero and are unaffected.
 	LineContinuationEscapeByte byte
+
+	// Keep runtime ownership in the cold tail so existing field offsets stay
+	// unchanged on both the compact and legacy routes.
+	compactRunnerPool sched.RuntimePool
 }
 
 type symbolNameNamedKey struct {

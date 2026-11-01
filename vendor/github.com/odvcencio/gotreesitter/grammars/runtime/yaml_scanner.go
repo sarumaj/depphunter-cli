@@ -495,7 +495,10 @@ func (YamlExternalScanner) ExternalScannerForLanguage(lang *gotreesitter.Languag
 	s.externalToToken = bindExternalScannerSpec(lang, yamlExternalScannerSpec, func(tokenIdx int, sym gotreesitter.Symbol) {
 		s.symbols[tokenIdx] = sym
 	})
-	return s
+	// The binding is immutable; per-parse state lives in Create's payload.
+	// Give it a stable instance identity so owned lexer snapshots do not copy
+	// or fingerprint the entire symbol mapping on each validation.
+	return &s
 }
 
 func (s YamlExternalScanner) symbolTable() *[yTokCount]gotreesitter.Symbol {
@@ -552,8 +555,11 @@ func (YamlExternalScanner) Deserialize(payload any, buf []byte) {
 	s.blkImpRow = -1
 	s.blkImpCol = -1
 	s.blkImpTab = 0
-	s.indTypStk = []int16{yIndRot}
-	s.indLenStk = []int16{-1}
+	// A restore replaces the current cursor's indentation history. Snapshots
+	// own serialized bytes, so retaining these private buffers cannot alias
+	// another version's history.
+	s.indTypStk = append(s.indTypStk[:0], yIndRot)
+	s.indLenStk = append(s.indLenStk[:0], -1)
 	if len(buf) >= 10 {
 		off := 0
 		s.row = int16(binary.LittleEndian.Uint16(buf[off:]))

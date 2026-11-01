@@ -7,6 +7,125 @@ for tags and release notes while still in `0.x`.
 
 ## [Unreleased]
 
+## [0.56.0] - 2026-10-13
+
+### Added
+
+- Add opt-in Python, JavaScript, TypeScript and TSX declaration, signature and
+  call-argument facts through the existing grammar-owned options. Share symbol
+  sets, binding selectors and parameter extraction while preserving Go and
+  legacy outputs. Include Python unpacking and keyword arguments, JavaScript
+  named function bindings, TypeScript optional parameters and typed members,
+  and standalone constructor arguments in JavaScript, TypeScript and TSX.
+  Type shapes remain types-only; defaults and member modifiers are omitted
+  ([#1435](https://github.com/odvcencio/gotreesitter/issues/1435)).
+
+- Complete opt-in Go declaration facts with embedded fields, interface embeddings
+  and dotted anonymous-struct containers. Add `FactSignatures` and
+  `FactCallArguments` through parallel grammar-owned rule options, preserving
+  exact parameter type text and argument order/ranges. Function literals and
+  function types have no signature facts; other languages remain out of scope
+  ([#1435](https://github.com/odvcencio/gotreesitter/issues/1435)).
+
+- Add opt-in Go declaration facts through `NewFactProgramWithOptions`,
+  `FactDeclarations`, and `WithDeclarationRules(grammars.DeclarationRules(entry))`.
+  `FactSet.Declarations` contains separate package variable and constant names,
+  named struct fields, explicit interface methods, aliases, type shapes, and
+  member containers. `NewFactProgram`, `DefinitionSpan`, `Definitions`, and
+  `FactAll` retain their existing contracts
+  ([#1435](https://github.com/odvcencio/gotreesitter/issues/1435)).
+
+### Changed
+
+- Add bounded lexer-read certificates for incremental subtree reuse. Keep fresh
+  verification when scanner history, recovery, or ownership remains unproven
+  ([#1402](https://github.com/odvcencio/gotreesitter/pull/1402)).
+- Extend certified incremental reuse to Go, Java, JavaScript, TypeScript,
+  Python, Rust, C, and C++
+  ([#1413](https://github.com/odvcencio/gotreesitter/pull/1413)).
+- Reuse certified ASCII run edits in Lua, Nickel, Starlark, Properties, and
+  FIRRTL; keep fresh parsing for unsupported edits
+  ([#1412](https://github.com/odvcencio/gotreesitter/pull/1412)).
+- Bound external-scanner checkpoint memory growth
+  ([#1410](https://github.com/odvcencio/gotreesitter/pull/1410)).
+- Retain certified subtree reuse for large edits without a redundant fresh
+  parse. Keep fresh verification for unproven histories and recovery results
+  ([#1421](https://github.com/odvcencio/gotreesitter/pull/1421)).
+- Reduce compact-route runtime and acceptance costs, including end-of-file
+  completion for owned YAML document streams
+  ([#1434](https://github.com/odvcencio/gotreesitter/pull/1434)).
+- Reuse authenticated private scanner checkpoint copies, share immutable
+  owned-lexer metadata, and validate each checkpoint with one retained-record
+  lookup. Owned YAML parses allocate less and run faster
+  ([#1446](https://github.com/odvcencio/gotreesitter/pull/1446),
+  [#1447](https://github.com/odvcencio/gotreesitter/pull/1447),
+  [#1448](https://github.com/odvcencio/gotreesitter/pull/1448)).
+
+### Fixed
+
+- Keep an earlier TSX generic call intact when a typed function is appended
+  after it, instead of reparsing the call as a binary expression
+  ([#1443](https://github.com/odvcencio/gotreesitter/issues/1443)).
+- Retain reduction alternatives for incomplete scanner histories, so the Go
+  input `Foo[int](Foo[int](a))` matches locked C again
+  ([#1434](https://github.com/odvcencio/gotreesitter/pull/1434)).
+- Keep a new blended-lineage marker when the same alternative-set members are
+  republished, and invalidate stale reused-lineage proofs
+  ([#1447](https://github.com/odvcencio/gotreesitter/pull/1447)).
+- Record every discarded live alternative in the parse-wide pruning state,
+  independently of diagnostic counters, so pruned parses never publish an
+  incremental-reuse certificate. Pruned large recovery edits now receive fresh
+  verification, and the GSS eight-link cap regression is fixed. Six large-edit
+  token-work cells carry exact exemptions that expire with certificate v2
+  ([#1440](https://github.com/odvcencio/gotreesitter/pull/1440)).
+- Include Go type declarations, aliases, parenthesized types and explicit
+  interface methods in inferred Go tags and outlines
+  ([#1438](https://github.com/odvcencio/gotreesitter/pull/1438)).
+- Preserve YAML syntax errors and recovered nodes during result compatibility
+  normalization ([#1400](https://github.com/odvcencio/gotreesitter/issues/1400)).
+- Include `ERROR` roots and children in `Node.SExpr` even when recovery leaves
+  their named flag unset ([#1400](https://github.com/odvcencio/gotreesitter/issues/1400)).
+- Preserve C recovery state across edit sessions and complete long EOF
+  reductions without a false iteration-limit stop
+  ([#1416](https://github.com/odvcencio/gotreesitter/pull/1416)).
+- Match locked C's AWK scanner token boundaries and recovered histories
+  ([#1420](https://github.com/odvcencio/gotreesitter/pull/1420)).
+- Correct conflict ordering, scanner behavior, and missing-token recovery for
+  TypeScript, Bash, C++, C#, Swift, Dart, and SQL
+  ([#1414](https://github.com/odvcencio/gotreesitter/pull/1414)).
+- Preserve verified fresh results when a large-edit retry would discard them
+  ([#1408](https://github.com/odvcencio/gotreesitter/pull/1408)).
+- Require incremental verification to match fresh stop reasons and preserve
+  recovery results across edit sessions
+  ([#1409](https://github.com/odvcencio/gotreesitter/pull/1409)).
+- Preserve operation deadlines, propagate verifier errors, and authenticate
+  the concrete lexer before trusting EOF reuse proofs
+  ([#1426](https://github.com/odvcencio/gotreesitter/pull/1426)).
+- Preserve recovered YAML mappings after unclosed flow sequences followed by
+  comments or single-quoted scalars
+  ([#1424](https://github.com/odvcencio/gotreesitter/pull/1424)).
+- Preserve `HasError()` when hidden missing tokens are removed from the
+  public tree, including malformed COBOL program names
+  ([#1419](https://github.com/odvcencio/gotreesitter/pull/1419)).
+
+### Maintenance
+
+- Distinguish historical AWK raw-tree receipts from current parser results
+  ([#1422](https://github.com/odvcencio/gotreesitter/pull/1422),
+  [#1424](https://github.com/odvcencio/gotreesitter/pull/1424)).
+- Extend required locked-C CI coverage for scanner and lexer regressions and
+  JavaScript/TypeScript edit sessions
+  ([#1425](https://github.com/odvcencio/gotreesitter/pull/1425)).
+
+### Publication exception
+
+On 2026-10-04, the owner authorized the v0.56.0-only tag-creation exception.
+The exception permits publication without a workflow-only tag-creation actor rule.
+All other gates remain mandatory under
+[the release process](docs/releasing.md#v0560-only-tag-creation-exception).
+This standard minor release still requires full CI and performance evidence for
+the exact candidate, a signed receipt, and protected release environment approval.
+
 ## [0.55.1] - 2026-09-26
 
 ### Fixed
@@ -202,8 +321,8 @@ All other gates remain mandatory under [the release process](docs/releasing.md#v
 
 ### Changed
 
-- Default the compact ("candidate") admission route to off. Buildbox's
-  tamarack harness measured it 1.1x to 2.2x slower than production on typical
+- Default the compact ("candidate") admission route to off. A benchmark
+  host's harness measured it 1.1x to 2.2x slower than production on typical
   files across Python, Rust, Markdown, Lua, CSS, Bash, and Go, and
   TypeScript/YAML paid for both routes on every parse (compact declines, then
   production reparses). Set `GTS_ADMISSION_CANDIDATE=1` (or `true`/`on`/`yes`)
@@ -288,7 +407,7 @@ All other gates remain mandatory under [the release process](docs/releasing.md#v
 
 ### Performance evidence
 
-Buildbox's tamarack harness measured the default route's in-process Go/C
+A benchmark host's harness measured the default route's in-process Go/C
 ratio across three independent interleaved runs on a fixed 9-language
 typical-file corpus, comparing this release's candidate code against the
 prior default:
@@ -2087,7 +2206,8 @@ focused on current releases:
 - [v0.24.1 – v0.44.0](docs/changelog/archive-2.md)
 - [v0.1.0 – v0.24.0](docs/changelog/archive-3.md)
 
-[Unreleased]: https://github.com/odvcencio/gotreesitter/compare/v0.55.1...HEAD
+[Unreleased]: https://github.com/odvcencio/gotreesitter/compare/v0.56.0...HEAD
+[0.56.0]: https://github.com/odvcencio/gotreesitter/compare/v0.55.1...v0.56.0
 [0.55.1]: https://github.com/odvcencio/gotreesitter/compare/v0.55.0...v0.55.1
 [0.54.0]: https://github.com/odvcencio/gotreesitter/compare/v0.53.0...v0.54.0
 

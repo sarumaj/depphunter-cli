@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/odvcencio/gotreesitter/internal/incr"
 )
 
 // Range is a span of source text.
@@ -1135,8 +1137,10 @@ func nodeFieldIDAt(n *Node, i int) FieldID {
 type ParseStopReason string
 
 const (
-	ParseStopNone            ParseStopReason = "none"
-	ParseStopAccepted        ParseStopReason = "accepted"
+	ParseStopNone     ParseStopReason = "none"
+	ParseStopAccepted ParseStopReason = "accepted"
+	// ParseStopAcceptedPrefix means the parser accepted a tree before real input ended.
+	ParseStopAcceptedPrefix  ParseStopReason = "accepted_prefix"
 	ParseStopNoStacksAlive   ParseStopReason = "no_stacks_alive"
 	ParseStopTokenSourceEOF  ParseStopReason = "token_source_eof"
 	ParseStopTimeout         ParseStopReason = "timeout"
@@ -1458,6 +1462,9 @@ type ParseRuntime struct {
 	// materialization transferred every required terminal scanner checkpoint
 	// into node sidecars. A false value disables later subtree reuse.
 	CompactExternalScannerCheckpointTransferProven bool
+	// CompactMultiHeaderTokens counts elections that start with multiple compact headers.
+	// Certification telemetry enables it. The count saturates at 2^32-1.
+	CompactMultiHeaderTokens uint32
 	// CRecoverReductionCandidateCeilingHits and CRecoverMissingTokenCeilingHits
 	// count how many times this parse's cDoAllPotentialReductions /
 	// cHandleError missing-token search hit the
@@ -1917,6 +1924,7 @@ func (p reduceChildPath) valid() bool {
 // ArenaBreakdown captures optional arena/materialization attribution. It is
 // populated only when EnableArenaBreakdown(true) is set before parsing.
 type ArenaBreakdown struct {
+	LegacyReuseDependencyBytesAllocated  int64
 	CompactReuseDependencyBytesAllocated int64
 
 	NodeStructBytesAllocated            int64
@@ -2427,12 +2435,12 @@ func (n *Node) FieldNameForChild(i int, lang *Language) string {
 func (n *Node) Children() []*Node { return nodeChildrenForReason(n, materializeForParentAPI) }
 
 // SExpr returns a tree-sitter-style S-expression for this node.
-// It includes only named nodes for stable debug snapshots.
+// It includes named nodes and ERROR nodes for stable debug snapshots.
 func (n *Node) SExpr(lang *Language) string {
 	if n == nil || lang == nil {
 		return ""
 	}
-	if !n.IsNamed() {
+	if !n.IsNamed() && !n.IsError() {
 		return ""
 	}
 	var b strings.Builder
@@ -2469,19 +2477,19 @@ func sexprGrowHint(startByte, endByte uint32) int {
 // was written. Using a shared builder avoids the per-node string allocation and
 // the intermediate []string slice that the previous implementation required.
 func sexprWrite(n *Node, lang *Language, b *strings.Builder) {
-	if n == nil || !n.IsNamed() {
+	if n == nil || (!n.IsNamed() && !n.IsError()) {
 		return
 	}
 	name := n.Type(lang)
 	b.WriteByte('(')
 	b.WriteString(name)
 
-	// Walk children, writing only named ones. Because a named child always
-	// produces at least "(type)", we can write a space before each one eagerly.
+	// ERROR is a built-in symbol, so it must survive even if a recovered
+	// node lacks the named flag. Other anonymous children remain omitted.
 	childCount := nodeChildCountNoMaterialize(n)
 	for i := 0; i < childCount; i++ {
 		entry, ok := nodeChildEntryAtNoMaterialize(n, i)
-		if !ok || !stackEntryNodeIsNamed(entry) {
+		if !ok || (!stackEntryNodeIsNamed(entry) && stackEntryNodeSymbol(entry) != errorSymbol) {
 			continue
 		}
 		child := nodeChildAtForReason(n, i, materializeForParentAPI)
@@ -2776,9 +2784,17 @@ func NewLeafNode(sym Symbol, named bool, startByte, endByte uint32, startPoint, 
 	return n
 }
 
+func nodeCarriesError(n *Node) bool {
+	return n.flags&(nodeFlagHasError|nodeFlagMissing) != 0 || n.symbol == errorSymbol
+}
+
 func populateParentNode(n *Node, children []*Node) {
+	hasError := n.symbol == errorSymbol || n.flags&nodeFlagMissing != 0
 	switch len(children) {
 	case 0:
+		if hasError {
+			n.setHasError(true)
+		}
 		return
 	case 1:
 		c0 := children[0]
@@ -2787,7 +2803,7 @@ func populateParentNode(n *Node, children []*Node) {
 		n.startPoint = c0.startPoint
 		n.endPoint = c0.endPoint
 		setNodeParentLink(c0, n, 0)
-		n.setHasError(c0.hasError())
+		n.setHasError(hasError || nodeCarriesError(c0))
 		return
 	case 2:
 		c0 := children[0]
@@ -2798,7 +2814,7 @@ func populateParentNode(n *Node, children []*Node) {
 		n.endPoint = c1.endPoint
 		setNodeParentLink(c0, n, 0)
 		setNodeParentLink(c1, n, 1)
-		n.setHasError(c0.hasError() || c1.hasError())
+		n.setHasError(hasError || nodeCarriesError(c0) || nodeCarriesError(c1))
 		return
 	default:
 		first := children[0]
@@ -2808,10 +2824,9 @@ func populateParentNode(n *Node, children []*Node) {
 		n.startPoint = first.startPoint
 		n.endPoint = last.endPoint
 
-		hasError := false
 		for i, c := range children {
 			setNodeParentLink(c, n, i)
-			if c.hasError() {
+			if nodeCarriesError(c) {
 				hasError = true
 			}
 		}
@@ -2850,6 +2865,10 @@ func refreshRewrittenParentPreservingProducedSpan(n *Node, children []*Node) {
 // populateParentNodeNoLinks computes parent span/error metadata from children
 // without wiring child.parent/childIndex links. Used on deferred-link paths.
 func populateParentNodeNoLinks(n *Node, children []*Node, trackChildErrors bool) {
+	hasError := n.symbol == errorSymbol || n.flags&nodeFlagMissing != 0
+	if hasError {
+		n.setHasError(true)
+	}
 	switch len(children) {
 	case 0:
 		return
@@ -2860,7 +2879,7 @@ func populateParentNodeNoLinks(n *Node, children []*Node, trackChildErrors bool)
 		n.startPoint = c0.startPoint
 		n.endPoint = c0.endPoint
 		if trackChildErrors {
-			n.setHasError(c0.hasError())
+			n.setHasError(hasError || nodeCarriesError(c0))
 		}
 		return
 	case 2:
@@ -2871,7 +2890,7 @@ func populateParentNodeNoLinks(n *Node, children []*Node, trackChildErrors bool)
 		n.startPoint = c0.startPoint
 		n.endPoint = c1.endPoint
 		if trackChildErrors {
-			n.setHasError(c0.hasError() || c1.hasError())
+			n.setHasError(hasError || nodeCarriesError(c0) || nodeCarriesError(c1))
 		}
 		return
 	default:
@@ -2882,8 +2901,9 @@ func populateParentNodeNoLinks(n *Node, children []*Node, trackChildErrors bool)
 		n.startPoint = first.startPoint
 		n.endPoint = last.endPoint
 		if trackChildErrors {
+			n.setHasError(hasError)
 			for i := range children {
-				if children[i].hasError() {
+				if nodeCarriesError(children[i]) {
 					n.setHasError(true)
 					break
 				}
@@ -3215,6 +3235,7 @@ func (t *Tree) deferResultCompatibility() {
 	if t.resultCompatibilityFinalizer == nil {
 		t.resultCompatibilityFinalizer = &treeResultCompatibilityFinalizer{}
 	}
+	t.resultCompatibilityFinalizer.runBoundOnly = false
 }
 
 // treeResultCompatibilityFinalizer is installed while a tree is still parser-
@@ -3225,10 +3246,34 @@ type treeResultCompatibilityFinalizer struct {
 	once sync.Once
 	// Keep the exact attempt's bound private until normalization completes.
 	tokenInvariantReadSpan uint32
+	// A certified edit uses this existing cold block for its read-bound anchor.
+	// It needs no normalization and must not grow the hot Tree header.
+	tokenInvariantRunBound   incr.TokenReadBound
+	runBoundOnly             bool
+	incrementalFreshVerified bool
+}
+
+func (t *Tree) incrementalFreshVerified() bool {
+	return t != nil && t.resultCompatibilityFinalizer != nil && t.resultCompatibilityFinalizer.incrementalFreshVerified
+}
+
+// Keep fresh-result provenance in the existing cold block. A metadata-only
+// block does not schedule normalization or allocate on an unverified edit.
+func (t *Tree) setIncrementalFreshVerified(verified bool) {
+	if t == nil {
+		return
+	}
+	if t.resultCompatibilityFinalizer == nil {
+		if !verified {
+			return
+		}
+		t.resultCompatibilityFinalizer = &treeResultCompatibilityFinalizer{runBoundOnly: true}
+	}
+	t.resultCompatibilityFinalizer.incrementalFreshVerified = verified
 }
 
 func (t *Tree) hasDeferredResultCompatibility() bool {
-	return t != nil && t.resultCompatibilityFinalizer != nil
+	return t != nil && t.resultCompatibilityFinalizer != nil && !t.resultCompatibilityFinalizer.runBoundOnly
 }
 
 func (t *Tree) ensureResultCompatibility() {
@@ -3236,13 +3281,15 @@ func (t *Tree) ensureResultCompatibility() {
 		return
 	}
 	finalizer := t.resultCompatibilityFinalizer
-	if finalizer == nil {
+	if finalizer == nil || finalizer.runBoundOnly {
 		return
 	}
 	finalizer.once.Do(func() {
+		defer func() { markPublishedRootError(t.root) }()
 		span := finalizer.tokenInvariantReadSpan
 		finalizer.tokenInvariantReadSpan = 0
 		t.tokenInvariantReadSpan = 0
+		t.setIncrementalFreshVerified(false)
 		defer func() {
 			if t.resultCompatibilityApplied && t.tokenInvariantReadSpanResultEligible() {
 				t.tokenInvariantReadSpan = span
@@ -3798,6 +3845,9 @@ const (
 	resultErrorSummaryUnknown resultErrorSummary = iota
 	resultErrorSummaryClean
 	resultErrorSummaryPresent
+	// The public root carries an error from a hidden recovery token. A clean
+	// forest rescue cannot validate that retained production evidence.
+	resultErrorSummaryHiddenMissing
 )
 
 // Tree holds a complete syntax tree along with its source text and language.
@@ -3808,6 +3858,9 @@ type Tree struct {
 	root           *Node
 	source         []byte
 	sourceEncoding InputEncoding
+	// Captured only from the accepted lexical attempt, never inferred from the
+	// next edit's token source. The byte occupies existing header padding.
+	eofExtraTokenSourceProofID uint8
 	// Zero means unknown. A full DFA parse records the longest primitive read,
 	// including failed probes. Incremental reconstruction cannot infer this bound.
 	tokenInvariantReadSpan uint32
@@ -3868,8 +3921,16 @@ const maxRetainedTreeEditCap = 8
 // saturated tree. The garbage collector reclaims it when it is unreachable.
 const maxTreeExtraHandles = ^uint16(0)
 
+// Set the flag before publishing the tree. Tree readers can then share the root.
+func markPublishedRootError(root *Node) {
+	if root != nil && root.IsError() {
+		root.setHasError(true)
+	}
+}
+
 // NewTree creates a new Tree.
 func NewTree(root *Node, source []byte, lang *Language) *Tree {
+	markPublishedRootError(root)
 	return &Tree{
 		root:           root,
 		source:         source,
@@ -3888,6 +3949,9 @@ func newTreeWithArenas(root *Node, source []byte, lang *Language, arena *nodeAre
 }
 
 func newTreeWithUniqueArenas(root *Node, source []byte, lang *Language, arena *nodeArena, borrowed []*nodeArena) *Tree {
+	if arena != nil && root != nil && root.ownerArena == arena {
+		arena.ownership.Publish(len(borrowed) != 0)
+	}
 	// Do not pool Tree values. A caller can keep a pointer after Release, and
 	// a pooled Tree would let that stale pointer release a later parse result.
 	tree := &Tree{}
@@ -3905,6 +3969,7 @@ func resetTreeForReuse(tree *Tree, root *Node, source []byte, lang *Language, ar
 	if tree == nil {
 		return
 	}
+	markPublishedRootError(root)
 	edits := reusableTreeEditScratch(tree.edits)
 	deferExternalCheckpoints := root != nil && languageUsesExternalScannerCheckpoints(lang)
 	*tree = Tree{
@@ -4013,6 +4078,7 @@ func (t *Tree) Release() {
 	t.recoveryNodeMemoPeakTier = RecoveryNodeMemoTierNone
 	t.recoveryNodeMemoCollisions = 0
 	t.tokenInvariantReadSpan = 0
+	t.eofExtraTokenSourceProofID = 0
 }
 
 // retainUnchangedIncrementalResult adds a caller handle to an old tree that an
@@ -4304,6 +4370,9 @@ func (t *Tree) Copy() *Tree {
 		resultErrorSummary:         t.resultErrorSummary,
 		resultCompatibilityApplied: t.resultCompatibilityApplied,
 		tokenInvariantReadSpan:     t.tokenInvariantReadSpan,
+		eofExtraTokenSourceProofID: t.eofExtraTokenSourceProofID,
+		// The copied nodes have different identities. Reanchor a later edit
+		// using the authenticated span instead of retaining an original node.
 		// Reuse-provenance flags must survive Copy: cloneNodeHeaderInto keeps the
 		// per-node stamped/replayed states, so a copy that dropped these would
 		// become reuse-eligible on the standard DFA path and splice replayed or
@@ -4335,6 +4404,8 @@ func (t *Tree) Copy() *Tree {
 	arena.inheritExternalScannerCheckpointIdentity(t.arena)
 	out.root = cloneTreeNodesIntoArena(t.root, arena)
 	out.arena = arena
+	arena.legacyIncrementalReuseCertified = t.hasCertifiedIncrementalReuse()
+	arena.legacyNoPolicyPruning = t.hasCertifiedUnprunedPolicy()
 	// The clone reproduced every recorded bit, so close the destination
 	// arena as well. A later fold on the copy then stops at the root.
 	if out.dependsOnColumnPropagated {
@@ -4496,6 +4567,9 @@ func cloneNodeHeaderInto(dst, src *Node, arena *nodeArena, offset *cloneOffset) 
 		arena.setNodeDependsOnColumnBit(dst, true)
 	}
 	copyCompactReuseDependency(dst, src)
+	if src.ownerArena != nil && src.ownerArena.legacyReuseReads != nil {
+		copyLegacyReuseLeafReceipt(dst, src)
+	}
 	if !copyMissingNodeDependency(dst, src, offset) {
 		if _, present := missingNodeDependencyEntryForNode(src); present {
 			dst.setDirty(true)
@@ -4861,7 +4935,7 @@ func (t *Tree) rawParseStopReason() ParseStopReason {
 // It intentionally does not initiate deferred result compatibility.
 func (t *Tree) rawParseStoppedEarly() bool {
 	switch t.rawParseStopReason() {
-	case ParseStopIterationLimit, ParseStopStackDepthLimit, ParseStopNodeLimit, ParseStopMemoryBudget, ParseStopReuseBudget, ParseStopTokenSourceEOF, ParseStopTimeout, ParseStopCancelled, ParseStopInvariantViolation:
+	case ParseStopAcceptedPrefix, ParseStopIterationLimit, ParseStopStackDepthLimit, ParseStopNodeLimit, ParseStopMemoryBudget, ParseStopReuseBudget, ParseStopTokenSourceEOF, ParseStopTimeout, ParseStopCancelled, ParseStopInvariantViolation:
 		return true
 	default:
 		return false
@@ -4914,6 +4988,16 @@ func (t *Tree) RecoveryNodeMemoRuntime() RecoveryNodeMemoRuntime {
 		PeakTier:   t.recoveryNodeMemoPeakTier,
 		Collisions: t.recoveryNodeMemoCollisions,
 	}
+}
+
+// The arena owns these immutable proof attributes alongside lexer receipts.
+// Keep them outside the public runtime record and preserve them on Copy.
+func (t *Tree) hasCertifiedIncrementalReuse() bool {
+	return t != nil && t.arena != nil && t.arena.legacyIncrementalReuseCertified
+}
+
+func (t *Tree) hasCertifiedUnprunedPolicy() bool {
+	return incr.PruningCertificateVersion == 1 && t != nil && t.arena != nil && t.arena.legacyNoPolicyPruning
 }
 
 // rawParseRuntime returns the parser-captured runtime record without running
@@ -5174,8 +5258,10 @@ func (t *Tree) Edit(edit InputEdit) {
 	if t == nil {
 		return
 	}
+	t.setIncrementalFreshVerified(false)
 	t.ensureResultCompatibility()
 	t.ensureDependsOnColumnPropagated()
+	t.prepareLegacyReuseDependencies()
 	t.editCompactReuseDependencies(edit)
 	if perfCountersEnabled {
 		perfRecordNodeEditCall()
@@ -5533,6 +5619,9 @@ func markColumnDependentStackEntryChanged(arena *nodeArena, entry stackEntry) {
 // editNodeSingleByteReplacement marks the affected path without recomputing
 // unchanged spans.
 func editNodeSingleByteReplacement(n *Node, edit InputEdit, leafHint **Node) {
+	if editLegacyLookaheadOnly(n, edit) {
+		return
+	}
 	if editMissingNodeDependency(n, edit, 0, 0) {
 		if leafHint != nil {
 			*leafHint = n
@@ -5590,6 +5679,9 @@ func editNodeSingleByteReplacement(n *Node, edit InputEdit, leafHint **Node) {
 }
 
 func editNodeWithDelta(n *Node, edit InputEdit, byteDelta, rowDelta int64, hasTailShift bool, shiftScratch *[]*Node, leafHint **Node) {
+	if editLegacyLookaheadOnly(n, edit) {
+		return
+	}
 	if editMissingNodeDependency(n, edit, byteDelta, rowDelta) {
 		if leafHint != nil {
 			*leafHint = n
@@ -5599,8 +5691,20 @@ func editNodeWithDelta(n *Node, edit InputEdit, byteDelta, rowDelta int64, hasTa
 	if missingNodeDependencyNoopAtEnd(n, edit) {
 		return
 	}
+	// A read dependency reaches beyond visible text without extending its
+	// span. Span-changing edits retain these clean candidates for the fresh
+	// verifier; never clamp an earlier subtree to the edit's new end.
+	if n.endByte < edit.StartByte && !n.hasError() && !n.isMissing() {
+		return
+	}
 	// If the node ends before the edit starts, it's completely unaffected.
-	if nodeEndsBeforeEditDependency(n, edit.StartByte) {
+	// Arena-backed and compact materialized nodes retain conservative
+	// boundary invalidation when a read certificate is unavailable. Their
+	// descendants may still depend on the following byte; public nodes
+	// constructed without an arena have only their visible spans.
+	if nodeEndsBeforeEditDependency(n, edit.StartByte) &&
+		!(hasTailShift && n.endByte == edit.StartByte &&
+			(n.ownerArena != nil || n.isCompactMaterialized())) {
 		return
 	}
 
@@ -5661,7 +5765,9 @@ func editNodeWithDelta(n *Node, edit InputEdit, byteDelta, rowDelta int64, hasTa
 		for _, c := range n.children {
 			childLeftRow := prevEndRow
 			prevEndRow = c.endPoint.Row
-			if nodeEndsBeforeEditDependency(c, edit.StartByte) {
+			if nodeEndsBeforeEditDependency(c, edit.StartByte) &&
+				!(hasTailShift && c.endByte == edit.StartByte &&
+					(c.ownerArena != nil || c.isCompactMaterialized())) {
 				continue
 			}
 			if c.startByte >= edit.OldEndByte {

@@ -1,20 +1,21 @@
 # BENCH — canonical performance claims and how to reproduce them
 
 This is the single authoritative page for gotreesitter performance claims.
-Every number here is either pinned to a release receipt in
+Every number here is pinned to a release receipt in
 [CHANGELOG.md](CHANGELOG.md) or derived from the ratcheted fleet ledger in
-[`cgo_harness/perf_scan`](cgo_harness/perf_scan/). Anything not on this page
-is not a claim.
+[`cgo_harness/perf_scan`](cgo_harness/perf_scan/), or sealed in the
+editor-latency CI artifacts. Anything not
+on this page is not a claim.
 
 ## The one-paragraph story
 
 gotreesitter trades some raw full-parse speed for portability. It is pure
 Go, has no cgo, cross-compiles anywhere Go does (including `wasip1`), and
 stays fully visible to `go test -race`. Editor-style incremental workloads
-are where it is fast outright on the historical control — a no-edit reparse
-takes nanoseconds with zero allocations. A one-byte edit runs at low-hundreds-
-of-microseconds and allocates a small, fixed 5 objects per op (see the
-current quiet-host receipt below); it is not zero-allocation. Full parses are
+are where it is fast outright on the historical control. A no-edit reparse
+takes nanoseconds with zero allocations. A one-byte edit takes hundreds of
+microseconds and allocates five objects per operation on the current baseline.
+Full parses are
 ratcheted against the C runtime language-by-language, with explicit caveats
 instead of averaged marketing numbers.
 
@@ -33,77 +34,107 @@ artifacts: gotreesitter used the project-locked 1,425-state/214-symbol
 grammar, while the C benchmark used a 1,404-state/212-symbol grammar
 bundled by the old smacker binding.
 
-Historical control results, retained as workload-specific receipts. These
-three rows were never dated or pinned to a revision, and by 2026-09-23 no
-longer matched a fresh run on the same class of host (see "Current
-quiet-host receipt" below, which is dated, pinned, and current) — treat
-them as an approximate historical shape, not a reproducible number:
-
-| Lane | Benchmark | Historical result (undated, superseded) |
-|---|---|---|
-| Full parse (materialized, straight LR) | `BenchmarkGoParseFullDFA` | 10.907 ms on the pinned quiet host |
-| One-byte incremental edit | `BenchmarkGoParseIncrementalSingleByteEditDFA` | 649 ns/op, 0 allocs |
-| No-edit reparse | `BenchmarkGoParseIncrementalNoEditDFA` | 2.43 ns/op, 0 allocs |
-
-Reproduce the historical control:
-
-```sh
-GOMAXPROCS=1 go test . -run '^$' \
-  -bench 'BenchmarkGoParseFullDFA|BenchmarkGoParseIncrementalSingleByteEditDFA|BenchmarkGoParseIncrementalNoEditDFA' \
-  -benchmem -count=10 -benchtime=750ms
-```
-
 `BenchmarkGoParseCoreDFA` is a parser-loop diagnostic (no tree
 materialization). The project never quotes its numbers as full-parse
 numbers. See the benchmark-integrity note below.
 
-### Historical quiet-host receipt
+### Primary trio baseline
 
-The v0.24.1 audit withdrew the pre-correction full-parse headlines pending a
-quiet-host rerun of the corrected public benchmark. First such receipt,
-2026-07-12, main @ 04f75d15, Intel Xeon D-2141I @ 2.20 GHz (idle host,
-`taskset -c 14`, `GOMAXPROCS=1`, `-count=10 -benchtime=750ms`), medians:
+Source: `origin/main` at `5cbd4fb2508cd694fe62d811982f4b018e65132f`.
+Measured 2026-09-27 with Go 1.26.4 on a dedicated benchmark VM
+(Xeon Platinum 8481C, four cores with SMT off, 31 GB RAM) running Ubuntu 24.04.
+Host: pinned to CPU 2; load1 ranged from 0.00 to 0.94 and steal time was zero.
 
-| Lane | ns/op | B/op | allocs/op |
-|---|---|---|---|
-| `BenchmarkGoParseFullDFA` | 12,245,000 | 1,527 | **9** |
-| `BenchmarkGoParseIncrementalSingleByteEditDFA` | 1,976 | 0 | **0** |
-| `BenchmarkGoParseIncrementalNoEditDFA` | 9.85 | 0 | **0** |
-| `BenchmarkGoParseCoreDFA` (diagnostic) | 8,737,000 | 996 | 6 |
+```sh
+GOMAXPROCS=1 GOWORK=off taskset -c 2 bash scripts/bench_baseline.sh /tmp/gts-v1-quiet-main-trio.txt
+```
 
-Wall-clock numbers are host-specific — this is a low-clock server part, so
-do not compare it against dev-box history. The allocation counts remain
-valid for this fixture. The full-minus-core decomposition does not
-generalize beyond this straight-LR control.
+The runner uses 20 shuffled seeds and one process per seed. Each process uses
+`GOMAXPROCS=1`, `GOWORK=off`, `-count=1`, `-benchtime=750ms`, and `-benchmem`.
+These values are medians of 20 runs:
 
-### Current quiet-host receipt
+| Benchmark | ns/op | B/op | allocs/op |
+|---|---:|---:|---:|
+| `BenchmarkGoParseFullDFA` | 8,572,502 | 1,275 | 8 |
+| `BenchmarkGoParseIncrementalSingleByteEditDFA` | 186,357 | 388 | 5 |
+| `BenchmarkGoParseIncrementalNoEditDFA` | 8.30 | 0 | 0 |
 
-2026-09-23, `hardening/fuzz-blob-safety` @ `4637be52a`, same host class as
-the 2026-07-12 receipt above (Intel Xeon D-2141I @ 2.20 GHz, `GOMAXPROCS=1`,
-`-count=10 -benchtime=750ms`, via `buildbox-run`), medians of 10 runs:
+A repeated 20-seed control on the same source differed by -0.11% for full
+parse, -0.08% for edit, and +0.21% for no-edit. To isolate the host effect
+from source changes, the published source revision (`92db945f28de67be51de8235c9cd4e25a900f648`)
+was also run twice on this VM. Its quiet medians were 8,686,195 ns, 177,281 ns,
+and 8.318 ns. Against the previously published values from a loaded host, those exact-source
+results are lower by 40.5%, 35.1%, and 45.0%, respectively.
 
-| Lane | ns/op | B/op | allocs/op |
-|---|---|---|---|
-| `BenchmarkGoParseFullDFA` | 61,938,000 | 675,394 | 45 |
-| `BenchmarkGoParseIncrementalSingleByteEditDFA` | 439,825 | 410 | **5** |
-| `BenchmarkGoParseIncrementalNoEditDFA` | 27.4 | 0 | **0** |
+The edit benchmark allocates one scratch buffer after it starts its timer.
+That setup adds about 6 B/op at this duration.
 
-This supersedes the undated "Historical control results" table above for
-the one-byte-edit and no-edit lanes: the no-edit reparse is still
-nanosecond-scale and zero-allocation, matching the one-paragraph story, but
-the one-byte edit is no longer zero-allocation (5 allocs/op, ~410 B/op) and
-now runs at low-hundreds-of-microseconds rather than sub-microsecond. This
-receipt does not identify which change introduced the 5 allocations; it only
-records the current measured behavior against the same host and method the
-project already uses for its other pinned receipts.
+The 2026-07-12 receipt at `04f75d15` measured 1,976 ns and zero allocations
+for the edit. The first allocation increase came from `93a8724dc`.
+That merge disabled unsafe same-width reuse after a correctness failure.
+The later lexical proof restored reuse, but its checks cost more than the July
+shortcut. Keep the July receipt as history, not a current target.
+
+The September 61.9 ms full-parse receipt came from branch commit `4637be52a`.
+It does not reproduce at current main, so it is retired as a current receipt.
+Pull request #1282 reported 3.411 ms, 90.720 µs, and 3.294 ns on an
+unspecified, loaded host. Its merge measured 13.816 ms, 256.963 µs, and
+14.335 ns on this Xeon. Its allocation trio was 8, 5, and 0, matching main.
+Compare code changes with paired runs on one host.
 
 ### Editor-latency (O(edit)) status
 
-The campaign O(edit) workstream targets deterministic, per-keystroke
-reparse cost. Its continuous instrument is workstream W5, a continuous
-integration (CI) gate. W5 has not yet published a sealed receipt for the
-numbers below. Cite them as v0.44.0/v0.44.1 CHANGELOG measurements, not as
-sealed claims.
+W5 now runs on code PRs in the required CI `build` aggregate. The
+`editor_latency` job uses the configured `self-hosted,gts-vm` runner pool and
+compares the exact PR base and head on one pinned CPU. Any edit cell whose
+median paired Go latency rises by more than **5%** fails the job; C slowdown
+cannot excuse a Go regression. Cancellation, incomplete evidence, oracle
+drift, a correctness failure, and a counter-gate failure also block the job.
+The job emits `METRIC:` lines, a GitHub summary, and retained evidence.
+
+The surface follows the first eight languages in
+[`grammars/update_tier1_top50.txt`](grammars/update_tier1_top50.txt): TypeScript,
+TSX, JavaScript, Python, Java, C#, PHP, and Bash. Go and PowerShell are included
+as supplemental controls for the reported regressions. The
+[manifest](cgo_harness/editor_latency/fixtures.json) pins whole human-authored
+files, immutable upstream commits, hashes, and every edit. Each file receives
+a one-byte replacement and undo, a 100-byte comment insertion and deletion,
+and a 17-keystroke EOF append. Typing starts after a complete comment prefix
+or a PowerShell variable prefix; malformed-prefix recovery remains outside
+this receipt.
+
+Every step first passes fresh Go = incremental Go = fresh C = incremental C,
+using deep tree digests, both profiled and public Go APIs, complete roots,
+accepted parses, and unchanged immutable C snapshots. Correctness runs in
+Docker one language at a time before the paired 2% counter ledger and timing.
+The C oracle is the locked v0.25.1 runtime, v0.25.0 Go binding, and locked
+`-O2` grammars. Both revisions use exactly the same driver and oracle.
+
+Timing uses twenty matching shuffle seeds, alternating base/head order,
+Go-C-C-Go samples, `GOMAXPROCS=1`, `GOWORK=off`, `-count=1`, `750ms`, and
+`-benchmem` through `scripts/run_randomized_benchmarks.sh`. An operation is a
+complete session; the receipt normalizes it per edit. It times `Tree.Edit`,
+reparse, and previous-tree release. Fresh Go resets and C snapshot restoration
+are excluded. C allocation numbers cover the Go binding, including the tiny
+typing snapshot clone, rather than native allocation. See the
+[protocol and reproduction command](cgo_harness/editor_latency/README.md).
+
+Campaign output is stored outside the repository and uploaded as CI artifacts.
+Each run includes timings, counters, oracle fingerprints, environment details,
+METRIC lines, and a SHA-256 seal. The corpus lock is never committed.
+
+Fixture admission rejected the first Go, C#, and PowerShell choices because
+fresh Go did not match fresh C. Lone-slash EOF seeds also failed fresh parity
+in JavaScript, Java, and PHP. The fixed manifest selects whole files and valid
+typing seeds that pass every step; it never selects or skips fixtures at run
+time. An incomplete first timing attempt was discarded: repeated C reset
+timer snapshots made TypeScript processes take 31.7–49.7 seconds. The final
+driver restores immutable C snapshots and clocks whole typing sessions;
+all twenty seeds were then rerun, with TypeScript processes taking
+13.4–17.1 seconds. These are total harness process durations. The gate
+thresholds and existing pins are unchanged.
+
+Historical CHANGELOG measurements below remain separate from this seal:
 
 - CSS editor-style incremental edits: node reuse rises from 63.8% to 99.5%
   (PR #395, workstream W1).
@@ -270,8 +301,8 @@ Citation:
 - Run ID: `strictboundary-20260802T062212Z-v9`.
 - Image: `strict-boundary:v9`, digest
   `sha256:80c809f0335e1422e6f073b1f776cfa09c3f4f5d1c2f8abe8fef686b08d5970b`
-  (10s benchtime, hardened, authoritative), reference
-  `us-central1-docker.pkg.dev/bookt-cc/gts-cs-bench/strict-boundary:v9`.
+  (10s benchtime, hardened, authoritative), held in a private container
+  registry.
 - SHA-256 of the C oracle binary:
   `a2aaf98ec7b869d5e1a311fe209fe2bdc31335a60d2840a1ffc3d72877cd3274`
   (unchanged from v8, run6, and v0.45.0).
@@ -334,10 +365,9 @@ records the receipt, the version section is named.
 
 ## Go-vs-C fleet scoreboard (full parse, real corpora)
 
-Source of truth: [`cgo_harness/perf_scan/perf_ratio_budgets.json`](cgo_harness/perf_scan/perf_ratio_budgets.json)
-and the wave-3 ledger. 204 of 206 languages carry ratcheted budgets
-(D and F# are held out pending memory RCA; every exclusion is named in the
-[known-gap ledger](cgo_harness/perf_scan/wave3_sweep_status.md)).
+Source of truth: [`cgo_harness/perf_scan/perf_ratio_budgets.json`](cgo_harness/perf_scan/perf_ratio_budgets.json).
+It covers 204 of 206 languages. D and F# remain held out pending memory analysis.
+The budget's `known_budget_class_gaps` field names each gap.
 
 Distribution of observed full-parse ratios (Go time / C time, largest-file
 basis, as of the 2026-07-11 ledger):

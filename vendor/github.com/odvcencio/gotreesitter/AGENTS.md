@@ -28,7 +28,7 @@ Run the invariant gate for every language that an engine PR can affect:
 
 Graduate each language through the allowlist after the E-A exit gate.
 Flip the global default only after all top-50 languages graduate, and only in a release candidate (D7).
-Keep O-Q1 through O-Q7 open. Q0 requires O-Q4. Keep section 8 while O11 awaits the owner.
+The owner decided O-Q1 through O-Q7 on 2026-09-26; see the owner decisions in [the v1 design](docs/v1-design.md#owner-decisions). Every grammar that the legacy engine supports graduates before legacy is deleted. Section 8 implements O11 under organization decision 0012.
 
 ### 1) Non-negotiables
 - Use `scripts/canopy_query.sh` for cached structural searches and analyses.
@@ -100,7 +100,7 @@ D13 defines three target layers:
 - Stretch targets for the top 20.
 
 The `2x` full-parse goal and edits at or below C apply to the top-20 stretch layer.
-O-Q3 remains open; do not make the proposed v1.0 speed targets release-blocking without the owner's decision.
+The owner decided O-Q3: the v1.0 speed targets block the v1.0 release only.
 Hard failures and ratchets remain mandatory. Record every directional regression and explain its tradeoff.
 
 ### 5) Attribution for Incremental Hot Path
@@ -140,23 +140,8 @@ Full-parse non-truncation probe:
 - `GOT_PARSE_NODE_LIMIT_SCALE=3` may be used for diagnostic full-parse runs when default node budget truncates benchmark/parity cases.
 - `GOT_GLR_MAX_STACKS=...` overrides the default GLR stack cap of 8.
 
-### 8) Prose Standard: ASD-STE100
-All agent-written prose in this repo follows the ASD-STE100 rules
-profile (decision 0011, hypha://m31labs/hyphae).
+### 8) Prose Standard: Plain language
 
-- Use the active voice and the imperative mood for instructions.
-- Keep procedural sentences at or below 20 words. Keep descriptive
-  sentences at or below 25 words.
-- Give each word one meaning. Use it the same way through the
-  document.
-- Do not write noun clusters of more than three nouns. Do not drop
-  articles.
-- Do not use idioms, slang, or Latin abbreviations. Write "for
-  example", not "e.g.".
-- Define an abbreviation at first use.
-- Use a vertical list for more than two items or steps.
-- Use concrete verbs. Avoid "handle", "leverage", "deal with".
+Write plainly: lead with the point, use common words and the active voice, keep each term consistent, back claims with evidence (numbers, links, test output), and say what you did not verify. M31 agents: see decision 0012 and the `writing-plainly` skill in hypha://m31labs/hyphae.
 
-Scope: commit messages, PR titles and bodies, review output, and all
-documentation prose that agents write. Code identifiers and quoted
-tool output are out of scope.
+Use numbers from pinned benchmarks or CI runs as receipts.

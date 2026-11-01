@@ -9,14 +9,14 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	// Implements: REQ-LANG-013
-	github.com/odvcencio/gotreesitter v0.55.1
+	github.com/odvcencio/gotreesitter v0.56.0
 	github.com/sourcegraph/jsonrpc2 v0.2.3
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
 	github.com/tidwall/jsonc v0.3.3
-	golang.org/x/mod v0.41.0
-	golang.org/x/sync v0.23.0
+	golang.org/x/mod v0.42.0
+	golang.org/x/sync v0.24.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
