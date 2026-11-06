@@ -6,6 +6,14 @@ name: Release
   push:
     tags:
     - v*
+  # Run by hand to retry a tag's release from main, with the tag in the field
+  # (a tag made before this trigger existed has no workflow_dispatch of its own).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to release (vX.Y.Z); empty for the tag chosen above
+        type: string
+        required: false
 jobs:
   # Implements: REQ-DIST-008, REQ-DIST-009, REQ-EXT-032
   release:
@@ -13,8 +21,17 @@ jobs:
     outputs:
       version: ${{ steps.vsix.outputs.version }}
     steps:
+    - name: Check the tag
+      env:
+        TAG: ${{ inputs.tag || github.ref_name }}
+      run: |
+        case "$TAG" in
+          v[0-9]*) ;;
+          *) echo "::error::$TAG is not a release tag: name one in the tag field"; exit 1 ;;
+        esac
     - uses: https://github.com/actions/checkout@v7
       with:
+        ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
         lfs: true
     - name: Check the LFS files are real
       run: |
@@ -27,11 +44,11 @@ jobs:
     - name: Test
       run: go test -race ./...
     - name: Build
-      run: scripts/dist.sh "${{ github.ref_name }}"
+      run: scripts/dist.sh "${{ inputs.tag || github.ref_name }}"
     - name: Smoke test
       run: |
         tar -xzf dist/depphunter_*_linux_amd64.tar.gz -C "$RUNNER_TEMP"
-        "$RUNNER_TEMP"/depphunter_*_linux_amd64/depphunter --version | grep -F "${{ github.ref_name }}"
+        "$RUNNER_TEMP"/depphunter_*_linux_amd64/depphunter --version | grep -F "${{ inputs.tag || github.ref_name }}"
     - uses: https://github.com/actions/setup-node@v7
       with:
         node-version: 24
@@ -39,7 +56,7 @@ jobs:
     - name: Build the VS Code extension
       id: vsix
       env:
-        TAG: ${{ github.ref_name }}
+        TAG: ${{ inputs.tag || github.ref_name }}
       run: |
         version=${TAG#v}
         if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
@@ -74,12 +91,12 @@ jobs:
         mkdir -p .forgejo-release
         cp -r dist/* .forgejo-release/
       env:
-        TAG: ${{ github.ref_name }}
+        TAG: ${{ inputs.tag || github.ref_name }}
     - name: Write the release notes
       id: release_notes
       shell: bash
       env:
-        TAG: ${{ github.ref_name }}
+        TAG: ${{ inputs.tag || github.ref_name }}
       run: |
         if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
           git fetch --quiet --unshallow --tags
@@ -103,8 +120,8 @@ jobs:
         direction: upload
         url: ${{ github.server_url }}
         repo: ${{ github.repository }}
-        tag: ${{ github.ref_name }}
-        title: ${{ github.ref_name }}
+        tag: ${{ inputs.tag || github.ref_name }}
+        title: ${{ inputs.tag || github.ref_name }}
         release-dir: .forgejo-release
         prerelease: false
         override: true
