@@ -86,10 +86,15 @@ jobs:
           --out "dist/depphunter_${TAG#v}_vscode_universal.vsix"
         (cd dist && sha256sum depphunter_*_vscode_*.vsix >> checksums.txt)
     - name: Collect the release files
+      # The tag's commit, for the release: forgejo-release refuses a tag that points
+      # elsewhere than the commit it is given, by default the run's (a retry from main).
+      id: release_files
       shell: bash
       run: |
         mkdir -p .forgejo-release
         cp -r dist/* .forgejo-release/
+        git fetch --quiet --force origin "+refs/tags/$TAG:refs/tags/$TAG"
+        echo "sha=$(git rev-parse "refs/tags/$TAG^{commit}")" >> "$GITHUB_OUTPUT"
       env:
         TAG: ${{ inputs.tag || github.ref_name }}
     - name: Write the release notes
@@ -121,6 +126,7 @@ jobs:
         url: ${{ github.server_url }}
         repo: ${{ github.repository }}
         tag: ${{ inputs.tag || github.ref_name }}
+        sha: ${{ steps.release_files.outputs.sha }}
         title: ${{ inputs.tag || github.ref_name }}
         release-dir: .forgejo-release
         prerelease: false
