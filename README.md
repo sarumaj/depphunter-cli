@@ -1,6 +1,6 @@
 # depphunter
 
-[![CI](https://github.com/sarumaj/depphunter-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/sarumaj/depphunter-cli/actions/workflows/ci.yml)
+[![CI](https://git.ciepiela.org/dawid/depphunter-cli/actions/workflows/ci.yml/badge.svg)](https://git.ciepiela.org/dawid/depphunter-cli/actions?workflow=ci.yml)
 [![Open VSX Release Date](https://img.shields.io/open-vsx/release-date/sarumaj/depphunter)](https://open-vsx.org/extension/sarumaj/depphunter)
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/sarumaj/depphunter)](https://open-vsx.org/extension/sarumaj/depphunter)
 
