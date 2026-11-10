@@ -65,6 +65,9 @@ jobs:
         fi
         echo "version=$version" >> "$GITHUB_OUTPUT"
         npm ci
+        # vsce refuses SVG images from hosts outside its list of badge providers, which
+        # this Forgejo is not: the README's CI badge is left out of the packages only.
+        sed -i '/git\.ciepiela\.org[^)]*\.svg/d' README.md
         # vsce's target, then the Go platform to build the binary it carries.
         # alpine is musl, which a cgo-free static build runs on unchanged.
         for spec in \
