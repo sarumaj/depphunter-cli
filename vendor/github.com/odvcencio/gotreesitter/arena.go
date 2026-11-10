@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/odvcencio/gotreesitter/internal/incr"
 )
 
 const (
@@ -74,6 +76,7 @@ const (
 // It uses ref counting so trees that borrow reused subtrees can keep arena
 // memory alive safely until all dependent trees are released.
 type nodeArena struct {
+	ownership        incr.Ownership
 	class            arenaClass
 	nodes            []Node
 	used             int
@@ -126,6 +129,13 @@ type nodeArena struct {
 	compactCheckpointLeafSlabCursor int
 	finalChildSidecars              []finalChildSidecar
 	missingNodeDependencies         []missingNodeDependencyEntry
+	legacyReuseReads                *incr.Reads
+	nodeReuseLookahead              []uint32
+	nodeReuseRawSymbols             []uint32
+	legacyReuseDependenciesReady    bool
+	legacyReuseSourceChanged        bool
+	legacyIncrementalReuseCertified bool
+	legacyNoPolicyPruning           bool
 	compactReuseDependencyMu        sync.RWMutex
 	compactReuseDependencies        map[*Node]compactReuseDependency
 	compactReuseDependencyEntries   uint64
@@ -330,8 +340,10 @@ type nodeArena struct {
 }
 
 type nodeSlab struct {
-	data []Node
-	used int
+	reuseLookahead []uint32
+	rawSymbols     []uint32
+	data           []Node
+	used           int
 	// supertypes parallels data; see nodeArena.supertypeSets.
 	supertypes []uint8
 	// dependsOnColumn is a bitset parallel to data; see
@@ -591,6 +603,8 @@ func (a *nodeArena) Release() {
 }
 
 func (a *nodeArena) reset() {
+	a.ownership.Reset()
+	a.resetLegacyReuseDependencies()
 	a.resetNodeSupertypes()
 	a.resetNodeDependsOnColumn()
 	a.resetPrimaryNodes()
@@ -1156,6 +1170,8 @@ func (a *nodeArena) trimPrimaryNodeCapacity() {
 		// collect it and the next parse will allocate a fresh slab of default
 		// size via allocNodeSlow -> ensureNodeCapacity.
 		a.nodes = nil
+		a.nodeReuseLookahead = nil
+		a.nodeReuseRawSymbols = nil
 		a.externalScannerNodeCheckpoints = externalScannerCheckpointSet{}
 	}
 }
@@ -1957,6 +1973,7 @@ func (a *nodeArena) recomputeAllocatedBytes() {
 		a.finalChildSidecarBytesAllocated() +
 		missingNodeDependencyEntryBytesForCap(cap(a.missingNodeDependencies)) +
 		a.compactReuseDependencyBytesAllocated() +
+		a.legacyReuseDependencyBytesAllocated() +
 		a.compactCheckpointLeafBytesAllocated() +
 		a.childSliceBytesAllocated() +
 		a.fieldIDBytesAllocated() +
@@ -2308,6 +2325,7 @@ func (a *nodeArena) collectArenaBreakdown() *ArenaBreakdown {
 		fieldSourceElements = 0
 	}
 	breakdown := &ArenaBreakdown{
+		LegacyReuseDependencyBytesAllocated:  a.legacyReuseDependencyBytesAllocated(),
 		CompactReuseDependencyBytesAllocated: a.compactReuseDependencyBytesAllocated(),
 
 		NodeStructBytesAllocated:            a.nodeStructBytesAllocated(),

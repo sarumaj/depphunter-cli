@@ -3,6 +3,7 @@
 package gotreesitter
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"strings"
@@ -41,10 +42,8 @@ type parserCoreFreshFullRunner struct {
 	frontierVerificationToken   *dropCohortActivationToken
 	certificateAdmissionToken   *dropCohortActivationToken
 	scannerScratch              []byte
-	// scratch retains the reusable per-parse materialization buffers. The runner
-	// is per-Parser and single-goroutine, so reusing these buffers across parses
-	// mirrors production's parser-held arena reuse and keeps the warm steady
-	// state from re-allocating the public-tree scratch on every parse.
+	// scratch retains materialization buffers across exclusive runtime leases.
+	// Published trees own their storage independently of these buffers.
 	scratch   parserCoreRunnerScratch
 	scheduler diagnosticParserCoreGenericScheduler
 	// eagerPreviousReduceScratch restores the parser's reduce scratch after
@@ -381,6 +380,37 @@ func (r *parserCoreFreshFullRunner) materializeSelection(source []byte, compact 
 		}
 	}
 	r.scratch.materializationBudgetScheduler = scheduler
+	if !allowErrorRoot && rootFinalization == diagnosticParserCoreFinalizeDefault &&
+		r.options.compactIncrementalReuse == nil {
+		if tree, ok := r.scratch.acceptanceMaterialization.Take(compact,
+			scheduler.acceptedHead, scheduler.acceptedPayloads,
+			compactAcceptanceMaterializationContext(r.replayParseStates)); ok {
+			if tree.language == r.parser.language && bytes.Equal(tree.source, source) &&
+				(compactAcceptanceMaterializationContext(r.replayParseStates) == 0 || compact.TableIdentityMatches()) {
+				r.scratch.materializationBudgetScheduler = nil
+				// Acceptance comparisons can outlast the reference's final poll.
+				// Check the deadline without traversal throttling, then charge
+				// the transferred arena and retained scratch as publication does.
+				if reason := r.parser.activeParseStopReason(); resultMaterializationShouldStop(reason) {
+					tree.Release()
+					return nil, &diagnosticParserCoreDecline{boundary: DiagnosticParserCoreCap,
+						detail: "accepted-tree materialization stopped: " + string(reason)}
+				}
+				m := compactMaterializer{
+					parser: r.parser, arena: tree.arena, budgetScheduler: scheduler,
+					materializationScratch: &r.scratch.materialization,
+					acceptedLeaves:         &r.scratch.acceptedLeaves,
+				}
+				if err := m.poll(); err != nil {
+					tree.Release()
+					return nil, err
+				}
+				return tree, nil
+			}
+			tree.Release()
+		}
+	}
+	r.scratch.acceptanceMaterialization.Discard()
 	tree, err := materializeDiagnosticParserCoreAcceptedSelectionWithRootFinalization(
 		compact,
 		scheduler.acceptedHead,
@@ -526,6 +556,22 @@ func (r *parserCoreFreshFullRunner) parseWithObserverAndErrorRuns(
 	}()
 	r.beginEagerMaterialization(source)
 	defer r.endEagerMaterialization()
+	r.scratch.acceptanceMaterialization.Discard()
+	r.options.acceptanceMaterializationScratch = nil
+	if !r.s3AllowErrorRoot() && r.options.compactIncrementalReuse == nil &&
+		r.scratch.incrementalReuse == nil && r.options.eagerMaterializer == nil {
+		r.options.acceptanceMaterializationScratch = &r.scratch
+	} else {
+		// This attempt cannot use the comparison lease. Drop its retained
+		// storage before scheduler memory accounting starts without the hook.
+		r.scratch.acceptanceComparison = nil
+		r.scratch.derivations = core.DerivationScratch{}
+	}
+	defer func() {
+		r.options.acceptanceMaterializationScratch = nil
+		r.scheduler.options.acceptanceMaterializationScratch = nil
+		r.scratch.acceptanceMaterialization.Discard()
+	}()
 	scheduler, tokenSource, err := r.executeSchedulerOpenWithObserverAndErrorRuns(
 		source, r.compact, true, observer, forceErrorRuns,
 	)
@@ -551,6 +597,7 @@ func (r *parserCoreFreshFullRunner) parseWithObserverAndErrorRuns(
 		if r.options.captureCertificationPeaks {
 			treeRT.CompactPeakHeaders = scheduler.work.PeakHeaders
 			treeRT.CompactPeakDerivations = scheduler.peakLiveDerivations
+			treeRT.CompactMultiHeaderTokens = uint32(min(scheduler.multiHeaderTokens, uint64(^uint32(0))))
 		}
 	}
 	return tree, nil

@@ -51,13 +51,9 @@ func newResultRootBuild(p *Parser, source []byte, arena *nodeArena, oldTree *Tre
 			build.hasExpectedRoot = true
 		}
 	}
-	// A published recover_eof tree deliberately exposes its C ERROR root
-	// rather than the grammar result root, from either pipeline
-	// (recoverEOFRootPublished covers both the compact and the classic GLR
-	// producer). Do not use that transient symbol to frame a fresh
-	// incremental result, or the normal grammar root becomes nested under a
-	// stale recovery wrapper after the EOF edit is repaired.
-	if oldTree != nil && oldTree.RootNode() != nil && !recoverEOFRootPublished(oldTree) {
+	// An old ERROR root must not become the expected symbol for a new parse.
+	// The repair can produce the grammar root without any recovery wrapper.
+	if oldTree != nil && oldTree.RootNode() != nil && !oldTree.RootNode().IsError() && !recoverEOFRootPublished(oldTree) {
 		build.expectedRootSymbol = oldTree.RootNode().symbol
 		build.hasExpectedRoot = true
 	}
@@ -1210,9 +1206,12 @@ func (b *resultRootBuild) finishTree(root *Node, wireParentLinks, extendTrailing
 	errorSummary, compatibilityApplied := b.finalizeRoot(root, wireParentLinks, extendTrailing)
 	borrowed := b.borrowedArenas()
 	if b.parser != nil {
-		borrowed = append(borrowed, b.parser.takeCompatibilityBorrowedArenas()...)
+		if extra := b.parser.takeCompatibilityBorrowedArenas(); len(extra) != 0 {
+			borrowed = uniqueArenas(append(borrowed, extra...), b.arena)
+		}
 	}
-	tree := newTreeWithArenas(root, b.source, b.lang, b.arena, borrowed)
+	// retainBorrowed already returns an independently owned, unique slice.
+	tree := newTreeWithUniqueArenas(root, b.source, b.lang, b.arena, borrowed)
 	tree.resultErrorSummary = errorSummary
 	tree.resultCompatibilityApplied = compatibilityApplied
 	if b.parser.shouldDeferResultCompatibility(root) {
@@ -1297,9 +1296,12 @@ func (b *resultRootBuild) finishNativeAcceptedTree(root *Node, wireParentLinks b
 	}
 	borrowed := b.borrowedArenas()
 	if b.parser != nil {
-		borrowed = append(borrowed, b.parser.takeCompatibilityBorrowedArenas()...)
+		if extra := b.parser.takeCompatibilityBorrowedArenas(); len(extra) != 0 {
+			borrowed = uniqueArenas(append(borrowed, extra...), b.arena)
+		}
 	}
-	tree := newTreeWithArenas(root, b.source, b.lang, b.arena, borrowed)
+	// retainBorrowed already returns an independently owned, unique slice.
+	tree := newTreeWithUniqueArenas(root, b.source, b.lang, b.arena, borrowed)
 	tree.resultErrorSummary = errorSummary
 	// The root is already the locked-C result. Mark compatibility complete so
 	// later public accessors do not normalize it into a grammar-root tree.

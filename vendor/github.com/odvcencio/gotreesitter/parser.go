@@ -6,6 +6,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/odvcencio/gotreesitter/internal/incr"
+	sharedrecover "github.com/odvcencio/gotreesitter/internal/recover"
+	"github.com/odvcencio/gotreesitter/internal/recoveryturn"
+	"github.com/odvcencio/gotreesitter/internal/sched"
 )
 
 // Parser reads parse tables from a Language and produces a syntax tree.
@@ -57,10 +62,9 @@ type Parser struct {
 	// dual-route admission switch (see admission_switch.go). The zero value
 	// follows the process-wide default.
 	admissionCandidateRoute admissionRouteMode
-	// admissionCandidateRunner caches the compact candidate route's reusable
-	// state across full parses on this Parser. It is typed as any because the
-	// concrete runner type only exists under the gts_parsercorephase0 build
-	// tag; the default build never reads or writes it.
+	// admissionCandidateRunner owns the compact runtime during a request.
+	// Diagnostics may pin it between requests. The concrete type is absent
+	// from gts_no_parsercorephase0 builds, so this slot is typed as any.
 	admissionCandidateRunner any
 	// admissionRouteSuppressed, when greater than zero, forces the production
 	// route regardless of the switch. It is raised while a reuse-consuming call
@@ -272,6 +276,9 @@ type Parser struct {
 	// includes external-scanner and keyword handling the internal relex lacks.
 	// Refreshed by updateParserStateTokenSource before each token acquisition.
 	cRecoverSharedTokenErrorModeLexed bool
+	// retainExternalFallbackMissingFlags keeps hidden missing-token evidence
+	// after the source recovers input through an external ERROR-mode fallback.
+	retainExternalFallbackMissingFlags bool
 	// cRecoverCustomResyncActive/-Byte track a custom (non-DFA) token source
 	// that has been bypassed by cRecoverInternalErrorModeToken while every
 	// live stack absorbed in the C error state: once a normally-parsing stack
@@ -1670,21 +1677,25 @@ func NewParser(lang *Language) *Parser {
 		derived := lang.acquireParserDerivedTables()
 		p.smallTokenLookup = derived.smallTokenLookup
 		p.smallLookup = derived.smallLookup
-		p.externalValidByState = p.buildExternalValidByState()
-		p.externalValidMaskByState = buildExternalValidMaskByState(p.externalValidByState, len(lang.ExternalSymbols))
-		p.hasExtraChainActions = languageHasExtraChainActions(lang)
+		if len(lang.ExternalLexStates) == 0 {
+			p.externalValidByState = derived.externalValidByState
+			p.externalValidMaskByState = derived.externalValidMaskByState
+		}
+		p.hasExtraChainActions = derived.hasExtraChainActions
 		p.classifiedActions = derived.classifiedActions
 		p.eagerDefaultReduces = derived.eagerDefaultReduces
-		p.reduceChainHints = buildReduceChainHints(lang)
-		p.reduceChainHintByState = buildReduceChainHintIndex(p.reduceChainHints)
-		p.reduceAliasSeq = buildReduceAliasSequences(lang)
-		p.aliasTargetSymbol = buildAliasTargetSymbols(lang)
+		p.reduceChainHints = derived.reduceChainHints
+		p.reduceChainHintByState = derived.reduceChainHintByState
+		p.reduceAliasSeq = derived.reduceAliasSeq
+		p.aliasTargetSymbol = derived.aliasTargetSymbol
 		p.keepSameNamedAnonChildSymbol = derived.keepSameNamedAnonChildSymbol
 		p.sharedAnonymousTokenSymbol = derived.sharedAnonymousTokenSymbol
-		p.reduceHasFields = buildReduceFieldPresence(lang)
-		p.reduceFieldPlans = buildReduceFieldPlans(lang)
-		p.recoverByState, p.hasRecoverState, p.hasRecoverSymbol = buildRecoverActionsByState(lang)
-		p.hasKeywordState = buildKeywordStates(lang)
+		p.reduceHasFields = derived.reduceHasFields
+		p.reduceFieldPlans = derived.reduceFieldPlans
+		p.recoverByState = derived.recoverByState
+		p.hasRecoverState = derived.hasRecoverState
+		p.hasRecoverSymbol = derived.hasRecoverSymbol
+		p.hasKeywordState = derived.hasKeywordState
 		p.spanExtendingInvisibleSymbols, p.nonSpanExtendingInvisibleSymbols = buildInvisibleSpanSymbolTables(lang.SymbolNames)
 		p.aliasPreservedWrapperSymbols = buildAliasPreservedWrapperSymbols(lang)
 		p.collapsedChildOccurrencePairs, p.collapsedChildOccurrenceSet = compileCollapsedChildOccurrencePolicy(lang)
@@ -1693,7 +1704,7 @@ func NewParser(lang *Language) *Parser {
 		p.initSchemeErrorRecoverySymbols(lang)
 		p.errorCostCompetition = errorCostCompetitionLanguage(lang)
 		p.rootSymbol, p.hasRootSymbol = p.inferRootSymbol()
-		p.maxConflictWidth = computeMaxConflictWidth(lang)
+		p.maxConflictWidth = derived.maxConflictWidth
 	}
 	return p
 }
@@ -1794,6 +1805,7 @@ func resetSnippetParser(parser *Parser) {
 		clear(parser.cCondenseVersionKeyRanks)
 	}
 	if cold := parser.forestDeclineMemo; cold != nil {
+		clear(cold.cPausedLookaheads)
 		cold.cNodeMemoRetainedCache = nil
 		cold.cNodeMemoCollisions = 0
 	}
@@ -2118,7 +2130,21 @@ func (p *Parser) tryRelexCurrentStateDFA(tok Token, parserState StateID, ts Toke
 	dts.lexer.pos = int(tok.StartByte)
 	dts.lexer.row = tok.StartPoint.Row
 	dts.lexer.col = tok.StartPoint.Column
+
 	tok2, endPos, endRow, endCol := dts.scanPreferredTokenForState(parserState)
+	if int(tok2.Symbol) < len(p.language.ImmediateTokens) && p.language.ImmediateTokens[tok2.Symbol] && tok.lexerSkippedPrefix() && tok.lexerSkippedPrefixStart < tok.StartByte {
+		if len(dts.lexer.includedRanges) != 0 || !dts.canRelexFromSkippedPrefix(tok) {
+			dts.lexer.pos, dts.lexer.row, dts.lexer.col = savedPos, savedRow, savedCol
+			return Token{}, false
+		}
+		row, col, valid := sharedrecover.RelexPrefixPoint(dts.lexer.source, tok.lexerSkippedPrefixStart, tok.StartByte, tok.StartPoint.Row, tok.StartPoint.Column)
+		if !valid {
+			dts.lexer.pos, dts.lexer.row, dts.lexer.col = savedPos, savedRow, savedCol
+			return Token{}, false
+		}
+		dts.lexer.pos, dts.lexer.row, dts.lexer.col = int(tok.lexerSkippedPrefixStart), row, col
+		tok2, endPos, endRow, endCol = dts.scanPreferredTokenForState(parserState)
+	}
 	if tok2.Symbol == 0 {
 		dts.lexer.pos, dts.lexer.row, dts.lexer.col = savedPos, savedRow, savedCol
 		return Token{}, false
@@ -2486,6 +2512,9 @@ func (p *Parser) rejectUndrainedPendingForkStacks(s *glrStack) bool {
 		return false
 	}
 	workCountRecordPendingTransition(p, &p.pendingForkStacks[0], len(p.pendingForkStacks), 0, workCountConvergenceOutcomePendingDiscarded, "undrained post-reduce candidates rejected")
+	if p.mergeScratch != nil {
+		p.mergeScratch.policyPruned = true
+	}
 	if workCountInstrumentationEnabled {
 		workCountTopologyRetireVersionsIfActive(p.pendingForkStacks)
 	}
@@ -3124,8 +3153,8 @@ func (p *Parser) appendTrailingEOFRecoveryNodes(nodes []*Node, entries []stackEn
 	return nodes, recovered
 }
 
-func (p *Parser) parseIncrementalInternal(source []byte, oldTree *Tree, ts TokenSource, timing *incrementalParseTiming) *Tree {
-	return p.parseIncrementalInternalWithMergePerKeyOverride(source, oldTree, ts, timing, 0)
+func (p *Parser) parseIncrementalInternal(source []byte, oldTree *Tree, ts TokenSource, timing *incrementalParseTiming) (*Tree, error) {
+	return p.parseIncrementalInternalWithMergePerKeyOverride(source, oldTree, ts, timing, 0, false)
 }
 
 // incrementalTokenSourceFreshFullParse performs a full fresh parse over the
@@ -3139,17 +3168,29 @@ func (p *Parser) incrementalTokenSourceFreshFullParse(source []byte, ts TokenSou
 	initialMaxStacks := fullParseInitialMaxStacks(p.language, p.maxConflictWidth, source)
 	workCountSetNextParseAttempt("initial_full", "incremental_token_source_fallback_full_parse")
 	tree := p.parseInternal(source, ts, nil, nil, arenaClassFull, timing, initialMaxStacks, 0, 0, deterministicExternalConflicts)
-	tree = p.retryFullParseWithTokenSourceForOrigin(source, ts, initialMaxStacks, deterministicExternalConflicts, tree, fullParseRetryOriginIncremental)
+	// This path has abandoned incremental state, so its retry choice must match Parse.
+	// Incremental-origin retries can keep a tied first pass, while fresh Parse adopts the retry tree; on error-heavy input that changes the returned ERROR shape.
+	tree = p.retryFullParseWithTokenSource(source, ts, initialMaxStacks, deterministicExternalConflicts, tree)
 	if shouldRepeatExternalScannerFullParse(p.language, tree) {
-		tree = p.retryFullParseWithTokenSourceForOrigin(source, ts, initialMaxStacks, deterministicExternalConflicts, tree, fullParseRetryOriginIncremental)
+		tree = p.retryFullParseWithTokenSource(source, ts, initialMaxStacks, deterministicExternalConflicts, tree)
+	}
+	if tree != nil {
+		tree.setIncrementalFreshVerified(true)
 	}
 	return tree
 }
 
-func (p *Parser) parseIncrementalInternalWithMergePerKeyOverride(source []byte, oldTree *Tree, ts TokenSource, timing *incrementalParseTiming, maxMergePerKeyOverride int) *Tree {
+func (p *Parser) parseIncrementalInternalWithMergePerKeyOverride(source []byte, oldTree *Tree, ts TokenSource, timing *incrementalParseTiming, maxMergePerKeyOverride int, retryAcceptedError bool) (*Tree, error) {
 	// Fast path: unchanged source and no recorded edits.
 	if canReuseUnchangedTree(source, oldTree, p.language, p.included) {
-		return oldTree.retainUnchangedIncrementalResult()
+		return oldTree.retainUnchangedIncrementalResult(), nil
+	}
+	if incr.RequiresFreshWorkLimits(p.parseWorkLimits.NodeLimit, p.parseWorkLimits.IterationLimit, p.parseWorkLimits.StackDepthLimit) {
+		if timing != nil {
+			timing.reuseUnsupported = true
+			timing.reuseUnsupportedReason = "configured_work_limits"
+		}
+		return p.incrementalTokenSourceFreshFullParse(source, ts, timing), nil
 	}
 	// Parser states, symbols, and scanner checkpoints belong to one Language
 	// instance. Never interpret an edited tree through another instance, even
@@ -3159,7 +3200,7 @@ func (p *Parser) parseIncrementalInternalWithMergePerKeyOverride(source []byte, 
 			timing.reuseUnsupported = true
 			timing.reuseUnsupportedReason = "old_tree_language_mismatch"
 		}
-		return p.incrementalTokenSourceFreshFullParse(source, ts, timing)
+		return p.incrementalTokenSourceFreshFullParse(source, ts, timing), nil
 	}
 	// An old tree with no recorded edit is only a valid reuse basis for a new
 	// source of the SAME length. Tree.Edit is what tells the reuse cursor how
@@ -3189,14 +3230,14 @@ func (p *Parser) parseIncrementalInternalWithMergePerKeyOverride(source []byte, 
 			timing.reuseUnsupported = true
 			timing.reuseUnsupportedReason = incrementalMissingEditForLengthChangeReason
 		}
-		return p.incrementalTokenSourceFreshFullParse(source, ts, timing)
+		return p.incrementalTokenSourceFreshFullParse(source, ts, timing), nil
 	}
 	if reason := languageDisablesIncrementalReuse(p.language); reason != "" {
 		if timing != nil {
 			timing.reuseUnsupported = true
 			timing.reuseUnsupportedReason = reason
 		}
-		return p.incrementalTokenSourceFreshFullParse(source, ts, timing)
+		return p.incrementalTokenSourceFreshFullParse(source, ts, timing), nil
 	}
 	// Old nodes cover the old included ranges. When the ranges change, old
 	// nodes can span excluded bytes or miss included bytes.
@@ -3205,10 +3246,10 @@ func (p *Parser) parseIncrementalInternalWithMergePerKeyOverride(source []byte, 
 			timing.reuseUnsupported = true
 			timing.reuseUnsupportedReason = incrementalIncludedRangesChangedReason
 		}
-		return p.incrementalTokenSourceFreshFullParse(source, ts, timing)
+		return p.incrementalTokenSourceFreshFullParse(source, ts, timing), nil
 	}
 	if tree, ok := p.tryTokenInvariantLeafEdit(source, oldTree, ts, timing); ok {
-		return tree
+		return tree, nil
 	}
 
 	// One reuse bar for EVERY incremental entry (Phase-3 Lane 3 review). The DFA
@@ -3231,7 +3272,7 @@ func (p *Parser) parseIncrementalInternalWithMergePerKeyOverride(source []byte, 
 				}
 			}
 		}
-		return p.incrementalTokenSourceFreshFullParse(source, ts, timing)
+		return p.incrementalTokenSourceFreshFullParse(source, ts, timing), nil
 	}
 	if tokenSourceUsesLanguageExternalScanner(ts) && oldTree != nil && oldTree.RootNode() != nil && oldTree.RootNode().HasError() &&
 		!languageSupportsIncrementalReuseFromErrorTree(p.language) {
@@ -3239,7 +3280,16 @@ func (p *Parser) parseIncrementalInternalWithMergePerKeyOverride(source []byte, 
 			timing.reuseUnsupported = true
 			timing.reuseUnsupportedReason = "external_scanner_error_tree_unsupported"
 		}
-		return p.incrementalTokenSourceFreshFullParse(source, ts, timing)
+		return p.incrementalTokenSourceFreshFullParse(source, ts, timing), nil
+	}
+	if oldTree != nil && oldTree.RootNode() != nil && oldTree.RootNode().HasError() &&
+		!tokenSourceSupportsIncrementalReuseFromErrorTree(ts) {
+		// Recovery choices are not stable under ordinary subtree reuse: an edited error region can retain old GLR alternatives and select a different tree even when lexing restarts from the same parser state. Token sources that support ordinary reuse have not thereby proved that reuse from an errored tree is safe. Require a separate opt-in; otherwise parse from the source again so the result follows the fresh-parse recovery path.
+		if timing != nil {
+			timing.reuseUnsupported = true
+			timing.reuseUnsupportedReason = "token_source_error_tree_unsupported"
+		}
+		return p.incrementalTokenSourceFreshFullParse(source, ts, timing), nil
 	}
 	// Subtree reuse is safe for DFA token sources without external scanners
 	// and for custom token sources that explicitly opt in.
@@ -3252,7 +3302,35 @@ func (p *Parser) parseIncrementalInternalWithMergePerKeyOverride(source []byte, 
 		// like ordinary full parses, including retry widening. This keeps
 		// conservative fallback paths for external-scanner languages on the same
 		// correctness footing as Parse.
-		return p.incrementalTokenSourceFreshFullParse(source, ts, timing)
+		return p.incrementalTokenSourceFreshFullParse(source, ts, timing), nil
+	}
+	// A whole-document ERROR root has no grammar-root frontier to reuse.
+	// Parse the next document once, without building a second tree to verify it.
+	if oldTree != nil && oldTree.RootNode() != nil && oldTree.RootNode().IsError() {
+		if timing != nil {
+			timing.reuseUnsupported = true
+			timing.reuseUnsupportedReason = "old_error_root_unproven"
+		}
+		return p.incrementalTokenSourceFreshFullParse(source, ts, timing), nil
+	}
+	// An uncertified scanner always needs the fresh-result verifier below.
+	// At this size that verifier discards the entire incremental attempt.
+	// Select the same fresh result before allocating the discarded frontier.
+	if oldTree != nil && incr.RequiresFreshResult(len(source)) {
+		if dts := underlyingDFATokenSource(ts); dts != nil && !legacyReuseReadsEligible(dts, source) {
+			return p.verifyIncrementalFreshResult(source, oldTree, ts, nil, timing)
+		}
+	}
+	// Stable token boundaries do not certify the parser's recovery choices.
+	// A custom stream without a rebuilder cannot verify a new error frontier
+	// after reuse consumes it. Parse the supplied fresh stream before reuse.
+	if underlyingDFATokenSource(ts) == nil && p.reparseFactory == nil {
+		if timing != nil {
+			timing.reuseUnsupported = true
+			timing.reuseUnsupportedReason = "token_source_fresh_proof_unavailable"
+		}
+		return p.incrementalTokenSourceFreshFullParse(source, ts, timing), nil
+
 	}
 	if oldTree != nil {
 		oldTree.ensureParentLinks()
@@ -3268,6 +3346,7 @@ func (p *Parser) parseIncrementalInternalWithMergePerKeyOverride(source []byte, 
 
 	var reuse *reuseCursor
 	p.reuseCursor.disableLeadingSplice = p.disableLeadingRunSplice
+	p.reuseCursor.cEquivalentReuse = legacyReuseReadsEligible(underlyingDFATokenSource(ts), source)
 	if timing != nil {
 		reuseStart := time.Now()
 		reuse = p.reuseCursor.reset(oldTree, source, &p.reuseScratch)
@@ -3275,21 +3354,52 @@ func (p *Parser) parseIncrementalInternalWithMergePerKeyOverride(source []byte, 
 	} else {
 		reuse = p.reuseCursor.reset(oldTree, source, &p.reuseScratch)
 	}
+	// The compact projection can publish trailing-padding spans differently
+	// from a reused native tree. Read certificates do not prove that geometry.
+	if oldTree != nil && (oldTree.compactMaterialized || p.admissionCandidateRouteEnabled()) {
+		for _, edit := range oldTree.edits {
+			if int(edit.OldEndByte) == len(oldTree.source) && int(edit.NewEndByte) == len(source) {
+				reuse.unprovenReuse = true
+			}
+		}
+	}
 	arenaClass := incrementalArenaClassForSource(source)
+	if reuse != nil && reuse.cEquivalentReuse {
+		if _, complete := legacyReuseLookahead(oldTree.root); complete {
+			// Certified reuse rebuilds the dirty frontier even on a large
+			// input. Do not reserve a source-sized full-parse arena for it.
+			arenaClass = arenaClassIncremental
+		}
+	}
 	incrementalMaxStacks := 0
-	if p.language != nil && p.language.Name == "python" {
-		// Match Python's fresh first pass. A wider reuse pass can select a
+	if (reuse != nil && reuse.cEquivalentReuse && reuse.oldRecoveryCertified && !reuse.unprovenReuse && incr.RequiresFreshResult(len(source))) || (p.language != nil && p.language.Name == "python") {
+		// Match the fresh first pass. A wider reuse pass can select a
 		// different branch when the fresh parse widens only after an error.
 		incrementalMaxStacks = fullParseInitialMaxStacks(p.language, p.maxConflictWidth, source)
 	}
-	tree := p.parseInternal(source, ts, reuse, oldTree, arenaClass, timing, incrementalMaxStacks, 0, maxMergePerKeyOverride, false)
+	spanChangingEdit := false
+	if oldTree != nil {
+		for _, edit := range oldTree.edits {
+			if edit.OldEndByte != edit.NewEndByte || edit.OldEndPoint != edit.NewEndPoint {
+				spanChangingEdit = true
+				break
+			}
+		}
+	}
+	customStream := underlyingDFATokenSource(ts) == nil && p.reparseFactory != nil
+	if customStream && spanChangingEdit {
+		freshCap := p.resolveParseMergePerKeyCap(source, nil, maxMergePerKeyOverride)
+		maxMergePerKeyOverride = incr.FreshVerifiedMergeOverride(maxMergePerKeyOverride, freshCap, customStream, spanChangingEdit)
+	}
+	deterministicExternalConflicts := reuse != nil && reuse.cEquivalentReuse && incr.RequiresFreshResult(len(source)) && fullParseUsesDeterministicExternalConflicts(p.language)
+	tree := p.parseInternal(source, ts, reuse, oldTree, arenaClass, timing, incrementalMaxStacks, 0, maxMergePerKeyOverride, deterministicExternalConflicts)
 	if tree != nil && reuse != nil {
 		tree.ensureParseRuntime().IncrementalOldTreeReuseRoute = true
 		if timing != nil {
 			timing.oldTreeReuseRoute = true
 		}
 	}
-	if reuse != nil {
+	if reuse != nil && oldTree != nil {
 		if timing != nil {
 			timing.reuseRejectDirty += reuse.rejectDirty
 			timing.reuseRejectAncestorDirtyBeforeEdit += reuse.rejectAncestorDirtyBeforeEdit
@@ -3304,6 +3414,43 @@ func (p *Parser) parseIncrementalInternalWithMergePerKeyOverride(source []byte, 
 			timing.reuseRejectScannerUnquiescent += reuse.rejectScannerUnquiescent
 			timing.reuseRejectFrontierProofUnavailable += uint64(reuse.rejectFrontierProofUnavailable)
 		}
+		// Only the DFA API entries schedule the accepted-error merge retry.
+		// Token-source entries must verify this attempt now: deferring to a
+		// retry they never run would publish an unproven recovery frontier.
+		pendingAcceptedErrorRetry := retryAcceptedError && incrementalAcceptedErrorBaseMergeCap(p, tree, source) != 0
+		spanChangingEdit = spanChangingEdit && !pendingAcceptedErrorRetry
+		oldErrorFrontier := oldTree.RootNode() != nil && oldTree.RootNode().HasError()
+		// An incremental recovery can put ERROR above or below a complete
+		// grammar root. Check either shape when the old tree was clean.
+		newWholeDocumentError := incrementalWholeDocumentError(tree, p)
+		// Error-bearing reuse is not yet certified by a cumulative C error-cost
+		// attribute. A new partial recovery can also change reductions inside
+		// an otherwise complete grammar root; keep the fresh proof there.
+		// Let the established base-merge retry settle an accepted-error
+		// attempt before comparing its result with a fresh parse.
+		newErrorFrontier := tree != nil && tree.RootNode() != nil && tree.RootNode().HasError() &&
+			!pendingAcceptedErrorRetry
+		stateMismatch := tree != nil &&
+			((reuse.observedPreGotoStateMismatch > 0 &&
+				(!reuse.cEquivalentReuse || reuse.unprovenStateMismatch ||
+					!tree.tokenInvariantReadSpanResultEligible() || tree.resultErrorSummary != resultErrorSummaryClean)) ||
+				reuse.unprovenReuse) &&
+			!pendingAcceptedErrorRetry
+		uncertifiedScanner := underlyingDFATokenSource(ts) != nil && !legacyReuseReadsEligible(underlyingDFATokenSource(ts), source)
+		budgetRetry := tree != nil && (tree.rawParseStopReason() == ParseStopReuseBudget || tree.rawParseStopReason() == ParseStopMemoryBudget)
+		if tree != nil && tree.arena != nil {
+			tree.arena.legacyIncrementalReuseCertified = reuse.certifiesIncrementalResult(tree, p, source, maxMergePerKeyOverride)
+		}
+		if tree != nil && tree != oldTree && !budgetRetry &&
+			(underlyingDFATokenSource(ts) != nil || p.reparseFactory != nil) &&
+			!tree.hasCertifiedIncrementalReuse() &&
+			(oldErrorFrontier || newWholeDocumentError || newErrorFrontier || stateMismatch || spanChangingEdit || uncertifiedScanner) {
+			var err error
+			tree, err = p.verifyIncrementalFreshResult(source, oldTree, ts, tree, timing)
+			if err != nil {
+				return nil, err
+			}
+		}
 		if timing != nil {
 			reuseStart := time.Now()
 			reuse.commitScratch(&p.reuseScratch)
@@ -3312,7 +3459,7 @@ func (p *Parser) parseIncrementalInternalWithMergePerKeyOverride(source []byte, 
 			reuse.commitScratch(&p.reuseScratch)
 		}
 	}
-	return tree
+	return tree, nil
 }
 
 // Dart's external scanner is stateless enough for subtree reuse, but keep a
@@ -3330,6 +3477,31 @@ func tokenSourceSupportsIncrementalReuse(ts TokenSource) bool {
 		return reusable.SupportsIncrementalReuse()
 	}
 	return false
+}
+
+// incrementalResumeBoundaryTokenSource is implemented by stateful custom token
+// sources whose SkipToByte cannot rebuild every lexer state. Incremental reuse
+// asks it before resuming the source at a reused node's boundary and declines
+// the reuse when the answer is false, so the parser keeps the freshly lexed
+// token instead.
+type incrementalResumeBoundaryTokenSource interface {
+	IncrementalResumeSafeAt(offset uint32) bool
+}
+
+// tokenSourceCanResumeAt reports whether incremental reuse may resume ts at
+// offset. Token sources without the boundary hook can always resume.
+func tokenSourceCanResumeAt(ts TokenSource, offset uint32) bool {
+	for ts != nil {
+		switch src := ts.(type) {
+		case *includedRangeTokenSource:
+			ts = src.base
+			continue
+		case incrementalResumeBoundaryTokenSource:
+			return src.IncrementalResumeSafeAt(offset)
+		}
+		return true
+	}
+	return true
 }
 
 func dfaTokenSourceSupportsIncrementalReuse(dts *dfaTokenSource) bool {
@@ -3369,6 +3541,22 @@ func tokenSourceUsesLanguageExternalScanner(ts TokenSource) bool {
 	default:
 		return false
 	}
+}
+
+func tokenSourceSupportsIncrementalReuseFromErrorTree(ts TokenSource) bool {
+	for ts != nil {
+		switch source := ts.(type) {
+		case *dfaTokenSource:
+			return true
+		case *includedRangeTokenSource:
+			ts = source.base
+		case errorTreeIncrementalReuseTokenSource:
+			return source.SupportsIncrementalReuseFromErrorTree()
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 func languageSupportsIncrementalReuseFromErrorTree(lang *Language) bool {
@@ -3703,6 +3891,9 @@ func captureParseScratchStats(parseRuntime *ParseRuntime, scratch *parserScratch
 	if parseRuntime == nil || scratch == nil {
 		return false
 	}
+	if arena != nil {
+		arena.legacyNoPolicyPruning = !scratch.merge.policyPruned
+	}
 	parseRuntime.ScratchBytesAllocated = scratch.allocatedBytes()
 	parseRuntime.TransientScratchBytesAllocated = scratch.transientParents.allocatedBytes + scratch.transientChildren.allocatedBytes
 	parseRuntime.ScratchBaselineBytes = scratch.budgetBaselineBytes
@@ -3957,11 +4148,7 @@ func recordParseRuntimeRootStats(parseRuntime *ParseRuntime, tree *Tree, source 
 	if tailSource == nil && tree != nil {
 		tailSource = tree.Source()
 	}
-	tailStart := parseRuntime.RootEndByte
-	if parseRuntime.LastTokenWasEOF && parseRuntime.LastTokenEndByte > tailStart && parseRuntime.LastTokenEndByte <= expectedEOFByte {
-		tailStart = parseRuntime.LastTokenEndByte
-	}
-	if parseRuntime.Truncated && parserTailAllowsCleanAcceptance(tailSource, tailStart, expectedEOFByte, included, languageLineContinuationEscapeByte(lang)) {
+	if parseRuntime.Truncated && parserTailAllowsCleanAcceptance(tailSource, parseRuntime.RootEndByte, expectedEOFByte, included, languageLineContinuationEscapeByte(lang)) {
 		parseRuntime.Truncated = false
 	}
 	if !collectFinalStats {
@@ -4257,16 +4444,10 @@ func (p *Parser) parserStackEndPoint(s *glrStack) Point {
 // (elm/synthetic-root-drop-retirement), so this leaf's error status now
 // reaches the root unconditionally, like any other.
 //
-// This is an ACCOUNTING fix, not a shape fix: the skipped bytes now have a
-// span and HasError=true, matching C tree-sitter's verdict that the
-// construct is erroneous. The leaf's own shape still diverges from C's for
-// the same stray in two ways that remain open follow-up work: the span
-// covers the whole lexer-skipped gap (which can include trivia C would not
-// attribute to the stray), and the leaf is childless where C typically wraps
-// the stray token as a child of its own ERROR/error_repeat node. Closing that
-// gap needs re-lexing the skipped bytes to find the stray token's true
-// bounds and giving the leaf that token as a child, which needs its own
-// verification pass and is out of scope here.
+// tryMaterializeSkippedRealGap first tries exact error-mode lexing for a
+// single anonymous terminal. This span-only fallback accounts for gaps that
+// cannot be recovered that way. Its extent can include trivia, and its
+// childless shape can still differ from C's recovered token wrapper.
 func (p *Parser) materializeSkippedGapAsExtraError(s *glrStack, state StateID, tok Token, nodeCount *int, arena *nodeArena, entryScratch *glrEntryScratch, gssScratch *gssScratch, trackChildErrors *bool) {
 	// See pushOrExtendErrorNode: error content makes costs relevant. p is
 	// never nil here: the only caller (tryMaterializeSkippedRealGap) reaches
@@ -4295,6 +4476,33 @@ func (p *Parser) materializeSkippedGapAsExtraError(s *glrStack, state StateID, t
 func (p *Parser) tryMaterializeSkippedRealGap(source []byte, s *glrStack, state StateID, tok Token, nodeCount *int, arena *nodeArena, entryScratch *glrEntryScratch, gssScratch *gssScratch, trackChildErrors *bool) bool {
 	if s == nil || tok.StartByte <= s.byteOffset || realTokenAttachmentGapIsParserPadding(source, s, tok, p.included, p.lineContinuationEscapeByte()) {
 		return false
+	}
+	// Recover a concrete skipped terminal before falling back to a span-only
+	// ERROR. C's error-mode lexer keeps this token under an extra ERROR;
+	// whitespace preceding it is padding, not part of the ERROR span.
+	if p != nil && p.language != nil && len(p.included) == 0 && len(p.language.LexModes) > 0 &&
+		(stackEntryNode(s.top()) == nil || stackEntryNodeSymbol(s.top()) != errorSymbol) {
+		lang := p.language
+		lexState := lang.LexModes[0].LexStateIndex()
+		if lexState != noLookaheadLexState && int(lexState) < len(lang.LexStates) {
+			point := p.parserStackEndPoint(s)
+			lexer := Lexer{states: lang.LexStates, asciiTable: lang.LexAsciiTable(), source: source,
+				pos: int(s.byteOffset), row: point.Row, col: point.Column,
+				immediateTokens: lang.ImmediateTokens, zeroWidthTokens: lang.ZeroWidthTokens,
+				errorRunLexState: uint32(lexState), hasErrorRunLexState: true}
+			candidate := lexer.NextWithErrorRuns(uint32(lexState))
+			eligible := candidate.Symbol != 0 && candidate.Symbol != errorSymbol &&
+				p.cSymbolVisible(candidate.Symbol) && !p.isNamedSymbol(candidate.Symbol) &&
+				!p.cRecoverStateShiftsExtra(1, candidate.Symbol)
+			prefixIsPadding := candidate.StartByte == s.byteOffset ||
+				(eligible && realTokenAttachmentGapIsParserPadding(source, s, candidate, p.included, p.lineContinuationEscapeByte()))
+			skipped, exact := sharedrecover.SingleTokenGap(s.byteOffset, tok.StartByte, candidate,
+				candidate.StartByte, candidate.EndByte, eligible, prefixIsPadding)
+			if exact {
+				p.pushOrExtendErrorNode(s, state, skipped, nodeCount, arena, entryScratch, gssScratch, trackChildErrors, true)
+				return s.byteOffset == tok.StartByte
+			}
+		}
 	}
 	// A stray run of bytes that the lexer skipped mid-production, immediately
 	// after an anonymous separator terminal with a concrete deterministic
@@ -4662,7 +4870,7 @@ func incrementalOldTreeMayCarryErrorCost(reuse *reuseCursor, oldTree *Tree) bool
 		// keeps the previously-conservative "assume relevant" answer.
 		return true
 	}
-	return oldTree.root.hasError()
+	return oldTree.root.HasError()
 }
 
 func compactPackedGSSActionCellRequiresTransaction(actions []ParseAction) bool {
@@ -4695,10 +4903,12 @@ func (p *Parser) stampCompactPackedGSSZeroChildReceipt(ref *rawShapeRef) {
 	}
 }
 
+// Proven C-equivalent reuse preserves the same scanner and token histories as
+// a fresh parse, so both routes must retain the same physical version order.
 func compactPackedGSSVersionOrderActiveForParse(language *Language, reuse *reuseCursor, oldTree *Tree, noTreeBenchmarkOnly bool) bool {
 	return language != nil &&
 		language.CompactPackedGSSVersionOrderCertified &&
-		reuse == nil && oldTree == nil &&
+		((reuse == nil && oldTree == nil) || (reuse != nil && oldTree != nil && reuse.cEquivalentReuse)) &&
 		!noTreeBenchmarkOnly
 }
 
@@ -4713,6 +4923,9 @@ func compactPackedGSSVersionOrderActiveForParse(language *Language, reuse *reuse
 // merged; distinct alternatives are preserved.
 func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor, oldTree *Tree, arenaClass arenaClass, timing *incrementalParseTiming, maxStacksOverride int, maxNodesOverride int, maxMergePerKeyOverride int, deterministicExternalConflicts bool) *Tree {
 	p.recordLegacyParserEntry()
+	outerRetainMissing := p.retainExternalFallbackMissingFlags
+	p.retainExternalFallbackMissingFlags = false
+	defer func() { p.retainExternalFallbackMissingFlags = outerRetainMissing }()
 	// A nested parse on this parser appends its own anchors after the outer
 	// parse's entries and truncates back on return, so outer refs stay valid.
 	missingStackAnchorBase := len(p.missingStackAnchors)
@@ -4791,6 +5004,9 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 		if p.cCondenseVersionKeyRanks != nil {
 			clear(p.cCondenseVersionKeyRanks)
 		}
+		if cold := p.forestDeclineMemo; cold != nil {
+			clear(cold.cPausedLookaheads)
+		}
 		if p.cNodeMemoOperationDepth == 0 {
 			p.finishCNodeMemoParse()
 		}
@@ -4838,6 +5054,12 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 		}
 		p.beginCNodeMemoEpoch()
 		p.crecoveryEnteredErrorState = false
+		if p.forestDeclineMemo != nil {
+			p.forestDeclineMemo.crecoveryEmptyExternal = false
+		}
+		if dts != nil {
+			dts.emptyExternalRecovery = false
+		}
 		p.crecoveryDroppedErrorForClean = false
 		p.crecoveryReductionCandidateCeilingHits = 0
 		p.crecoveryMissingTokenCeilingHits = 0
@@ -4871,8 +5093,19 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 	trackChildErrors := &scratch.trackChildErrors
 	scratch.merge.childErrors = trackChildErrors
 
-	arena := acquireNodeArena(arenaClass)
+	poolClass := arenaClass
+	if arenaClass == arenaClassIncremental && reuse != nil && incr.RetainFrontierArena(reuse.cEquivalentReuse,
+		parseIncrementalArenaNodeCapacity(len(source), p.incrementalArenaHintCapacity()), maxRetainedNodeCapacityForClass(arenaClassIncremental)) {
+		// Keep a certified dirty frontier in a pool that can retain its actual
+		// footprint. Parsing policy, usage hints and budget accounting remain
+		// incremental; both pool retention ceilings stay unchanged.
+		poolClass = arenaClassFull
+	}
+	arena := acquireNodeArena(poolClass)
 	arena.skipChildClear = reuse == nil && oldTree == nil
+	if reuse == nil && oldTree == nil {
+		arena.ownership.BeginFresh()
+	}
 	arena.finalChildRefs = p.finalChildRefs
 	arena.audit = nil
 	scratch.merge.arena = arena
@@ -4925,6 +5158,7 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 	type terminalFrontierAction struct {
 		index  int
 		action ParseAction
+		token  Token
 	}
 	var terminalFrontierScratch [maxGLRStacks]terminalFrontierAction
 	prevMaterializationTiming := p.materializationTiming
@@ -4939,17 +5173,22 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 		p.materializationTiming = prevMaterializationTiming
 		p.reduceTiming = prevReduceTiming
 	}()
-	defer p.recordParseArenaUsageOnReturn(arenaClass, arena, scratch)()
+	defer p.recordParseArenaUsageOnReturn(arenaClass, arena, scratch)
 	p.ensureParseInitialCapacity(source, arenaClass, arena, scratch)
 	memoryBudget := parseMemoryBudgetForParser(p, len(source))
 	arena.setBudget(memoryBudget)
+	if dts != nil && dts.lexer != nil {
+		previousReads := dts.lexer.reuseReads
+		arena.beginLegacyReuseReads(dts, source)
+		defer func() { dts.lexer.reuseReads = previousReads }()
+	}
 	arena.setExternalScannerCheckpointIdentityForLanguage(p.language)
 	scratch.setBudget(memoryBudget)
 	restoreRuntimeMemoryBudget := p.enterRuntimeMemoryBudget(memoryBudget, len(source))
 	if restoreRuntimeMemoryBudget.parser != nil {
 		defer restoreRuntimeMemoryBudget.restore()
 	}
-	var reuseState parseReuseState
+	reuseState := &scratch.reuseState
 	nodeCount := 0
 	// reuseBudgetReusedBytes tracks old-tree reuse independent of the timing
 	// (profiling) record: incrementalReuseHostile's reuse-budget stop must
@@ -5001,7 +5240,7 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 	var pendingTraceActionCount int
 	var pendingTraceAction ParseAction
 	drainPendingForkStacks := func() {
-		if !faithfulCapOneMergeEnabled(p.mergeScratch) || len(p.pendingForkStacks) == 0 {
+		if len(p.pendingForkStacks) == 0 || (!faithfulCapOneMergeEnabled(p.mergeScratch) && !(p.crecoveryEnteredErrorState && p.emptyExternalRecoveryEnabled())) {
 			return
 		}
 		pendingCount := len(p.pendingForkStacks)
@@ -5119,6 +5358,14 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 		stopDiagToken = t
 	}
 	recordCurrentLookahead := func(t Token) {
+		if t.ExternalScannerToken && t.StartByte == t.EndByte && t.EndByte == t.ExternalScannerStartByte && t.EndByte < uint32(len(source)) {
+			if scanner, ok := p.language.ExternalScanner.(StatelessExternalScanner); ok && scanner.ExternalScannerIsStateless() {
+				p.ensureParserColdState().crecoveryEmptyExternal = true
+				if dts != nil {
+					dts.emptyExternalRecovery = true
+				}
+			}
+		}
 		noteStopDiagnosticToken(t)
 		lastTokenEndByte = t.EndByte
 		lastTokenSymbol = t.Symbol
@@ -5305,8 +5552,8 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 		// ancestors whose error content resolved losslessly (see
 		// reconcileStaleHasErrorFlags). Repair before the runtime is stamped so
 		// the retry ladder and callers see C-derived truth. Gated to passes
-		// where the recovery machinery actually ran; the walk itself only
-		// happens when the root still claims an error.
+		// where the recovery machinery actually ran. Hidden missing tokens in
+		// retained productions remain evidence even after visible flattening.
 		//
 		// SAFETY: only for ACCEPTED, EOF-covering trees. On a truncated or
 		// stopped-early tree "no ERROR node inside" does not mean "no error"
@@ -5317,9 +5564,16 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 		// with zero ERROR/MISSING descendants is the only case where
 		// hasError=false is definitionally C-correct.
 		if tree != nil && p.crecoveryEnteredErrorState && stopReason == ParseStopAccepted {
-			if root := tree.root; root != nil && root.hasError() && root.endByte >= expectedEOFByte {
-				if reconcileStaleHasErrorFlags(root, 0) {
+			if root := tree.root; root != nil && root.endByte >= expectedEOFByte {
+				hasError := reconcileStaleHasErrorFlagsWithMissing(root, 0, p.retainExternalFallbackMissingFlags)
+				hiddenMissing := !hasError && retainedHiddenMissingFlags(root, p.language, arena)
+				hasError = hasError || hiddenMissing
+				if hasError {
+					root.setHasError(true)
 					tree.resultErrorSummary = resultErrorSummaryPresent
+					if hiddenMissing {
+						tree.resultErrorSummary = resultErrorSummaryHiddenMissing
+					}
 				} else {
 					tree.resultErrorSummary = resultErrorSummaryClean
 				}
@@ -5364,6 +5618,10 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 			tree.setParseRuntime(parseRuntime)
 			if reuse == nil && oldTree == nil {
 				tree.captureTokenInvariantReadSpan(ts)
+			} else if oldTree != nil && oldTree.eofExtraTokenSourceProofID != 0 &&
+				oldTree.eofExtraTokenSourceProofID == incr.EOFExtraProofID(ts, p.language) && tree.tokenInvariantReadSpanResultEligible() {
+				// Reuse cannot authenticate an unknown old lexical backend.
+				tree.eofExtraTokenSourceProofID = oldTree.eofExtraTokenSourceProofID
 			}
 			tree.setRecoveryNodeMemoRuntime(memoRuntime)
 			if arenaBreakdown != nil {
@@ -5432,7 +5690,7 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 			source,
 			arena,
 			oldTree,
-			&reuseState,
+			reuseState,
 			&scratch.nodeLinks,
 			scratch.reduce.transientParents,
 			scratch.reduce.transientChildren,
@@ -5468,7 +5726,7 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 		if invariantTree := recoveredResultInvariantErrorTree(nodes, source, p.language, arena); invariantTree != nil {
 			return finalizeTree(invariantTree, ParseStopInvariantViolation)
 		}
-		tree := p.buildResultFromNodes(nodes, source, arena, oldTree, &reuseState, &scratch.nodeLinks)
+		tree := p.buildResultFromNodes(nodes, source, arena, oldTree, reuseState, &scratch.nodeLinks)
 		if root := rawRootOrNil(tree); root != nil {
 			normalizeSQLRecoveredMissingNull(root, arena, p.language)
 			for _, child := range root.children {
@@ -5661,6 +5919,42 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 			missingShift.resetForToken()
 		}
 
+		// A certified production can advance every live version together. A
+		// common destination preserves one following lexer/scanner mode; keep
+		// each ancestry and relative score until normal dispatch merges again.
+		// Consecutive productions avoid repeating deep-prefix merge work.
+		if reuse != nil && reuse.sharedFrontierReuse && len(stacks) > 1 {
+			reusedGroup := false
+			for {
+				next, width, ok := p.tryReuseSharedFrontier(stacks, tok, ts, reuse, scratch, arena, reuseState, timing)
+				if !ok {
+					break
+				}
+				reusedGroup = true
+				reuseBudgetReusedBytes += uint64(width)
+				tok = next
+				recordCurrentLookahead(tok)
+				workCountRefreshConvergenceLookahead(tok)
+				needToken = false
+				consecutiveReduces = 0
+				consecutiveNoTokenDispatches = 0
+				noTokenProgressHaveLast = false
+				if reason := p.parseStopReasonNow(); parseStopReasonIsTerminal(reason) {
+					return finalize(stacks, reason)
+				}
+				if reason := p.resultMaterializationStopReason(arena); resultMaterializationShouldStop(reason) {
+					return finalize(stacks, reason)
+				}
+				for i := range stacks {
+					if stacks[i].depth() > maxDepth {
+						return finalize(stacks, ParseStopStackDepthLimit)
+					}
+				}
+			}
+			if reusedGroup {
+				continue
+			}
+		}
 		if reuse != nil && len(stacks) == 1 && !stacks[0].dead && tok.Symbol != 0 {
 			// Campaign O(edit) W1 block-splice composition (spec.campaign.oedit).
 			// Once the edited item finishes reparsing, a whole run of following
@@ -5701,7 +5995,7 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 						reuse.observedPreGotoStateMismatch++
 					}
 				}
-				nextTok, ok, gotReusedBytes := p.tryReuseCurrentParseSubtree(&stacks[0], tok, ts, reuse, scratch, arena, &reuseState, timing)
+				nextTok, ok, gotReusedBytes := p.tryReuseCurrentParseSubtree(&stacks[0], tok, ts, reuse, scratch, arena, reuseState, timing)
 				reuseBudgetReusedBytes += gotReusedBytes
 				if !ok && reuse.hasNonLeafCandidateAt(tok.StartByte) {
 					// W1b settle (unchanged): reuse failed at the live top-of-
@@ -5733,7 +6027,7 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 					}
 					if settled && len(stacks) == 1 && !stacks[0].dead && !stacks[0].accepted && !stacks[0].shifted && tok.Symbol != 0 {
 						var settledReusedBytes uint64
-						nextTok, ok, settledReusedBytes = p.tryReuseCurrentParseSubtree(&stacks[0], tok, ts, reuse, scratch, arena, &reuseState, timing)
+						nextTok, ok, settledReusedBytes = p.tryReuseCurrentParseSubtree(&stacks[0], tok, ts, reuse, scratch, arena, reuseState, timing)
 						reuseBudgetReusedBytes += settledReusedBytes
 					}
 				}
@@ -6090,9 +6384,32 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 		// shared token is restored before the next stack dispatches, and again
 		// after the loop, so a sibling that does accept the original symbol is
 		// never handed a token it cannot use.
+		relexKeyword := func(state StateID) bool {
+			if p.emptyExternalRecoveryEnabled() && p.errorCostCompetitionEnabled() && cRecoveryRelevantStack(stacks) && dts != nil && !tok.ExternalScannerToken && tok.Symbol == p.language.KeywordCaptureToken {
+				savedState, savedStates := dts.state, dts.glrStates
+				dts.state, dts.glrStates = state, nil
+				before := tok
+				dts.promoteKeyword(&tok)
+				dts.state, dts.glrStates = savedState, savedStates
+				return tok != before
+			}
+			return false
+		}
+		relexScannerPadding := func(state StateID) bool {
+			if p.emptyExternalRecoveryEnabled() && p.errorCostCompetitionEnabled() && state != cErrorState && dts != nil && tok.ExternalScannerToken &&
+				tok.StartByte == tok.EndByte && tok.ExternalScannerStartByte < tok.StartByte &&
+				int(state) < len(p.language.LexModes) && bytesAreParserPadding(source, tok.ExternalScannerStartByte, tok.StartByte, p.lineContinuationEscapeByte()) {
+				if reTok, _, ok := dts.probeZeroWidthExternalTokenForLexState(source, p.language.LexModes[state].ExternalLexState, tok); ok &&
+					reTok.Symbol == tok.Symbol && reTok.EndByte == tok.EndByte && reTok.StartByte < tok.StartByte && p.stateHasActionForSymbol(state, reTok.Symbol) {
+					tok = reTok
+					return true
+				}
+			}
+			return false
+		}
 		stackRelexRestoreTok := Token{}
 		stackRelexActive := false
-		packedVersionOrder := p.compactPackedGSSVersionOrderEnabled()
+		packedVersionOrder := p.compactPackedGSSVersionOrderEnabled() || (p.language.RecoveryStackVersionOrderEnabled && p.errorCostCompetitionEnabled() && p.crecoveryEnteredErrorState && p.crecoveryCostCompetitionRelevant && !tok.NoLookahead)
 		for si := 0; si < numStacks || (packedVersionOrder && si < len(stacks)); si++ {
 			s := &stacks[si]
 			if stackRelexActive {
@@ -6122,6 +6439,15 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 			if s.cPaused {
 				continue
 			}
+			if s.cRecoveryDispatchPending != recoveryturn.None && s.cRecoverMissingGroup != nil &&
+				s.byteOffset >= s.cRecoverMissingGroup.eagerMissingShiftEnd {
+				// C has now reached this physical missing-token version too.
+				// It must compete normally for the rest of this dispatch.
+				if s.cRecoveryDispatchPending == recoveryturn.Resync {
+					s.cRecoverMissingGroup = nil
+				}
+				s.cRecoveryDispatchPending = recoveryturn.None
+			}
 			// Faithful C recovery port (parser_recover_c.go): a stack already
 			// in the C error state dispatches through ts_parser__recover
 			// instead of the parse table, except for shiftable tokens.
@@ -6143,8 +6469,14 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 				}
 			}
 			currentState := s.top().state
+			stackRelexRestoreTok = tok
+			stackRelexActive = relexScannerPadding(currentState)
+			if relexKeyword(currentState) {
+				stackRelexActive = true
+			}
 			noteStopDiagnosticStack(s)
 			packedVersionReductionSteps := 0
+			packedVersionMinDepth := s.depth()
 			// zeroWidthRescueBudget bounds relexTokenForStackLexState's
 			// zero-width-external rescue (parser_recover_c.go) to a small,
 			// fixed number of shifts per stack per shared token, as a
@@ -6192,7 +6524,14 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 			if p.ambiguityProfile != nil {
 				p.ambiguityProfile.record(currentState, tok.Symbol, actions, dispatchVersionCount)
 			}
-			if packedVersionOrder && compactPackedGSSActionCellRequiresTransaction(actions) {
+			// Keep certified table policies consistent between fresh reductions
+			// and reuse dispatch. Bypassing a repeat policy here records a
+			// different pre-goto frontier and prevents unchanged methods from reusing.
+			certifiedConflictChoice := false
+			if packedVersionOrder && p.language.ConflictActionVersionOrderCertified && len(actions) > 1 {
+				_, certifiedConflictChoice = conflictPolicyChoiceForDispatch(p.language, s, tok, currentState, actions)
+			}
+			if packedVersionOrder && compactPackedGSSActionCellRequiresTransaction(actions) && !certifiedConflictChoice {
 				p.reduceActionConflict = len(actions) > 1
 				if len(actions) > 1 {
 					scratch.gss.everForked = true
@@ -6238,7 +6577,15 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 					if !renumbered {
 						return finalize(stacks, ParseStopInvariantViolation)
 					}
-					packedVersionReductionSteps++
+					// Repeated list reductions can consume a long reused prefix
+					// at EOF. A strictly shallower stack proves progress; only
+					// count reductions that fail to lower the minimum depth.
+					if depth := stacks[si].depth(); depth < packedVersionMinDepth {
+						packedVersionMinDepth = depth
+						packedVersionReductionSteps = 0
+					} else {
+						packedVersionReductionSteps++
+					}
 					if packedVersionReductionSteps > maxConsecutivePrimaryReduces {
 						return finalize(stacks, ParseStopIterationLimit)
 					}
@@ -6322,6 +6669,10 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 					// condense step decides (ts_parser__handle_error skips the
 					// strategy-1 scan for error lookaheads and absorbs it).
 					workCountTopologyRecordNoActionPendingPop() // work-count-assembly: topology error-run pending-pop seam
+					// C resets progress at pause, before missing-token copies inherit it.
+					if p.language.RecoveryStackVersionOrderEnabled || (s.cEverErrored && p.emptyExternalRecoveryEnabled()) {
+						s.cNodeBaseline = uint32(p.cStackCumulativeNodeCount(s))
+					}
 					s.cPaused = true
 					p.markCRecoveryCostCompetitionRelevant()
 					if actionTiming != nil {
@@ -6377,6 +6728,10 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 						// the condense step resumes via ts_parser__handle_error
 						// whose recover_eof wraps the stack in an ERROR root.
 						workCountTopologyRecordNoActionPendingPop() // work-count-assembly: topology EOF pending-pop seam
+						// C resets progress at pause, before missing-token copies inherit it.
+						if p.language.RecoveryStackVersionOrderEnabled || (s.cEverErrored && p.emptyExternalRecoveryEnabled()) {
+							s.cNodeBaseline = uint32(p.cStackCumulativeNodeCount(s))
+						}
 						s.cPaused = true
 						p.markCRecoveryCostCompetitionRelevant()
 						if actionTiming != nil {
@@ -6412,8 +6767,22 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 					}
 					continue
 				}
-				if tok.StartByte == tok.EndByte {
-					consumeCurrentToken(s)
+				// Error-mode scanner padding made input progress even though
+				// the visible token is empty. Let recovery process that token.
+				if tok.StartByte == tok.EndByte &&
+					!(tok.lexFlags&tokenFlagExternalErrorFallback != 0 && tok.ExternalScannerStartByte < tok.EndByte) {
+					// A marker that advances neither input nor scanner state
+					// selects a parser branch. Skipping it on an incompatible
+					// sibling keeps that sibling alive. Layout transitions and
+					// skipped whitespace still belong to per-version lexing.
+					if tok.ExternalScannerToken && tok.ExternalScannerStartByte == tok.StartByte &&
+						dts != nil && len(dts.externalPreScanPayload) > 0 &&
+						dts.externalScannerStateMatches(dts.externalPreScanPayload) &&
+						p.glrSiblingAcceptsLookahead(stacks, s, tok) {
+						s.dead = true
+					} else {
+						consumeCurrentToken(s)
+					}
 					if actionTiming != nil {
 						recordNoActionTiming()
 					}
@@ -6489,6 +6858,23 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 					}
 				}
 				if p.errorCostCompetitionEnabled() {
+					if p.emptyExternalRecoveryEnabled() && len(stacks) > 1 && tok.ExternalScannerToken && tok.EndByte > tok.StartByte &&
+						int(currentState) < len(p.language.LexModes) &&
+						bytesAreParserPadding(source, tok.StartByte, tok.EndByte, p.lineContinuationEscapeByte()) && dts != nil {
+						next, _, _, _ := dts.scanPreferredTokenForState(currentState)
+						externalRejects := p.language.LexModes[currentState].ExternalLexState == 0
+						if !externalRejects {
+							if scanner, ok := p.language.ExternalScanner.(StatelessExternalScanner); ok && scanner.ExternalScannerIsStateless() {
+								_, _, found := dts.probeZeroWidthExternalTokenForLexState(source, p.language.LexModes[currentState].ExternalLexState, tok)
+								externalRejects = !found
+							}
+						}
+						if externalRejects && next.StartByte >= tok.EndByte && next.Symbol != 0 && p.stateHasActionForSymbol(currentState, next.Symbol) {
+							s.byteOffset = tok.EndByte
+							consumeCurrentToken(s)
+							continue
+						}
+					}
 					// C lexes once per version, so a version whose state needs
 					// a different tokenization of these exact bytes gets it.
 					// This engine shares one token across all stacks, so give
@@ -6504,7 +6890,9 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 							fmt.Printf("  stack[%d] C-STACK-RELEX: sym=%d -> sym=%d [%d-%d] in state=%d -> state=%d\n",
 								si, tok.Symbol, reTok.Symbol, reTok.StartByte, reTok.EndByte, currentState, newState)
 						}
-						stackRelexRestoreTok = tok
+						if !stackRelexActive {
+							stackRelexRestoreTok = tok
+						}
 						stackRelexActive = true
 						tok = reTok
 						currentState = newState
@@ -6521,6 +6909,18 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 						fmt.Printf("  stack[%d] C-PAUSED: no action for sym=%d in state=%d\n", si, tok.Symbol, currentState)
 					}
 					workCountTopologyRecordNoActionPendingPop() // work-count-assembly: topology no-action pending-pop seam
+					if stackRelexActive && p.language.RecoveryStackVersionOrderEnabled {
+						s.ensureGSS(&scratch.gss)
+						cold := p.ensureParserColdState()
+						if cold.cPausedLookaheads == nil {
+							cold.cPausedLookaheads = make(map[*gssNode]Token)
+						}
+						cold.cPausedLookaheads[s.gss.head] = tok
+					}
+					// C resets progress at pause, before missing-token copies inherit it.
+					if p.language.RecoveryStackVersionOrderEnabled || (s.cEverErrored && p.emptyExternalRecoveryEnabled()) {
+						s.cNodeBaseline = uint32(p.cStackCumulativeNodeCount(s))
+					}
 					s.cPaused = true
 					p.markCRecoveryCostCompetitionRelevant()
 					if actionTiming != nil {
@@ -6576,7 +6976,9 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 							fmt.Printf("  stack[%d] STACK-RELEX: sym=%d -> sym=%d [%d-%d] in state=%d -> state=%d\n",
 								si, tok.Symbol, reTok.Symbol, reTok.StartByte, reTok.EndByte, currentState, newState)
 						}
-						stackRelexRestoreTok = tok
+						if !stackRelexActive {
+							stackRelexRestoreTok = tok
+						}
 						stackRelexActive = true
 						tok = reTok
 						currentState = newState
@@ -6677,6 +7079,11 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 					}
 					continue
 				}
+				// Preserve bytes skipped before an unparseable token only
+				// after the other recovery strategies have declined it.
+				if len(stacks) == 1 {
+					p.tryMaterializeSkippedRealGap(source, s, currentState, tok, &nodeCount, arena, &scratch.entries, &scratch.gss, trackChildErrors)
+				}
 				if !p.guardRealTokenAttachmentGap(source, s, tok, "error") {
 					continue
 				}
@@ -6689,6 +7096,14 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 				continue
 			}
 			if len(actions) > 1 {
+				// Account for a lexer-skipped error before forking. Otherwise
+				// every shift alternative sees the same non-padding gap and
+				// dies, even though the sole input version can recover it.
+				if dispatchVersionCount == 1 && p.tryMaterializeSkippedRealGap(source, s, currentState, tok, &nodeCount, arena, &scratch.entries, &scratch.gss, trackChildErrors) {
+					anyReduced = true
+					needToken = false
+					goto retryAction
+				}
 				// A real grammar conflict can grow the live stack count (a
 				// literal clone below, or a frontier/gated fork queued by
 				// completeConflictReduceFrontier) before the top-of-loop
@@ -6722,6 +7137,7 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 					chosen, chosenOrdinal, choice = deterministicExternalConflictActionAt(actions)
 				}
 				if choice {
+					scratch.merge.policyPruned = true
 					skipRepetitionShift := false
 					if chosen.Type == ParseActionReduce {
 						if cReduce, ok := singleReduceAgainstRepetitionShiftConflictChoice(actions); ok && cReduce == chosen {
@@ -6791,6 +7207,9 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 				for ai := 1; ai < len(actions); ai++ {
 					fork := base.cloneWithScratch(&scratch.gss)
 					fork.branchOrder = allocBranchOrder()
+					if p.language.ConflictActionVersionOrderCertified {
+						fork.branchOrder = sched.ConflictBranchOrder(ai, len(actions), base.branchOrder, fork.branchOrder)
+					}
 					if actions[ai].Type != ParseActionShift || p.guardRealShiftGap(source, &fork, tok) {
 						if actions[ai].Type != ParseActionRecover || p.guardRealTokenAttachmentGap(source, &fork, tok, "recover") {
 							if workCountInstrumentationEnabled {
@@ -6837,6 +7256,9 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 					}
 				}
 				s = &stacks[si]
+				if p.language.ConflictActionVersionOrderCertified {
+					s.branchOrder = sched.ConflictBranchOrder(0, len(actions), base.branchOrder, allocBranchOrder())
+				}
 				if actions[0].Type == ParseActionShift && !p.guardRealShiftGap(source, s, tok) {
 					continue
 				}
@@ -6920,9 +7342,49 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 						recordActionTiming(currentState, tok.Symbol, actions, ambiguityActionSingleShift, ns)
 					}
 				case ParseActionAccept:
+					// An empty root can be reduced after grammar-owned padding
+					// at EOF. Preserve the same leading-skip proof as a leaf so
+					// root normalization keeps C's empty span at the lookahead.
+					if tok.Symbol == 0 && !tok.NoLookahead && tok.lexerSkippedPrefix() && tok.lexerSkippedPrefixStart == 0 {
+						if root := stackEntryNode(s.top()); root != nil && root.startByte == root.endByte && resultChildCount(root) == 0 && !root.hasError() {
+							root.startByte, root.endByte = tok.StartByte, tok.StartByte
+							root.startPoint, root.endPoint = tok.StartPoint, tok.StartPoint
+							root.setLexerSkippedPrefixAtSourceStart(true)
+						}
+					}
+					// EOF may follow bytes the lexer could not tokenize. Keep
+					// them as trailing error extras before accepting the root.
+					recoveredSkippedEOF := dispatchVersionCount == 1 && tok.Symbol == 0 && tok.StartByte == tok.EndByte && !tok.NoLookahead &&
+						tok.StartByte > s.byteOffset && !realTokenAttachmentGapIsParserPadding(source, s, tok, p.included, p.lineContinuationEscapeByte())
+					if recoveredSkippedEOF {
+						// An empty EOF reduction can reset byteOffset behind
+						// recovery extras already on the stack. Rebuild those
+						// extras without duplicating their covered bytes.
+						covered := false
+						for _, entry := range cStackEntriesTopFirst(s, &scratch.gss) {
+							if !stackEntryHasNode(entry) {
+								continue
+							}
+							end := stackEntryNodeEndByte(entry)
+							// A retained comment may end before trailing whitespace.
+							// That padding does not create an uncovered error gap.
+							if end >= tok.StartByte || bytesAreParserPaddingInIncludedRanges(source, end, tok.StartByte, p.included, p.lineContinuationEscapeByte()) {
+								covered = true
+								break
+							}
+						}
+						if !covered {
+							p.materializeSkippedGapAsExtraError(s, currentState, tok, &nodeCount, arena, &scratch.entries, &scratch.gss, trackChildErrors)
+						}
+					}
 					traceVisit(si, s, "single-accept", 0, len(actions), act)
 					p.noteStopActionDiagnostic("single-accept", s, tok, act, 0, len(actions), false, 0, 0, false)
-					p.applyAcceptAction(s)
+					p.applyAcceptAction(s, tok, arena)
+					if recoveredSkippedEOF {
+						if reason := p.cAcceptRootRebuild(s, arena, &scratch.entries, &scratch.gss); resultMaterializationShouldStop(reason) {
+							return finalize(stacks, reason)
+						}
+					}
 					p.noteStopActionResult(s)
 					traceAfterPrimary(si, s)
 					if actionTiming != nil {
@@ -7039,24 +7501,28 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 		// Faithful C recovery port: ts_parser__condense_stack runs after each
 		// completed dispatch pass — prune versions by error cost, resume the
 		// best paused version (ts_parser__handle_error), remove the rest.
-		// Only touches passes where some stack is paused or absorbing, so
-		// clean parses are unaffected.
+		// Certified clean stacks also merge after reduction rounds, before
+		// their packed histories can fork again on the same lookahead.
 		condenseErrorCostEnabled := p.errorCostCompetitionEnabled()
 		condenseAnyReduced := anyReduced
+		// Recovery probes retain their established tree-selection behavior.
+		cleanConvergence := reuse == nil && !p.skipRecoveryReparse && p.language != nil &&
+			p.language.FullParseGSSConvergenceEnabled && !*trackChildErrors && anyReduced
 		condenseRelevant := condenseErrorCostEnabled &&
-			(cRecoveryRelevantStack(stacks) || (packedVersionOrder && len(stacks) > 1))
+			(cRecoveryRelevantStack(stacks) || ((packedVersionOrder || cleanConvergence) && len(stacks) > 1) ||
+				(p.crecoveryEnteredErrorState && p.emptyExternalRecoveryEnabled() && tok.ExternalScannerToken && tok.StartByte == tok.EndByte))
 		condenseEOFRecovery := condenseRelevant && tok.Symbol == 0 && tok.StartByte == tok.EndByte && !tok.NoLookahead
 		condenseShiftedRecovery := condenseRelevant && anyReduced && !tok.NoLookahead && allLiveUnacceptedStacksShifted(stacks)
 		condenseRan := false
 		condenseResumed := false
-		if condenseErrorCostEnabled && ((packedVersionOrder && len(stacks) > 1) || !anyReduced || condenseEOFRecovery || condenseShiftedRecovery) {
+		if condenseErrorCostEnabled && (((packedVersionOrder || cleanConvergence) && len(stacks) > 1) || !anyReduced || condenseEOFRecovery || condenseShiftedRecovery) {
 			var resumed bool
 			condenseRan = true
 			var reason ParseStopReason
 			if recoveryRuntimeDetailedBuildEnabled {
-				stacks, resumed, tok, reason = p.cCondenseAndResumeDetailed(stacks, source, ts, tok, &nodeCount, arena, &scratch.entries, &scratch.gss, &scratch.tmpEntries, scratch, trackChildErrors)
+				stacks, resumed, tok, reason = p.cCondenseAndResumeDetailed(stacks, source, ts, tok, &nodeCount, arena, &scratch.entries, &scratch.gss, &scratch.tmpEntries, scratch, trackChildErrors, cleanConvergence)
 			} else {
-				stacks, resumed, tok, reason = p.cCondenseAndResume(stacks, source, ts, tok, &nodeCount, arena, &scratch.entries, &scratch.gss, &scratch.tmpEntries, scratch, trackChildErrors)
+				stacks, resumed, tok, reason = p.cCondenseAndResume(stacks, source, ts, tok, &nodeCount, arena, &scratch.entries, &scratch.gss, &scratch.tmpEntries, scratch, trackChildErrors, cleanConvergence)
 			}
 			workCountRefreshConvergenceLookahead(tok)
 			if resultMaterializationShouldStop(reason) {
@@ -7115,11 +7581,18 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 			terminalFrontier := terminalFrontierScratch[:0]
 			terminalFrontierConsumes := false
 			terminalFrontierOK := true
+			frontierToken := tok
+			frontierOwnTokens := p.emptyExternalRecoveryEnabled() && p.errorCostCompetitionEnabled()
 			for i := range stacks {
+				if frontierOwnTokens {
+					tok = frontierToken
+				}
 				s := &stacks[i]
 				if s.dead || s.accepted || s.shifted || s.cPaused || s.depth() == 0 {
 					continue
 				}
+				relexScannerPadding(s.top().state)
+				relexKeyword(s.top().state)
 				actionIdx := p.contextualActionIndex(source, s.top().state, &tok)
 				if actionIdx == 0 || int(actionIdx) >= len(parseActions) {
 					terminalFrontierOK = false
@@ -7163,10 +7636,16 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 				if !terminalFrontierOK {
 					break
 				}
-				terminalFrontier = append(terminalFrontier, terminalFrontierAction{index: i, action: act})
+				terminalFrontier = append(terminalFrontier, terminalFrontierAction{index: i, action: act, token: tok})
+			}
+			if frontierOwnTokens {
+				tok = frontierToken
 			}
 			if terminalFrontierOK && len(terminalFrontier) > 0 {
 				for _, item := range terminalFrontier {
+					if frontierOwnTokens {
+						tok = item.token
+					}
 					s := &stacks[item.index]
 					switch item.action.Type {
 					case ParseActionShift:
@@ -7192,9 +7671,12 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 						p.noteStopActionResult(s)
 					case ParseActionAccept:
 						p.noteStopActionDiagnostic("post-reduce-terminal-frontier-accept", s, tok, item.action, 0, 1, false, 0, 0, false)
-						p.applyAcceptAction(s)
+						p.applyAcceptAction(s, tok, arena)
 						p.noteStopActionResult(s)
 					}
+				}
+				if frontierOwnTokens {
+					tok = frontierToken
 				}
 				if terminalFrontierConsumes && allLiveUnacceptedStacksShifted(stacks) {
 					dispatchConsumedCurrentToken = true
@@ -7389,6 +7871,9 @@ func (p *Parser) parseInternal(source []byte, ts TokenSource, reuse *reuseCursor
 				continue
 			}
 			if !p.errorCostCompetitionEnabled() || liveUnaccepted == 0 {
+				if liveUnaccepted > 0 {
+					scratch.merge.policyPruned = true
+				}
 				accepted := compactAcceptedStacks(stacks)
 				selectable := accepted[:0]
 				continuationEscape := p.lineContinuationEscapeByte()
@@ -7478,6 +7963,13 @@ func (p *Parser) configureParseScratch(scratch *parserScratch, source []byte, re
 	}
 	scratch.merge.language = p.language
 	scratch.merge.packedGSSVersionOrderActive = compactPackedGSSVersionOrderActiveForParse(p.language, reuse, oldTree, p.noTreeBenchmarkOnly)
+	if scratch.merge.packedGSSVersionOrderActive {
+		// Exact runtime profiles can bound the certified scanner/grammar pair.
+		// Larger inputs retain their established reduction and reuse frontiers.
+		if admission, ok := p.language.ExternalScanner.(interface{ SupportsPackedGSSVersionOrder(int) bool }); ok {
+			scratch.merge.packedGSSVersionOrderActive = admission.SupportsPackedGSSVersionOrder(len(source))
+		}
+	}
 	scratch.merge.cErrorCostParser = nil
 	scratch.merge.trace = p.glrTrace
 	scratch.merge.beginEquivEpoch()
@@ -7498,28 +7990,25 @@ func (p *Parser) configureParseScratch(scratch *parserScratch, source []byte, re
 	return transientReduceParents
 }
 
-func (p *Parser) recordParseArenaUsageOnReturn(arenaClass arenaClass, arena *nodeArena, scratch *parserScratch) func() {
+func (p *Parser) recordParseArenaUsageOnReturn(arenaClass arenaClass, arena *nodeArena, scratch *parserScratch) {
 	if arenaClass == arenaClassFull {
-		return func() {
-			if !p.noTreeBenchmarkOnly {
-				switch {
-				case p.finalChildRefs:
-					p.recordFinalChildRefArenaUsage(arena.used)
-				case p.compactFullShiftLeaves:
-					p.recordCompactFullArenaUsage(arena.used)
-				case p.pendingFullParents:
-					p.recordPendingFullArenaUsage(arena.used)
-				default:
-					p.recordFullArenaUsage(arena.used)
-				}
+		if !p.noTreeBenchmarkOnly {
+			switch {
+			case p.finalChildRefs:
+				p.recordFinalChildRefArenaUsage(arena.used)
+			case p.compactFullShiftLeaves:
+				p.recordCompactFullArenaUsage(arena.used)
+			case p.pendingFullParents:
+				p.recordPendingFullArenaUsage(arena.used)
+			default:
+				p.recordFullArenaUsage(arena.used)
 			}
-			p.recordFullGSSUsage(scratch.gss.peakUsed)
 		}
+		p.recordFullGSSUsage(scratch.gss.peakUsed)
+		return
 	}
-	return func() {
-		p.recordIncrementalArenaUsage(arena.used)
-		p.recordIncrementalGSSUsage(scratch.gss.peakUsed)
-	}
+	p.recordIncrementalArenaUsage(arena.used)
+	p.recordIncrementalGSSUsage(scratch.gss.peakUsed)
 }
 
 func (p *Parser) ensureParseInitialCapacity(source []byte, arenaClass arenaClass, arena *nodeArena, scratch *parserScratch) {
@@ -7605,7 +8094,7 @@ func (p *Parser) configureParseCaps(source []byte, reuse *reuseCursor, arenaClas
 	}
 	mergePerKeyCap := p.resolveParseMergePerKeyCap(source, reuse, maxMergePerKeyOverride)
 	scratch.merge.perKeyCap = mergePerKeyCap
-	scratch.merge.faithfulCapOne = reuse == nil &&
+	scratch.merge.faithfulCapOne = (reuse == nil || (reuse.cEquivalentReuse && incr.RequiresFreshResult(len(source)))) &&
 		mergePerKeyCap == 1 &&
 		((p.language != nil && p.language.FullParseGSSConvergenceEnabled) ||
 			parseMaxMergePerKeyEnvConfigured() ||
@@ -7614,7 +8103,7 @@ func (p *Parser) configureParseCaps(source []byte, reuse *reuseCursor, arenaClas
 	// stack. Preserve that convergence after recovery makes error cost
 	// relevant. Otherwise, separate Go stacks fork each history at each
 	// conflict in the valid suffix. This behavior can grow quadratically.
-	scratch.merge.recoveryCapOneConvergence = reuse == nil &&
+	scratch.merge.recoveryCapOneConvergence = (reuse == nil || (reuse.cEquivalentReuse && incr.RequiresFreshResult(len(source)))) &&
 		mergePerKeyCap == 1 &&
 		p.errorCostCompetitionEnabled()
 
@@ -7648,6 +8137,10 @@ func (p *Parser) configureParseCaps(source []byte, reuse *reuseCursor, arenaClas
 // same computation so an exact override never narrows below a fresh parse's
 // required policy.
 func (p *Parser) resolveParseMergePerKeyCap(source []byte, reuse *reuseCursor, maxMergePerKeyOverride int) int {
+	// Certified reuse preserves fresh dispatch, including its survivor policy.
+	if reuse != nil && reuse.cEquivalentReuse && incr.RequiresFreshResult(len(source)) {
+		reuse = nil
+	}
 	mergePerKeyCap := effectiveParseMergePerKeyCap(p.language, parseMaxMergePerKeyValue(), reuse != nil, len(source))
 	if javaFullParseNeedsAnnotationDeclarationMergeWidth(p.language, source, reuse) && mergePerKeyCap < javaFullParseRetryMaxMergePerKey {
 		mergePerKeyCap = javaFullParseRetryMaxMergePerKey
@@ -7778,7 +8271,9 @@ func (p *Parser) prepareParseStacksForIteration(stacks []glrStack, scratch *pars
 		p.traceCRecoverPrepareStacks("post-cull", result.stacks)
 	}
 	if len(result.stacks) > 1 {
-		p.promotePrimaryStack(result.stacks)
+		if !p.emptyExternalRecoveryEnabled() || !p.errorCostCompetitionEnabled() || !cRecoveryRelevantStack(result.stacks) {
+			p.promotePrimaryStack(result.stacks)
+		}
 	} else {
 		p.tryDemoteSingleLinearGSS(result.stacks, scratch)
 	}
@@ -7991,6 +8486,9 @@ func (p *Parser) cullParseStacksForIteration(stacks []glrStack, scratch *parserS
 	}
 	if workCountInstrumentationEnabled {
 		workCountTopologyReconcileVersionSelection(topologyBefore, stacks)
+	}
+	if len(stacks) < cullIn {
+		scratch.merge.policyPruned = true
 	}
 	scratch.audit.recordGlobalCull(cullIn, len(stacks))
 	workCountRecordBoundaryCull(p, cullIn, len(stacks))
@@ -8479,6 +8977,10 @@ func clearGLRStateTokenSource(stateful parserStateTokenSource, scratch *parserSc
 }
 
 func (p *Parser) applyExtraShiftAction(s *glrStack, currentState StateID, act ParseAction, tok Token, arena *nodeArena, scratch *parserScratch, trackChildErrors *bool) {
+	if p.language.RecoveryStackVersionOrderEnabled {
+		s.cPreviousByteOffset = s.byteOffset
+		s.cPreviousByteOffsetValid = true
+	}
 	workCountRecordShift()
 	named := p.isNamedSymbol(tok.Symbol)
 	targetState := extraShiftTargetState(currentState, act)

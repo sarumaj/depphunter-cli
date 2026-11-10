@@ -811,49 +811,49 @@ func AutoQuote(s string) string {
 }
 
 func parseVersionInterval(verb string, path string, args *[]string, fix VersionFixer) (VersionInterval, error) {
-	tokens := *args
-	if len(tokens) == 0 || tokens[0] == "(" {
+	toks := *args
+	if len(toks) == 0 || toks[0] == "(" {
 		return VersionInterval{}, fmt.Errorf("expected '[' or version")
 	}
-	if tokens[0] != "[" {
-		v, err := parseVersion(verb, path, &tokens[0], fix)
+	if toks[0] != "[" {
+		v, err := parseVersion(verb, path, &toks[0], fix)
 		if err != nil {
 			return VersionInterval{}, err
 		}
-		*args = tokens[1:]
+		*args = toks[1:]
 		return VersionInterval{Low: v, High: v}, nil
 	}
-	tokens = tokens[1:]
+	toks = toks[1:]
 
-	if len(tokens) == 0 {
+	if len(toks) == 0 {
 		return VersionInterval{}, fmt.Errorf("expected version after '['")
 	}
-	low, err := parseVersion(verb, path, &tokens[0], fix)
+	low, err := parseVersion(verb, path, &toks[0], fix)
 	if err != nil {
 		return VersionInterval{}, err
 	}
-	tokens = tokens[1:]
+	toks = toks[1:]
 
-	if len(tokens) == 0 || tokens[0] != "," {
+	if len(toks) == 0 || toks[0] != "," {
 		return VersionInterval{}, fmt.Errorf("expected ',' after version")
 	}
-	tokens = tokens[1:]
+	toks = toks[1:]
 
-	if len(tokens) == 0 {
+	if len(toks) == 0 {
 		return VersionInterval{}, fmt.Errorf("expected version after ','")
 	}
-	high, err := parseVersion(verb, path, &tokens[0], fix)
+	high, err := parseVersion(verb, path, &toks[0], fix)
 	if err != nil {
 		return VersionInterval{}, err
 	}
-	tokens = tokens[1:]
+	toks = toks[1:]
 
-	if len(tokens) == 0 || tokens[0] != "]" {
+	if len(toks) == 0 || toks[0] != "]" {
 		return VersionInterval{}, fmt.Errorf("expected ']' after version")
 	}
-	tokens = tokens[1:]
+	toks = toks[1:]
 
-	*args = tokens
+	*args = toks
 	return VersionInterval{Low: low, High: high}, nil
 }
 

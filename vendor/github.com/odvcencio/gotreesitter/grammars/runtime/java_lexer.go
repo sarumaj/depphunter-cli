@@ -3,6 +3,7 @@
 package grammarruntime
 
 import (
+	"bytes"
 	"fmt"
 	"sync"
 
@@ -109,6 +110,46 @@ func NewJavaTokenSourceOrEOF(src []byte, lang *gotreesitter.Language) gotreesitt
 		return tokenSourceInitError{sourceLen: uint32(len(src))}
 	}
 	return ts
+}
+
+// RebuildTokenSource supplies an independent stream for fresh recovery checks.
+func (ts *JavaTokenSource) RebuildTokenSource(src []byte, lang *gotreesitter.Language) (gotreesitter.TokenSource, error) {
+	if lang == nil {
+		lang = ts.lang
+	}
+	return NewJavaTokenSource(src, lang)
+}
+
+// EOFExtraTokenAppendInvariant authenticates growth inside an existing EOF
+// line comment. commentToken reads its body without consulting parser state.
+// Earlier contextual probes stop at the unchanged first slash; backward probes
+// run only before this final token, so none can observe the appended byte.
+func (ts *JavaTokenSource) EOFExtraTokenAppendInvariant(oldSource, source []byte, symbol uint16, start uint32) bool {
+	if ts == nil || ts.lineCommentSymbol == 0 || symbol != uint16(ts.lineCommentSymbol) ||
+		uint64(start)+2 > uint64(len(oldSource)) || uint64(start)+2 > uint64(len(source)) ||
+		!bytes.Equal(ts.src, source) || !bytes.HasPrefix(oldSource[start:], []byte("//")) {
+		return false
+	}
+	return !bytes.ContainsAny(oldSource[start:], "\r\n") && !bytes.ContainsAny(source[start:], "\r\n")
+}
+
+// EOFExtraTokenProofID identifies this lexer's keyword and close-angle policy.
+// An embedded wrapper must explicitly opt in; promoted methods cannot prove
+// the wrapper preserves this lexer's token election.
+func (ts *JavaTokenSource) EOFExtraTokenProofID(language any) uint8 {
+	lang, ok := language.(*gotreesitter.Language)
+	if ts == nil || !ok || lang == nil || lang != ts.lang {
+		return 0
+	}
+	return 1
+}
+
+// EOFExtraTokenBackendMatches binds the proof to the actual token source.
+// Embedding promotes proof methods even when a wrapper overrides Next, so
+// preserving wrappers must explicitly authenticate themselves.
+func (ts *JavaTokenSource) EOFExtraTokenBackendMatches(backend any) bool {
+	actual, ok := backend.(*JavaTokenSource)
+	return ts != nil && ok && actual == ts
 }
 
 // Reset reinitializes this token source for a new source buffer.

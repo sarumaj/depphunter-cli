@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+
+	"github.com/odvcencio/gotreesitter/internal/sched"
 )
 
 // Phase-3 dual-route admission switch.
@@ -30,7 +32,7 @@ import (
 //  3. the per-language allowlist, which widens only the implicit OFF default;
 //  4. OFF.
 //
-// The compact route is OFF by default: buildbox measurements (tamarack,
+// The compact route is OFF by default: benchmark-host measurements (an
 // interleaved Go/C ratio harness) found the compact route 1.1x to 2.2x
 // SLOWER than production on Python, Rust, Markdown, Lua, CSS, Bash, and Go,
 // and TypeScript/YAML paid for both routes on every parse. Set
@@ -77,7 +79,7 @@ func init() {
 // admissionCandidateEnvMode resolves the process-wide default the switch
 // seeds from GTS_ADMISSION_CANDIDATE at package initialization.
 //
-// The compact route is OFF by default (buildbox's tamarack measurements: 1.1x
+// The compact route is OFF by default (benchmark-host measurements: 1.1x
 // to 2.2x slower than production on most languages). Only an explicit on
 // value ("1", "true", "on", "yes", any case) resolves ON -- the opt-in escape
 // hatch. An unset or unrecognized value, and any explicit off value ("0",
@@ -220,70 +222,29 @@ func (p *Parser) admissionCandidateRouteEnabled() bool {
 }
 
 // admissionCandidateFullParseEligible reports whether a fresh full parse may be
-// routed through the compact candidate. It fails closed for:
-//
-//   - every reuse-consuming call (oldTree != nil), because admission selects a
-//     fresh-full engine only; incremental reuse is decided later from the old
-//     tree's replay/scanner proof; and
-//   - any lexer other than the production DFA, because the compact route
-//     reproduces the production DFA token stream and cannot honor a caller-
-//     supplied token source; and
-//   - explicit ParseWorkLimits, because the compact engine has separate work
-//     counters and must not spend speculative work before a production limit.
+// routed through the compact candidate. Policy comes first: a reparse
+// (oldTree != nil), a suppressed nested parse, or a parser whose switch is off
+// never starts compact. Checking the switch first keeps the default route
+// cheap. The capability table in internal/sched decides the rest: a
+// caller-supplied token source, included ranges, an observer, explicit work
+// limits, or a forest-default language each keep the parse on the legacy
+// route before compact starts. docs/v1-capability-flags.md lists why compact
+// does not serve each of these modes. A timeout, a cancellation flag, the
+// memory budget, and the source length do not keep a parse off compact: the
+// compact scheduler polls all of them and falls back with a compatible stop
+// reason (tranches B8 and B9; see attemptAdmissionCandidateFullParse).
 func (p *Parser) admissionCandidateFullParseEligible(oldTree *Tree, usingProductionDFA bool) bool {
 	if p == nil || oldTree != nil || p.admissionRouteSuppressed > 0 {
 		return false
 	}
-	if p.parseWorkLimits.configured() {
-		return false
-	}
-	if !usingProductionDFA {
-		return false
-	}
-	// A language with an enabled, certified/explicit forest route already has a
-	// more specific full-parse policy. Preserve that route's correctness and
-	// incremental contracts instead of letting the generic compact candidate
-	// preempt it merely because both are capable of accepting the same input.
-	if p.admissionCandidateRoute == admissionRouteFollowDefault && glrForestEnabled && parserWantsForest(p) {
-		return false
-	}
-	// Resolve the switch first. This keeps the shipped OFF hot path cheap: none
-	// of the fidelity probes below (including the os.Getenv in the observability
-	// check) run unless the switch is actually on for this parser.
 	if !p.admissionCandidateRouteEnabled() {
 		return false
 	}
-	// The compact runner lexes the whole source with its own DFA token source and
-	// does not apply included ranges, so decline when a caller set any. Production
-	// then honors the ranges exactly.
-	if len(p.included) > 0 {
-		return false
+	var modes sched.Mode
+	if !usingProductionDFA {
+		modes = sched.TokenSource
 	}
-	// An explicit timeout or cancellation flag no longer declines eligibility
-	// (tranche B8): the scheduler polls both through the exact production
-	// check (diagnosticParserCoreGenericScheduler.pollStopControl, once per
-	// dispatch-pass-loop iteration) and cleanly aborts -- releasing the
-	// compact arenas' retained capacity before falling back (Core.
-	// ResetReleasingRetention, tranche B9) -- so production still serves a
-	// tripped deadline or cancellation with its own compatible stop receipt.
-	// Source length no longer declines eligibility either (tranche B9): the
-	// same scheduler poll compares the compact core's own real retained
-	// footprint (Core.FootprintBytes()) against production's soft memory
-	// budget on every input, large or small, so a pathological input still
-	// falls back to production and honors ParseStopMemoryBudget -- it just
-	// attempts the candidate route first instead of skipping it by source
-	// length. See attemptAdmissionCandidateFullParse's doc comment for the
-	// gap this retained-footprint gauge still has against cumulative
-	// ephemeral allocation, not just retained footprint.
-	//
-	// Preserve callback fidelity: the compact route does not emit the parser's
-	// logger, GLR-trace, ambiguity-profile, or parse-progress events, so decline
-	// (fall back to production) whenever a consumer has attached one. Production
-	// then fires every hook exactly as it does today.
-	if p.hasActiveParseObservability() {
-		return false
-	}
-	return true
+	return sched.Supports(sched.Request{Modes: modes | p.schedImpliedModes(modes, nil)})
 }
 
 // hasActiveParseObservability reports whether a consumer attached any parse-time
@@ -308,6 +269,15 @@ func (p *Parser) suppressAdmissionCandidateRoute() func() {
 	}
 	p.admissionRouteSuppressed++
 	return func() { p.admissionRouteSuppressed-- }
+}
+
+// Incremental scanner fallbacks retain the caller's fresh route while keeping
+// the full-parse admission counters scoped to public full-parse requests.
+func (p *Parser) suppressAdmissionCandidateCounters() func() {
+	cold := p.ensureParserColdState()
+	previous := cold.admissionCountersSuppressed
+	cold.admissionCountersSuppressed = true
+	return func() { cold.admissionCountersSuppressed = previous }
 }
 
 // pinToProductionRoute permanently forces an internally-created sub-parser onto
@@ -364,11 +334,103 @@ func (p *Parser) attemptAdmissionCandidateFullParse(source []byte, oldTree *Tree
 		return nil, false
 	}
 	tree, ok, reason := p.tryCompactFullParseRoute(source)
+	countAdmission := p.forestDeclineMemo == nil || !p.forestDeclineMemo.admissionCountersSuppressed
 	if ok && tree != nil {
-		admissionCandidateRouted.Add(1)
+		if countAdmission {
+			admissionCandidateRouted.Add(1)
+		}
 		return tree, true
 	}
-	admissionCandidateFallback.Add(1)
-	admissionCandidateLastFallbackReason.Store(reason)
+	if countAdmission {
+		admissionCandidateFallback.Add(1)
+		admissionCandidateLastFallbackReason.Store(reason)
+	}
 	return nil, false
+}
+
+// schedCall returns the request for a public parse call whose method implies
+// entry. oldTree is the edited tree of an incremental call, or nil. The
+// request's Implied function adds the modes that the parser configuration and
+// oldTree imply, only when a caller asks for them: computing them on every
+// call would add a map lookup and an interface call to the no-edit reparse,
+// which returns in a few nanoseconds.
+func (p *Parser) schedCall(entry sched.Mode, oldTree *Tree) sched.Request {
+	return sched.Request{Modes: entry, Implied: func() sched.Mode {
+		return p.schedImpliedModes(entry, oldTree)
+	}}
+}
+
+// schedImpliedModes returns the modes that the parser configuration and, for
+// an incremental call, oldTree imply. A nil parser implies no modes, so each
+// public method keeps its own nil-parser behavior.
+func (p *Parser) schedImpliedModes(entry sched.Mode, oldTree *Tree) sched.Mode {
+	if p == nil {
+		return 0
+	}
+	modes := p.schedParserModes()
+	if entry&sched.Incremental != 0 {
+		modes |= p.schedOldTreeModes(oldTree)
+	}
+	return modes
+}
+
+// schedParserModes returns the modes that the parser configuration implies.
+// admissionCandidateFullParseEligible reads its open modes through
+// sched.Supports. TestAdmissionEligibilityMatchesPreTableChecks checks that
+// the result equals the checks the eligibility function made before it read
+// the table.
+func (p *Parser) schedParserModes() sched.Mode {
+	var modes sched.Mode
+	if p.timeoutMicros != 0 || p.cancellationFlag != nil {
+		modes |= sched.Deadline
+	}
+	if len(p.included) > 0 {
+		modes |= sched.IncludedRanges
+	}
+	if p.hasActiveParseObservability() {
+		modes |= sched.Observer
+	}
+	if p.parseWorkLimits.configured() {
+		modes |= sched.WorkLimits
+	}
+	// A forced candidate route takes precedence over the forest default, as it
+	// does in admissionCandidateFullParseEligible.
+	if p.admissionCandidateRoute != admissionRouteCandidateForced && glrForestEnabled && parserWantsForest(p) {
+		modes |= sched.ForestRoute
+	}
+	return modes
+}
+
+// schedOldTreeModes returns the modes that an incremental call implies.
+// attemptCompactIncrementalParse reads them before the compact engine starts.
+func (p *Parser) schedOldTreeModes(oldTree *Tree) sched.Mode {
+	var modes sched.Mode
+	if p.language != nil && compactReuseScannerUnsupported(p.language) {
+		modes |= sched.ScannerStateReuse
+	}
+	if compactReuseOldTreeUnsupported(p.language, oldTree) {
+		modes |= sched.OldTreeReuse
+	}
+	return modes
+}
+
+// compactReuseOldTreeUnsupported reports whether the compact engine cannot
+// reuse oldTree for a parser of lang: compact did not build it, its root has
+// an error, it lacks a replay proof, it has no recorded edit, or it belongs
+// to another language.
+func compactReuseOldTreeUnsupported(lang *Language, oldTree *Tree) bool {
+	return oldTree == nil || oldTree.language != lang || !oldTree.compactMaterialized ||
+		oldTree.incrementalReuseDisabled || len(oldTree.edits) == 0 ||
+		oldTree.root == nil || oldTree.root.HasError()
+}
+
+// compactReuseScannerUnsupported reports whether the external scanner of lang
+// keeps compact incremental reuse from starting. Compact reuse needs a
+// stateless scanner. lang must not be nil.
+func compactReuseScannerUnsupported(lang *Language) bool {
+	if lang.ExternalScanner == nil {
+		return false
+	}
+	stateless, ok := lang.ExternalScanner.(StatelessExternalScanner)
+	return !ok || !stateless.ExternalScannerIsStateless()
 }

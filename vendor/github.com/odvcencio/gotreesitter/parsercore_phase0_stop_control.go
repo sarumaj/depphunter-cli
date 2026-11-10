@@ -249,11 +249,61 @@ func compareDiagnosticParserCoreFootprintRefs(
 	return 0
 }
 
+// materializationRetainedBytes accounts for the complete secondary workspace.
+// Arrays containing public nodes are cleared by resetTreeBuffers before reuse.
+func (s *parserCoreRunnerScratch) materializationRetainedBytes() uint64 {
+	if s == nil {
+		return 0
+	}
+	total := uint64(unsafe.Sizeof(*s))
+	buffers := [...]struct {
+		capacity int
+		size     uintptr
+	}{
+		{cap(s.materialization.entries), unsafe.Sizeof(stackEntry{})},
+		{cap(s.materialization.reduce.nodes), unsafe.Sizeof((*Node)(nil))},
+		{cap(s.materialization.reduce.fieldIDs), unsafe.Sizeof(FieldID(0))},
+		{cap(s.materialization.reduce.fieldSources), 1},
+		{cap(s.materialization.reduce.repeatStamp), 4},
+		{cap(s.materialization.reduce.repeatCount), 2},
+		{cap(s.materialization.reduce.repeatSource), 1},
+		{cap(s.materialization.reduce.repeatTouched), unsafe.Sizeof(FieldID(0))},
+		{cap(s.materializer.nodesByID), unsafe.Sizeof((*Node)(nil))},
+		{cap(s.materializer.hasErrorByID), unsafe.Sizeof(bool(false))},
+		{cap(s.materializer.frames), unsafe.Sizeof(compactEagerFrame{})},
+		{cap(s.nodes), unsafe.Sizeof((*Node)(nil))},
+		{cap(s.linkScratch), unsafe.Sizeof((*Node)(nil))},
+		{cap(s.lineStarts), unsafe.Sizeof(uint32(0))},
+		{cap(s.goCompatFrames), unsafe.Sizeof(goCompatSubtreeFrame{})},
+	}
+	for _, buffer := range buffers {
+		if uint64(buffer.capacity) > (math.MaxUint64-total)/uint64(buffer.size) {
+			return math.MaxUint64
+		}
+		total += uint64(buffer.capacity) * uint64(buffer.size)
+	}
+	for _, bytes := range [...]uint64{
+		s.postorder.RetainedBytes(), s.acceptedLeaves.footprintBytes(), s.materialization.checkpoints.RetainedBytes(), s.derivations.RetainedBytes(),
+	} {
+		if bytes > math.MaxUint64-total {
+			return math.MaxUint64
+		}
+		total += bytes
+	}
+	return total
+}
+
 func diagnosticParserCoreSchedulerFootprintBytes(s *diagnosticParserCoreGenericScheduler) uint64 {
 	if s == nil {
 		return 0
 	}
-	total := uint64(cap(s.reuseDependencies.ends)) * 4
+	total := uint64(cap(s.reuseDependencies.ends)+cap(s.reuseDependencies.leafWords)) * 4
+	if s.reuseDependencies.reads != nil {
+		total += uint64(s.reuseDependencies.reads.Bytes())
+	}
+	if s.reuseDependencies.idleReads != nil {
+		total += uint64(s.reuseDependencies.idleReads.Bytes())
+	}
 	addBytes := func(bytes uint64) {
 		if total == math.MaxUint64 || bytes == 0 {
 			return
@@ -278,6 +328,17 @@ func diagnosticParserCoreSchedulerFootprintBytes(s *diagnosticParserCoreGenericS
 	}
 	addBytes(s.options.compactIncrementalReuse.footprintBytes())
 	addBytes(s.recoveryCostMemo.FootprintBytes())
+	if s.versionLexerMetadata != nil {
+		addBytes(uint64(unsafe.Sizeof(*s.versionLexerMetadata)))
+	}
+
+	if scratch := s.options.acceptanceMaterializationScratch; scratch != nil {
+		addBytes(scratch.derivations.RetainedBytes())
+		addBytes(scratch.acceptanceComparison.materializationRetainedBytes())
+		if tree := scratch.acceptanceMaterialization.Retained(); tree != nil {
+			addBytes(arenaAllocatedVolume(tree.arena))
+		}
+	}
 	// Header copies share immutable version-state pointers. Count each owned
 	// wrapper, region, and lexer snapshot once across the active frontier,
 	// canonical keys/groups, and retained header scratch. The scheduler-owned
@@ -360,6 +421,14 @@ func diagnosticParserCoreSchedulerFootprintBytes(s *diagnosticParserCoreGenericS
 	add(cap(s.versionLexerRequests), unsafe.Sizeof(diagnosticParserCoreVersionLexerRequest{}))
 	addBytes(diagnosticParserCoreDFARelexSnapshotAndScratchRetainedBytes(
 		s.versionLexerBefore, s.versionLexerBeforeScratch,
+	))
+	// Probe snapshots borrow these independent buffers only until the probe
+	// returns. Count their capacity even when a pooled reset leaves length zero.
+	addBytes(diagnosticParserCoreDFARelexSnapshotAndScratchRetainedBytes(
+		dfaRelexSnapshot{}, s.relexPriorScratch,
+	))
+	addBytes(diagnosticParserCoreDFARelexSnapshotAndScratchRetainedBytes(
+		dfaRelexSnapshot{}, s.relexAfterScratch,
 	))
 	add(len(s.seedHeaders), unsafe.Sizeof(diagnosticParserCoreHeader{}))
 	add(len(s.corridorCells), unsafe.Sizeof(diagnosticParserCoreGenericCell{}))
@@ -451,7 +520,7 @@ func (s *diagnosticParserCoreGenericScheduler) stopControlMemoryBudgetReasonWith
 // footprintPollStride is how often pollStopControl recomputes the full
 // scheduler memory footprint (spec.campaign.v7 tranche B8, throttled).
 // diagnosticParserCoreSchedulerFootprintBytes walks every scheduler-owned
-// slice/map length and capacity on each call; buildbox's tamarack harness
+// slice/map length and capacity on each call; a benchmark host's harness
 // measured that recompute, run once per dispatch loop iteration, costing
 // 1.18x to 1.32x on the compact route across Python, Rust, Markdown, Lua,
 // CSS, Bash, and Go. Throttling it here does not remove the memory-budget
@@ -606,6 +675,14 @@ func (s *diagnosticParserCoreGenericScheduler) pollStopControl() error {
 		additional := uint64(0)
 		if eager != nil {
 			additional = arenaAllocatedVolume(eager.arena)
+			if eager.materializationScratch != nil {
+				checkpointBytes := eager.materializationScratch.checkpoints.RetainedBytes()
+				if math.MaxUint64-additional < checkpointBytes {
+					additional = math.MaxUint64
+				} else {
+					additional += checkpointBytes
+				}
+			}
 		}
 		if reason := s.stopControlMemoryBudgetReasonWithAdditionalBytes(additional); reason != ParseStopNone {
 			return diagnosticParserCoreStopControlTripped(reason)
