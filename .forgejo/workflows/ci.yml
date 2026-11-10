@@ -116,7 +116,11 @@ jobs:
       env:
         DEPPHUNTER: ${{ github.workspace }}/depphunter
     - name: Package
-      run: npx @vscode/vsce@4 package --target linux-x64 --out depphunter.vsix
+      # vsce refuses SVG images from hosts outside its list of badge providers, which
+      # this Forgejo is not: the README's CI badge is left out of the package only.
+      run: |
+        sed -i '/git\.ciepiela\.org[^)]*\.svg/d' README.md
+        npx @vscode/vsce@4 package --target linux-x64 --out depphunter.vsix
     - name: Check it carries the binary
       run: |
         unzip -p depphunter.vsix extension/bin/depphunter > packaged
