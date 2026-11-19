@@ -221,6 +221,19 @@ var dfaTokenSourcePool = sync.Pool{
 	},
 }
 
+// dfaRelexRetryScratchPool holds the snapshot buffers that Next takes before
+// the error-mode external retry, so a run of error tokens reuses one 4 KiB
+// serialization buffer instead of allocating one per token.
+//
+// The buffers are not a dfaTokenSource field on purpose. On 64-bit platforms
+// the struct is 1,528 bytes. With the 8-byte header that Go adds to
+// pointer-holding objects over 512 bytes, it fills the 1,536-byte size class
+// exactly, so one more field moves every token source into the 1,792-byte
+// class. TestDFATokenSourceSizeBudget pins that limit.
+var dfaRelexRetryScratchPool = sync.Pool{
+	New: func() any { return new(dfaRelexSnapshotScratch) },
+}
+
 // setLexerErrorRunLexState wires the grammar's most permissive lex mode
 // (LexModes[0], the C ERROR_STATE mode) into the lexer so NextWithErrorRuns
 // can mirror C's skipped-error lexing for truly unlexable runs.
@@ -677,7 +690,8 @@ func (d *dfaTokenSource) Next() Token {
 			// C retries the external scanner as well as the DFA in ERROR_STATE
 			// before accepting an internal fallback token. The retry starts before any
 			// whitespace consumed by the unsuccessful normal-mode attempt.
-			failed := d.snapshotRelexState()
+			scratch := dfaRelexRetryScratchPool.Get().(*dfaRelexSnapshotScratch)
+			failed := d.snapshotRelexStateWithScratch(scratch)
 			state, states := d.state, d.glrStates
 			d.state, d.glrStates = cErrorState, nil
 			d.lexer.pos, d.lexer.row, d.lexer.col = scanStartPos, scanStartRow, scanStartCol
@@ -708,6 +722,8 @@ func (d *dfaTokenSource) Next() Token {
 				failed.restore(d)
 				d.externalLookaheadEndByte = maxUint32(d.externalLookaheadEndByte, frontier)
 			}
+			// failed aliases scratch and is dead from here.
+			dfaRelexRetryScratchPool.Put(scratch)
 		}
 		if !tokenFromExternal && d.hasExternalScanner &&
 			tok.Symbol != 0 && int(tok.StartByte) > scanStartPos {
@@ -1972,6 +1988,11 @@ func (d *dfaTokenSource) preferZeroWidthStartAcceptForState(state StateID, lexSt
 		return Token{}, false
 	}
 	if !d.hasActionForStateSymbol(state, startAccept) {
+		return Token{}, false
+	}
+	// NUL sentinels use the boundary-aware rule below. A real hidden token,
+	// including a statement's terminating newline, owns its consumed bytes.
+	if d.hasZeroWidthSentinelSymbol && startAccept == d.zeroWidthSentinelSymbol {
 		return Token{}, false
 	}
 	if tok.Symbol != 0 && d.symbolVisibleOrNamed(tok.Symbol) && !d.sameSymbolName(startAccept, tok.Symbol) {
@@ -3388,7 +3409,13 @@ type dfaRelexSnapshot struct {
 	zeroWidthCount int
 }
 
-func (s dfaRelexSnapshot) equal(other dfaRelexSnapshot) bool {
+func (s *dfaRelexSnapshot) equal(other *dfaRelexSnapshot) bool {
+	if s == other {
+		return true
+	}
+	if s == nil || other == nil {
+		return false
+	}
 	if !(s.lexerPos == other.lexerPos && s.lexerRow == other.lexerRow &&
 		s.lexerCol == other.lexerCol && s.lexerRangeIdx == other.lexerRangeIdx &&
 		s.externalScannerPresent == other.externalScannerPresent &&
@@ -4878,6 +4905,7 @@ func (d *dfaTokenSource) probeZeroWidthExternalTokenForLexState(source []byte, l
 	// TestProbeZeroWidthExternalTokenForLexStateAllocations pins the
 	// measured costs.
 	dispatchPayload := d.captureExternalScannerStateInto(&d.externalSnapshot)
+	probeCompleted, probeAccepted := false, false
 	savedExternalLexer := d.externalLexer
 	defer func() {
 		// R1: the scan this probe just ran did read bytes, and those reads
@@ -4900,9 +4928,16 @@ func (d *dfaTokenSource) probeZeroWidthExternalTokenForLexState(source []byte, l
 		}
 		recordTokenInvariantReadSpan(&d.tokenInvariantMaxReadSpan, int(scanStart), examinedEnd)
 		if d.lexer != nil && d.lexer.reuseReads != nil {
-			if !incr.RequiresFreshResult(len(source)) {
-				// Preserve the established small-edit frontier and fresh proof.
-				d.lexer.reuseReads.Record(int(scanStart), legacyExaminedEnd)
+			// Shadow-authorized producers require the normalized frontier; ordinary
+			// small sources retain their legacy frontier except for a proved
+			// stateless failed scanner call that performed no input observation.
+			shadowArtifact := d.language != nil && d.language.SmallSourceReuseShadowArtifact != ([32]byte{})
+			if !incr.RequiresFreshResult(len(source)) && !shadowArtifact {
+				scanner, stateless := d.language.ExternalScanner.(StatelessExternalScanner)
+				noReadFailure := probeCompleted && !probeAccepted && stateless && scanner.ExternalScannerIsStateless() && d.externalLexer.readFrontier != nil && d.externalLexer.readFrontier.examined == 0 && !d.externalLexer.readFrontier.nonlocal && !d.externalLexer.didGetColumn
+				if !noReadFailure {
+					d.lexer.reuseReads.Record(int(scanStart), legacyExaminedEnd)
+				}
 			} else if d.externalLexer.readFrontier != nil && d.externalLexer.readFrontier.nonlocal {
 				d.lexer.reuseReads.Abstain()
 			} else {
@@ -4942,7 +4977,9 @@ func (d *dfaTokenSource) probeZeroWidthExternalTokenForLexState(source []byte, l
 
 	el := &d.externalLexer
 	el.reset(source, int(scanStart), scanPoint.Row, scanPoint.Column)
-	if !RunExternalScanner(d.language, d.externalPayload, el, row) {
+	probeAccepted = RunExternalScanner(d.language, d.externalPayload, el, row)
+	probeCompleted = true
+	if !probeAccepted {
 		return Token{}, externalScannerCheckpoint{}, false
 	}
 	probed, ok := el.token()

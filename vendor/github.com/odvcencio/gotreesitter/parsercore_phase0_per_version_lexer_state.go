@@ -26,9 +26,11 @@ type diagnosticParserCoreVersionLexerSnapshot struct {
 	// the snapshot, while frontier and checkpoint phases may advance safely.
 	compact        *core.Core
 	coreGeneration uint64
+	storage        *core.ScannerSnapshotStorage
 	language       *Language
 	metadata       *core.FrozenValue[diagnosticParserCoreVersionLexerMetadata]
 	dfa            dfaRelexSnapshot
+	triedMask      core.ScannerTrialMask
 
 	beforeCheckpoint      core.CheckpointID
 	afterCheckpoint       core.CheckpointID
@@ -106,19 +108,23 @@ func (s diagnosticParserCoreVersionLexerScannerContract) equal(other diagnosticP
 }
 
 // diagnosticParserCoreVersionLexerSnapshotEqual compares the complete
-// immutable identity of two owned lexer snapshots. Do not use pointer
-// identity here. A scheduler rollback can publish an equivalent copy.
+// immutable identity of two owned lexer snapshots. Identical immutable objects
+// can short-circuit; distinct rollback copies still compare their complete values.
 func diagnosticParserCoreVersionLexerSnapshotEqual(
 	left, right *diagnosticParserCoreVersionLexerSnapshot,
 ) bool {
+	if left == right {
+		return true
+	}
 	if left == nil || right == nil {
-		return left == right
+		return false
 	}
 	return left.compact == right.compact &&
 		left.coreGeneration == right.coreGeneration &&
 		left.language == right.language &&
-		left.metadata.Value() == right.metadata.Value() &&
-		left.dfa.equal(right.dfa) &&
+		(left.metadata == right.metadata || left.metadata.Value() == right.metadata.Value()) &&
+		left.dfa.equal(&right.dfa) &&
+		(left.dfa.extZeroPos != left.dfa.lexerPos || left.triedMask == right.triedMask) &&
 		left.beforeCheckpoint == right.beforeCheckpoint &&
 		left.afterCheckpoint == right.afterCheckpoint &&
 		bytes.Equal(left.beforeCheckpointBytes, right.beforeCheckpointBytes) &&
@@ -172,14 +178,22 @@ func (s *diagnosticParserCoreGenericScheduler) versionLexerStateEqual(
 	if left == nil || right == nil {
 		return left == right
 	}
-	if left.s3Region != right.s3Region ||
-		left.relexSnapshot != right.relexSnapshot ||
-		left.recoveryGroup != right.recoveryGroup ||
-		left.missingGroup != right.missingGroup ||
-		left.recoveryNodeBaseline != right.recoveryNodeBaseline ||
-		left.recoveryNodeBaselineSet != right.recoveryNodeBaselineSet {
+	if left.relexSnapshot != right.relexSnapshot ||
+		left.recoveryNodeBaseline != right.recoveryNodeBaseline || left.recoveryNodeBaselineSet != right.recoveryNodeBaselineSet {
 		return false
 	}
+	if left.recovery != right.recovery {
+		a, b := left.recovery.Value(), right.recovery.Value()
+		if a.Region != b.Region || a.RecoveryGroup != b.RecoveryGroup || a.MissingGroup != b.MissingGroup {
+			return false
+		}
+		// Preserve effective closed-group identity and the active-key fallback.
+		if a.AcceptanceGroup != b.AcceptanceGroup &&
+			recoveredRootGroupOf(diagnosticParserCoreHeader{versionState: left}) != recoveredRootGroupOf(diagnosticParserCoreHeader{versionState: right}) {
+			return false
+		}
+	}
+
 	if left.lexerRequest == 0 || right.lexerRequest == 0 {
 		return left.lexerRequest == right.lexerRequest
 	}
@@ -228,11 +242,21 @@ func (s *diagnosticParserCoreVersionLexerSnapshot) clone() *diagnosticParserCore
 	if s == nil {
 		return nil
 	}
-	out := *s
-	out.dfa = cloneDiagnosticParserCoreDFARelexSnapshot(s.dfa)
+	var out *diagnosticParserCoreVersionLexerSnapshot
+	var payload, start, end []byte
+	var tried []bool
+	if s.triedMask.Len() != 0 {
+		out, payload, start, end = core.NewPackedScannerSnapshotRecord[diagnosticParserCoreVersionLexerSnapshot](s.dfa.externalPayload, s.dfa.externalTokenStart, s.dfa.externalTokenEnd)
+	} else {
+		out, payload, start, end, tried = core.NewScannerSnapshotRecord[diagnosticParserCoreVersionLexerSnapshot](s.dfa.externalPayload, s.dfa.externalTokenStart, s.dfa.externalTokenEnd, s.dfa.extZeroTried)
+	}
+	*out = *s
+	out.storage = nil
+	out.dfa.externalPayload, out.dfa.externalTokenStart, out.dfa.externalTokenEnd = payload, start, end
+	out.dfa.extZeroTried = tried
 	out.beforeCheckpointBytes = cloneBytesForDiagnosticParserCoreVersion(s.beforeCheckpointBytes)
 	out.afterCheckpointBytes = cloneBytesForDiagnosticParserCoreVersion(s.afterCheckpointBytes)
-	return &out
+	return out
 }
 
 // copyDiagnosticParserCoreVersionCheckpoint obtains a complete private copy
@@ -281,6 +305,15 @@ func newDiagnosticParserCoreVersionLexerSnapshotWithMetadata(
 	dfa dfaRelexSnapshot, beforeCheckpoint, afterCheckpoint core.CheckpointID,
 	previous *core.FrozenValue[diagnosticParserCoreVersionLexerMetadata],
 ) (*diagnosticParserCoreVersionLexerSnapshot, error) {
+	return newDiagnosticParserCoreVersionLexerSnapshotWithMetadataAndPages(compact, language, owner, dfa, beforeCheckpoint, afterCheckpoint, previous, nil)
+}
+
+func newDiagnosticParserCoreVersionLexerSnapshotWithMetadataAndPages(
+	compact *core.Core, language *Language, owner core.SchedulerTransactionToken,
+	dfa dfaRelexSnapshot, beforeCheckpoint, afterCheckpoint core.CheckpointID,
+	previous *core.FrozenValue[diagnosticParserCoreVersionLexerMetadata],
+	pages *core.ScannerSnapshotPages[diagnosticParserCoreVersionLexerSnapshot],
+) (*diagnosticParserCoreVersionLexerSnapshot, error) {
 	scanner, err := diagnosticParserCoreVersionLexerScannerContractForLanguage(language)
 	if err != nil {
 		return nil, err
@@ -301,7 +334,18 @@ func newDiagnosticParserCoreVersionLexerSnapshotWithMetadata(
 	if _, _, ok := compact.CheckpointReceiptOwned(owner, afterCheckpoint); !ok {
 		return nil, errDiagnosticParserCoreUnknownCheckpointIdentity
 	}
-	dfa = cloneDiagnosticParserCoreDFARelexSnapshot(dfa)
+	mask, packed := core.PackScannerTrialMask(dfa.extZeroTried)
+	var out *diagnosticParserCoreVersionLexerSnapshot
+	var payload, start, end []byte
+	var tried []bool
+	var storage *core.ScannerSnapshotStorage
+	if packed {
+		out, payload, start, end, storage = pages.NewPacked(dfa.externalPayload, dfa.externalTokenStart, dfa.externalTokenEnd)
+	} else {
+		out, payload, start, end, tried, storage = pages.New(dfa.externalPayload, dfa.externalTokenStart, dfa.externalTokenEnd, dfa.extZeroTried)
+	}
+	dfa.externalPayload, dfa.externalTokenStart, dfa.externalTokenEnd = payload, start, end
+	dfa.extZeroTried = tried
 	afterBytes, afterInfo, err := copyDiagnosticParserCoreVersionCheckpointWithPrivateCopy(compact, owner, afterCheckpoint, dfa.externalPayload)
 	if err != nil {
 		return nil, err
@@ -318,7 +362,8 @@ func newDiagnosticParserCoreVersionLexerSnapshotWithMetadata(
 	if checkpointIdentityRequired && !checkpointIdentityValid {
 		return nil, errors.New("parser-core phase zero: version lexer snapshot requires a complete checkpoint identity")
 	}
-	return &diagnosticParserCoreVersionLexerSnapshot{
+	*out = diagnosticParserCoreVersionLexerSnapshot{
+		storage:        storage,
 		compact:        compact,
 		coreGeneration: generation,
 		language:       language,
@@ -327,13 +372,15 @@ func newDiagnosticParserCoreVersionLexerSnapshotWithMetadata(
 			checkpointIdentityRequired: checkpointIdentityRequired, checkpointIdentityValid: checkpointIdentityValid,
 		}),
 		dfa:                   dfa,
+		triedMask:             mask,
 		beforeCheckpoint:      beforeCheckpoint,
 		afterCheckpoint:       afterCheckpoint,
 		beforeCheckpointBytes: beforeBytes,
 		afterCheckpointBytes:  afterBytes,
 		beforeCheckpointInfo:  beforeInfo,
 		afterCheckpointInfo:   afterInfo,
-	}, nil
+	}
+	return out, nil
 }
 
 func (s *diagnosticParserCoreVersionLexerSnapshot) validateGeneration() error {
@@ -356,6 +403,7 @@ func (s *diagnosticParserCoreVersionLexerSnapshot) validateDestination(compact *
 	if s.language != language {
 		return errors.New("parser-core phase zero: version lexer snapshot belongs to a different Language")
 	}
+	binding := language.ExternalScanner
 	metadata := s.metadata.Value()
 	scanner, err := diagnosticParserCoreVersionLexerScannerContractForLanguage(language)
 	if err != nil {
@@ -365,6 +413,12 @@ func (s *diagnosticParserCoreVersionLexerSnapshot) validateDestination(compact *
 		return errors.New("parser-core phase zero: version lexer snapshot scanner contract changed")
 	}
 	identity, identityRequired, identityValid := diagnosticParserCoreVersionLexerCheckpointIdentity(language)
+	// Capability methods are user callbacks. Reject a changed live descriptor
+	// before publication or restore; keep every existing contract and identity
+	// check authoritative for equal value bindings.
+	if !core.ScannerBindingUnchanged(binding, language.ExternalScanner) {
+		return errors.New("parser-core phase zero: version lexer snapshot scanner binding changed during capability validation")
+	}
 	if metadata.checkpointIdentityRequired != identityRequired {
 		return errors.New("parser-core phase zero: version lexer snapshot checkpoint capability changed")
 	}
@@ -535,6 +589,9 @@ func (s *diagnosticParserCoreVersionLexerSnapshot) restore(compact *core.Core, d
 		return err
 	}
 	s.dfa.restore(d)
+	if s.triedMask.Len() != 0 {
+		d.extZeroTried = s.triedMask.Restore(d.extZeroTried)
+	}
 	return nil
 }
 
@@ -556,12 +613,27 @@ func diagnosticParserCoreVersionS3RegionFootprintBytes(region *diagnosticParserC
 }
 
 func diagnosticParserCoreVersionLexerSnapshotFootprintBytes(snapshot *diagnosticParserCoreVersionLexerSnapshot) uint64 {
+	bytes := diagnosticParserCoreVersionLexerSnapshotFootprintWithoutStorage(snapshot)
+	if snapshot != nil && snapshot.storage != nil {
+		extra := snapshot.storage.FootprintBytes()
+		if extra > math.MaxUint64-bytes {
+			return math.MaxUint64
+		}
+		bytes += extra
+	}
+	return bytes
+}
+
+func diagnosticParserCoreVersionLexerSnapshotFootprintWithoutStorage(snapshot *diagnosticParserCoreVersionLexerSnapshot) uint64 {
 	if snapshot == nil {
 		return 0
 	}
 	// dfa is embedded in the snapshot record, so sizeof(snapshot) already
 	// includes its scalar fields and slice headers.
-	total := uint64(unsafe.Sizeof(*snapshot))
+	total := uint64(0)
+	if snapshot.storage == nil {
+		total = uint64(unsafe.Sizeof(*snapshot))
+	}
 	// Conservatively charge the shared holder once per snapshot. Sharing cannot
 	// bypass the existing per-version memory budget.
 	if snapshot.metadata != nil {
@@ -583,10 +655,12 @@ func diagnosticParserCoreVersionLexerSnapshotFootprintBytes(snapshot *diagnostic
 		}
 		total += bytes
 	}
-	add(cap(snapshot.dfa.externalPayload), 1)
-	add(cap(snapshot.dfa.externalTokenStart), 1)
-	add(cap(snapshot.dfa.externalTokenEnd), 1)
-	add(cap(snapshot.dfa.extZeroTried), unsafe.Sizeof(bool(false)))
+	if snapshot.storage == nil {
+		add(cap(snapshot.dfa.externalPayload), 1)
+		add(cap(snapshot.dfa.externalTokenStart), 1)
+		add(cap(snapshot.dfa.externalTokenEnd), 1)
+		add(cap(snapshot.dfa.extZeroTried), unsafe.Sizeof(bool(false)))
+	}
 	add(cap(snapshot.beforeCheckpointBytes), 1)
 	add(cap(snapshot.afterCheckpointBytes), 1)
 	return total
@@ -597,7 +671,10 @@ func diagnosticParserCoreVersionStateFootprintBytes(state *diagnosticParserCoreV
 		return 0
 	}
 	total := uint64(unsafe.Sizeof(*state))
-	regionBytes := diagnosticParserCoreVersionS3RegionFootprintBytes(state.s3Region)
+	if state.recovery != nil {
+		total += uint64(unsafe.Sizeof(*state.recovery))
+	}
+	regionBytes := diagnosticParserCoreVersionS3RegionFootprintBytes(state.recovery.Value().Region)
 	snapshotBytes := diagnosticParserCoreVersionLexerSnapshotFootprintBytes(state.relexSnapshot)
 	if math.MaxUint64-total < regionBytes {
 		return math.MaxUint64

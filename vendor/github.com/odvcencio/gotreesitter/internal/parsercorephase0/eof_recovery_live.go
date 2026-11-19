@@ -134,7 +134,7 @@ func (c *Core) publishRecoverEOFAcceptUncheckpointed(
 
 	// The recovered root replaces the old stack path. Build a private empty
 	// predecessor so the new head has exactly one payload and no old siblings.
-	base, err := c.appendNodeAt(nodeRecord{
+	base, err := c.appendNodeAt(nodeInput{
 		state: 1, byteOffset: endByte, pathCount: 1,
 	}, c.checkpoint)
 	if err != nil {
@@ -158,7 +158,7 @@ func (c *Core) publishRecoverEOFAcceptUncheckpointed(
 		return Head{}, 0, err
 	}
 	c.addWork(&c.work.GraphLinkAdditionsProxy, 1)
-	newNode, err := c.appendNodeAt(nodeRecord{
+	newNode, err := c.appendNodeAt(nodeInput{
 		state: 1, byteOffset: endByte,
 		firstLink: uint32(linkID), linkCount: 1, pathCount: 1,
 	}, c.checkpoint)

@@ -455,12 +455,24 @@ type BoundaryIndexStats struct {
 }
 
 type nodeRecord struct {
-	state         StateID
-	byteOffset    uint32
-	firstLink     uint32
-	linkCount     uint32
-	pathCount     uint64
-	precedenceMax int64
+	state      StateID
+	byteOffset uint32
+	firstLink  uint32
+	linkCount  uint32
+}
+
+// nodeInput is the complete logical publication request. Only its hot header
+// occupies the graph arena; path counts are encoded losslessly in lineage.
+type nodeInput struct {
+	state      StateID
+	byteOffset uint32
+	firstLink  uint32
+	linkCount  uint32
+	pathCount  uint64
+}
+
+func (r nodeInput) record() nodeRecord {
+	return nodeRecord{state: r.state, byteOffset: r.byteOffset, firstLink: r.firstLink, linkCount: r.linkCount}
 }
 
 // precedenceCandidate is a computed precedence value. It carries no
@@ -512,6 +524,22 @@ type nodeLineageRecord struct {
 	blended bool
 }
 
+type nodeLineageHot struct {
+	owner            uint32
+	setWord          uint32
+	lineage          uint16
+	precedenceInline int16
+	setCount         uint8
+	setFlags         uint8
+	rank             CleanPathRankSelection
+	flags            uint8
+}
+
+type nodeLineageRecovery struct {
+	storedErrorCost    uint32
+	dropCohortRefIndex uint32
+}
+
 // Journal reference indices alongside the scalar metadata. Ordinary owner or
 // cost updates do not copy proof sets; rollback restores the index and the
 // checkpoint's immutable reference arena.
@@ -519,7 +547,7 @@ type nodeLineageMutation struct {
 	node               NodeID
 	owner              uint32
 	dropCohortRefIndex uint32
-	setSpillRef        uint32
+	setWord            uint32
 	setCount           uint8
 	setFlags           uint8
 	lineage            uint16
@@ -580,10 +608,11 @@ var errAlternativeSetBranchOrdinalCap = errors.New("parser-core phase zero: redu
 // is the empty set. Ascending uint32 order sorts event-major, branch-minor,
 // so every branch of one event sits adjacent.
 type AlternativeSet struct {
-	inline   [alternativeSetInlineCapacity]uint32
-	count    uint8
-	flags    uint8
-	spillRef uint32 // 1-based start index into Core.alternativeSpillArena
+	// inline[0] stores the exact member when inline and the exact 1-based
+	// spill offset when flags marks a spilled set. The two meanings are exclusive.
+	inline [alternativeSetInlineCapacity]uint32
+	count  uint8
+	flags  uint8
 }
 
 // packAlternativeSetMember packs one (event, branch) pair into the single
@@ -735,7 +764,7 @@ func (l linkRecord) isRecoveryDiscontinuity() bool {
 	return l.flags&linkFlagRecoveryDiscontinuity != 0
 }
 
-func (l linkRecord) validateShape() error {
+func (l linkRecord) validateUncommonShape() error {
 	if l.flags&^linkKnownFlags != 0 {
 		return errors.New("parser-core phase zero: link has unknown flags")
 	}
@@ -758,11 +787,12 @@ func (l linkRecord) validateShape() error {
 }
 
 func (c *Core) nodePrecedenceMaximum(id NodeID) (precedenceCandidate, error) {
-	node, err := c.node(id)
+	_, err := c.node(id)
 	if err != nil {
 		return precedenceCandidate{}, err
 	}
-	return precedenceCandidate{value: node.precedenceMax}, nil
+	value, err := c.storedNodePrecedence(id)
+	return precedenceCandidate{value: value}, err
 }
 
 func (c *Core) linkPrecedenceMaximum(link linkRecord) (precedenceCandidate, error) {
@@ -849,10 +879,10 @@ func (c *Core) computePrecedenceMaximumFromNode(r nodeRecord, folded precedenceM
 	var maximum precedenceCandidate
 	haveMaximum := false
 	for remaining := r.linkCount; remaining > 0; remaining-- {
-		if id == 0 || uint64(id) > uint64(len(c.links)) {
+		if id == 0 || uint64(id) > uint64(c.links.Len()) {
 			return precedenceCandidate{}, errors.New("parser-core phase zero: adjacency shorter than recorded link count")
 		}
-		candidate, err := c.linkPrecedenceMaximum(c.links[id-1])
+		candidate, err := c.linkPrecedenceMaximum(c.links.At(int(id - 1)))
 		if err != nil {
 			return precedenceCandidate{}, err
 		}
@@ -860,7 +890,7 @@ func (c *Core) computePrecedenceMaximumFromNode(r nodeRecord, folded precedenceM
 			maximum = candidate
 			haveMaximum = true
 		}
-		id = c.links[id-1].next
+		id = c.links.At(int(id - 1)).next
 	}
 	if id != 0 {
 		return precedenceCandidate{}, errors.New("parser-core phase zero: adjacency exceeds recorded link count or cycles")
@@ -1277,26 +1307,30 @@ type RawSelectedCensus struct {
 // Core is the compact, persistent diagnostic graph. All records are indexes
 // into pointer-free slices; the production parser is unaffected.
 type Core struct {
-	tables             TableView
-	tableIdentity      [32]byte
-	tableIdentityValid bool
-	plans              ReductionPlanProvider
-	selectedProvider   SelectedStorePolicyProvider
-	selectedPolicy     *SelectedStorePolicy
-	limits             Limits
-	diagnostics        diagnosticOptions
-	nodes              []nodeRecord
-	nodeLineages       []nodeLineageRecord
-	nodeLineageRefSets []DropCohortRefSet
-	nodeCheckpoints    []CheckpointID
-	links              []linkRecord
+	tables                 TableView
+	tableIdentity          [32]byte
+	tableIdentityValid     bool
+	plans                  ReductionPlanProvider
+	selectedProvider       SelectedStorePolicyProvider
+	selectedPolicy         *SelectedStorePolicy
+	limits                 Limits
+	diagnostics            diagnosticOptions
+	nodes                  nodeRecordBlocks
+	nodePathCountsWide     []nodePathCountRecord
+	nodePrecedenceWide     []int64
+	nodePrecedenceWideBase NodeID
+	nodeLineages           []nodeLineageHot
+	nodeLineageRecovery    []nodeLineageRecovery
+	nodeLineageRefSets     []DropCohortRefSet
+	nodeCheckpoints        []CheckpointID
+	links                  linkRecordStorage
 
 	// dropCohortLinkRefIndexes is an optional, LinkID-indexed sidecar. A zero
 	// entry means that no finalized drop-cohort reference is bound.
 	dropCohortLinkRefIndexes []uint32
 	dropCohortLinkRefJournal []dropCohortLinkRefMutation
 
-	subtrees []subtreeRecord
+	subtrees subtreeRecordBlocks
 	// Visible counts depend on immutable symbols, children, aliases, and extra bits.
 	// Fragility and scanner provenance updates do not change these counts.
 	recoveryVisibleCounts  []recoveryVisibleCount
@@ -1388,16 +1422,17 @@ type Core struct {
 	factorLinkScratch        []linkRecord
 	derivationSummaryScratch derivationSummaryScratch
 	selectedBuild            selectedStoreBuildScratch
-	selectedPoolMu           sync.Mutex
-	selectedPool             selectedStoreBacking
+	selectedPool             *selectedStorePool
 	schedulerFrame           schedulerTransactionFrame
 	// metadataConstructionAuthenticated remains true only while every compact
 	// subtree was published through the authenticated shift/reduction seams.
 	// Diagnostic generic publication clears it monotonically until Reset.
-	metadataConstructionAuthenticated bool
+	metadataConstructionAuthenticated       bool
+	nativeProjectionFieldProfileUnsupported bool
 	// lastShiftFresh records whether the most recent single-boundary shift
 	// published a new node. See LastShiftFresh.
-	lastShiftFresh bool
+	lastShiftFresh        bool
+	preparedReductionGoto preparedReductionGoto
 	// reduceConflictContext is a transient, non-sticky fragility signal: the
 	// conflict executor (executeDiagnosticParserCoreGenericConflictDetailed,
 	// parsercore_phase0_driver.go) sets it for the duration of applying every
@@ -1507,6 +1542,10 @@ type diagnosticOptions struct {
 }
 
 type checkpoint struct {
+	nodePrecedenceWideBase                                                    NodeID
+	nodePrecedenceWide                                                        int
+	nodeLineageRecovery                                                       int
+	ownedLexerRequestsActive                                                  bool
 	nodeLineageRefSets                                                        []DropCohortRefSet
 	nodes, nodeLineages, nodeCheckpoints, links, subtrees, externalProvenance int
 	missingLeafProvenance                                                     int
@@ -1605,11 +1644,12 @@ type SchedulerTransactionToken struct {
 }
 
 type schedulerTransactionFrame struct {
-	mark     checkpoint
-	epoch    uint64
-	poisoned error
-	active   bool
-	fresh    bool
+	ownedLexerRequestsActive bool
+	mark                     checkpoint
+	epoch                    uint64
+	poisoned                 error
+	active                   bool
+	fresh                    bool
 }
 
 // clearInactive releases every completed checkpoint reference, including the
@@ -1629,9 +1669,12 @@ func (c *Core) markInto(mark *checkpoint) {
 	}
 	c.nextTransaction++
 	*mark = checkpoint{
-		nodes: len(c.nodes), nodeLineages: len(c.nodeLineages),
+		ownedLexerRequestsActive: c.schedulerFrame.ownedLexerRequestsActive,
+		nodePrecedenceWide:       len(c.nodePrecedenceWide),
+		nodePrecedenceWideBase:   c.nodePrecedenceWideBase,
+		nodes:                    c.nodes.Len(), nodeLineages: len(c.nodeLineages), nodeLineageRecovery: len(c.nodeLineageRecovery),
 		nodeLineageRefSets: c.nodeLineageRefSets,
-		links:              len(c.links), subtrees: len(c.subtrees),
+		links:              c.links.Len(), subtrees: c.subtrees.Len(),
 		nodeCheckpoints:                 len(c.nodeCheckpoints),
 		externalProvenance:              len(c.externalProvenance),
 		missingLeafProvenance:           len(c.missingLeafProvenance),
@@ -1743,12 +1786,20 @@ func (c *Core) restoreCheckpoint(mark *checkpoint) {
 		panic("parser-core phase zero: classification phase overflow during rollback")
 	}
 	c.classificationPhase++
-	c.nodes = c.nodes[:mark.nodes]
+	if !c.nodes.Truncate(mark.nodes) {
+		panic("parser-core phase zero: checkpoint crosses retired node block")
+	}
+	c.truncateNodePathCounts(mark.nodes)
+	c.nodePrecedenceWide = c.nodePrecedenceWide[:mark.nodePrecedenceWide]
+	c.nodePrecedenceWideBase = mark.nodePrecedenceWideBase
 	c.nodeLineages = c.nodeLineages[:mark.nodeLineages]
 	c.nodeLineageRefSets = mark.nodeLineageRefSets
+	c.nodeLineageRecovery = c.nodeLineageRecovery[:mark.nodeLineageRecovery]
 	c.nodeCheckpoints = c.nodeCheckpoints[:mark.nodeCheckpoints]
-	c.links = c.links[:mark.links]
-	c.subtrees = c.subtrees[:mark.subtrees]
+	c.links.Truncate(int(mark.links))
+	if !c.subtrees.Truncate(mark.subtrees) {
+		panic("parser-core phase zero: invalid subtree checkpoint")
+	}
 	c.truncateRecoveryVisibleCounts(mark.subtrees)
 	c.eofRecoveryRoots = c.eofRecoveryRoots[:mark.eofRecoveryRoots]
 	c.externalProvenance = c.externalProvenance[:mark.externalProvenance]
@@ -1767,6 +1818,7 @@ func (c *Core) restoreCheckpoint(mark *checkpoint) {
 	c.frontier = mark.frontier
 	c.checkpoint = mark.checkpoint
 	c.work = mark.work
+	c.schedulerFrame.ownedLexerRequestsActive = mark.ownedLexerRequestsActive
 	for index := len(c.dropCohortLinkRefJournal) - 1; index >= mark.dropCohortLinkRefJournal; index-- {
 		mutation := c.dropCohortLinkRefJournal[index]
 		if mutation.index >= 0 && mutation.index < len(c.dropCohortLinkRefIndexes) {
@@ -1781,19 +1833,18 @@ func (c *Core) restoreCheckpoint(mark *checkpoint) {
 	for index := len(c.nodeLineageJournal) - 1; index >= mark.nodeLineageJournal; index-- {
 		mutation := c.nodeLineageJournal[index]
 		nodeIndex := int(mutation.node) - 1
-		if nodeIndex < 0 || nodeIndex >= len(c.nodes) {
+		if nodeIndex < 0 || nodeIndex >= c.nodes.Len() {
 			continue
 		}
 		c.nodeLineages[nodeIndex].owner = mutation.owner
-		c.nodeLineages[nodeIndex].storedErrorCost = mutation.storedErrorCost
-		c.nodeLineages[nodeIndex].dropCohortRefIndex = mutation.dropCohortRefIndex
-		c.nodeLineages[nodeIndex].set.count = mutation.setCount
-		c.nodeLineages[nodeIndex].set.flags = mutation.setFlags
-		c.nodeLineages[nodeIndex].set.spillRef = mutation.setSpillRef
+		c.writeNodeLineageRecovery(mutation.node, nodeLineageRecovery{storedErrorCost: mutation.storedErrorCost, dropCohortRefIndex: mutation.dropCohortRefIndex})
+		c.nodeLineages[nodeIndex].setCount = mutation.setCount
+		c.nodeLineages[nodeIndex].setFlags = mutation.setFlags
+		c.nodeLineages[nodeIndex].setWord = mutation.setWord
 		c.nodeLineages[nodeIndex].lineage = mutation.lineage
 		c.nodeLineages[nodeIndex].rank = mutation.rank
-		c.nodeLineages[nodeIndex].converged = mutation.converged
-		c.nodeLineages[nodeIndex].blended = mutation.blended
+		c.nodeLineages[nodeIndex].setConverged(mutation.converged)
+		c.nodeLineages[nodeIndex].setBlended(mutation.blended)
 	}
 	c.boundaries.restore(mark.boundaryIndex)
 	c.dropCohortRefSpill = mark.dropCohortRefSpillHeader
@@ -2367,14 +2418,18 @@ func (c *Core) Reset() error {
 	if err := c.advanceDropCohortEpoch(); err != nil {
 		return err
 	}
-	c.nodes = c.nodes[:0]
+	c.nodePathCountsWide = c.nodePathCountsWide[:0]
+	c.nodes.Reset()
+	c.nodePrecedenceWide = c.nodePrecedenceWide[:0]
+	c.nodePrecedenceWideBase = 0
 	c.nodeLineages = c.nodeLineages[:0]
+	c.nodeLineageRecovery = c.nodeLineageRecovery[:0]
 	c.nodeLineageRefSets = c.nodeLineageRefSets[:0]
 	c.nodeCheckpoints = c.nodeCheckpoints[:0]
-	c.links = c.links[:0]
+	c.links.Truncate(int(0))
 	clear(c.dropCohortLinkRefIndexes)
 	c.dropCohortLinkRefIndexes = c.dropCohortLinkRefIndexes[:0]
-	c.subtrees = c.subtrees[:0]
+	c.subtrees.Reset()
 	c.truncateRecoveryVisibleCounts(0)
 	c.recoveryVisibleSymbols = c.recoveryVisibleSymbols[:0]
 	c.eofRecoveryRoots = c.eofRecoveryRoots[:0]
@@ -2448,12 +2503,14 @@ func (c *Core) Reset() error {
 	c.historicalNodeScratch = c.historicalNodeScratch[:0]
 	c.derivationSummaryScratch.finish()
 	c.metadataConstructionAuthenticated = true
+	c.nativeProjectionFieldProfileUnsupported = false
 	c.reduceConflictContext = false
 	c.reduceNoLookaheadContext = false
 	c.dropCohortSelectionContext = DropCohortSelectionNone
 	c.historicalCertificateAuthentication = false
 	c.externalTokenScannerStart = 0
 	c.externalTokenScannerEnd = 0
+	c.schedulerFrame.ownedLexerRequestsActive = false
 	c.externalTokenScannerExact = false
 	return nil
 }
@@ -2478,6 +2535,9 @@ func (c *Core) ResetReleasingRetention() error {
 	}
 	c.condenseCandidates = nil
 	c.releaseRecordArenaReserve()
+	// Retired results own their pool generation, not this core. A later
+	// release must not restore buffers discarded by a declining parse.
+	c.selectedPool = nil
 	c.releaseOversizedRetention()
 	return nil
 }
@@ -2548,19 +2608,7 @@ func (c *Core) SetPhaseExternalTokenScannerCheckpoints(start, end CheckpointID) 
 			return errors.New("parser-core phase zero: unknown external token start checkpoint identity")
 		}
 	}
-	if c.checkpoint == end && c.externalTokenScannerExact &&
-		c.externalTokenScannerStart == start && c.externalTokenScannerEnd == end {
-		return nil
-	}
-	if c.classificationPhase == math.MaxUint64 {
-		return errors.New("parser-core phase zero: classification phase overflow")
-	}
-	c.classificationPhase++
-	c.checkpoint = end
-	c.externalTokenScannerStart = start
-	c.externalTokenScannerEnd = end
-	c.externalTokenScannerExact = true
-	return nil
+	return c.setPhaseExternalTokenScannerCheckpoints(start, end)
 }
 
 func (c *Core) boundaryKey(state StateID, byteOffset uint32) boundaryKey {
@@ -2587,14 +2635,17 @@ func (c *Core) Seed(state StateID, byteOffset uint32) (Head, error) {
 	if probe.found {
 		return Head{Node: id}, nil
 	}
-	id, err := c.appendNodeAt(nodeRecord{
+	id, err := c.appendNodeAt(nodeInput{
 		state: state, byteOffset: byteOffset, pathCount: 1,
 	}, key.checkpoint)
 	if err != nil {
 		return Head{}, err
 	}
 	if err := c.publishBoundary(probe, id); err != nil {
-		c.nodes = c.nodes[:len(c.nodes)-1]
+		c.truncateNodePathCounts(c.nodes.Len() - 1)
+		if !c.nodes.Truncate(c.nodes.Len() - 1) {
+			panic("parser-core phase zero: seed rollback crosses retired node block")
+		}
 		c.nodeLineages = c.nodeLineages[:len(c.nodeLineages)-1]
 		if !c.externalPayloadsQuiescent {
 			c.nodeCheckpoints = c.nodeCheckpoints[:len(c.nodeCheckpoints)-1]
@@ -3200,7 +3251,19 @@ func (c *Core) reductionParentForPath(
 		}
 		materializationPlan = &adjusted
 	}
-	fields, aliases, err := c.remapReductionPlan(path.children, materializationPlan, scratch)
+	var fields []FieldMapEntry
+	var aliases []Symbol
+	var err error
+	if !path.recoveryDiscontinuity && len(path.children) == int(materializationPlan.childCount) &&
+		(len(materializationPlan.aliases) == 0 || len(materializationPlan.aliases) == len(path.children)) {
+		// popPaths authenticates each child and emits exactly ChildCount
+		// non-extra children. Equality of those counts proves there are no
+		// interstitial extras, so the production's positions are unchanged.
+		// The immutable plan was validated for this exact production/count.
+		fields, aliases = materializationPlan.fields, materializationPlan.aliases
+	} else {
+		fields, aliases, err = c.remapReductionPlan(path.children, materializationPlan, scratch)
+	}
 	if err != nil {
 		return 0, 0, ForkOrder{}, err
 	}
@@ -3498,20 +3561,20 @@ func (c *Core) inheritedStoredErrorCost(links []linkRecord) (uint32, error) {
 	if len(links) == 0 {
 		return 0, nil
 	}
-	first, err := c.nodeLineage(links[0].prev)
+	first, err := c.RecoveryStoredErrorCost(Head{Node: links[0].prev})
 	if err != nil {
 		return 0, err
 	}
-	return first.storedErrorCost, nil
+	return first, nil
 }
 
 func (c *Core) publishInheritedStoredErrorCost(head Head, cost uint32) error {
-	lineage, err := c.nodeLineage(head.Node)
+	lineage, err := c.lineageView(head.Node)
 	if err != nil {
 		return err
 	}
-	lineage.storedErrorCost = cost
-	c.invalidateReusedLineageProof(head.Node, lineage)
+	c.writeNodeLineageRecovery(head.Node, nodeLineageRecovery{storedErrorCost: cost, dropCohortRefIndex: lineage.dropCohortRefIndex})
+	c.invalidateReusedLineageProof(head.Node)
 	return nil
 }
 
@@ -3519,7 +3582,7 @@ func (c *Core) publishInheritedStoredErrorCost(head Head, cost uint32) error {
 // intermediate boundary for cross-path condensation. Reduction paths with
 // trailing extras use it so only their final (state, byte) boundary merges.
 func (c *Core) appendPrivate(state StateID, byteOffset uint32, in linkInput) (Head, error) {
-	prev, err := c.node(in.prev)
+	_, prevPaths, err := c.nodeWithPathCount(in.prev)
 	if err != nil {
 		return Head{}, err
 	}
@@ -3536,10 +3599,10 @@ func (c *Core) appendPrivate(state StateID, byteOffset uint32, in linkInput) (He
 	if err != nil {
 		return Head{}, err
 	}
-	if uint64(len(c.links))+1 > uint64(c.limits.MaxLinks) || uint64(len(c.links)) >= math.MaxUint32 {
+	if uint64(c.links.Len())+1 > uint64(c.limits.MaxLinks) || uint64(c.links.Len()) >= math.MaxUint32 {
 		return Head{}, errors.New("parser-core phase zero: link arena cap")
 	}
-	if uint64(len(c.nodes))+1 > uint64(c.limits.MaxNodes) || uint64(len(c.nodes)) >= math.MaxUint32 {
+	if uint64(c.nodes.Len())+1 > uint64(c.limits.MaxNodes) || uint64(c.nodes.Len()) >= math.MaxUint32 {
 		return Head{}, errors.New("parser-core phase zero: node arena cap")
 	}
 	flags := uint32(0)
@@ -3554,9 +3617,9 @@ func (c *Core) appendPrivate(state StateID, byteOffset uint32, in linkInput) (He
 		return Head{}, err
 	}
 	c.addWork(&c.work.GraphLinkAdditionsProxy, 1)
-	id, err := c.appendNodeAtWithMaximum(nodeRecord{
+	id, err := c.appendNodeAtWithMaximum(nodeInput{
 		state: state, byteOffset: byteOffset,
-		firstLink: uint32(linkID), linkCount: 1, pathCount: prev.pathCount,
+		firstLink: uint32(linkID), linkCount: 1, pathCount: prevPaths,
 	}, c.checkpoint, maximum.value)
 	if err != nil {
 		return Head{}, err
@@ -3604,12 +3667,12 @@ type ReductionOutputCostFunc func(prev NodeID, payload SubtreeID) (uint32, error
 type PayloadErrorPresenceFunc func(payload SubtreeID) (bool, error)
 
 func (c *Core) storedErrorCostForLink(in linkInput) (uint32, error) {
-	lineage, err := c.nodeLineage(in.prev)
+	cost, err := c.RecoveryStoredErrorCost(Head{Node: in.prev})
 	if err != nil {
 		return 0, err
 	}
 	if in.hasStoredErrorCost {
-		if in.storedErrorCost < lineage.storedErrorCost {
+		if in.storedErrorCost < cost {
 			return 0, errors.New("parser-core phase zero: expected stored recovery cost is below its predecessor")
 		}
 		return in.storedErrorCost, nil
@@ -3617,7 +3680,7 @@ func (c *Core) storedErrorCostForLink(in linkInput) (uint32, error) {
 	// The inherited cost is the predecessor's own stored cost, which this
 	// lookup already holds; inheritedStoredErrorCost would resolve the same
 	// record a second time.
-	return lineage.storedErrorCost, nil
+	return cost, nil
 }
 
 type condenseChange uint8
@@ -3671,7 +3734,7 @@ func (c *Core) condenseWithOutcomeAtomic(key boundaryKey, in linkInput) (condens
 	if key.frontier != c.frontier {
 		return condenseOutcome{}, errors.New("parser-core phase zero: boundary frontier mismatch")
 	}
-	prev, err := c.node(in.prev)
+	_, prevPaths, err := c.nodeWithPathCount(in.prev)
 	if err != nil {
 		return condenseOutcome{}, err
 	}
@@ -3686,7 +3749,7 @@ func (c *Core) condenseWithOutcomeAtomic(key boundaryKey, in linkInput) (condens
 	if probe.found && c.condenseNodeHasIndependentOwner(oldID) {
 		// This is a live sibling, not a dead boundary being resurrected. Its
 		// lookahead history cannot be imported into this version's output.
-		return c.condenseDirectAppend(key, probe, prev, in, storedErrorCost)
+		return c.condenseDirectAppend(key, probe, prevPaths, in, storedErrorCost)
 	}
 	if !probe.found {
 		// No incumbent has ever published this boundary in the current
@@ -3706,10 +3769,10 @@ func (c *Core) condenseWithOutcomeAtomic(key boundaryKey, in linkInput) (condens
 		// function depends on is untouched -- this function still cannot
 		// prove a caller can never roll back past this append, so it does
 		// not weaken that contract.
-		return c.condenseDirectAppend(key, probe, prev, in, storedErrorCost)
+		return c.condenseDirectAppend(key, probe, prevPaths, in, storedErrorCost)
 	}
 	if c.condenseNodeIsLive(oldID) {
-		oldLineage, lineageErr := c.nodeLineage(oldID)
+		oldLineage, lineageErr := c.lineageView(oldID)
 		if lineageErr != nil {
 			return condenseOutcome{}, lineageErr
 		}
@@ -3726,7 +3789,7 @@ func (c *Core) condenseWithOutcomeAtomic(key boundaryKey, in linkInput) (condens
 	if probe.found && !c.condenseNodeIsLive(oldID) {
 		historicalBoundarySplit = true
 		historicalNode = oldID
-		old, oldErr := c.nodeLineage(oldID)
+		old, oldErr := c.nodeLineageHot(oldID)
 		if oldErr != nil {
 			return condenseOutcome{}, oldErr
 		}
@@ -3740,7 +3803,7 @@ func (c *Core) condenseWithOutcomeAtomic(key boundaryKey, in linkInput) (condens
 			historicalForestDeterministic = deterministic
 			historicalCleanPathRank = old.rank
 			historicalLineage = old.lineage
-			historicalConvergedSplit = old.converged
+			historicalConvergedSplit = old.isConverged()
 		}
 		oldID = 0
 	}
@@ -3946,17 +4009,21 @@ func (c *Core) condenseWithOutcomeAtomic(key boundaryKey, in linkInput) (condens
 			}
 		}
 	}
-	newPathCount := prev.pathCount
+	newPathCount := prevPaths
 	if oldID != 0 {
-		newPathCount = saturatingAddPaths(newPathCount, old.pathCount)
+		oldPaths, err := c.nodePathCount(oldID)
+		if err != nil {
+			return condenseOutcome{}, err
+		}
+		newPathCount = saturatingAddPaths(newPathCount, oldPaths)
 	}
-	if uint64(len(c.links))+1 > uint64(c.limits.MaxLinks) || uint64(len(c.links)) >= math.MaxUint32 {
+	if uint64(c.links.Len())+1 > uint64(c.limits.MaxLinks) || uint64(c.links.Len()) >= math.MaxUint32 {
 		if oldID != 0 {
 			c.recordLinkUnionRejected()
 		}
 		return condenseOutcome{}, errors.New("parser-core phase zero: link arena cap")
 	}
-	if uint64(len(c.nodes))+1 > uint64(c.limits.MaxNodes) || uint64(len(c.nodes)) >= math.MaxUint32 {
+	if uint64(c.nodes.Len())+1 > uint64(c.limits.MaxNodes) || uint64(c.nodes.Len()) >= math.MaxUint32 {
 		if oldID != 0 {
 			c.recordLinkUnionRejected()
 		}
@@ -4008,7 +4075,7 @@ func (c *Core) condenseWithOutcomeAtomic(key boundaryKey, in linkInput) (condens
 		return condenseOutcome{}, err
 	}
 	c.addWork(&c.work.GraphLinkAdditionsProxy, 1)
-	id, err := c.appendNodeAtWithMaximum(nodeRecord{
+	id, err := c.appendNodeAtWithMaximum(nodeInput{
 		state: key.state, byteOffset: key.byteOffset,
 		firstLink: uint32(linkID), linkCount: linkCount, pathCount: newPathCount,
 	}, key.checkpoint, finalMaximum.value)
@@ -4045,11 +4112,11 @@ func (c *Core) condenseWithOutcomeAtomic(key boundaryKey, in linkInput) (condens
 // condenseOutcome shape (change: condenseNew, every historical* field at its
 // zero value). publishBoundary keeps deciding journal writes from
 // len(c.transactions) unchanged; this helper does not touch that contract.
-func (c *Core) condenseDirectAppend(key boundaryKey, probe boundaryProbe, prev *nodeRecord, in linkInput, storedErrorCost uint32) (condenseOutcome, error) {
-	if uint64(len(c.links))+1 > uint64(c.limits.MaxLinks) || uint64(len(c.links)) >= math.MaxUint32 {
+func (c *Core) condenseDirectAppend(key boundaryKey, probe boundaryProbe, prevPaths uint64, in linkInput, storedErrorCost uint32) (condenseOutcome, error) {
+	if uint64(c.links.Len())+1 > uint64(c.limits.MaxLinks) || uint64(c.links.Len()) >= math.MaxUint32 {
 		return condenseOutcome{}, errors.New("parser-core phase zero: link arena cap")
 	}
-	if uint64(len(c.nodes))+1 > uint64(c.limits.MaxNodes) || uint64(len(c.nodes)) >= math.MaxUint32 {
+	if uint64(c.nodes.Len())+1 > uint64(c.limits.MaxNodes) || uint64(c.nodes.Len()) >= math.MaxUint32 {
 		return condenseOutcome{}, errors.New("parser-core phase zero: node arena cap")
 	}
 	// The caller resolved prev and the payload already, so compute the new
@@ -4060,12 +4127,16 @@ func (c *Core) condenseDirectAppend(key boundaryKey, probe boundaryProbe, prev *
 	if err != nil {
 		return condenseOutcome{}, err
 	}
-	maximumValue, err := checkedAddScore(prev.precedenceMax, contribution)
+	previousMaximum, err := c.storedNodePrecedence(in.prev)
+	if err != nil {
+		return condenseOutcome{}, err
+	}
+	maximumValue, err := checkedAddScore(previousMaximum, contribution)
 	if err != nil {
 		return condenseOutcome{}, errors.New("parser-core phase zero: precedence maximum overflow")
 	}
 	maximum := precedenceCandidate{value: maximumValue}
-	prevPathCount := prev.pathCount
+	prevPathCount := prevPaths
 	flags := uint32(0)
 	if in.order.Present {
 		flags |= linkFlagHasOrder
@@ -4078,7 +4149,7 @@ func (c *Core) condenseDirectAppend(key boundaryKey, probe boundaryProbe, prev *
 		return condenseOutcome{}, err
 	}
 	c.addWork(&c.work.GraphLinkAdditionsProxy, 1)
-	id, err := c.appendNodeAtWithMaximum(nodeRecord{
+	id, err := c.appendNodeAtWithMaximum(nodeInput{
 		state: key.state, byteOffset: key.byteOffset,
 		firstLink: uint32(linkID), linkCount: 1, pathCount: prevPathCount,
 	}, key.checkpoint, maximum.value)
@@ -4144,19 +4215,19 @@ func (c *Core) graphVersionIsDeterministic(root NodeID) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		provenance, err := c.nodeLineage(id)
+		provenance, err := c.nodeLineageHot(id)
 		if err != nil {
 			return false, err
 		}
-		if provenance.converged {
+		if provenance.isConverged() {
 			return false, nil
 		}
 		linkID := LinkID(node.firstLink)
 		for count := uint32(0); count < node.linkCount; count++ {
-			if linkID == 0 || uint64(linkID) > uint64(len(c.links)) {
+			if linkID == 0 || uint64(linkID) > uint64(c.links.Len()) {
 				return false, errors.New("parser-core phase zero: historical forest has an invalid link")
 			}
-			link := c.links[linkID-1]
+			link := c.links.At(int(linkID - 1))
 			if err := link.validateShape(); err != nil {
 				return false, err
 			}
@@ -4391,7 +4462,7 @@ func (c *Core) factorExactPredecessorMerge(key boundaryKey, probe boundaryProbe,
 	if phase0AEnabled {
 		phase0APrepareFactorOuter(c, key, in, oldID, index, merged)
 	}
-	oldLineage, appendErr := c.nodeLineage(oldID)
+	oldLineage, appendErr := c.lineageView(oldID)
 	if appendErr != nil {
 		return condenseOutcome{}, true, appendErr
 	}
@@ -4455,11 +4526,11 @@ func (c *Core) mergePredecessorsBoundedWithRecovery(
 	*folded = precedenceMaximumWitness{seed: leftMaximum.value, hasSeed: true}
 	leftCheckpoint, leftExact := c.nodeScannerCheckpoint(leftID)
 	rightCheckpoint, rightExact := c.nodeScannerCheckpoint(rightID)
-	leftLineage, err := c.nodeLineage(leftID)
+	leftLineage, err := c.lineageView(leftID)
 	if err != nil {
 		return 0, false, err
 	}
-	rightLineage, err := c.nodeLineage(rightID)
+	rightLineage, err := c.lineageView(rightID)
 	if err != nil {
 		return 0, false, err
 	}
@@ -4939,12 +5010,12 @@ func (c *Core) deriveSubtreeExternalProvenanceState(r subtreeRecord, children []
 		return subtreeExternalProvenanceInexactHasExternal
 	}
 	state := subtreeExternalProvenanceExactNoExternal
-	next := SubtreeID(uint64(len(c.subtrees)) + 1)
+	next := SubtreeID(uint64(c.subtrees.Len()) + 1)
 	for _, child := range children {
 		if child == 0 || child >= next {
 			return subtreeExternalProvenanceUnknown
 		}
-		hasExternal, exact, cached := c.subtrees[child-1].externalProvenanceState.result()
+		hasExternal, exact, cached := (*c.subtrees.At(int(child - 1))).externalProvenanceState.result()
 		if !cached {
 			return subtreeExternalProvenanceUnknown
 		}
@@ -4986,8 +5057,8 @@ func (c *Core) predecessorBoundariesMatch(leftID, rightID NodeID) (bool, error) 
 	}
 	leftCheckpoint, leftExact := c.nodeScannerCheckpoint(leftID)
 	rightCheckpoint, rightExact := c.nodeScannerCheckpoint(rightID)
-	leftLineage, leftLineageErr := c.nodeLineage(leftID)
-	rightLineage, rightLineageErr := c.nodeLineage(rightID)
+	leftLineage, leftLineageErr := c.lineageView(leftID)
+	rightLineage, rightLineageErr := c.lineageView(rightID)
 	if leftLineageErr != nil {
 		return false, leftLineageErr
 	}
@@ -5132,23 +5203,23 @@ func (c *Core) appendAdjacencyNodeAtWithPrecedenceAndStoredErrorCost(
 	if uint64(len(links)) > uint64(c.limits.MaxLinksPerBoundary) {
 		return 0, &LiveLinkCapacityError{State: state, ByteOffset: byteOffset, ObservedLinks: uint64(len(links)), Limit: c.limits.MaxLinksPerBoundary}
 	}
-	if uint64(len(c.links))+uint64(len(links)) > uint64(c.limits.MaxLinks) || uint64(len(c.links))+uint64(len(links)) > math.MaxUint32 {
+	if uint64(c.links.Len())+uint64(len(links)) > uint64(c.limits.MaxLinks) || uint64(c.links.Len())+uint64(len(links)) > math.MaxUint32 {
 		return 0, errors.New("parser-core phase zero: link arena cap")
 	}
-	if uint64(len(c.nodes))+1 > uint64(c.limits.MaxNodes) || uint64(len(c.nodes)) >= math.MaxUint32 {
+	if uint64(c.nodes.Len())+1 > uint64(c.limits.MaxNodes) || uint64(c.nodes.Len()) >= math.MaxUint32 {
 		return 0, errors.New("parser-core phase zero: node arena cap")
 	}
-	next := NodeID(uint64(len(c.nodes)) + 1)
+	next := NodeID(uint64(c.nodes.Len()) + 1)
 	pathCount := uint64(0)
 	for _, link := range links {
 		if link.prev == 0 || link.prev >= next {
 			return 0, fmt.Errorf("parser-core phase zero: graph predecessor %d must be lower than new node %d", link.prev, next)
 		}
-		prev, err := c.node(link.prev)
+		_, prevPaths, err := c.nodeWithPathCount(link.prev)
 		if err != nil {
 			return 0, err
 		}
-		pathCount = saturatingAddPaths(pathCount, prev.pathCount)
+		pathCount = saturatingAddPaths(pathCount, prevPaths)
 	}
 	if !storedErrorCostAuthenticated {
 		inherited, err := c.inheritedStoredErrorCost(links)
@@ -5167,9 +5238,9 @@ func (c *Core) appendAdjacencyNodeAtWithPrecedenceAndStoredErrorCost(
 		copy.next = first
 		c.appendGraphLink(copy)
 		c.addWork(&c.work.GraphLinkAdditionsProxy, 1)
-		first = LinkID(len(c.links))
+		first = LinkID(c.links.Len())
 	}
-	id, err := c.appendNodeAtWithMaximum(nodeRecord{
+	id, err := c.appendNodeAtWithMaximum(nodeInput{
 		state: state, byteOffset: byteOffset, firstLink: uint32(first),
 		linkCount: uint32(len(links)), pathCount: pathCount,
 	}, checkpoint, maximum.value)
@@ -5336,6 +5407,10 @@ func (c *Core) shallowPayloadClass(prevID NodeID, payloadID SubtreeID) (shallowP
 // stable insertion order, so rebuilding them through prepends preserves the
 // order observed by nodeLinks.
 func (c *Core) replaceBoundaryLink(key boundaryKey, probe boundaryProbe, oldID NodeID, old nodeRecord, oldLinks []linkRecord, candidate int, in linkInput) (Head, error) {
+	oldPaths, pathErr := c.nodePathCount(oldID)
+	if pathErr != nil {
+		return Head{}, pathErr
+	}
 	if candidate < 0 || candidate >= len(oldLinks) || uint32(len(oldLinks)) != old.linkCount {
 		return Head{}, errors.New("parser-core phase zero: invalid shallow-fold candidate")
 	}
@@ -5343,20 +5418,29 @@ func (c *Core) replaceBoundaryLink(key boundaryKey, probe boundaryProbe, oldID N
 	if err != nil {
 		return Head{}, err
 	}
-	oldLineage, err := c.nodeLineage(oldID)
+	oldLineage, err := c.lineageView(oldID)
 	if err != nil {
 		return Head{}, err
 	}
 	if oldLineage.storedErrorCost != incomingCost {
 		return Head{}, errors.New("parser-core phase zero: replacement heads have different stored recovery costs")
 	}
-	if uint64(len(c.links))+uint64(len(oldLinks)) > uint64(c.limits.MaxLinks) || uint64(len(c.links))+uint64(len(oldLinks)) > math.MaxUint32 {
+	if uint64(c.links.Len())+uint64(len(oldLinks)) > uint64(c.limits.MaxLinks) || uint64(c.links.Len())+uint64(len(oldLinks)) > math.MaxUint32 {
 		return Head{}, errors.New("parser-core phase zero: link arena cap")
 	}
-	if uint64(len(c.nodes))+1 > uint64(c.limits.MaxNodes) || uint64(len(c.nodes)) >= math.MaxUint32 {
+	if uint64(c.nodes.Len())+1 > uint64(c.limits.MaxNodes) || uint64(c.nodes.Len()) >= math.MaxUint32 {
 		return Head{}, errors.New("parser-core phase zero: node arena cap")
 	}
-	rebuilt := slices.Clone(oldLinks)
+	// A single incoming replacement is consumed synchronously below. Keep
+	// its private copy on this frame; historical graph links remain immutable.
+	var singleReplacement [1]linkRecord
+	var rebuilt []linkRecord
+	if len(oldLinks) == 1 {
+		singleReplacement[0] = oldLinks[0]
+		rebuilt = singleReplacement[:]
+	} else {
+		rebuilt = slices.Clone(oldLinks)
+	}
 	rebuilt[candidate].prev = in.prev
 	rebuilt[candidate].payload = in.payload
 	rebuilt[candidate].scoreDelta = in.scoreDelta
@@ -5373,7 +5457,7 @@ func (c *Core) replaceBoundaryLink(key boundaryKey, probe boundaryProbe, oldID N
 		return Head{}, err
 	}
 
-	linkMark := len(c.links)
+	linkMark := c.links.Len()
 	linkRefMark := len(c.dropCohortLinkRefIndexes)
 	var first LinkID
 	for _, stored := range rebuilt {
@@ -5381,14 +5465,14 @@ func (c *Core) replaceBoundaryLink(key boundaryKey, probe boundaryProbe, oldID N
 		copy.next = first
 		c.appendGraphLink(copy)
 		c.addWork(&c.work.GraphLinkAdditionsProxy, 1)
-		first = LinkID(len(c.links))
+		first = LinkID(c.links.Len())
 	}
-	id, err := c.appendNodeAtWithMaximum(nodeRecord{
+	id, err := c.appendNodeAtWithMaximum(nodeInput{
 		state: key.state, byteOffset: key.byteOffset,
-		firstLink: uint32(first), linkCount: uint32(len(rebuilt)), pathCount: old.pathCount,
+		firstLink: uint32(first), linkCount: uint32(len(rebuilt)), pathCount: oldPaths,
 	}, key.checkpoint, maximum.value)
 	if err != nil {
-		c.links = c.links[:linkMark]
+		c.links.Truncate(int(linkMark))
 		if c.dropCohortLinkRefIndexes != nil {
 			c.dropCohortLinkRefIndexes = c.dropCohortLinkRefIndexes[:linkRefMark]
 		}
@@ -5569,9 +5653,9 @@ func (c *Core) markCleanProductionRank(paths []popPath) {
 				return
 			}
 		}
-		prefix, err := c.node(path.prev)
-		if err != nil || prefix.pathCount == math.MaxUint64 ||
-			prefix.pathCount > c.limits.MaxDerivations {
+		_, prefixPaths, err := c.nodeWithPathCount(path.prev)
+		if err != nil || prefixPaths == math.MaxUint64 ||
+			prefixPaths > c.limits.MaxDerivations {
 			markCleanPathRankUnknown(paths)
 			return
 		}
@@ -5665,10 +5749,10 @@ descend:
 			}
 			break descend
 		case 1:
-			if node.firstLink == 0 || uint64(node.firstLink) > uint64(len(c.links)) {
+			if node.firstLink == 0 || uint64(node.firstLink) > uint64(c.links.Len()) {
 				return false, errors.New("parser-core phase zero: clean path link is out of range")
 			}
-			link := c.links[node.firstLink-1]
+			link := c.links.At(int(node.firstLink - 1))
 			if link.next != 0 {
 				return false, errors.New("parser-core phase zero: clean path single link has a successor")
 			}
@@ -5980,7 +6064,7 @@ func (c *Core) popSingleLinkPath(head NodeID, childCount int, scratch *popEnumer
 		if count > uint64(c.limits.MaxLinks) || count > uint64(c.limits.MaxLinksPerBoundary) {
 			return false, errors.New("parser-core phase zero: recorded link count exceeds configured limit")
 		}
-		if count > uint64(len(c.links)) {
+		if count > uint64(c.links.Len()) {
 			return false, errors.New("parser-core phase zero: recorded link count exceeds link arena")
 		}
 		if n.linkCount != 1 {
@@ -5990,10 +6074,10 @@ func (c *Core) popSingleLinkPath(head NodeID, childCount int, scratch *popEnumer
 		if linkID == 0 {
 			return false, errors.New("parser-core phase zero: adjacency shorter than recorded link count")
 		}
-		if uint64(linkID) > uint64(len(c.links)) {
+		if uint64(linkID) > uint64(c.links.Len()) {
 			return false, errors.New("parser-core phase zero: link adjacency out of range")
 		}
-		link := c.links[linkID-1]
+		link := c.links.At(int(linkID - 1))
 		if link.next != 0 {
 			return false, errors.New("parser-core phase zero: adjacency exceeds recorded link count or cycles")
 		}
@@ -6129,11 +6213,11 @@ func (c *Core) Derivations(head Head) ([]Derivation, error) {
 // SoleDerivation returns a derivation only when complete enumeration finds one path.
 // It preserves enumeration errors and validates ambiguous paths without copying payloads.
 func (c *Core) SoleDerivation(head Head) (Derivation, bool, error) {
-	n, err := c.node(head.Node)
+	_, nPaths, err := c.nodeWithPathCount(head.Node)
 	if err != nil {
 		return Derivation{}, false, err
 	}
-	if n.pathCount == 1 {
+	if nPaths == 1 {
 		path, exact, err := c.singleDerivation(head.Node)
 		if err != nil {
 			return Derivation{}, false, err
@@ -6142,7 +6226,7 @@ func (c *Core) SoleDerivation(head Head) (Derivation, bool, error) {
 			return path, true, nil
 		}
 	}
-	collectPayloads := n.pathCount == 1
+	collectPayloads := nPaths == 1
 	if !collectPayloads {
 		summary, complete, err := c.summarizeDerivationPaths(head.Node)
 		if err != nil {
@@ -6174,11 +6258,11 @@ func (c *Core) SoleDerivation(head Head) (Derivation, bool, error) {
 }
 
 func (c *Core) derivations(head Head, collectPayloads bool) ([]Derivation, error) {
-	n, err := c.node(head.Node)
+	_, nPaths, err := c.nodeWithPathCount(head.Node)
 	if err != nil {
 		return nil, err
 	}
-	if n.pathCount == 1 {
+	if nPaths == 1 {
 		path, exact, err := c.singleDerivation(head.Node)
 		if err != nil {
 			return nil, err
@@ -6195,12 +6279,12 @@ func (c *Core) derivations(head Head, collectPayloads bool) ([]Derivation, error
 		if visiting[id] {
 			return nil, errors.New("parser-core phase zero: graph cycle")
 		}
-		n, err := c.node(id)
+		n, nPaths, err := c.nodeWithPathCount(id)
 		if err != nil {
 			return nil, err
 		}
 		if n.linkCount == 0 {
-			if n.pathCount != 1 {
+			if nPaths != 1 {
 				return nil, errors.New("parser-core phase zero: malformed seed path count")
 			}
 			return []Derivation{{}}, nil
@@ -6244,8 +6328,8 @@ func (c *Core) derivations(head Head, collectPayloads bool) ([]Derivation, error
 				paths = append(paths, path)
 			}
 		}
-		if n.pathCount != math.MaxUint64 && uint64(len(paths)) != n.pathCount {
-			return nil, fmt.Errorf("parser-core phase zero: path-count mismatch: enumerated %d, recorded %d", len(paths), n.pathCount)
+		if nPaths != math.MaxUint64 && uint64(len(paths)) != nPaths {
+			return nil, fmt.Errorf("parser-core phase zero: path-count mismatch: enumerated %d, recorded %d", len(paths), nPaths)
 		}
 		return paths, nil
 	}
@@ -6268,7 +6352,7 @@ func (c *Core) singleDerivation(id NodeID) (Derivation, bool, error) {
 
 	path := Derivation{Payloads: make([]SubtreeID, 0, len(reverseLinks))}
 	for reverseIndex := len(reverseLinks) - 1; reverseIndex >= 0; reverseIndex-- {
-		link := c.links[reverseLinks[reverseIndex]-1]
+		link := c.links.At(int(reverseLinks[reverseIndex] - 1))
 		score, err := checkedAddScore(path.Score, link.scoreDelta)
 		if err != nil {
 			return Derivation{}, true, err
@@ -6289,17 +6373,17 @@ func (c *Core) singleDerivation(id NodeID) (Derivation, bool, error) {
 // links from the head toward the seed in caller-owned scratch.
 func (c *Core) appendSingleDerivationLinks(id NodeID, reverseLinks []LinkID) ([]LinkID, bool, error) {
 	for {
-		n, err := c.node(id)
+		n, nPaths, err := c.nodeWithPathCount(id)
 		if err != nil {
 			return reverseLinks, true, err
 		}
 		if n.linkCount == 0 {
-			if n.pathCount != 1 {
+			if nPaths != 1 {
 				return reverseLinks, true, errors.New("parser-core phase zero: malformed seed path count")
 			}
 			break
 		}
-		if n.pathCount != 1 || n.linkCount != 1 {
+		if nPaths != 1 || n.linkCount != 1 {
 			return reverseLinks, false, nil
 		}
 
@@ -6307,10 +6391,10 @@ func (c *Core) appendSingleDerivationLinks(id NodeID, reverseLinks []LinkID) ([]
 		if linkID == 0 {
 			return reverseLinks, true, errors.New("parser-core phase zero: adjacency shorter than recorded link count")
 		}
-		if uint64(linkID) > uint64(len(c.links)) {
+		if uint64(linkID) > uint64(c.links.Len()) {
 			return reverseLinks, true, errors.New("parser-core phase zero: link adjacency out of range")
 		}
-		link := c.links[linkID-1]
+		link := c.links.At(int(linkID - 1))
 		if err := link.validateShape(); err != nil {
 			return reverseLinks, true, err
 		}
@@ -6318,13 +6402,13 @@ func (c *Core) appendSingleDerivationLinks(id NodeID, reverseLinks []LinkID) ([]
 			if link.next == linkID {
 				return reverseLinks, true, errors.New("parser-core phase zero: adjacency cycle")
 			}
-			if uint64(link.next) > uint64(len(c.links)) {
+			if uint64(link.next) > uint64(c.links.Len()) {
 				return reverseLinks, true, errors.New("parser-core phase zero: link adjacency out of range")
 			}
 			return reverseLinks, true, errors.New("parser-core phase zero: adjacency exceeds recorded link count")
 		}
 		reverseLinks = append(reverseLinks, linkID)
-		if len(reverseLinks) >= len(c.nodes) {
+		if len(reverseLinks) >= c.nodes.Len() {
 			return reverseLinks, true, errors.New("parser-core phase zero: graph cycle")
 		}
 		id = link.prev
@@ -6380,8 +6464,8 @@ func (c *Core) MaterializationOrder(roots []SubtreeID, poll func() error) ([]Sub
 	}
 
 	// IDs are one-based and dense within the capped arena.
-	colors := make([]uint8, len(c.subtrees)+1)
-	incoming := make([]uint8, len(c.subtrees)+1)
+	colors := make([]uint8, c.subtrees.Len()+1)
+	incoming := make([]uint8, c.subtrees.Len()+1)
 	if err := poll(); err != nil {
 		return nil, err
 	}
@@ -6389,7 +6473,7 @@ func (c *Core) MaterializationOrder(roots []SubtreeID, poll func() error) ([]Sub
 		id   SubtreeID
 		next uint32
 	}
-	order := make([]SubtreeID, 0, len(c.subtrees))
+	order := make([]SubtreeID, 0, c.subtrees.Len())
 	var reusedOwners map[uint32]SubtreeID
 	if len(c.reusedSubtrees) != 0 {
 		reusedOwners = make(map[uint32]SubtreeID)
@@ -6453,7 +6537,7 @@ func (c *Core) MaterializationOrder(roots []SubtreeID, poll func() error) ([]Sub
 			stack = stack[:len(stack)-1]
 		}
 	}
-	if len(order) > len(c.subtrees) {
+	if len(order) > c.subtrees.Len() {
 		return nil, errors.New("parser-core phase zero: materialization exceeded compact subtree arena")
 	}
 	if err := poll(); err != nil {
@@ -6502,14 +6586,14 @@ func (c *Core) NodeCount() int {
 	if c == nil {
 		return 0
 	}
-	return len(c.nodes)
+	return c.nodes.Len()
 }
 
 func (c *Core) SubtreeArenaLen() int {
 	if c == nil {
 		return 0
 	}
-	return len(c.subtrees)
+	return c.subtrees.Len()
 }
 
 // validateMaterializationMetadata takes the record by pointer: the postorder
@@ -6588,13 +6672,13 @@ func (c *Core) validateGenericMaterializationMetadata(id SubtreeID, record subtr
 }
 
 func (c *Core) Stats(head Head) (Stats, error) {
-	n, err := c.node(head.Node)
+	_, nPaths, err := c.nodeWithPathCount(head.Node)
 	if err != nil {
 		return Stats{}, err
 	}
 	return Stats{
-		Nodes: uint32(len(c.nodes)), Links: uint32(len(c.links)), Subtrees: uint32(len(c.subtrees)), Children: uint32(len(c.children)),
-		CurrentExactPaths: n.pathCount,
+		Nodes: uint32(c.nodes.Len()), Links: uint32(c.links.Len()), Subtrees: uint32(c.subtrees.Len()), Children: uint32(len(c.children)),
+		CurrentExactPaths: nPaths,
 	}, nil
 }
 
@@ -6603,7 +6687,7 @@ func (c *Core) Stats(head Head) (Stats, error) {
 // uint32(len(c.subtrees)), the same quantity Stats reports as Subtrees. Use
 // this instead of Stats when a caller needs only the subtree count.
 func (c *Core) SubtreeCount() int {
-	return len(c.subtrees)
+	return c.subtrees.Len()
 }
 
 // HeadExactPathCount returns the given head node's exact-path count (the
@@ -6611,11 +6695,11 @@ func (c *Core) SubtreeCount() int {
 // without building a full Stats struct. It returns the same error Stats
 // would return for an invalid head.
 func (c *Core) HeadExactPathCount(head Head) (uint64, error) {
-	n, err := c.node(head.Node)
+	_, nPaths, err := c.nodeWithPathCount(head.Node)
 	if err != nil {
 		return 0, err
 	}
-	return n.pathCount, nil
+	return nPaths, nil
 }
 
 // Work returns a value copy of the committed compact-core work counters.
@@ -6641,7 +6725,7 @@ func (c *Core) RawSelectedSubtreeCensus(roots []SubtreeID) (RawSelectedCensus, e
 	for index := len(roots) - 1; index >= 0; index-- {
 		stack = append(stack, frame{id: roots[index]})
 	}
-	active := make([]bool, len(c.subtrees)+1)
+	active := make([]bool, c.subtrees.Len()+1)
 	var census RawSelectedCensus
 	add := func(slot *uint64) error {
 		if *slot == math.MaxUint64 {
@@ -6654,7 +6738,7 @@ func (c *Core) RawSelectedSubtreeCensus(roots []SubtreeID) (RawSelectedCensus, e
 	for len(stack) != 0 {
 		item := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		if item.id == 0 || uint64(item.id) > uint64(len(c.subtrees)) {
+		if item.id == 0 || uint64(item.id) > uint64(c.subtrees.Len()) {
 			return RawSelectedCensus{}, fmt.Errorf("parser-core phase zero: raw selected census invalid subtree %d", item.id)
 		}
 		if item.exit {
@@ -6666,7 +6750,7 @@ func (c *Core) RawSelectedSubtreeCensus(roots []SubtreeID) (RawSelectedCensus, e
 		}
 		active[item.id] = true
 		stack = append(stack, frame{id: item.id, exit: true})
-		record := c.subtrees[item.id-1]
+		record := *c.subtrees.At(int(item.id - 1))
 		if record.externalProvenanceState == subtreeExternalProvenanceReusedOpaque {
 			return RawSelectedCensus{}, errors.New("parser-core phase zero: raw census cannot inspect a reused subtree")
 		}
@@ -6690,30 +6774,28 @@ func (c *Core) RawSelectedSubtreeCensus(roots []SubtreeID) (RawSelectedCensus, e
 	return census, nil
 }
 
-func (c *Core) appendNode(r nodeRecord) (NodeID, error) {
+func (c *Core) appendNode(r nodeInput) (NodeID, error) {
 	return c.appendNodeAt(r, c.checkpoint)
 }
 
-func (c *Core) appendNodeAt(r nodeRecord, checkpoint CheckpointID) (NodeID, error) {
-	if r.linkCount == 0 {
-		r.precedenceMax = 0
-	} else {
-		maximum, err := c.computePrecedenceMaximumFromNode(r, precedenceMaximumWitness{})
+func (c *Core) appendNodeAt(r nodeInput, checkpoint CheckpointID) (NodeID, error) {
+	var stored int64
+	if r.linkCount != 0 {
+		maximum, err := c.computePrecedenceMaximumFromNode(r.record(), precedenceMaximumWitness{})
 		if err != nil {
 			return 0, err
 		}
-		r.precedenceMax = maximum.value
+		stored = maximum.value
 	}
-	return c.appendNodeRecord(r, checkpoint)
+	return c.appendNodeRecord(r, checkpoint, stored)
 }
 
-func (c *Core) appendNodeAtWithMaximum(r nodeRecord, checkpoint CheckpointID, maximum int64) (NodeID, error) {
-	r.precedenceMax = maximum
-	return c.appendNodeRecord(r, checkpoint)
+func (c *Core) appendNodeAtWithMaximum(r nodeInput, checkpoint CheckpointID, maximum int64) (NodeID, error) {
+	return c.appendNodeRecord(r, checkpoint, maximum)
 }
 
-func (c *Core) appendNodeRecord(r nodeRecord, checkpoint CheckpointID) (NodeID, error) {
-	if uint64(len(c.nodes))+1 > uint64(c.limits.MaxNodes) || uint64(len(c.nodes)) >= math.MaxUint32 {
+func (c *Core) appendNodeRecord(r nodeInput, checkpoint CheckpointID, maximum int64) (NodeID, error) {
+	if uint64(c.nodes.Len())+1 > uint64(c.limits.MaxNodes) || uint64(c.nodes.Len()) >= math.MaxUint32 {
 		return 0, errors.New("parser-core phase zero: node arena cap")
 	}
 	if !c.externalPayloadsQuiescent && checkpoint != 0 {
@@ -6721,12 +6803,18 @@ func (c *Core) appendNodeRecord(r nodeRecord, checkpoint CheckpointID) (NodeID, 
 			return 0, errors.New("parser-core phase zero: node scanner checkpoint is unavailable")
 		}
 	}
-	next := NodeID(uint64(len(c.nodes)) + 1)
-	if err := c.validatePublishedNodeDAGAt(r, next, checkpoint); err != nil {
+	next := NodeID(uint64(c.nodes.Len()) + 1)
+	if err := c.validatePublishedNodeDAGAt(r.record(), next, checkpoint); err != nil {
 		return 0, err
 	}
-	c.nodes = append(c.nodes, r)
-	c.nodeLineages = append(c.nodeLineages, nodeLineageRecord{})
+	inline := inlineNodePrecedence(maximum)
+	if id, ok := c.nodes.Append(r.record(), c.limits.MaxNodes); !ok || id != next {
+		return 0, errors.New("parser-core phase zero: node arena publication failed")
+	}
+	c.nodeLineages = append(c.nodeLineages, nodeLineageHot{precedenceInline: inline, flags: c.appendNodePathCount(next, r.pathCount)})
+	if inline == wideNodePrecedence {
+		c.storeWideNodePrecedence(next, maximum)
+	}
 	if !c.externalPayloadsQuiescent {
 		c.nodeCheckpoints = append(c.nodeCheckpoints, checkpoint)
 	}
@@ -6753,7 +6841,7 @@ func (c *Core) validatePublishedNodeDAGAt(r nodeRecord, next NodeID, checkpoint 
 	if count > uint64(c.limits.MaxLinks) || count > uint64(c.limits.MaxLinksPerBoundary) {
 		return errors.New("parser-core phase zero: recorded link count exceeds configured limit")
 	}
-	if count > uint64(len(c.links)) {
+	if count > uint64(c.links.Len()) {
 		return errors.New("parser-core phase zero: recorded link count exceeds link arena")
 	}
 	id := LinkID(r.firstLink)
@@ -6761,10 +6849,10 @@ func (c *Core) validatePublishedNodeDAGAt(r nodeRecord, next NodeID, checkpoint 
 		if id == 0 {
 			return errors.New("parser-core phase zero: adjacency shorter than recorded link count")
 		}
-		if uint64(id) > uint64(len(c.links)) {
+		if uint64(id) > uint64(c.links.Len()) {
 			return errors.New("parser-core phase zero: link adjacency out of range")
 		}
-		link := c.links[id-1]
+		link := c.links.At(int(id - 1))
 		if err := link.validateShape(); err != nil {
 			return err
 		}
@@ -6829,7 +6917,7 @@ func (c *Core) appendAuthenticatedTerminal(
 			end:     c.externalTokenScannerEnd,
 		})
 		if r.external && !c.externalPayloadsQuiescent {
-			c.subtrees[payload-1].externalProvenanceState = subtreeExternalProvenanceExactHasExternal
+			(*c.subtrees.At(int(payload - 1))).externalProvenanceState = subtreeExternalProvenanceExactHasExternal
 		}
 	}
 	if lexerSkippedPrefixLength != 0 {
@@ -6858,7 +6946,7 @@ func (c *Core) lexerSkippedPrefix(payload SubtreeID) (uint32, bool) {
 }
 
 func (c *Core) appendSubtreeRecord(r subtreeRecord, children []SubtreeID, fields []FieldMapEntry, aliases []Symbol) (SubtreeID, error) {
-	if uint64(len(c.subtrees))+1 > uint64(c.limits.MaxSubtrees) || uint64(len(c.subtrees)) >= math.MaxUint32 {
+	if uint64(c.subtrees.Len())+1 > uint64(c.limits.MaxSubtrees) || uint64(c.subtrees.Len()) >= math.MaxUint32 {
 		return 0, errors.New("parser-core phase zero: subtree arena cap")
 	}
 	if uint64(len(c.children))+uint64(len(children)) > uint64(c.limits.MaxChildren) {
@@ -6874,13 +6962,18 @@ func (c *Core) appendSubtreeRecord(r subtreeRecord, children []SubtreeID, fields
 	c.children = append(c.children, children...)
 	c.fields = append(c.fields, fields...)
 	c.aliases = append(c.aliases, aliases...)
-	c.subtrees = append(c.subtrees, r)
+	if _, ok := c.subtrees.Append(r, c.limits.MaxSubtrees); !ok {
+		return 0, errors.New("parser-core phase zero: subtree arena publication failed")
+	}
+	if len(fields) != 0 && !c.nativeProjectionFieldProfileUnsupported && !nativeProjectionDirectSingleFields(fields) {
+		c.nativeProjectionFieldProfileUnsupported = true
+	}
 	if r.terminal {
 		c.addWork(&c.work.LeafConstructionsProxy, 1)
 	} else {
 		c.addWork(&c.work.ParentConstructionsProxy, 1)
 	}
-	return SubtreeID(len(c.subtrees)), nil
+	return SubtreeID(c.subtrees.Len()), nil
 }
 
 func (c *Core) addWork(counter *uint64, delta uint64) {
@@ -6917,13 +7010,15 @@ func (c *Core) recordLinkUnionRejected() {
 }
 
 func (c *Core) node(id NodeID) (*nodeRecord, error) {
-	if id == 0 || uint64(id) > uint64(len(c.nodes)) {
-		return nil, fmt.Errorf("parser-core phase zero: invalid node id %d", id)
+	if id != 0 && uint64(id) <= uint64(c.nodes.Len()) {
+		if node := c.nodes.At(int(id - 1)); node != nil {
+			return node, nil
+		}
 	}
-	return &c.nodes[id-1], nil
+	return nil, fmt.Errorf("parser-core phase zero: invalid node id %d", id)
 }
 
-func (c *Core) nodeLineage(id NodeID) (*nodeLineageRecord, error) {
+func (c *Core) nodeLineageHot(id NodeID) (*nodeLineageHot, error) {
 	if id == 0 || uint64(id) > uint64(len(c.nodeLineages)) {
 		return nil, fmt.Errorf("parser-core phase zero: invalid node lineage id %d", id)
 	}
@@ -6936,40 +7031,30 @@ func (c *Core) nodeLineage(id NodeID) (*nodeLineageRecord, error) {
 // import (spec.b4b-alternative-set.v1 section 4, "Dead-node historical
 // import").
 func (c *Core) NodeLineageAlternativeSet(id NodeID) (AlternativeSet, error) {
-	record, err := c.nodeLineage(id)
+	record, err := c.nodeLineageHot(id)
 	if err != nil {
 		return AlternativeSet{}, err
 	}
-	return record.set, nil
+	return record.alternativeSet(), nil
 }
 
-// alternativeSetMembers resolves set's sorted member slice, reading through
+// AlternativeSetMembers resolves set's sorted member slice, reading through
 // the shared spill arena when set has spilled. The returned slice aliases
 // Core-owned storage and is invalidated by the next mutation to any set; it
 // never allocates and never writes.
-func (c *Core) alternativeSetMembers(set AlternativeSet) ([]uint32, bool) {
+func (c *Core) AlternativeSetMembers(set AlternativeSet) ([]uint32, bool) {
 	if !set.spilled() {
 		return set.inline[:set.count], true
 	}
-	if set.spillRef == 0 {
+	if set.inline[0] == 0 {
 		return nil, set.count == 0
 	}
-	start := int(set.spillRef) - 1
+	start := int(set.inline[0]) - 1
 	end := start + int(set.count)
 	if start < 0 || end > len(c.alternativeSpillArena) {
 		return nil, false
 	}
 	return c.alternativeSpillArena[start:end], true
-}
-
-// AlternativeSetMembers is the exported form of alternativeSetMembers for
-// cross-package readers (the shadow predicate and census in
-// parsercore_phase0_driver.go). ok is false only when set's spill reference
-// is out of range for the current arena; every recording path in this
-// package keeps that from happening, so callers treat !ok as a fail-closed
-// signal, not a recoverable case.
-func (c *Core) AlternativeSetMembers(set AlternativeSet) ([]uint32, bool) {
-	return c.alternativeSetMembers(set)
 }
 
 // searchAlternativeSetMembers returns the sorted insertion position for
@@ -7034,7 +7119,7 @@ func (c *Core) alternativeSetInsert(set *AlternativeSet, member uint32) bool {
 	if set.flags&alternativeSetFlagOverflowed != 0 {
 		return false
 	}
-	current, ok := c.alternativeSetMembers(*set)
+	current, ok := c.AlternativeSetMembers(*set)
 	if !ok {
 		return false
 	}
@@ -7052,17 +7137,21 @@ func (c *Core) alternativeSetInsert(set *AlternativeSet, member uint32) bool {
 			set.inline[len(current)] = member
 			set.count++
 			return true
-		case set.spilled() && int(set.spillRef)-1+len(current) == len(c.alternativeSpillArena):
+		case set.spilled() && int(set.inline[0])-1+len(current) == len(c.alternativeSpillArena):
 			c.alternativeSpillArena = append(c.alternativeSpillArena, member)
 			set.count++
 			return true
 		}
 	}
 	start := len(c.alternativeSpillArena)
+	reference, representable := alternativeSetPrepareSpill(set, start)
+	if !representable {
+		return true
+	}
 	c.alternativeSpillArena = append(c.alternativeSpillArena, current[:position]...)
 	c.alternativeSpillArena = append(c.alternativeSpillArena, member)
 	c.alternativeSpillArena = append(c.alternativeSpillArena, current[position:]...)
-	set.spillRef = uint32(start) + 1
+	set.inline[0] = reference
 	set.count = uint8(len(current) + 1)
 	set.flags |= alternativeSetFlagSpilled
 	return true
@@ -7115,11 +7204,11 @@ func (c *Core) alternativeSetUnion(dst *AlternativeSet, src AlternativeSet) bool
 		*dst = src
 		return true
 	}
-	srcMembers, ok := c.alternativeSetMembers(src)
+	srcMembers, ok := c.AlternativeSetMembers(src)
 	if !ok {
 		return false
 	}
-	if dstMembers, dstOK := c.alternativeSetMembers(*dst); dstOK &&
+	if dstMembers, dstOK := c.AlternativeSetMembers(*dst); dstOK &&
 		alternativeSetSortedContainsAll(srcMembers, dstMembers) {
 		return false
 	}
@@ -7186,8 +7275,8 @@ func (c *Core) UnionAlternativeSet(dst *AlternativeSet, src AlternativeSet) bool
 // predicate's own fail-closed containment check (not this helper) is what
 // guards soundness against an unresolvable set.
 func (c *Core) AlternativeSetIncomparable(a, b AlternativeSet) bool {
-	aMembers, _ := c.alternativeSetMembers(a)
-	bMembers, _ := c.alternativeSetMembers(b)
+	aMembers, _ := c.AlternativeSetMembers(a)
+	bMembers, _ := c.AlternativeSetMembers(b)
 	if alternativeSetSortedContainsAll(aMembers, bMembers) {
 		return false
 	}
@@ -7198,10 +7287,10 @@ func (c *Core) AlternativeSetIncomparable(a, b AlternativeSet) bool {
 }
 
 func (c *Core) subtree(id SubtreeID) (*subtreeRecord, error) {
-	if id == 0 || uint64(id) > uint64(len(c.subtrees)) {
+	if id == 0 || uint64(id) > uint64(c.subtrees.Len()) {
 		return nil, fmt.Errorf("parser-core phase zero: invalid subtree id %d", id)
 	}
-	record := &c.subtrees[id-1]
+	record := c.subtrees.At(int(id - 1))
 	if record.externalProvenanceState == subtreeExternalProvenanceReusedOpaque {
 		if err := c.validateReusedRecord(id, *record); err != nil {
 			return nil, err
@@ -7219,10 +7308,10 @@ func (c *Core) nodeLinks(n nodeRecord) ([]linkRecord, error) {
 			return nil, errors.New("parser-core phase zero: adjacency cycle")
 		}
 		seen[id] = true
-		if uint64(id) > uint64(len(c.links)) {
+		if uint64(id) > uint64(c.links.Len()) {
 			return nil, errors.New("parser-core phase zero: link adjacency out of range")
 		}
-		link := c.links[id-1]
+		link := c.links.At(int(id - 1))
 		if err := link.validateShape(); err != nil {
 			return nil, err
 		}
@@ -7265,7 +7354,7 @@ func (c *Core) nodeLinksIntoBounded(dst []linkRecord, n nodeRecord, maxCount uin
 	if count > uint64(c.limits.MaxLinks) || count > uint64(maxCount) {
 		return dst[:0], errors.New("parser-core phase zero: recorded link count exceeds configured limit")
 	}
-	if count > uint64(len(c.links)) {
+	if count > uint64(c.links.Len()) {
 		return dst[:0], errors.New("parser-core phase zero: recorded link count exceeds link arena")
 	}
 	if cap(dst) < int(n.linkCount) {
@@ -7278,10 +7367,10 @@ func (c *Core) nodeLinksIntoBounded(dst []linkRecord, n nodeRecord, maxCount uin
 		if id == 0 {
 			return dst, errors.New("parser-core phase zero: adjacency shorter than recorded link count")
 		}
-		if uint64(id) > uint64(len(c.links)) {
+		if uint64(id) > uint64(c.links.Len()) {
 			return dst, errors.New("parser-core phase zero: link adjacency out of range")
 		}
-		link := c.links[id-1]
+		link := c.links.At(int(id - 1))
 		if err := link.validateShape(); err != nil {
 			return dst, err
 		}

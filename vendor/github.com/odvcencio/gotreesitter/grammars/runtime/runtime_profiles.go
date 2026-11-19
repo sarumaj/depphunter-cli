@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	gotreesitter "github.com/odvcencio/gotreesitter"
+	"github.com/odvcencio/gotreesitter/internal/incr"
 )
 
 // builtinLanguageRuntimeProfile contains narrow runtime decisions certified
@@ -12,6 +13,7 @@ import (
 // parser core: loading the exact certified blob attaches its profile, while
 // caller-constructed and adapted languages retain conservative zero defaults.
 type builtinLanguageRuntimeProfile struct {
+	smallSourceReuseShadow              bool
 	blobSHA256                          [32]byte
 	errorModeAllExternalSymbols         bool
 	recoveryMissingVersionTurns         bool
@@ -32,6 +34,7 @@ type builtinLanguageRuntimeProfile struct {
 	compactAcceptanceStructuralElection bool
 	compactMixedGSSMerge                bool
 	legacyMergeAdmission                gotreesitter.LegacyMergeAdmissionPolicy
+	legacyReductionContinuations        bool
 	compactLexerSkippedPrefixTiling     bool
 	exactStackNodeEquivalence           bool
 	compactPackedGSSVersionOrder        bool
@@ -88,10 +91,11 @@ const (
 )
 
 var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
-	// Preserve C's physical version order for both fresh and proven reuse
-	// parses, and keep the last conflict action's source-version priority.
+	// Preserve C's physical version order and source-version conflict priority.
+	// Exact link comparisons retain async generic-arrow histories until selection.
 	"typescript": {
-		blobSHA256:                   mustRuntimeProfileSHA256("1b6ace3de973196290411c0347013b9f2cc2385171c77dcf375e355f3c2cc90c"),
+		exactStackNodeEquivalence:    true,
+		blobSHA256:                   mustRuntimeProfileSHA256("3e0f81584b60292daf0687cd54eefc50146a28a5bf7d3f1cc2c537d683c5c53e"),
 		compactPackedGSSVersionOrder: true,
 		conflictActionVersionOrder:   true,
 	},
@@ -99,7 +103,8 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 	// priority when a later declaration reconverges their packed histories.
 	// Issue #1443 certifies the conflict rule without packed reduction ordering.
 	"tsx": {
-		blobSHA256:                 mustRuntimeProfileSHA256("419002e62f0bbaf9a7f7bdc0fbe58799bf6ca94038550ccde33695c16859d984"),
+		exactStackNodeEquivalence:  true,
+		blobSHA256:                 mustRuntimeProfileSHA256("4642dc6a95190584d30ef1928c8dc8b2d72f1b025ef2acaa846090e2b951f42b"),
 		conflictActionVersionOrder: true,
 	},
 	// The Agda table's repetition shift at state 4039 on `id` must decline so
@@ -119,8 +124,9 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 	// against the production parser and the tree-sitter C oracle.
 	// The owned EOF bundle requires its executed recovery route before publication.
 	"go": {
-		// Re-certified 2026-09-20 against grammars/grammar_blobs/go.bin
-		// SHA-256 df63fc35604c4e4e7a484abde9eb2110b61640045601c23991723f323a48310d,
+		smallSourceReuseShadow: true,
+		// Re-certified 2026-10-24 against grammars/grammar_blobs/go.bin
+		// SHA-256 9ad1f8d7d0f2b9aa32c61bd8295b56177caabb0ae2fb8dd4617559ee0f71fed4,
 		// regenerated with cmd/grammargen (no -lr-split; -lr-split
 		// interacts badly with the Go external ASI scanner, see
 		// grammargen/README.md "Go's blob is generated without -lr-split").
@@ -128,9 +134,12 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 		// certifications were re-validated against this blob via the
 		// cgo_harness Go compact/recovery receipts (TestGoCompactIncrementalExecution*,
 		// TestGoCompactRecoveryVersionTurnsLockedC, TestStage6GoCompactCertification).
-		blobSHA256:                 mustRuntimeProfileSHA256("df63fc35604c4e4e7a484abde9eb2110b61640045601c23991723f323a48310d"),
+		blobSHA256:                 mustRuntimeProfileSHA256("9ad1f8d7d0f2b9aa32c61bd8295b56177caabb0ae2fb8dd4617559ee0f71fed4"),
 		compactConvergedSplitDrops: true,
 		compactOwnedEOFRecovery:    true,
+		// Let the absorbing version compete before the eagerly shifted
+		// missing-target version, matching C's assignment-error election.
+		recoveryMissingVersionTurns: true,
 		// Locked C exposes these aliased DFA leaves even when error recovery
 		// pops them before the enclosing string production can reduce.
 		visibleTerminalAliases: []visibleTerminalAliasProfile{
@@ -423,6 +432,7 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 		externalScannerFullParseRetry:  gotreesitter.ExternalScannerFullParseRetrySkipRepeat,
 		nativeResultCompatibility:      gotreesitter.ResultCompatibilityNativeCollapsedChildren,
 		compactPrimaryAcceptDerivation: true,
+		legacyReductionContinuations:   true,
 	},
 	// Apex's tied class-literal election matches the C oracle once the
 	// compact route selects the sole primary derivation; the compact tree is
@@ -867,6 +877,16 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 				Kind:          gotreesitter.ConflictPolicyRepetitionReduce,
 				ReduceSymbols: []gotreesitter.Symbol{343},
 			},
+			// The pinned C runtime reduces initializer_list_repeat1 and skips
+			// SHIFT_REPEAT at this exact comma cell. Executing the marker first
+			// creates an unnecessary continuation at each list boundary. Keep
+			// C's broader repetition-fold opt-out and all other rows unchanged.
+			{
+				State:         1597,
+				Lookahead:     7,
+				Kind:          gotreesitter.ConflictPolicyReuseSafeRepetitionReduce,
+				ReduceSymbols: []gotreesitter.Symbol{355},
+			},
 		},
 	},
 	// Gleam's declared integer self conflict has plain reduce rows 732/735:
@@ -919,7 +939,7 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 	// through to skipped-gap ERROR materialization. C-oracle verified on the
 	// enclosing command_argument_sep shape (TestPowerShellBacktickContinuationIsParserPadding).
 	"powershell": {
-		blobSHA256:                 mustRuntimeProfileSHA256("bb15be2e939a75bc80ea56d6606f43dea101bf7437ac82073f61985c4dee2492"),
+		blobSHA256:                 mustRuntimeProfileSHA256("bdb564d9c5807338afa79955399b00cb8602bbeccb8ca69a8165bb09c557a35f"),
 		lineContinuationEscapeByte: '`',
 	},
 }
@@ -946,6 +966,11 @@ func attachBuiltinLanguageRuntimeProfile(name string, blobSHA256 [32]byte, lang 
 		return false
 	}
 	changed := false
+	if profile.smallSourceReuseShadow && !lang.SmallSourceReuseAuthority.Matches(lang) {
+		lang.SmallSourceReuseAuthority = incr.NewReuseAuthorityGrant(lang)
+		lang.SmallSourceReuseShadowArtifact = blobSHA256
+		changed = true
+	}
 	for _, alias := range profile.visibleTerminalAliases {
 		for symbol := 1; symbol < len(lang.SymbolNames) && uint32(symbol) < lang.TokenCount && symbol < len(lang.SymbolMetadata); symbol++ {
 			if lang.SymbolNames[symbol] != alias.internalName {
@@ -1046,6 +1071,9 @@ func attachBuiltinLanguageRuntimeProfile(name string, blobSHA256 [32]byte, lang 
 	}
 	if profile.compactMixedGSSMerge && !lang.CompactMixedGSSMergeCertified {
 		lang.CompactMixedGSSMergeCertified = true
+		changed = true
+	}
+	if profile.legacyReductionContinuations && lang.CertifyLegacyReductionContinuations(blobSHA256) {
 		changed = true
 	}
 	if missing := profile.legacyMergeAdmission &^ lang.LegacyMergeAdmission; missing != 0 {

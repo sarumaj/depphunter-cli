@@ -2,6 +2,13 @@
 
 package gotreesitter
 
+import (
+	core "github.com/odvcencio/gotreesitter/internal/parsercorephase0"
+	"math"
+	"os"
+	"sync"
+)
+
 // C4 stage 2 — the parser bytecode corridor: the threaded interpreter.
 //
 // This file implements spec.c4-bytecode-isa.v1 section 6. One function, one
@@ -27,14 +34,6 @@ package gotreesitter
 // pass, which then owns the whole pass including its Passes increment, its
 // ClassifyBoundary lookup, and its decline text. That is why no corridor exit
 // ever produces a decline of its own.
-
-import (
-	"os"
-	"sync"
-
-	core "github.com/odvcencio/gotreesitter/internal/parsercorephase0"
-)
-
 // parserCoreCorridorEnabled gates the corridor lane. Stage 2 shipped it
 // behind an env gate, default off (spec section 8, stage 2 item 2d). Stage 3
 // turns the default on. The evidence: with the canonical-boundary probe
@@ -161,6 +160,7 @@ func (s *diagnosticParserCoreGenericScheduler) dispatchCorridor() (progressed bo
 	}
 	pc := program.stateBlockOffset[state]
 
+	skipSingleVersion := false
 	for {
 		// One corridor iteration equals one generic run-loop iteration, so it
 		// polls stop control exactly once, at the same point.
@@ -223,6 +223,51 @@ func (s *diagnosticParserCoreGenericScheduler) dispatchCorridor() (progressed bo
 				return progressed, nil
 			}
 		}
+		if !skipSingleVersion && (op == corridorOpShift || op == corridorOpReduce || op == corridorOpReduceChain || op == corridorOpReduceShift) && s.singleVersionEligible() {
+			rowIndex := prog[body+1]
+			if op == corridorOpReduce {
+				rowIndex = prog[body+2]
+			}
+			batch, batchErr := s.runSingleVersion(rowIndex)
+			if batchErr != nil {
+				return progressed, batchErr
+			}
+			if batch.ReductionFallback {
+				s.corridorRecordClassification(1)
+				cell := diagnosticParserCoreGenericCell{headerIndex: 0, boundary: batch.Boundary, corridorTrustedReduction: true}
+				if err := s.applyGenericReduction(nil, cell); err != nil {
+					return progressed, err
+				}
+			}
+			if batch.Steps != 0 || batch.ReductionFallback {
+				progressed = true
+				if batch.Shifted {
+					if err := s.pollStopControl(); err != nil {
+						return progressed, err
+					}
+					if err := s.elect(false); err != nil {
+						return progressed, err
+					}
+					if s.stoppedAfterElection {
+						return progressed, nil
+					}
+				}
+				if !s.corridorEligible() {
+					return progressed, nil
+				}
+				next, err := s.corridorHeaderState()
+				if err != nil {
+					return progressed, err
+				}
+				if int(next) >= len(program.stateBlockOffset) {
+					return progressed, nil
+				}
+				pc = program.stateBlockOffset[next]
+				skipSingleVersion = !batch.Shifted && !batch.ReductionFallback
+				continue
+			}
+		}
+		skipSingleVersion = false
 		switch op {
 		case corridorOpShift:
 			handled, err := s.corridorShift(prog[body+1])
@@ -359,6 +404,37 @@ func (s *diagnosticParserCoreGenericScheduler) dispatchCorridor() (progressed bo
 			}
 			if int(reduceTarget) >= len(program.stateBlockOffset) {
 				return progressed, nil
+			}
+			// Authenticate the actual graph landing before consuming the static
+			// shift row. Recovery history or an unmodeled predecessor must
+			// resume ordinary dispatch without spending another counter.
+			if uint32(reduceTarget) != prog[body+3] || !s.corridorDirectApplyEligible(false) {
+				pc = program.stateBlockOffset[reduceTarget]
+				continue
+			}
+			// This is the second dispatch boundary of the unfused path.
+			// Budget/cancellation and contextual-token deferral must see the
+			// post-reduction state before the shift can allocate anything.
+			if err := s.pollStopControl(); err != nil {
+				return progressed, err
+			}
+			if !s.corridorTokenGateOpen(corridorOpShift) {
+				return progressed, nil
+			}
+			if s.tokenSource != nil && s.tokenSource.lexer != nil &&
+				tokenMaybeContextualCloseAngle(s.tokenSource.language, &s.token) {
+				probe := s.tokenSource.relexProbeLexer
+				if probe == nil {
+					probe = &Lexer{}
+					s.tokenSource.relexProbeLexer = probe
+				}
+				if deferContextualCloseAngleAction(
+					s.tokenSource.language, s.tokenSource.lexer.source,
+					reduceTarget, &s.token, nil, probe,
+					&s.tokenSource.tokenInvariantMaxReadSpan,
+				) {
+					return progressed, nil
+				}
 			}
 			shifted, err := s.corridorDirectShift(prog[body+2], false)
 			if err != nil {
@@ -560,25 +636,43 @@ func (s *diagnosticParserCoreGenericScheduler) corridorDirectShift(rowIndex uint
 	}
 	token := s.token
 	action := s.corridorRows[rowIndex].At(0)
-	head, err := s.compact.ShiftDirectWithLiveCondenseCandidatesOwned(
-		*s.freshSessionOwner,
-		nil,
-		s.headers[0].head,
-		core.Symbol(token.Symbol),
-		core.StateID(action.State),
-		extra,
-		core.Token{
-			Symbol:    core.Symbol(token.Symbol),
-			StartByte: token.StartByte,
-			EndByte:   token.EndByte,
-			Extra:     extra,
-			External:  token.ExternalScannerToken,
-			// The generic shift carries the lexer skipped-prefix provenance;
-			// jsdoc's tiling proof reads it at materialization.
-			LexerSkippedPrefixLength: diagnosticParserCoreLexerSkippedPrefixLength(token, s.options.captureLexerSkippedPrefixProvenance),
-		},
-		core.ForkOrder{},
-	)
+	header := &s.headers[0]
+	// A newly published head needs no later owner call when canonicalization
+	// is the identity, lineage has no drop references, and eager callbacks are off.
+	// Creation-sequence overflow keeps the original publication/error path.
+	fuseOwner := s.singleHeaderProbeIsIdentity() && header.creationSeq < math.MaxUint32 &&
+		header.dropCohortRefs.Empty() &&
+		!header.dropCohortRefs.Overflowed() && !header.dropCohortRefs.Blended() &&
+		(s.options.eagerMaterializer == nil || !s.options.eagerMaterializer.eager)
+	shiftedToken := core.Token{
+		Symbol:    core.Symbol(token.Symbol),
+		StartByte: token.StartByte,
+		EndByte:   token.EndByte,
+		Extra:     extra,
+		External:  token.ExternalScannerToken,
+		// The generic shift carries the lexer skipped-prefix provenance;
+		// jsdoc's tiling proof reads it at materialization.
+		LexerSkippedPrefixLength: diagnosticParserCoreLexerSkippedPrefixLength(token, s.options.captureLexerSkippedPrefixProvenance),
+	}
+	var head core.Head
+	ownerPublished := false
+	if fuseOwner {
+		publication := core.ShiftHeadLineage{
+			Owner: uint32(header.creationSeq) + 1, PreviousHead: header.lastPersistedHead,
+			Set: header.altSet, Lineage: header.cleanPathLineage, Rank: header.cleanPathRank,
+			Blended: header.blended, PublishLineage: header.convergedReductionSplit,
+			SetDirty: header.altSet != header.lastPersistedAltSet || header.blended != header.lastPersistedBlended,
+		}
+		head, ownerPublished, err = s.compact.ShiftDirectAndPublishLineageOwned(
+			*s.freshSessionOwner, nil, header.head, core.Symbol(token.Symbol),
+			core.StateID(action.State), extra, shiftedToken, core.ForkOrder{}, publication,
+		)
+	} else {
+		head, err = s.compact.ShiftDirectWithLiveCondenseCandidatesOwned(
+			*s.freshSessionOwner, nil, header.head, core.Symbol(token.Symbol),
+			core.StateID(action.State), extra, shiftedToken, core.ForkOrder{},
+		)
+	}
 	if err != nil {
 		return false, err
 	}
@@ -601,6 +695,17 @@ func (s *diagnosticParserCoreGenericScheduler) corridorDirectShift(rowIndex uint
 		s.skipCanonicalProbe()
 	} else if err := s.canonicalize(); err != nil {
 		return false, err
+	}
+	// ownerPublished authenticates a newly created head, not a condensed
+	// existing node. The eligibility proof above makes every intervening step
+	// pure header bookkeeping: no callback or canonical replacement can move it.
+	if ownerPublished {
+		if header.convergedReductionSplit {
+			header.lastPersistedHead = header.head
+			header.lastPersistedAltSet = header.altSet
+			header.lastPersistedBlended = header.blended
+		}
+		return true, nil
 	}
 	if err := s.persistHeaderLineageOwned(*s.freshSessionOwner); err != nil {
 		return false, err
@@ -657,4 +762,141 @@ func (s *diagnosticParserCoreGenericScheduler) corridorAccept(rowIndex uint32) e
 		return err
 	}
 	return s.applyGenericAccept(before, cell)
+}
+
+// This adapter only binds the core loop to scheduler polling and provenance.
+// The core owns every stack transition and its publication.
+type singleVersionAdapter struct {
+	scheduler                                  *diagnosticParserCoreGenericScheduler
+	dependencyBefore                           uint32
+	dependencyActive                           bool
+	leafBefore                                 uint32
+	firstRow                                   uint32
+	rowPending, pollPending, dependencyPending bool
+}
+
+func (s *diagnosticParserCoreGenericScheduler) singleVersionEligible() bool {
+	if s.freshSessionOwner == nil || s.fullReceipts() || !s.corridorCanLoop() ||
+		!s.singleHeaderProbeIsIdentity() || s.token.Missing || s.token.NoLookahead ||
+		(s.options.eagerMaterializer != nil && s.options.eagerMaterializer.eager) {
+		return false
+	}
+	h := &s.headers[0]
+	if h.isRecoveryLineage() || h.recoveryRegion() != nil || h.isRecoveryCosted() ||
+		h.creationSeq >= math.MaxUint32 || !h.dropCohortRefs.Empty() ||
+		h.dropCohortRefs.Overflowed() || h.dropCohortRefs.Blended() {
+		return false
+	}
+	// Contextual close-angle deferral depends on each landing state. Let the
+	// existing corridor perform those checks, before spending classification.
+	return s.tokenSource == nil || s.tokenSource.lexer == nil ||
+		!tokenMaybeContextualCloseAngle(s.tokenSource.language, &s.token)
+}
+
+func (a *singleVersionAdapter) SingleVersionRow(state core.StateID, symbol core.Symbol) (core.ActionRow, bool) {
+	s := a.scheduler
+	if a.rowPending {
+		a.rowPending = false
+		return s.corridorRows[a.firstRow], true
+	}
+	if int(state) >= len(s.corridor.stateBlockOffset) {
+		return core.ActionRow{}, false
+	}
+	prog := s.corridor.prog
+	body := corridorDispatch(prog, s.corridor.stateBlockOffset[state], Symbol(symbol))
+	if body == 0 {
+		return core.ActionRow{}, false
+	}
+	op := parserCoreCorridorOpcode(prog[body] & corridorOpcodeMask)
+	if !s.corridorTokenGateOpen(op) {
+		return core.ActionRow{}, false
+	}
+	var index uint32
+	switch op {
+	case corridorOpShift, corridorOpReduceChain, corridorOpReduceShift:
+		index = prog[body+1]
+	case corridorOpReduce:
+		index = prog[body+2]
+	default:
+		return core.ActionRow{}, false
+	}
+	return s.corridorRows[index], true
+}
+
+func (a *singleVersionAdapter) BeforeSingleVersion(kind core.ActionType) error {
+	s := a.scheduler
+	if a.pollPending {
+		a.pollPending = false
+	} else if err := s.pollStopControl(); err != nil {
+		return err
+	}
+	if s.dispatches >= s.options.MaxDispatches {
+		// Preserve classification before the ordinary dispatch-cap failure.
+		s.corridorRecordClassification(1)
+		return s.reserveDispatches(1)
+	}
+	a.leafBefore = uint32(s.compact.SubtreeCount())
+	// Every admitted transition preserves the sole predecessor path count.
+	// The elected token and its examined frontier stay fixed through this batch.
+	// Keep per-output publication (including reused payload IDs), but establish
+	// the forward-dependency proof only once for that unchanged election.
+	if a.dependencyPending {
+		a.dependencyBefore, a.dependencyActive = s.beginCompactReuseDependency(s.token)
+		a.dependencyPending = false
+	}
+	return nil
+}
+
+func (a *singleVersionAdapter) AfterSingleVersion(head core.Head, kind core.ActionType, shifted bool) (err error) {
+	s := a.scheduler
+	h := &s.headers[0]
+	s.corridorRecordClassification(1)
+	s.dispatches++
+	h.head = head
+	h.shifted = shifted
+	if kind == core.ActionReduce {
+		h.paused = false
+		h.clearZeroWidthReopened()
+		s.invalidateVerifierHeaderBinding()
+		s.work.Reductions++
+	} else {
+		if s.token.ExternalScannerToken {
+			h.clearZeroWidthReopened()
+		}
+		markDiagnosticParserCoreExternalLineage(h, s.token)
+		s.work.OrdinaryShifts++
+	}
+	if h.convergedReductionSplit {
+		h.lastPersistedHead = head
+		h.lastPersistedAltSet = h.altSet
+		h.lastPersistedBlended = h.blended
+	}
+	s.epochProgress = true
+	s.work.Dispatches++
+	s.skipCanonicalProbe()
+	s.endCompactReuseDependency(a.dependencyBefore, a.dependencyActive, &err)
+	a.dependencyBefore = uint32(s.compact.SubtreeCount())
+	a.dependencyActive = a.dependencyActive && !s.reuseDependencies.disabled
+	if kind == core.ActionReduce || s.token.ExternalScannerToken {
+		s.endCompactLeafReceipt(a.leafBefore, s.token, &err)
+	}
+	return err
+}
+
+func (s *diagnosticParserCoreGenericScheduler) runSingleVersion(firstRow uint32) (core.SingleVersionResult, error) {
+	s.singleVersion.scheduler = s
+	s.singleVersion.firstRow = firstRow
+	s.singleVersion.rowPending, s.singleVersion.pollPending, s.singleVersion.dependencyPending = true, true, true
+	defer func() { s.singleVersion.scheduler = nil }()
+	h := &s.headers[0]
+	publication := core.ShiftHeadLineage{
+		Owner: uint32(h.creationSeq) + 1, PreviousHead: h.lastPersistedHead,
+		Set: h.altSet, Lineage: h.cleanPathLineage, Rank: h.cleanPathRank,
+		Blended: h.blended, PublishLineage: h.convergedReductionSplit,
+		SetDirty: h.altSet != h.lastPersistedAltSet || h.blended != h.lastPersistedBlended,
+	}
+	token := core.Token{Symbol: core.Symbol(s.token.Symbol), StartByte: s.token.StartByte,
+		EndByte: s.token.EndByte, External: s.token.ExternalScannerToken,
+		LexerSkippedPrefixLength: diagnosticParserCoreLexerSkippedPrefixLength(s.token, s.options.captureLexerSkippedPrefixProvenance)}
+	return s.compact.RunSingleVersionOwned(*s.freshSessionOwner, h.head, token, publication, 256, &s.singleVersion, &s.singleVersion)
 }

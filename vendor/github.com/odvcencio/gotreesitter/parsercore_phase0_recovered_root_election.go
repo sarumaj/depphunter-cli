@@ -15,8 +15,8 @@ type recoveredRootGroup struct {
 }
 
 func recoveredRootGroupOf(header diagnosticParserCoreHeader) recoveredRootGroup {
-	if header.versionState != nil && header.versionState.acceptanceGroup.valid() {
-		return header.versionState.acceptanceGroup
+	if header.versionState != nil && header.versionState.recovery.Value().AcceptanceGroup.valid() {
+		return header.versionState.recovery.Value().AcceptanceGroup
 	}
 	return recoveredRootGroup{
 		recovery: header.recoveryGroupIdentity(),

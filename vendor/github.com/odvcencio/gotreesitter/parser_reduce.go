@@ -587,7 +587,7 @@ func (p *Parser) applyActionWithReduceChain(source []byte, s *glrStack, act Pars
 		return false
 	}
 	p.applyReduceActionDispatch(source, s, act, tok, anyReduced, nodeCount, arena, entryScratch, gssScratch, tmpEntries, deferParentLinks, trackChildErrors)
-	if tok.NoLookahead || s == nil || s.dead || s.accepted || s.shifted {
+	if tok.NoLookahead || s == nil || s.dead || s.accepted || s.shifted || p.hasPendingReductionContinuations() {
 		return false
 	}
 	return p.chainSingleReduceActions(source, s, tok, anyReduced, nodeCount, arena, entryScratch, gssScratch, tmpEntries, deferParentLinks, trackChildErrors)
@@ -700,7 +700,7 @@ func (s *conflictReduceFrontierScratch) add(key frontierReduceKey, flag uint8) {
 }
 
 func (p *Parser) completeConflictReduceFrontier(source []byte, s *glrStack, tok Token, seed conflictReduceFrontierSeed, liveStacks, maxLiveStacks int, allocBranchOrder func() uint64, anyReduced *bool, nodeCount *int, arena *nodeArena, entryScratch *glrEntryScratch, gssScratch *gssScratch, tmpEntries *[]stackEntry, deferParentLinks bool, trackChildErrors *bool) {
-	if p == nil || p.language == nil || tok.NoLookahead || s == nil || s.dead || s.accepted || s.shifted || s.cPaused {
+	if p == nil || p.language == nil || tok.NoLookahead || s == nil || s.dead || s.accepted || s.shifted || s.cPaused || p.hasPendingReductionContinuations() {
 		return
 	}
 	// Mirror of the C runtime's version-window discipline
@@ -883,6 +883,13 @@ func (p *Parser) completeConflictReduceFrontier(source []byte, s *glrStack, tok 
 		return true
 	}
 	for step := 1; step <= maxConflictReduceFrontierActions; step++ {
+		// Unreduced alternatives need same-token publication. Terminal
+		// frontier outputs have already consumed the token; retain this
+		// frontier's cycle history while its bounded primary walk finishes.
+		if p.language.legacyReductionContinuationsCertified && len(p.pendingForkStacks) != 0 {
+			return
+		}
+
 		if s.dead || s.accepted || s.shifted || s.cPaused || s.depth() == 0 {
 			return
 		}
@@ -2191,6 +2198,12 @@ func (p *Parser) chainSingleReduceActions(source []byte, s *glrStack, tok Token,
 			if s.dead || s.accepted || s.shifted {
 				return false
 			}
+			if p.hasPendingReductionContinuations() {
+				if perfCountersEnabled {
+					perfRecordReduceChainBreakMulti()
+				}
+				return false
+			}
 		case ParseActionShift:
 			if perfCountersEnabled {
 				perfRecordReduceChainBreakShift()
@@ -2325,6 +2338,12 @@ func (p *Parser) chainSingleReduceActionsClassifiedHinted(source []byte, s *glrS
 			}
 			return false
 		}
+		if p.hasPendingReductionContinuations() {
+			if perfCountersEnabled {
+				perfRecordReduceChainBreakMulti()
+			}
+			return false
+		}
 	}
 	if perfCountersEnabled {
 		perfRecordReduceChainHintLimit()
@@ -2373,6 +2392,12 @@ func (p *Parser) chainSingleReduceActionsClassifiedDefault(source []byte, s *glr
 			if s.dead || s.accepted || s.shifted {
 				return false
 			}
+			if p.hasPendingReductionContinuations() {
+				if perfCountersEnabled {
+					perfRecordReduceChainBreakMulti()
+				}
+				return false
+			}
 		case classifiedParseActionSingleShift:
 			if perfCountersEnabled {
 				perfRecordReduceChainBreakShift()
@@ -2411,6 +2436,12 @@ func (p *Parser) chainSingleReduceActionsClassifiedBenchmarkOnly(source []byte, 
 			}
 			p.applyReduceActionDispatch(source, s, classified.action, tok, anyReduced, nodeCount, arena, entryScratch, gssScratch, tmpEntries, deferParentLinks, trackChildErrors)
 			if s.dead || s.accepted || s.shifted {
+				return false
+			}
+			if p.hasPendingReductionContinuations() {
+				if perfCountersEnabled {
+					perfRecordReduceChainBreakMulti()
+				}
 				return false
 			}
 		case classifiedParseActionSingleShift:
@@ -2496,6 +2527,13 @@ func (p *Parser) chainSingleReduceActionsProfiled(source []byte, s *glrStack, to
 				default:
 					p.ambiguityProfile.recordReduceChainRun(chainStartState, tok.Symbol, reduceChainTerminalState(s, currentState), classifiedParseActionSingleReduce, chainLen, chainLen, classHits, time.Since(chainStart).Nanoseconds(), reduceChainStopDead)
 				}
+				return false
+			}
+			if p.hasPendingReductionContinuations() {
+				if perfCountersEnabled {
+					perfRecordReduceChainBreakMulti()
+				}
+				p.ambiguityProfile.recordReduceChainRun(chainStartState, tok.Symbol, reduceChainTerminalState(s, currentState), classifiedParseActionSingleReduce, chainLen, chainLen, classHits, time.Since(chainStart).Nanoseconds(), reduceChainStopMulti)
 				return false
 			}
 		case ParseActionShift:
@@ -2616,6 +2654,13 @@ func (p *Parser) chainSingleReduceActionsClassifiedHintedProfiled(source []byte,
 			}
 			return false
 		}
+		if p.hasPendingReductionContinuations() {
+			if perfCountersEnabled {
+				perfRecordReduceChainBreakMulti()
+			}
+			p.ambiguityProfile.recordReduceChainRun(chainStartState, tok.Symbol, reduceChainTerminalState(s, currentState), classifiedParseActionSingleReduce, chainLen, chainLen, classHits, time.Since(chainStart).Nanoseconds(), reduceChainStopMulti)
+			return false
+		}
 	}
 	if perfCountersEnabled {
 		perfRecordReduceChainHintLimit()
@@ -2675,6 +2720,13 @@ func (p *Parser) chainSingleReduceActionsClassifiedProfiledDefault(source []byte
 				default:
 					p.ambiguityProfile.recordReduceChainRun(chainStartState, tok.Symbol, reduceChainTerminalState(s, currentState), classifiedParseActionSingleReduce, chainLen, chainLen, classHits, time.Since(chainStart).Nanoseconds(), reduceChainStopDead)
 				}
+				return false
+			}
+			if p.hasPendingReductionContinuations() {
+				if perfCountersEnabled {
+					perfRecordReduceChainBreakMulti()
+				}
+				p.ambiguityProfile.recordReduceChainRun(chainStartState, tok.Symbol, reduceChainTerminalState(s, currentState), classifiedParseActionSingleReduce, chainLen, chainLen, classHits, time.Since(chainStart).Nanoseconds(), reduceChainStopMulti)
 				return false
 			}
 		case classifiedParseActionSingleShift:
@@ -2847,9 +2899,10 @@ func (p *Parser) applyShiftAction(s *glrStack, act ParseAction, tok Token, nodeC
 		if isMissing {
 			leaf.setMissing(true)
 			leaf.setHasError(true)
+			p.retainExternalFallbackMissingFlags = true
 			if tok.missingDependencyExact() {
 				dependency, exact := p.missingNodeDependencyFromToken(tok)
-				if !exact || arena == nil || !arena.setMissingNodeDependency(leaf, dependency) {
+				if !exact || arena == nil || !arena.setNewMissingNodeDependency(leaf, dependency) {
 					leaf.setDirty(true)
 				}
 			}
@@ -3846,12 +3899,6 @@ func rawShapeForStackEntry(arena *nodeArena, entry stackEntry) (*rawShape, bool)
 
 const cStackMaxIteratorCount = 64
 
-type cReduceStackIterator struct {
-	node         *gssNode
-	revPath      []stackEntry
-	subtreeCount int
-}
-
 func cStackLinkCountsAsSubtree(entry stackEntry) bool {
 	return !stackEntryHasNode(entry) || !stackEntryNodeIsExtra(entry)
 }
@@ -3865,19 +3912,89 @@ func appendCStackSliceOrderReduceFork(forks []reduceFork, fork reduceFork) []red
 	return append(forks, fork)
 }
 
-// cWaveReduceWindowsFromGSS ports stack__iter as used by
+// cWaveScratch holds the buffers that cWaveReduceWindowsFromGSSInto reuses
+// between calls. Everything it returns stays valid only until the next call
+// that uses the same scratch, or until reset.
+type cWaveScratch struct {
+	iterators []cWaveIterator
+	links     []cWaveLink
+	windows   []stackEntry
+	forks     []reduceFork
+	// used* are the longest lengths the buffers reached since the last reset.
+	// Nothing past them has been written, so reset clears only that part.
+	usedIterators, usedLinks, usedWindows, usedForks int
+}
+
+// cWaveIterator is one live iterator of the wave. It keeps its popped links in
+// a shared tree (cWaveScratch.links) instead of a private slice, so a clone
+// shares its parent's prefix and costs one iterator slot and no copy.
+type cWaveIterator struct {
+	node         *gssNode
+	link         int32 // newest popped link, or -1 before the first pop
+	popped       int32 // number of links on the path from link to the root of the tree
+	subtreeCount int
+}
+
+type cWaveLink struct {
+	entry stackEntry
+	prev  int32
+}
+
+const (
+	// maxRetainedCWaveScratch is the most entries a wave buffer keeps across a
+	// reset. Links (24 bytes), windows (16) and forks (40) then hold about
+	// 320 KB per pooled scratch at most; the iterator buffer never outgrows
+	// cStackMaxIteratorCount entries. Like the heap arrays they replace, the
+	// buffers are not billed to allocatedBytes.
+	maxRetainedCWaveScratch = 4096
+	// minCWaveWindowSlots is the first size of the window buffer. It covers the
+	// windows of a typical pop, and a call-local scratch pays for no more.
+	minCWaveWindowSlots = 16
+)
+
+// reset drops the references the buffers hold. A buffer that grew past
+// maxRetainedCWaveScratch entries is released instead of kept.
+func (w *cWaveScratch) reset() {
+	clear(w.iterators[:w.usedIterators])
+	clear(w.links[:w.usedLinks])
+	clear(w.windows[:w.usedWindows])
+	clear(w.forks[:w.usedForks])
+	w.usedIterators, w.usedLinks, w.usedWindows, w.usedForks = 0, 0, 0, 0
+	if cap(w.iterators) > maxRetainedCWaveScratch {
+		w.iterators = nil
+	}
+	if cap(w.links) > maxRetainedCWaveScratch {
+		w.links = nil
+	}
+	if cap(w.windows) > maxRetainedCWaveScratch {
+		w.windows = nil
+	}
+	if cap(w.forks) > maxRetainedCWaveScratch {
+		w.forks = nil
+	}
+	w.iterators, w.links, w.windows, w.forks = w.iterators[:0], w.links[:0], w.windows[:0], w.forks[:0]
+}
+
+// cWaveReduceWindowsFromGSSInto ports stack__iter as used by
 // ts_stack_pop_count. C advances one physical iterator wave at a time. It
 // keeps link 0 in the current slot and appends links 1..N in link order.
 // Appended iterators wait for the next wave, and the live iterator set never
 // exceeds MAX_ITERATOR_COUNT. Completed paths use stack__add_slice order, so
 // every path with the same pop target stays in one physical version group.
-func cWaveReduceWindowsFromGSS(s *glrStack, childCount int) []reduceFork {
+//
+// It takes its buffers from w, so a call allocates only while w is still
+// growing. The forks and their windows alias w; the caller must finish with
+// them before the next call on w.
+func cWaveReduceWindowsFromGSSInto(s *glrStack, childCount int, w *cWaveScratch) []reduceFork {
 	if s == nil || s.gss.head == nil || childCount < -1 {
 		return nil
 	}
 
-	iterators := []cReduceStackIterator{{node: s.gss.head}}
-	var forks []reduceFork
+	iterators := append(w.iterators[:0], cWaveIterator{node: s.gss.head, link: -1})
+	links := w.links[:0]
+	windows := w.windows[:0]
+	forks := w.forks[:0]
+	maxIterators := len(iterators)
 	for len(iterators) > 0 {
 		for i, waveSize := 0, len(iterators); i < waveSize; {
 			iterator := iterators[i]
@@ -3886,9 +4003,19 @@ func cWaveReduceWindowsFromGSS(s *glrStack, childCount int) []reduceFork {
 			// linkless base regardless of the paths' differing lengths.
 			complete := node != nil && (iterator.subtreeCount == childCount || (childCount == -1 && node.prev == nil && node.extraLinkCount == 0))
 			if complete {
-				window := make([]stackEntry, len(iterator.revPath))
-				for j := range iterator.revPath {
-					window[j] = iterator.revPath[len(iterator.revPath)-1-j]
+				n := int(iterator.popped)
+				if windows == nil || len(windows)+n > cap(windows) {
+					// Windows carved earlier keep the old array alive and stay
+					// valid; the new array starts empty.
+					windows = make([]stackEntry, 0, max(2*cap(windows), n, minCWaveWindowSlots))
+				}
+				start := len(windows)
+				windows = windows[:start+n]
+				window := windows[start : start+n : start+n]
+				// The newest link is the deepest entry, so it fills the
+				// window first.
+				for j, l := 0, iterator.link; l >= 0; j, l = j+1, links[l].prev {
+					window[j] = links[l].entry
 				}
 				forks = appendCStackSliceOrderReduceFork(forks, reduceFork{
 					window:   window,
@@ -3908,7 +4035,7 @@ func cWaveReduceWindowsFromGSS(s *glrStack, childCount int) []reduceFork {
 			}
 			if linkCount == 0 {
 				copy(iterators[i:], iterators[i+1:])
-				iterators[len(iterators)-1] = cReduceStackIterator{}
+				iterators[len(iterators)-1] = cWaveIterator{}
 				iterators = iterators[:len(iterators)-1]
 				waveSize--
 				continue
@@ -3919,12 +4046,11 @@ func cWaveReduceWindowsFromGSS(s *glrStack, childCount int) []reduceFork {
 					continue
 				}
 				prev, entry := node.link(linkIndex)
-				clonePath := make([]stackEntry, len(iterator.revPath), len(iterator.revPath)+1)
-				copy(clonePath, iterator.revPath)
-				clonePath = append(clonePath, entry)
-				clone := cReduceStackIterator{
+				links = append(links, cWaveLink{entry: entry, prev: iterator.link})
+				clone := cWaveIterator{
 					node:         prev,
-					revPath:      clonePath,
+					link:         int32(len(links) - 1),
+					popped:       iterator.popped + 1,
 					subtreeCount: iterator.subtreeCount,
 				}
 				// C counts a null subtree as one popped subtree. The only
@@ -3933,11 +4059,14 @@ func cWaveReduceWindowsFromGSS(s *glrStack, childCount int) []reduceFork {
 					clone.subtreeCount++
 				}
 				iterators = append(iterators, clone)
+				maxIterators = max(maxIterators, len(iterators))
 			}
 
 			prev, entry := node.link(0)
+			links = append(links, cWaveLink{entry: entry, prev: iterator.link})
 			iterator.node = prev
-			iterator.revPath = append(iterator.revPath, entry)
+			iterator.link = int32(len(links) - 1)
+			iterator.popped++
 			if cStackLinkCountsAsSubtree(entry) {
 				iterator.subtreeCount++
 			}
@@ -3945,7 +4074,59 @@ func cWaveReduceWindowsFromGSS(s *glrStack, childCount int) []reduceFork {
 			i++
 		}
 	}
+	w.usedIterators = max(w.usedIterators, maxIterators)
+	w.usedLinks = max(w.usedLinks, len(links))
+	w.usedWindows = max(w.usedWindows, len(windows))
+	w.usedForks = max(w.usedForks, len(forks))
+	w.iterators, w.links, w.windows, w.forks = iterators[:0], links[:0], windows[:0], forks[:0]
 	return forks
+}
+
+// cWaveReduceWindowsFromGSS is cWaveReduceWindowsFromGSSInto with a scratch of
+// its own, for callers that keep the forks past the next reduction. The forks
+// and windows it returns belong to the caller alone: no later call changes
+// them.
+func cWaveReduceWindowsFromGSS(s *glrStack, childCount int) []reduceFork {
+	var w cWaveScratch
+	return cWaveReduceWindowsFromGSSInto(s, childCount, &w)
+}
+
+// selectCWaveReduceForks keeps one fork from each run of allForks that shares a
+// pop target (reduceForksSameChildSelectionGroup) and returns the kept forks in
+// run order. A later fork in a run replaces the kept one only when
+// prefer(candidate, incumbent) is negative, so the first fork wins every tie.
+// It reports whether any run held more than one fork.
+//
+// The kept forks overwrite the front of allForks, so the call allocates nothing
+// and the result shares allForks's backing array. Every earlier run keeps at
+// least one fork, so the write index never passes the start of the run being
+// read. Work-count builds read every run afterwards: there each run is copied to
+// *groups before the writes can reach it.
+func selectCWaveReduceForks(allForks []reduceFork, prefer func(candidate, incumbent reduceFork) int, groups *[][]reduceFork) (kept []reduceFork, ambiguous bool) {
+	n := 0
+	for start := 0; start < len(allForks); {
+		end := start + 1
+		for end < len(allForks) && reduceForksSameChildSelectionGroup(allForks[start], allForks[end]) {
+			end++
+		}
+		group := allForks[start:end]
+		if len(group) > 1 {
+			ambiguous = true
+		}
+		selected := 0
+		for i := 1; i < len(group); i++ {
+			if prefer(group[i], group[selected]) < 0 {
+				selected = i
+			}
+		}
+		if workCountInstrumentationEnabled && groups != nil {
+			*groups = append(*groups, append([]reduceFork(nil), group...))
+		}
+		allForks[n] = group[selected]
+		n++
+		start = end
+	}
+	return allForks[:n], ambiguous
 }
 
 func reduceWindowsFromGSS(s *glrStack, childCount int, maxForks int) []reduceFork {
@@ -4675,30 +4856,26 @@ func (p *Parser) applyReduceActionFromGSS(source []byte, s *glrStack, act ParseA
 func (p *Parser) applyReduceActionForked(source []byte, s *glrStack, act ParseAction, tok Token, anyReduced *bool, nodeCount *int, arena *nodeArena, entryScratch *glrEntryScratch, gssScratch *gssScratch, tmpEntries *[]stackEntry, _ []stackEntry, deferParentLinks bool, trackChildErrors bool) {
 	var forks []reduceFork
 	var packedGroups [][]reduceFork
-	if p.compactPackedGSSVersionOrderEnabled() {
+	packedVersionOrder := p.compactPackedGSSVersionOrderEnabled()
+	if packedVersionOrder {
 		// The certified action-cell transaction keeps its source version
 		// unchanged while these outputs are built. Enumerate every pop slice in
 		// C's iterator-wave order; the transaction then groups and selects the
-		// same-pop candidates before it publishes physical versions.
-		allForks := cWaveReduceWindowsFromGSS(s, int(act.ChildCount))
-		for start := 0; start < len(allForks); {
-			end := start + 1
-			for end < len(allForks) && reduceForksSameChildSelectionGroup(allForks[start], allForks[end]) {
-				end++
-			}
-			group := allForks[start:end]
-			if len(group) > 1 && p.mergeScratch != nil {
-				p.mergeScratch.policyPruned = true
-			}
-			selected := 0
-			for i := 1; i < len(group); i++ {
-				if p.reduceForkWindowPreference(arena, act, group[i], group[selected]) < 0 {
-					selected = i
-				}
-			}
-			packedGroups = append(packedGroups, group)
-			forks = append(forks, group[selected])
-			start = end
+		// same-pop candidates before it publishes physical versions. The forks
+		// live in the parse's scratch and stay valid until the next reduction
+		// that uses it. Work-count builds run this same path.
+		var allForks []reduceFork
+		if gssScratch != nil {
+			allForks = cWaveReduceWindowsFromGSSInto(s, int(act.ChildCount), &gssScratch.cWave)
+		} else {
+			allForks = cWaveReduceWindowsFromGSS(s, int(act.ChildCount))
+		}
+		var ambiguous bool
+		forks, ambiguous = selectCWaveReduceForks(allForks, func(candidate, incumbent reduceFork) int {
+			return p.reduceForkWindowPreference(arena, act, candidate, incumbent)
+		}, &packedGroups)
+		if ambiguous && p.mergeScratch != nil {
+			p.mergeScratch.policyPruned = true
 		}
 	} else {
 		forks = p.selectedReduceWindowsFromGSS(arena, act, s, int(act.ChildCount), maxStacksPerMergeKey)
@@ -4837,7 +5014,7 @@ func (p *Parser) applyReduceActionForked(source []byte, s *glrStack, act ParseAc
 		if workCountInstrumentationEnabled {
 			workCountTopologyCommitVersion(&clone) // work-count-assembly: topology packed-clone commit seam
 		}
-		if len(packedGroups) != 0 {
+		if packedVersionOrder {
 			primaryPackedMergeEligible := s != nil && !s.dead && !clone.dead && !s.accepted && !clone.accepted &&
 				s.entries == nil && clone.entries == nil && s.gss.head != nil && clone.gss.head != nil &&
 				stacksHeaderEquivalent(s, &clone) && gssMainCanMergeForParser(p, s, &clone)
@@ -9701,4 +9878,13 @@ func (p *Parser) fieldIDScratchFor(childCount int) []FieldID {
 		clear(p.fieldIDScratch)
 	}
 	return p.fieldIDScratch
+}
+
+// hasPendingReductionContinuations reports whether a completed reduction must
+// return to the outer dispatcher before taking another action on its primary
+// stack for an artifact that certifies the new publication order. Terminal
+// frontier outputs already consumed the token; an owning frontier walk may
+// finish its bounded cycle checks before publishing them.
+func (p *Parser) hasPendingReductionContinuations() bool {
+	return p != nil && p.language != nil && p.language.legacyReductionContinuationsCertified && (len(p.pendingForkStacks) != 0 || len(p.pendingFrontierForkStacks) != 0)
 }
