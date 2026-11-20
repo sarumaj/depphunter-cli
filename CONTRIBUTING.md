@@ -32,7 +32,9 @@ packages the VS Code extension. Pushing a `v*` tag runs
 `.forgejo/workflows/release.yml`, which runs the tests and then publishes a
 Forgejo release with stripped binaries for every platform listed in
 [Install](README.md#install). macOS and Windows are cross-compiled but not tested
-in CI.
+in CI. The Go tests (with their coverage, a comment per Go version) and the
+extension's tests report to a pull request as comments (`dawid/ci-actions`'
+test-report).
 
 Both workflows build the archives with `scripts/dist.sh`, which also works
 locally (it needs `zip`):

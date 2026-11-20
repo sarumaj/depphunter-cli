@@ -44,10 +44,22 @@ jobs:
     - name: Install gopls
       if: matrix.os == 'ubuntu-latest' && matrix.go == 'stable'
       run: go install golang.org/x/tools/gopls@latest
+    # As JSON with the coverage, for the report below, which also prints the failed
+    # tests' output.
     - name: Test
+      id: tests
       shell: bash
       run: |
-        if [ "$RUNNER_OS" = Windows ]; then go test ./...; else go test -race ./...; fi
+        if [ "$RUNNER_OS" = Windows ]; then race=; else race=-race; fi
+        go test $race -json -coverprofile=/tmp/cover.out ./... > /tmp/go-test.json
+    # The results and the coverage as one comment per Go version on the pull request
+    # (dawid/ci-actions), also when tests failed.
+    - name: Test report
+      if: always() && steps.tests.outcome != 'skipped'
+      uses: https://git.ciepiela.org/dawid/ci-actions/test-report@main
+      with:
+        go-test-json: /tmp/go-test.json
+        coverage: /tmp/cover.out
   # Implements: REQ-DIST-012
   lint:
     runs-on: ubuntu-latest
@@ -111,10 +123,21 @@ jobs:
       run: |
         go build -o depphunter ./cmd/depphunter
         mkdir -p bin && cp depphunter bin/depphunter
+    # As JUnit too, for the report below: npm test's node --test takes its reporters
+    # from NODE_OPTIONS, the test files' own processes included.
     - name: Test
+      id: tests
       run: npm test
       env:
         DEPPHUNTER: ${{ github.workspace }}/depphunter
+        NODE_OPTIONS: >-
+          --test-reporter=spec --test-reporter-destination=stdout
+          --test-reporter=junit --test-reporter-destination=/tmp/node.xml
+    - name: Test report
+      if: always() && steps.tests.outcome != 'skipped'
+      uses: https://git.ciepiela.org/dawid/ci-actions/test-report@main
+      with:
+        junit: /tmp/node.xml
     - name: Package
       # vsce refuses SVG images from hosts outside its list of badge providers, which
       # this Forgejo is not: the README's CI badge is left out of the package only.
