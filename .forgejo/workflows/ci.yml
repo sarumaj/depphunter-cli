@@ -60,6 +60,8 @@ jobs:
       with:
         go-test-json: /tmp/go-test.json
         coverage: /tmp/cover.out
+        # The report is named after the job's id: one per Go version only with it named.
+        name: CI / test (Go ${{ matrix.go }})
   # Implements: REQ-DIST-012
   lint:
     runs-on: ubuntu-latest
