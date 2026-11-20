@@ -10,4 +10,3 @@ Unreleased section.
 
 - update module github.com/tidwall/jsonc to v0.3.4
 - update all non-major dependencies (#28)
-
