@@ -60,9 +60,11 @@ func (d *dfaTokenSource) tokenInvariantPrimitiveEditsEquivalentBeforeToken(oldSo
 	}
 	var modeStorage [1024]uint32
 	modes := modeStorage[:0]
+	var modeSet incr.ProbeModeSet
 	// The lexer can use state zero for a fallback scan without a mode row.
 	if len(d.lexer.states) != 0 {
 		modes = append(modes, 0)
+		modeSet.SeenOrAdd(0, nil)
 	}
 	if len(d.language.LexModes) > 32768 {
 		return 0, false
@@ -78,7 +80,7 @@ func (d *dfaTokenSource) tokenInvariantPrimitiveEditsEquivalentBeforeToken(oldSo
 			if uint64(state) >= uint64(len(d.lexer.states)) {
 				return 0, false
 			}
-			if !slices.Contains(modes, state) {
+			if !modeSet.SeenOrAdd(state, modes) {
 				if len(modes) == len(modeStorage) {
 					return 0, false
 				}
@@ -163,7 +165,9 @@ func (d *dfaTokenSource) tokenInvariantPrimitiveEditsEquivalentBeforeToken(oldSo
 	}
 	for ; origin < lastOrigin; origin++ {
 		for _, mode := range modes {
-			oldToken, oldLex, oldOK, ok := d.tokenInvariantProbeDFALimited(oldSource, origin, oldPoint, mode, &budget, maxReadSpan)
+			var oldToken Token
+			var oldLex incr.DFAProbeState
+			oldOK, ok := d.tokenInvariantProbeDFALimitedInto(oldSource, origin, oldPoint, mode, &budget, maxReadSpan, &oldToken, &oldLex)
 			if !ok {
 				return 0, false
 			}
@@ -178,15 +182,17 @@ func (d *dfaTokenSource) tokenInvariantPrimitiveEditsEquivalentBeforeToken(oldSo
 			if oldToken.lexerLookaheadEndByte <= edit.StartByte {
 				continue
 			}
-			newToken, newLex, newOK, ok := d.tokenInvariantProbeDFA(newSource, origin, newPoint, mode, &budget)
+			var newToken Token
+			var newLex incr.DFAProbeState
+			newOK, ok := d.tokenInvariantProbeDFALimitedInto(newSource, origin, newPoint, mode, &budget, 0, &newToken, &newLex)
 			projectedToken, projectedLex := oldToken, oldLex
 			projected := true
 			if lengthNeutral {
 				projectedToken, projectedLex, projected = projectTokenInvariantPrimitive(oldToken, oldLex, mapping)
 			}
 			if !ok || !projected || oldOK != newOK || !tokenInvariantPrimitiveTokensEqual(projectedToken, newToken) ||
-				projectedLex.pos != newLex.pos || projectedLex.row != newLex.row || projectedLex.col != newLex.col ||
-				projectedLex.failTokenStartPos != newLex.failTokenStartPos || projectedLex.failTokenStartRow != newLex.failTokenStartRow || projectedLex.failTokenStartCol != newLex.failTokenStartCol {
+				projectedLex.Position != newLex.Position || projectedLex.Row != newLex.Row || projectedLex.Column != newLex.Column ||
+				projectedLex.FailurePosition != newLex.FailurePosition || projectedLex.FailureRow != newLex.FailureRow || projectedLex.FailureColumn != newLex.FailureColumn {
 				return 0, false
 			}
 			maximum = maxUint32(maximum, newToken.lexerLookaheadEndByte-origin)
@@ -290,7 +296,7 @@ func (d *dfaTokenSource) tokenInvariantPrimitiveEditsEquivalentBeforeToken(oldSo
 }
 
 // Apply the internal coordinate proof to the facade's lexer tuples.
-func projectTokenInvariantPrimitive(tok Token, lex Lexer, edit incr.TokenEdit) (Token, Lexer, bool) {
+func projectTokenInvariantPrimitive(tok Token, lex incr.DFAProbeState, edit incr.TokenEdit) (Token, incr.DFAProbeState, bool) {
 	project := func(offset *uint32, point *Point) bool {
 		row, column, ok := edit.Point(*offset, point.Row, point.Column)
 		if !ok {
@@ -304,20 +310,20 @@ func projectTokenInvariantPrimitive(tok Token, lex Lexer, edit incr.TokenEdit) (
 		return true
 	}
 	if !project(&tok.StartByte, &tok.StartPoint) || !project(&tok.EndByte, &tok.EndPoint) {
-		return Token{}, Lexer{}, false
+		return Token{}, incr.DFAProbeState{}, false
 	}
-	pos := uint32(lex.pos)
-	point := Point{Row: lex.row, Column: lex.col}
+	pos := uint32(lex.Position)
+	point := Point{Row: lex.Row, Column: lex.Column}
 	if !project(&pos, &point) {
-		return Token{}, Lexer{}, false
+		return Token{}, incr.DFAProbeState{}, false
 	}
-	lex.pos, lex.row, lex.col = int(pos), point.Row, point.Column
-	fail := uint32(lex.failTokenStartPos)
-	failPoint := Point{Row: lex.failTokenStartRow, Column: lex.failTokenStartCol}
+	lex.Position, lex.Row, lex.Column = int(pos), point.Row, point.Column
+	fail := uint32(lex.FailurePosition)
+	failPoint := Point{Row: lex.FailureRow, Column: lex.FailureColumn}
 	if !project(&fail, &failPoint) {
-		return Token{}, Lexer{}, false
+		return Token{}, incr.DFAProbeState{}, false
 	}
-	lex.failTokenStartPos, lex.failTokenStartRow, lex.failTokenStartCol = int(fail), failPoint.Row, failPoint.Column
+	lex.FailurePosition, lex.FailureRow, lex.FailureColumn = int(fail), failPoint.Row, failPoint.Column
 	return tok, lex, true
 }
 
@@ -391,7 +397,7 @@ func tokenInvariantPrimitiveTokensEqual(a, b Token) bool {
 	return a == b
 }
 
-func (d *dfaTokenSource) tokenInvariantProbeDFA(source []byte, origin uint32, point Point, mode uint32, budget *tokenInvariantPrimitiveBudget) (Token, Lexer, bool, bool) {
+func (d *dfaTokenSource) tokenInvariantProbeDFA(source []byte, origin uint32, point Point, mode uint32, budget *tokenInvariantPrimitiveBudget) (Token, incr.DFAProbeState, bool, bool) {
 	return d.tokenInvariantProbeDFALimited(source, origin, point, mode, budget, 0)
 }
 
@@ -407,9 +413,21 @@ func tokenInvariantProbeLimit(source []byte, origin uint32, budget *tokenInvaria
 	return limit, proofCut
 }
 
-func (d *dfaTokenSource) tokenInvariantProbeDFALimited(source []byte, origin uint32, point Point, mode uint32, budget *tokenInvariantPrimitiveBudget, oldMaximum uint32) (Token, Lexer, bool, bool) {
+func (d *dfaTokenSource) tokenInvariantProbeDFALimited(source []byte, origin uint32, point Point, mode uint32, budget *tokenInvariantPrimitiveBudget, oldMaximum uint32) (Token, incr.DFAProbeState, bool, bool) {
+	var tok Token
+	var state incr.DFAProbeState
+	accepted, ok := d.tokenInvariantProbeDFALimitedInto(source, origin, point, mode, budget, oldMaximum, &tok, &state)
+	if !ok {
+		return Token{}, incr.DFAProbeState{}, false, false
+	}
+	return tok, state, accepted, true
+}
+
+func (d *dfaTokenSource) tokenInvariantProbeDFALimitedInto(source []byte, origin uint32, point Point, mode uint32, budget *tokenInvariantPrimitiveBudget, oldMaximum uint32, tok *Token, state *incr.DFAProbeState) (bool, bool) {
+	*tok = Token{}
+	*state = incr.DFAProbeState{}
 	if budget.scans == 0 || budget.bytes == 0 {
-		return Token{}, Lexer{}, false, false
+		return false, false
 	}
 	limit, proofCut := tokenInvariantProbeLimit(source, origin, budget, oldMaximum)
 	probe := *d.lexer
@@ -418,15 +436,19 @@ func (d *dfaTokenSource) tokenInvariantProbeDFALimited(source []byte, origin uin
 	probe.tokenInvariantReadSpanMax = nil
 	probe.failTokenStartPos, probe.failTokenStartRow, probe.failTokenStartCol, probe.failTokenStartRangeIdx = 0, 0, 0, 0
 	probe.failTokenEnd = includedLexerCursor{}
-	var tok Token
-	accepted := probe.scanInto(mode, int(origin), point.Row, point.Column, &tok)
+	accepted := probe.scanInto(mode, int(origin), point.Row, point.Column, tok)
 	frontier := tokenInvariantExaminedEnd(probe.source, tok.lexerLookaheadEndByte)
 	// This private token carries the proof bound, not the public C frontier.
 	tok.lexerLookaheadEndByte = frontier
 	if frontier < origin || (limit < uint64(len(source)) && uint64(frontier) >= limit && !proofCut) || !budget.charge(frontier-origin) {
-		return Token{}, Lexer{}, false, false
+		*tok = Token{}
+		return false, false
 	}
-	return tok, probe, accepted, true
+	*state = incr.DFAProbeState{
+		Position: probe.pos, Row: probe.row, Column: probe.col,
+		FailurePosition: probe.failTokenStartPos, FailureRow: probe.failTokenStartRow, FailureColumn: probe.failTokenStartCol,
+	}
+	return accepted, true
 }
 
 func (d *dfaTokenSource) tokenInvariantProbeExternal(source []byte, origin uint32, point Point, mask []bool, budget *tokenInvariantPrimitiveBudget, payload any, lexer *ExternalLexer, oldMaximum uint32) (ExternalLexer, bool, uint32, bool) {

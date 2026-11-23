@@ -16,11 +16,10 @@ type RecoveryDiscontinuityContext struct {
 // RecoveryStoredErrorCost returns the authenticated C stack-node error cost
 // stored on one graph head. It supports scheduler pricing and merge audits.
 func (c *Core) RecoveryStoredErrorCost(head Head) (uint32, error) {
-	lineage, err := c.nodeLineage(head.Node)
-	if err != nil {
-		return 0, err
+	if uint64(head.Node)-1 >= uint64(len(c.nodeLineages)) {
+		return 0, errInvalidNodeLineage
 	}
-	return lineage.storedErrorCost, nil
+	return c.nodeLineageRecoveryAt(head.Node).storedErrorCost, nil
 }
 
 func (c *Core) validateRecoveryDiscontinuityContext(
@@ -51,16 +50,20 @@ func (c *Core) appendRecoveryDiscontinuityUncheckpointed(
 	predecessor Head,
 	context RecoveryDiscontinuityContext,
 ) (Head, error) {
-	previous, err := c.validateRecoveryDiscontinuityContext(predecessor, context)
+	_, err := c.validateRecoveryDiscontinuityContext(predecessor, context)
 	if err != nil {
 		return Head{}, err
 	}
-	previousLineage, err := c.nodeLineage(predecessor.Node)
+	previousLineage, err := c.lineageView(predecessor.Node)
 	if err != nil {
 		return Head{}, err
 	}
 	link := linkRecord{prev: predecessor.Node, flags: linkFlagRecoveryDiscontinuity}
-	maximum := precedenceMaximumWitness{seed: previous.precedenceMax, hasSeed: true}
+	stored, err := c.storedNodePrecedence(predecessor.Node)
+	if err != nil {
+		return Head{}, err
+	}
+	maximum := precedenceMaximumWitness{seed: stored, hasSeed: true}
 	node, err := c.appendAdjacencyNodeAtWithPrecedenceAndStoredErrorCost(
 		context.ErrorState, context.ByteOffset, context.Checkpoint,
 		[]linkRecord{link}, maximum, previousLineage.storedErrorCost, true,
@@ -78,17 +81,19 @@ func (c *Core) appendRecoveryDiscontinuityUncheckpointed(
 // marker without electing a scheduler owner. The copy aliases only immutable
 // reference-set spill segments; later unions append to a separate segment.
 func (c *Core) copyRecoveryDiscontinuityLineage(source, target NodeID) error {
-	from, err := c.nodeLineage(source)
+	from, err := c.lineageView(source)
 	if err != nil {
 		return err
 	}
-	to, err := c.nodeLineage(target)
-	if err != nil {
+	if _, err := c.nodeLineageHot(target); err != nil {
 		return err
 	}
-	*to = *from
-	to.owner = 0
-	c.invalidateReusedLineageProof(target, to)
+	value := from.record()
+	value.owner = 0
+	if err := c.publishNodeLineage(target, value); err != nil {
+		return err
+	}
+	c.invalidateReusedLineageProof(target)
 	return nil
 }
 
@@ -113,7 +118,7 @@ func (c *Core) recoveryDiscontinuityHeadLinks(head Head) (nodeRecord, []linkReco
 	if err != nil {
 		return nodeRecord{}, nil, err
 	}
-	if node.linkCount == 0 || node.firstLink == 0 || uint64(node.firstLink) > uint64(len(c.links)) {
+	if node.linkCount == 0 || node.firstLink == 0 || uint64(node.firstLink) > uint64(c.links.Len()) {
 		return nodeRecord{}, nil, errors.New("parser-core phase zero: recovery discontinuity head has no edges")
 	}
 	var inline [inlineAdjacencyCapacity]linkRecord
@@ -163,11 +168,11 @@ func (c *Core) mergeRecoveryDiscontinuityHeadsUncheckpointed(
 	if !leftExact || !rightExact || leftCheckpoint != context.Checkpoint || rightCheckpoint != context.Checkpoint {
 		return Head{}, errors.New("parser-core phase zero: recovery discontinuity heads have different scanner checkpoints")
 	}
-	leftLineage, err := c.nodeLineage(incumbent.Node)
+	leftLineage, err := c.lineageView(incumbent.Node)
 	if err != nil {
 		return Head{}, err
 	}
-	rightLineage, err := c.nodeLineage(incoming.Node)
+	rightLineage, err := c.lineageView(incoming.Node)
 	if err != nil {
 		return Head{}, err
 	}

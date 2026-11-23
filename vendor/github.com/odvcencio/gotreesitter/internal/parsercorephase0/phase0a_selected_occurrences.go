@@ -1155,10 +1155,10 @@ func phase0ASelectedOccurrenceStatesLocked(core *Core, observer *phase0AObserver
 }
 
 func phase0ASelectedCompactWindows(core *Core, namespace CoreRunNamespace, id SubtreeID) (subtreeRecord, []SubtreeID, []FieldMapEntry, []Symbol, error) {
-	if core == nil || id == 0 || uint64(id) > uint64(len(core.subtrees)) {
+	if core == nil || id == 0 || uint64(id) > uint64(core.subtrees.Len()) {
 		return subtreeRecord{}, nil, nil, nil, &Phase0AError{Kind: Phase0AErrorStaleReference, Namespace: namespace, Detail: "selected compact record is unavailable"}
 	}
-	record := core.subtrees[id-1]
+	record := *core.subtrees.At(int(id - 1))
 	if record.externalProvenanceState == subtreeExternalProvenanceReusedOpaque {
 		return subtreeRecord{}, nil, nil, nil, &Phase0AError{Kind: Phase0AErrorStaleReference, Namespace: namespace, Detail: "selected occurrence cannot inspect a reused subtree"}
 	}

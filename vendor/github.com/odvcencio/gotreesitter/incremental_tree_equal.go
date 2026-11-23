@@ -73,8 +73,18 @@ func incrementalTreesStructurallyEqual(a, b *Tree, lang *Language) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
+	leftRoot, rightRoot := a.RootNode(), b.RootNode()
+	if leftRoot == rightRoot {
+		return true
+	}
+	if views := nodeViews(rightRoot); views != nil {
+		return views.equalTree(leftRoot, rightRoot, lang)
+	}
+	if views := nodeViews(leftRoot); views != nil {
+		return views.equalTree(rightRoot, leftRoot, lang)
+	}
 	type pair struct{ a, b *Node }
-	stack := []pair{{a.RootNode(), b.RootNode()}}
+	stack := []pair{{leftRoot, rightRoot}}
 	for len(stack) != 0 {
 		last := len(stack) - 1
 		current := stack[last]
@@ -151,7 +161,7 @@ func (p *Parser) verifyIncrementalFreshResult(source []byte, oldTree *Tree, ts T
 		}
 		return tree, nil
 	}
-	if p.incrementalEOFExtraAppendMatchesOld(source, oldTree, tree, ts) {
+	if !p.reuseCursor.smallFreshReuse && p.incrementalEOFExtraAppendMatchesOld(source, oldTree, tree, ts) {
 		return tree, nil
 	}
 	// An error recovery frontier or a forced top-level settle can
@@ -198,6 +208,10 @@ func (p *Parser) verifyIncrementalFreshResult(source []byte, oldTree *Tree, ts T
 		// normalization yet.
 		p.normalizeReturnedIncrementalTree(tree, oldTree, source)
 	}
+	if p.reuseCursor.smallFreshShadowArtifact {
+		would := p.reuseCursor.shadowWouldCertify && p.reuseCursor.certifiesIncrementalResult(tree, p, source, 0)
+		incr.ObserveReuse(p, source, oldTree, tree, fresh, would, p.reuseCursor.smallFreshReuse, false)
+	}
 	// A stopped attempt can have the same visible shape as an accepted parse,
 	// but its stop reason still controls the later retry policy. Authenticate
 	// that reason too so a widening retry cannot replace a verified result.
@@ -216,6 +230,11 @@ func (p *Parser) verifyIncrementalFreshResult(source []byte, oldTree *Tree, ts T
 	} else {
 		tree.setIncrementalFreshVerified(true)
 		tree.eofExtraTokenSourceProofID = fresh.eofExtraTokenSourceProofID
+		if p.reuseCursor.smallFreshReuse && p.reuseCursor.shadowWouldCertify && tree.arena != nil && fresh.arena != nil {
+			if key := fresh.arena.legacyReuseReads.DefaultProducerSchedule(len(source)); key != 0 {
+				tree.arena.legacyReuseReads.CertifyDefaultProducer(key)
+			}
+		}
 		fresh.Release()
 		if timing != nil {
 			timing.totalNanos += freshNanos

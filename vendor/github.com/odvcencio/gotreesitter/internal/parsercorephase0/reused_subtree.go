@@ -65,7 +65,7 @@ func (c *Core) PushReusedSubtreeOwnedWithPoll(owner SchedulerTransactionToken, h
 		if err != nil {
 			return err
 		}
-		c.subtrees[payload-1].externalProvenanceState = subtreeExternalProvenanceReusedOpaque
+		(*c.subtrees.At(int(payload - 1))).externalProvenanceState = subtreeExternalProvenanceReusedOpaque
 		c.reusedSubtrees = append(c.reusedSubtrees, reusedSubtreeProvenance{payload: payload, descriptor: reused})
 		out, err = c.appendPrivate(reused.State, reused.EndByte, linkInput{
 			prev: head.Node, payload: payload, scoreDelta: int64(reused.DynamicPrecedence),
@@ -100,7 +100,7 @@ func (c *Core) validateReusedHead(head Head, poll func() error) error {
 		return nil
 	}
 	// Child identifiers precede parents. Each completed prefix therefore proves all descendants.
-	for uint64(c.reuseProof.subtrees) < uint64(len(c.subtrees)) {
+	for uint64(c.reuseProof.subtrees) < uint64(c.subtrees.Len()) {
 		if err := step(); err != nil {
 			return err
 		}
@@ -138,17 +138,21 @@ func (c *Core) validateReusedHead(head Head, poll func() error) error {
 		c.reuseProof.subtrees++
 	}
 	// Graph topology is immutable. Mutation seams invalidate proofs of unsafe lineage changes.
-	for uint64(c.reuseProof.nodes) < uint64(len(c.nodes)) {
+	for uint64(c.reuseProof.nodes) < uint64(c.nodes.Len()) {
 		if err := step(); err != nil {
 			return err
 		}
 		id := NodeID(c.reuseProof.nodes + 1)
-		node := &c.nodes[id-1]
-		lineage, err := c.nodeLineage(id)
+		node := c.nodes.At(int(id - 1))
+		nodePaths, pathErr := c.nodePathCount(id)
+		if pathErr != nil {
+			return pathErr
+		}
+		lineage, err := c.lineageView(id)
 		if err != nil {
 			return err
 		}
-		if node.pathCount != 1 || node.linkCount > 1 || !reuseLineageClean(lineage) {
+		if nodePaths != 1 || node.linkCount > 1 || !reuseLineageClean(lineage) {
 			return errors.New("parser-core phase zero: reuse requires one clean exact corridor")
 		}
 		if node.linkCount == 0 {
@@ -156,10 +160,10 @@ func (c *Core) validateReusedHead(head Head, poll func() error) error {
 				return errors.New("parser-core phase zero: reused corridor has invalid seed adjacency")
 			}
 		} else {
-			if node.firstLink == 0 || uint64(node.firstLink) > uint64(len(c.links)) {
+			if node.firstLink == 0 || uint64(node.firstLink) > uint64(c.links.Len()) {
 				return errors.New("parser-core phase zero: reused corridor has invalid link identifier")
 			}
-			link := c.links[node.firstLink-1]
+			link := c.links.At(int(node.firstLink - 1))
 			if err := link.validateShape(); err != nil {
 				return err
 			}
@@ -173,8 +177,8 @@ func (c *Core) validateReusedHead(head Head, poll func() error) error {
 	return poll()
 }
 
-func reuseLineageClean(lineage *nodeLineageRecord) bool {
-	return lineage.storedErrorCost == 0 && !lineage.blended && !lineage.converged && lineage.set.count == 0 && lineage.lineage == 0
+func reuseLineageClean(lineage nodeLineageView) bool {
+	return lineage.storedErrorCost == 0 && !lineage.isBlended() && !lineage.isConverged() && lineage.alternativeSet().count == 0 && lineage.lineage == 0
 }
 
 func (c *Core) invalidateReusedSubtreeProof(id SubtreeID) {
@@ -190,9 +194,12 @@ func (c *Core) markSubtreeFragile(id SubtreeID) {
 	}
 }
 
-func (c *Core) invalidateReusedLineageProof(id NodeID, lineage *nodeLineageRecord) {
-	if id != 0 && uint64(id) <= uint64(c.reuseProof.nodes) && !reuseLineageClean(lineage) {
-		c.reuseProof.invalid = true
+func (c *Core) invalidateReusedLineageProof(id NodeID) {
+	if id != 0 && uint64(id) <= uint64(c.reuseProof.nodes) {
+		lineage, err := c.lineageView(id)
+		if err != nil || !reuseLineageClean(lineage) {
+			c.reuseProof.invalid = true
+		}
 	}
 }
 

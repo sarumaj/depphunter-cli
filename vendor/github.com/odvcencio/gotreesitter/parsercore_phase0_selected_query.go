@@ -1,4 +1,4 @@
-//go:build gts_parsercorephase0
+//go:build !gts_no_parsercorephase0
 
 package gotreesitter
 
@@ -31,9 +31,14 @@ func (r selectedStoreQueryReader) Symbol(id core.SelectedNodeID) Symbol {
 	return Symbol(symbol)
 }
 
-// SupertypeMask reports no hidden-supertype record: the selected store keeps
-// no elision provenance, so supertype patterns do not match through it.
-func (r selectedStoreQueryReader) SupertypeMask(core.SelectedNodeID) uint32 { return 0 }
+// SupertypeMask preserves hidden-rule provenance on this logical occurrence.
+func (r selectedStoreQueryReader) SupertypeMask(id core.SelectedNodeID) uint32 {
+	if r.store == nil {
+		return 0
+	}
+	mask, _ := r.store.NodeSupertypeMask(id)
+	return mask
+}
 
 func (r selectedStoreQueryReader) IsNamed(id core.SelectedNodeID) bool {
 	if r.store == nil {

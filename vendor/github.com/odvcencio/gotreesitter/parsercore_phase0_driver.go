@@ -178,6 +178,7 @@ type DiagnosticParserCorePrefixOptions struct {
 	// disables it, mirroring the production contract's own 0=off escape
 	// hatch.
 	stopControlHardCeilingBytes int64
+	nativeSelectedOutput        *nativeSelectedOutputRunner
 	// materializationParser, materializationSource,
 	// materializationForceReplayParseStates, and materializationContextSet
 	// back the compact acceptance-election materiality gate
@@ -879,7 +880,11 @@ func (a *parserCoreRootTables) SelectedStorePolicy() (core.SelectedStorePolicy, 
 	if a == nil || a.parser == nil || !a.parser.hasRootSymbol {
 		return core.SelectedStorePolicy{}, nil
 	}
-	return buildParserCoreSelectedStorePolicy(a.parser)
+	policy, err := buildParserCoreSelectedStorePolicy(a.parser)
+	if identity, valid := a.TableIdentity(); err == nil && valid && core.NativeSelectedSnapshotDefaultContract(identity) {
+		policy.TypeArguments = parserCoreTypeArgumentPolicy(a.parser.language)
+	}
+	return policy, err
 }
 
 func (a *parserCoreRootTables) Actions(state core.StateID, symbol core.Symbol) (core.ActionRow, error) {
@@ -1284,11 +1289,11 @@ type diagnosticParserCoreHeader struct {
 	// plus one unrelated bit (diagnosticParserCoreZeroWidthReopenedFlag) that
 	// only shares this byte for layout reasons -- see that flag's own doc
 	// comment. It sits before versionState in the padding byte at offset 75.
-	// Placing it after the pointer would grow each header from 88 to 96
-	// bytes, and this struct has no other spare bits: every additional field
-	// or byte here shifts versionState's own 8-byte-aligned offset outward
-	// (unsafe.Sizeof-verified, parsercore_phase0_canonical_scratch_internal_test.go
-	// and TestRecoveryLineageMarkerDoesNotGrowTheHeader).
+	// acceptOrdinal fills the four bytes at offsets 76 through 79. Any further
+	// field shifts versionState's own 8-byte-aligned offset outward and grows
+	// each header from 88 to 96 bytes (unsafe.Sizeof-verified,
+	// parsercore_phase0_canonical_scratch_internal_test.go and
+	// TestRecoveryLineageMarkerDoesNotGrowTheHeader).
 	//
 	// A frontier that merely forked on ordinary grammar ambiguity must NOT be
 	// marked. Error cost answers "which recovery is cheaper", which is not the
@@ -1299,6 +1304,12 @@ type diagnosticParserCoreHeader struct {
 	// recoveryOpenSegments. Ordinary paths write paused, while region paths
 	// publish versionState. A stored copy could drift from either value.
 	recoveryFlags diagnosticParserCoreRecoveryFlags
+	// acceptOrdinal is the one-based order in which this header accepted. It
+	// is zero until the header accepts. C compares finished trees in
+	// acceptance order (ts_parser__accept's finished_tree incumbent), while
+	// recovery condensation moves accepted headers behind active ones, so the
+	// header index alone does not preserve that order.
+	acceptOrdinal uint32
 	// versionState carries optional state owned by this parser version. It is
 	// nil on the single-version fast path. The pointed-to state is immutable.
 	// Accessors publish a fresh wrapper or clear the pointer. A by-value header
@@ -1306,26 +1317,16 @@ type diagnosticParserCoreHeader struct {
 	versionState *diagnosticParserCoreVersionState
 }
 
-// diagnosticParserCoreVersionState holds immutable state for one header.
-// Keep it separate from the fixed-size header so lexer ownership can grow
-// without changing the header layout. Region updates publish a new wrapper
-// while preserving the lexer snapshot, and snapshot updates do the reverse.
+// Keep rare recovery ownership in one immutable shared holder. The node
+// baseline remains inline because clean Go reductions publish it as well.
+// The fixed-size header still points to one immutable version-state wrapper.
+type diagnosticParserCoreVersionRecoveryState = core.VersionRecoveryState[*diagnosticParserCoreS3Region, recoveredRootGroup]
+
 type diagnosticParserCoreVersionState struct {
-	s3Region      *diagnosticParserCoreS3Region
 	relexSnapshot *diagnosticParserCoreVersionLexerSnapshot
-	// lexerRequest is a one-based scheduler sidecar reference. Reductions
-	// preserve it because they do not consume lookahead. Shifts clear it when
-	// they publish the request's after snapshot.
-	lexerRequest uint32
-	// recoveryGroup identifies one live C error-state group. missingGroup ties
-	// a missing-token version to that group for C's S5 ordering rule.
-	recoveryGroup uint64
-	missingGroup  uint64
-	// acceptanceGroup survives a closed error region without changing the
-	// live group key used by recovery condensation.
-	acceptanceGroup recoveredRootGroup
-	// recoveryNodeBaseline is C's cumulative visible-node count at the last
-	// error entry. Current counts come from the live graph during condensation.
+	recovery      *core.FrozenValue[diagnosticParserCoreVersionRecoveryState]
+	lexerRequest  uint32
+	// Keep the C visible-node baseline inline: clean Go paths use it too.
 	recoveryNodeBaseline    uint32
 	recoveryNodeBaselineSet bool
 }
@@ -1354,44 +1355,44 @@ const (
 )
 
 // recoveryRegion returns the optional open strategy-2 region.
-func (h diagnosticParserCoreHeader) recoveryRegion() *diagnosticParserCoreS3Region {
+func (h *diagnosticParserCoreHeader) recoveryRegion() *diagnosticParserCoreS3Region {
 	if h.versionState == nil {
 		return nil
 	}
-	return h.versionState.s3Region
+	return h.versionState.recovery.Value().Region
 }
 
 // versionLexerSnapshot returns the immutable DFA/scanner state owned by this
 // parser version. The nil value is the single-version fast-path state.
-func (h diagnosticParserCoreHeader) versionLexerSnapshot() *diagnosticParserCoreVersionLexerSnapshot {
+func (h *diagnosticParserCoreHeader) versionLexerSnapshot() *diagnosticParserCoreVersionLexerSnapshot {
 	if h.versionState == nil {
 		return nil
 	}
 	return h.versionState.relexSnapshot
 }
 
-func (h diagnosticParserCoreHeader) versionLexerRequestReference() uint32 {
+func (h *diagnosticParserCoreHeader) versionLexerRequestReference() uint32 {
 	if h.versionState == nil {
 		return 0
 	}
 	return h.versionState.lexerRequest
 }
 
-func (h diagnosticParserCoreHeader) recoveryGroupIdentity() uint64 {
+func (h *diagnosticParserCoreHeader) recoveryGroupIdentity() uint64 {
 	if h.versionState == nil {
 		return 0
 	}
-	return h.versionState.recoveryGroup
+	return h.versionState.recovery.Value().RecoveryGroup
 }
 
-func (h diagnosticParserCoreHeader) recoveryMissingGroupIdentity() uint64 {
+func (h *diagnosticParserCoreHeader) recoveryMissingGroupIdentity() uint64 {
 	if h.versionState == nil {
 		return 0
 	}
-	return h.versionState.missingGroup
+	return h.versionState.recovery.Value().MissingGroup
 }
 
-func (h diagnosticParserCoreHeader) recoveryNodeBaseline() (uint32, bool) {
+func (h *diagnosticParserCoreHeader) recoveryNodeBaseline() (uint32, bool) {
 	if h.versionState == nil {
 		return 0, false
 	}
@@ -1418,11 +1419,21 @@ func (h *diagnosticParserCoreHeader) publishVersionState(
 		h.versionState = nil
 		return
 	}
+	var previousRecovery *core.FrozenValue[diagnosticParserCoreVersionRecoveryState]
+	if h.versionState != nil {
+		previousRecovery = h.versionState.recovery
+	}
 	h.versionState = &diagnosticParserCoreVersionState{
-		s3Region: region, relexSnapshot: snapshot, lexerRequest: request,
-		recoveryGroup: recoveryGroup, missingGroup: missingGroup,
-		acceptanceGroup:      acceptanceGroup,
-		recoveryNodeBaseline: nodeBaseline, recoveryNodeBaselineSet: nodeBaselineSet,
+		relexSnapshot:           snapshot,
+		lexerRequest:            request,
+		recoveryNodeBaseline:    nodeBaseline,
+		recoveryNodeBaselineSet: nodeBaselineSet,
+		recovery: core.ReuseVersionRecoveryState(previousRecovery, diagnosticParserCoreVersionRecoveryState{
+			Region:          region,
+			RecoveryGroup:   recoveryGroup,
+			MissingGroup:    missingGroup,
+			AcceptanceGroup: acceptanceGroup,
+		}),
 	}
 }
 
@@ -1441,21 +1452,21 @@ func (h *diagnosticParserCoreHeader) publishRecoveryCondenseState(
 }
 
 func (h *diagnosticParserCoreHeader) clearAcceptanceGroup() {
-	if h == nil || h.versionState == nil || !h.versionState.acceptanceGroup.valid() {
+	if h == nil || h.versionState == nil || !h.versionState.recovery.Value().AcceptanceGroup.valid() {
 		return
 	}
 	state := *h.versionState
-	state.acceptanceGroup = recoveredRootGroup{}
-	if state.s3Region == nil && state.relexSnapshot == nil &&
-		state.lexerRequest == 0 && state.recoveryGroup == 0 &&
-		state.missingGroup == 0 && !state.recoveryNodeBaselineSet {
+	recovery := state.recovery.Value()
+	recovery.AcceptanceGroup = recoveredRootGroup{}
+	if recovery.Region == nil && state.relexSnapshot == nil && state.lexerRequest == 0 && recovery.RecoveryGroup == 0 && recovery.MissingGroup == 0 && !state.recoveryNodeBaselineSet {
 		h.versionState = nil
 	} else {
+		state.recovery = core.ReuseVersionRecoveryState(state.recovery, recovery)
 		h.versionState = &state
 	}
 }
 
-func (h diagnosticParserCoreHeader) isRecoveryCosted() bool {
+func (h *diagnosticParserCoreHeader) isRecoveryCosted() bool {
 	return h.recoveryFlags&diagnosticParserCoreRecoveryCostedFlag != 0
 }
 
@@ -2449,7 +2460,7 @@ func (s *diagnosticParserCoreCanonicalScratch) canonicalizeWithMutation(
 		}
 		if canonical, ok := compact.CanonicalBoundary(state, byteOffset, header.shifted, header.checkpoint); ok &&
 			!header.isRecoveryLineage() && header.recoveryRegion() == nil && !header.isRecoveryCosted() {
-			if core.CanonicalVersionRemap(header.head, canonical, core.ExternalLexerOwnershipProbeEnabled() && header.versionLexerSnapshot() != nil, headers,
+			if core.CanonicalVersionRemap(header.head, canonical, (core.ExternalLexerOwnershipProbeEnabled() || compact.VersionLexerOwnershipActive()) && header.versionLexerSnapshot() != nil, headers,
 				func(other diagnosticParserCoreHeader, target core.Head) bool {
 					return other.head == target && (other.versionState == header.versionState ||
 						s.versionStateOwner != nil && s.versionStateOwner.versionLexerStateEqual(other.versionState, header.versionState))
@@ -2475,6 +2486,8 @@ func (s *diagnosticParserCoreCanonicalScratch) canonicalizeWithMutation(
 		}
 		s.keys = s.keys[:len(headers)]
 	}
+	var smallHeads core.CanonicalHeadMask
+	headsDistinct := len(normalized) <= diagnosticParserCoreLinearCanonicalLimit
 	for index := range normalized {
 		header := &normalized[index]
 		state, byteOffset, err := compact.Boundary(header.head)
@@ -2487,7 +2500,7 @@ func (s *diagnosticParserCoreCanonicalScratch) canonicalizeWithMutation(
 		}
 		if canonical, ok := compact.CanonicalBoundary(state, byteOffset, header.shifted, header.checkpoint); ok &&
 			!header.isRecoveryLineage() && header.recoveryRegion() == nil && !header.isRecoveryCosted() {
-			if core.CanonicalVersionRemap(header.head, canonical, core.ExternalLexerOwnershipProbeEnabled() && header.versionLexerSnapshot() != nil, headers,
+			if core.CanonicalVersionRemap(header.head, canonical, (core.ExternalLexerOwnershipProbeEnabled() || compact.VersionLexerOwnershipActive()) && header.versionLexerSnapshot() != nil, headers,
 				func(other diagnosticParserCoreHeader, target core.Head) bool {
 					return other.head == target && (other.versionState == header.versionState ||
 						s.versionStateOwner != nil && s.versionStateOwner.versionLexerStateEqual(other.versionState, header.versionState))
@@ -2515,6 +2528,19 @@ func (s *diagnosticParserCoreCanonicalScratch) canonicalizeWithMutation(
 			checkpoint: header.checkpoint, versionState: versionState,
 		}
 		s.keys[index] = key
+		if headsDistinct {
+			headsDistinct = smallHeads.Add(header.head)
+		}
+	}
+	// Distinct mask bits prove distinct heads and complete canonical keys.
+	// A collision retains exact grouping; it cannot certify an equal head.
+	// The existing scan has already authenticated boundaries and lexer owners.
+	if headsDistinct {
+		for index := range normalized {
+			normalized[index].freshness = 0
+		}
+		s.nextBuffer = uint8(target ^ 1)
+		return normalized, 0, nil
 	}
 	var out []diagnosticParserCoreHeader
 	var err error
@@ -2886,6 +2912,8 @@ type diagnosticParserCoreVersionLexerRequest struct {
 }
 
 type diagnosticParserCoreGenericScheduler struct {
+	singleVersion                   singleVersionAdapter
+	nativeProjectionScratch         *nativeProjectionWorkspace
 	compact                         *core.Core
 	tokenSource                     *dfaTokenSource
 	scannerScratch                  *[]byte
@@ -2898,12 +2926,14 @@ type diagnosticParserCoreGenericScheduler struct {
 	versionLexerBefore              dfaRelexSnapshot
 	versionLexerBeforeScratch       dfaRelexSnapshotScratch
 	versionLexerBeforeValid         bool
+	versionLexerBeforeBinding       ExternalScanner
 	versionLexerBeforeIdentity      [32]byte
 	versionLexerBeforeIdentityValid bool
 	versionLexerBeforeElection      int
 	versionLexerBeforeCheckpoint    core.CheckpointID
 	versionLexerRequests            []diagnosticParserCoreVersionLexerRequest
 	versionLexerMetadata            *core.FrozenValue[diagnosticParserCoreVersionLexerMetadata]
+	versionLexerSnapshotPages       core.ScannerSnapshotPages[diagnosticParserCoreVersionLexerSnapshot]
 	// versionLexerOwnershipActive marks the ragged election that switched this
 	// scheduler from its shared-token fast path to owned per-header cursors.
 	// versionLexerOwnershipActive keeps each live header on its own DFA and
@@ -2969,6 +2999,7 @@ type diagnosticParserCoreGenericScheduler struct {
 	// of one per-state relex probe, so the probe allocates no slices.
 	relexPriorScratch dfaRelexSnapshotScratch
 	relexAfterScratch dfaRelexSnapshotScratch
+	negativeRelexMemo *core.NegativeLexProbeMemo
 	// relexZeroWidthPreScanScratch holds tokenSource.externalPreScanPayload's
 	// own bytes for the duration of relexZeroWidthExternalTokenForState's
 	// probe, which borrows that field to inject the scheduler's own
@@ -3033,11 +3064,16 @@ type diagnosticParserCoreGenericScheduler struct {
 	acceptedPayloads     []core.SubtreeID
 	// acceptedRootFinalization is a scheduler sidecar. Keeping it outside the
 	// fixed header preserves the 96-byte scheduler-header contract.
-	acceptedRootFinalization   diagnosticParserCoreRootFinalization
+	acceptedRootFinalization diagnosticParserCoreRootFinalization
+	// acceptOrdinals counts the accepts this parse issued. markAccepted copies
+	// it into header.acceptOrdinal. A rolled-back accept leaves a gap, which
+	// does not change the relative order of the accepts that commit.
+	acceptOrdinals             uint32
 	eofRecoveryAdmission       compactEOFRecoveryAdmissionReceipt
 	conflictPostExecutionFault func() error
 	extraPostExecutionFault    func() error
 	freshSessionOwner          *core.SchedulerTransactionToken
+	singleLexerPrefix          core.SingleVersionLexerPrefix
 	verifierHeads              [32]core.Head
 	verifierRefs               [32]core.DropCohortRef
 	verifierBound              int
@@ -4663,12 +4699,17 @@ func clearDiagnosticParserCoreGenericSchedulerVersionState(scheduler *diagnostic
 		clear(scheduler.versionLexerRequests[:cap(scheduler.versionLexerRequests)])
 	}
 	scheduler.versionLexerBefore = dfaRelexSnapshot{}
+	if scheduler.negativeRelexMemo != nil {
+		scheduler.negativeRelexMemo.Clear()
+	}
 	scheduler.versionLexerBeforeValid = false
+	scheduler.versionLexerBeforeBinding = nil
 	scheduler.versionLexerBeforeIdentity = [32]byte{}
 	scheduler.versionLexerBeforeIdentityValid = false
 	scheduler.versionLexerBeforeElection = 0
 	scheduler.versionLexerBeforeCheckpoint = 0
 	scheduler.versionLexerOwnershipActive = false
+	scheduler.singleLexerPrefix.Clear()
 	scheduler.versionLexerNoActionProof = false
 }
 
@@ -4677,6 +4718,8 @@ func resetDiagnosticParserCoreGenericScheduler(scheduler *diagnosticParserCoreGe
 		return errors.New("parser-core phase zero: seed scheduler scratch is active")
 	}
 	clearDiagnosticParserCoreGenericSchedulerVersionState(scheduler)
+	snapshotPages := scheduler.versionLexerSnapshotPages
+	snapshotPages.Reset()
 	summaryHeaders := resetDiagnosticParserCoreRetainedSlice(scheduler.summaryHeaderScratch)
 	dispatchCells := resetDiagnosticParserCoreRetainedSlice(scheduler.dispatchScratch.cells)
 	noActionIndices := resetDiagnosticParserCoreRetainedSlice(scheduler.dispatchScratch.noActionIndices)
@@ -4708,9 +4751,10 @@ func resetDiagnosticParserCoreGenericScheduler(scheduler *diagnosticParserCoreGe
 	recoveryCostMemo := scheduler.recoveryCostMemo
 	recoveryCostMemo.Reset()
 	*scheduler = diagnosticParserCoreGenericScheduler{
-		reuseDependencies:    reuseDependencies,
-		recoveryCostMemo:     recoveryCostMemo,
-		summaryHeaderScratch: summaryHeaders,
+		versionLexerSnapshotPages: snapshotPages,
+		reuseDependencies:         reuseDependencies,
+		recoveryCostMemo:          recoveryCostMemo,
+		summaryHeaderScratch:      summaryHeaders,
 		dispatchScratch: diagnosticParserCoreDispatchScratch{
 			cells: dispatchCells, noActionIndices: noActionIndices,
 		},
@@ -4733,6 +4777,7 @@ func resetDiagnosticParserCoreGenericScheduler(scheduler *diagnosticParserCoreGe
 		relexPriorScratch:            relexPriorScratch,
 		relexAfterScratch:            relexAfterScratch,
 		versionLexerRequests:         versionLexerRequests,
+		negativeRelexMemo:            scheduler.negativeRelexMemo,
 		versionLexerMetadata:         scheduler.versionLexerMetadata,
 	}
 	return nil
@@ -4761,9 +4806,9 @@ func (s *diagnosticParserCoreGenericScheduler) headerReceipt(header diagnosticPa
 // election — that digest has no reader on this path. Full-receipt mode keeps
 // paying it, since diagnosticParserCoreHeaderReceipt is also what tests and
 // diagnostics observe and must stay byte-identical there.
-func (s *diagnosticParserCoreGenericScheduler) electHeaderState(header diagnosticParserCoreHeader) (StateID, error) {
+func (s *diagnosticParserCoreGenericScheduler) electHeaderState(header *diagnosticParserCoreHeader) (StateID, error) {
 	if s.fullReceipts() {
-		receipt, err := diagnosticParserCoreHeaderReceipt(s.compact, header)
+		receipt, err := diagnosticParserCoreHeaderReceipt(s.compact, *header)
 		if err != nil {
 			return 0, err
 		}
@@ -5231,7 +5276,11 @@ func (s *diagnosticParserCoreGenericScheduler) relexTokenForState(state StateID,
 		zeroWidthTokens: lang.ZeroWidthTokens,
 	}
 	relexed, ok := probe.scan(uint32(lexState), probe.pos, probe.row, probe.col)
-	recordTokenInvariantReadSpan(&s.tokenSource.tokenInvariantMaxReadSpan, int(tok.StartByte), tokenInvariantExaminedEnd(source, relexed.lexerLookaheadEndByte))
+	examinedEnd := tokenInvariantExaminedEnd(source, relexed.lexerLookaheadEndByte)
+	recordTokenInvariantReadSpan(&s.tokenSource.tokenInvariantMaxReadSpan, int(tok.StartByte), examinedEnd)
+	if reads := s.tokenSource.lexer.reuseReads; reads != nil {
+		reads.Record(int(tok.StartByte), examinedEnd)
+	}
 	if !ok || relexed.Symbol == 0 {
 		return tok, false
 	}
@@ -5492,8 +5541,41 @@ func (s *diagnosticParserCoreGenericScheduler) relexExternalTokenForState(state 
 			return shared, false
 		}
 	}
-	if int(state) >= len(lang.LexModes) {
+	if uint64(state) >= uint64(len(lang.LexModes)) {
 		return shared, false
+	}
+	// A negative external candidate is independent of the shared after-state.
+	// Reuse only stateless requests under this exact frozen fresh election;
+	// capability and checkpoint authentication above/below remain mandatory.
+	memoEligible := contract.stateless && s.options.freshSchedulerSession && s.compact != nil &&
+		!s.versionLexerOwnershipActive && !d.quiescenceProbing && shared == s.token &&
+		s.versionLexerBeforeElection == s.electionIndex &&
+		s.versionLexerBeforeCheckpoint == s.checkpointBeforeID
+	if memoEligible {
+		if s.negativeRelexMemo != nil {
+			if span, produced, ok := s.negativeRelexMemo.Lookup(core.StateID(state), shared.StartByte); ok &&
+				s.compact.CheckpointMatches(s.checkpointBeforeID, s.versionLexerBefore.externalPayload) {
+				d.tokenInvariantMaxReadSpan = max(d.tokenInvariantMaxReadSpan, span)
+				d.externalTokensProduced = produced
+				d.externalPreScanPayload = d.externalPreScanPayload[:0]
+				return shared, false
+			}
+		}
+		// With both external rows empty, no input can produce an external
+		// candidate: single-state scanning and its ERROR_STATE retry reject all
+		// external symbols. Internal candidates are discarded by this helper, so
+		// their speculative reads are not dependencies of its constant result.
+		if core.ExternalModesRejectAll(lang.ExternalLexStates,
+			lang.LexModes[state].ExternalLexState, lang.LexModes[cErrorState].ExternalLexState) &&
+			s.compact.CheckpointMatches(s.checkpointBeforeID, s.versionLexerBefore.externalPayload) {
+			if s.negativeRelexMemo == nil {
+				s.negativeRelexMemo = new(core.NegativeLexProbeMemo)
+			}
+			s.negativeRelexMemo.Record(core.StateID(state), shared.StartByte, 0, 0)
+			d.externalTokensProduced = 0
+			d.externalPreScanPayload = d.externalPreScanPayload[:0]
+			return shared, false
+		}
 	}
 	// Keep the source exactly as the shared election left it. The snapshot
 	// restore below may call Deserialize, so capture the current state first.
@@ -5520,9 +5602,21 @@ func (s *diagnosticParserCoreGenericScheduler) relexExternalTokenForState(state 
 	s.versionLexerBefore.restore(d)
 	d.SetParserState(state)
 	d.SetGLRStates(nil)
-	candidate := d.Next()
+	var candidate Token
+	var probeSpan uint32
+	if memoEligible {
+		candidate, probeSpan = core.CaptureLexProbeReadSpan(&d.tokenInvariantMaxReadSpan, d.Next)
+	} else {
+		candidate = d.Next()
+	}
 	if candidate.Symbol == 0 || candidate.NoLookahead || candidate.Missing ||
 		!candidate.ExternalScannerToken || candidate.StartByte != shared.StartByte {
+		if memoEligible {
+			if s.negativeRelexMemo == nil {
+				s.negativeRelexMemo = new(core.NegativeLexProbeMemo)
+			}
+			s.negativeRelexMemo.Record(core.StateID(state), shared.StartByte, probeSpan, d.externalTokensProduced)
+		}
 		return shared, false
 	}
 	// Compare the scanner payload after the state-specific scan. Equal token
@@ -5530,7 +5624,7 @@ func (s *diagnosticParserCoreGenericScheduler) relexExternalTokenForState(state 
 	// ownership for the next election.
 	candidateAfter := d.snapshotRelexStateWithScratch(&s.relexAfterScratch)
 	sharedAfter := prior
-	if tokensSameLex(candidate, shared) && candidateAfter.equal(sharedAfter) {
+	if tokensSameLex(candidate, shared) && candidateAfter.equal(&sharedAfter) {
 		return shared, false
 	}
 	return candidate, true
@@ -5776,13 +5870,20 @@ func (s *diagnosticParserCoreGenericScheduler) installEquivalentVersionLexerStat
 	recoveryGroup := header.recoveryGroupIdentity()
 	missingGroup := header.recoveryMissingGroupIdentity()
 	baseline, baselineSet := header.recoveryNodeBaseline()
+	// Intern exactly the acceptance identity publishVersionState would keep.
+	// A closed recovery region can retain a group after both live keys clear.
+	acceptanceGroup := recoveredRootGroupOf(*header)
+	if recoveryGroup != 0 || missingGroup != 0 {
+		acceptanceGroup = recoveredRootGroup{recovery: recoveryGroup, missing: missingGroup}
+	}
+	desiredRecovery := diagnosticParserCoreVersionRecoveryState{Region: region, RecoveryGroup: recoveryGroup, MissingGroup: missingGroup, AcceptanceGroup: acceptanceGroup}
 	matches := func(state *diagnosticParserCoreVersionState) bool {
-		return state != nil && state.s3Region == region &&
+		return state != nil && state.recovery.Value() == desiredRecovery &&
 			diagnosticParserCoreVersionLexerSnapshotEqual(state.relexSnapshot, snapshot) &&
-			state.lexerRequest == requestReference && state.recoveryGroup == recoveryGroup &&
-			state.missingGroup == missingGroup && state.recoveryNodeBaseline == baseline &&
+			state.lexerRequest == requestReference && state.recoveryNodeBaseline == baseline &&
 			state.recoveryNodeBaselineSet == baselineSet
 	}
+
 	for index := range s.headers {
 		state := s.headers[index].versionState
 		if matches(state) {
@@ -5836,7 +5937,7 @@ func (s *diagnosticParserCoreGenericScheduler) equivalentVersionLexerSnapshot(
 				checkpointIdentityRequired: identityRequired, checkpointIdentityValid: identityValid,
 			}) &&
 			snapshot.beforeCheckpoint == beforeID &&
-			snapshot.afterCheckpoint == afterID && snapshot.dfa.equal(dfa) &&
+			snapshot.afterCheckpoint == afterID && snapshot.dfa.equal(&dfa) &&
 			(!identityRequired || identityValid) &&
 			snapshot.validate() == nil
 	}
@@ -5866,8 +5967,8 @@ func (s *diagnosticParserCoreGenericScheduler) newVersionLexerSnapshot(
 	if s == nil || s.compact == nil || s.tokenSource == nil || s.tokenSource.language == nil {
 		return nil, errors.New("parser-core phase zero: version lexer snapshot context is incomplete")
 	}
-	snapshot, err := newDiagnosticParserCoreVersionLexerSnapshotWithMetadata(
-		s.compact, s.tokenSource.language, owner, dfa, beforeID, afterID, s.versionLexerMetadata,
+	snapshot, err := newDiagnosticParserCoreVersionLexerSnapshotWithMetadataAndPages(
+		s.compact, s.tokenSource.language, owner, dfa, beforeID, afterID, s.versionLexerMetadata, &s.versionLexerSnapshotPages,
 	)
 	if err == nil {
 		s.versionLexerMetadata = snapshot.metadata
@@ -6099,6 +6200,11 @@ func (s *diagnosticParserCoreGenericScheduler) captureSharedElectionSnapshot() e
 	if s == nil || s.tokenSource == nil {
 		return errors.New("parser-core phase zero: shared lexer snapshot source is unavailable")
 	}
+	s.versionLexerBeforeBinding = nil
+	if s.tokenSource.language != nil {
+		s.versionLexerBeforeBinding = s.tokenSource.language.ExternalScanner
+	}
+
 	s.versionLexerBefore = s.tokenSource.snapshotRelexStateWithScratch(&s.versionLexerBeforeScratch)
 	return s.finishSharedElectionSnapshotCapture()
 }
@@ -6106,9 +6212,19 @@ func (s *diagnosticParserCoreGenericScheduler) captureSharedElectionSnapshot() e
 // captureSharedElectionSnapshotFromExternalPayload uses checkpoint bytes that
 // the election already serialized. This keeps one Serialize call per election.
 func (s *diagnosticParserCoreGenericScheduler) captureSharedElectionSnapshotFromExternalPayload(externalPayload []byte) error {
+	var binding ExternalScanner
+	if s != nil && s.tokenSource != nil && s.tokenSource.language != nil {
+		binding = s.tokenSource.language.ExternalScanner
+	}
+	return s.captureSharedElectionSnapshotFromExternalPayloadWithBinding(externalPayload, binding)
+}
+
+func (s *diagnosticParserCoreGenericScheduler) captureSharedElectionSnapshotFromExternalPayloadWithBinding(externalPayload []byte, binding ExternalScanner) error {
 	if s == nil || s.tokenSource == nil {
 		return errors.New("parser-core phase zero: shared lexer snapshot source is unavailable")
 	}
+	s.versionLexerBeforeBinding = binding
+
 	s.tokenSource.snapshotRelexStateWithScratchFromExternalPayload(
 		&s.versionLexerBefore,
 		&s.versionLexerBeforeScratch,
@@ -6118,6 +6234,9 @@ func (s *diagnosticParserCoreGenericScheduler) captureSharedElectionSnapshotFrom
 }
 
 func (s *diagnosticParserCoreGenericScheduler) finishSharedElectionSnapshotCapture() error {
+	if s.negativeRelexMemo != nil {
+		s.negativeRelexMemo.Clear()
+	}
 	s.versionLexerBeforeValid = true
 	s.versionLexerBeforeIdentity = [32]byte{}
 	s.versionLexerBeforeIdentityValid = false
@@ -6250,13 +6369,10 @@ func (s *diagnosticParserCoreGenericScheduler) bindVersionLexerRequest(
 	if s == nil || request == nil || !request.valid || request.electionIndex != s.electionIndex {
 		return errors.New("parser-core phase zero: cannot bind an invalid version lexer request")
 	}
-	if _, _, ok := s.compact.CheckpointReceipt(request.beforeID); !ok {
-		return errDiagnosticParserCoreUnknownCheckpointIdentity
-	}
-	if _, _, ok := s.compact.CheckpointReceipt(request.afterID); !ok {
-		return errDiagnosticParserCoreUnknownCheckpointIdentity
-	}
-	if err := s.compact.SetPhaseExternalTokenScannerCheckpoints(request.beforeID, request.afterID); err != nil {
+	if err := s.compact.BindScannerElection(request.beforeID, request.afterID); err != nil {
+		if errors.Is(err, core.ErrUnknownScannerCheckpoint) {
+			return errDiagnosticParserCoreUnknownCheckpointIdentity
+		}
 		return err
 	}
 	s.token = request.token
@@ -6538,7 +6654,13 @@ func (s *diagnosticParserCoreGenericScheduler) rejoinSharedLexerFromOwnedHeader(
 	header.checkpoint = snapshot.afterCheckpoint
 	header.clearVersionLexerSnapshot()
 	s.clearVersionLexerRequests()
+	if s.freshSessionOwner != nil && s.compact.VersionLexerOwnershipActive() {
+		if err := s.compact.SetVersionLexerOwnershipActiveOwned(*s.freshSessionOwner, false); err != nil {
+			return err
+		}
+	}
 	s.versionLexerOwnershipActive = false
+	s.singleLexerPrefix.SharedRejoin(s.compact)
 	return nil
 }
 
@@ -6662,6 +6784,7 @@ func executeDiagnosticParserCoreGenericSchedulerFromSeedInto(
 	initialState StateID,
 	options DiagnosticParserCorePrefixOptions,
 	observer diagnosticParserCoreSeedObserver,
+	nativeScratch ...*nativeProjectionWorkspace,
 ) (*diagnosticParserCoreGenericScheduler, error) {
 	if compact == nil || tokenSource == nil || scannerScratch == nil {
 		return nil, errors.New("parser-core phase zero: seed scheduler requires compact core and production token source")
@@ -6703,6 +6826,12 @@ func executeDiagnosticParserCoreGenericSchedulerFromSeedInto(
 	}
 	if err != nil {
 		return nil, err
+	}
+	if len(nativeScratch) > 1 {
+		return nil, errors.New("parser-core phase zero: multiple native workspaces")
+	}
+	if len(nativeScratch) == 1 {
+		scheduler.nativeProjectionScratch = nativeScratch[0]
 	}
 	scheduler.stagedReserve = stagedReserve
 	previousReads := tokenSource.lexer.reuseReads
@@ -6845,6 +6974,7 @@ type parserCoreRunnerScratch struct {
 	recoveryTerminalAliasCertified bool
 	materializationPurpose         core.MaterializationPurpose
 	acceptanceMaterialization      core.AcceptanceMaterialization[*Tree]
+	nativeProjection               *nativeProjectionWorkspace
 	// The alternative construction workspace owns no published nodes. It is
 	// reused only by this exclusively leased runner, then cleared and bounded.
 	acceptanceComparison *parserCoreRunnerScratch
@@ -7138,6 +7268,7 @@ func (s *parserCoreRunnerScratch) resetTreeBuffers() {
 			s.acceptanceComparison = nil
 		}
 	}
+	s.nativeProjection.reset()
 	s.postorder.Reset()
 	s.acceptedLeaves.reset()
 	s.materialization.checkpoints.Reset()
@@ -7843,7 +7974,7 @@ func materializeCompactMissingNodeDependency(arena *nodeArena, node *Node, view 
 		return false
 	}
 	stackPoint := Point{Row: view.MissingDependency.StackRow, Column: view.MissingDependency.StackColumn}
-	return arena.setMissingNodeDependency(node, missingNodeDependency{
+	return arena.setNewMissingNodeDependency(node, missingNodeDependency{
 		stackByte:      view.MissingDependency.StackByte,
 		stackPoint:     stackPoint,
 		paddingBytes:   view.MissingDependency.PaddingBytes,
@@ -8339,13 +8470,32 @@ func (s *diagnosticParserCoreGenericScheduler) run() error {
 		s.publishTotals()
 		return nil
 	}
+	if s.freshSessionOwner != nil && !s.fullReceipts() && len(s.headers) == 1 {
+		s.singleLexerPrefix.Begin(s.compact, s.headers[0].head)
+	}
 	for {
 		if err := s.pollStopControl(); err != nil {
 			return err
 		}
 		if reserve := &s.stagedReserve; reserve.growAt != 0 && s.token.StartByte >= reserve.growAt {
-			s.compact.GrowRecordArenas(reserve.sourceBytes, reserve.maxBytes)
-			reserve.growAt = 0
+			if reserve.project {
+				budget, ok := core.RecordArenaProjectionBudget(diagnosticParserCoreSchedulerFootprintBytes(s), s.options.stopControlMemoryBudgetBytes, s.options.stopControlHardCeilingBytes)
+				if ok {
+					s.compact.ProjectRecordArenas(reserve.sourceBytes, s.token.StartByte, budget)
+				}
+				reserve.growAt, reserve.project = 0, false
+			} else {
+				if s.versionLexerOwnershipActive || s.tokenSource != nil && s.tokenSource.language != nil &&
+					core.ExternalLexerOwnsAllTerminals(s.tokenSource.language.TokenCount, s.tokenSource.language.ExternalSymbols) {
+					s.compact.GrowRecordArenasFromObservedDensity(reserve.sourceBytes, s.token.StartByte, reserve.maxBytes)
+				} else {
+					s.compact.GrowRecordArenas(reserve.sourceBytes, reserve.maxBytes)
+				}
+				reserve.growAt = 0
+				if reserve.maxBytes > 0 && s.compact.ReserveRecordArenaBytes(reserve.sourceBytes, 0) > reserve.maxBytes {
+					reserve.growAt, reserve.project = core.RecordArenaProjectionStart(reserve.sourceBytes), true
+				}
+			}
 		}
 		if s.options.captureCertificationPeaks {
 			if err := s.captureCertificationPeak(); err != nil {
@@ -10202,7 +10352,7 @@ func (s *diagnosticParserCoreGenericScheduler) tryRecoverEOFAccept(index int) (b
 	}
 	header := &s.headers[index]
 	header.head = recovered
-	header.accepted = true
+	s.markAccepted(header)
 	header.shifted = false
 	header.paused = false
 	header.clearZeroWidthReopened()
@@ -10946,6 +11096,18 @@ func (s *diagnosticParserCoreGenericScheduler) applyGenericAccept(before []Diagn
 	})
 }
 
+// markAccepted marks header accepted and records its acceptance ordinal.
+// Every accept first reserves a dispatch, so the dispatch cap keeps the count
+// far below the uint32 limit. The counter saturates instead of wrapping; equal
+// ordinals fall back to header order.
+func (s *diagnosticParserCoreGenericScheduler) markAccepted(header *diagnosticParserCoreHeader) {
+	if s.acceptOrdinals < math.MaxUint32 {
+		s.acceptOrdinals++
+	}
+	header.accepted = true
+	header.acceptOrdinal = s.acceptOrdinals
+}
+
 func (s *diagnosticParserCoreGenericScheduler) applyGenericAcceptOwned(owner core.SchedulerTransactionToken, before []DiagnosticParserCoreHeaderReceipt, cell diagnosticParserCoreGenericCell) (err error) {
 	if cell.actions().Len() != 1 || cell.actions().At(0).Type != core.ActionAccept {
 		return errors.New("parser-core phase zero: generic accept requires one accept action")
@@ -10957,7 +11119,7 @@ func (s *diagnosticParserCoreGenericScheduler) applyGenericAcceptOwned(owner cor
 	if err := s.reserveDispatches(1); err != nil {
 		return err
 	}
-	s.headers[cell.headerIndex].accepted = true
+	s.markAccepted(&s.headers[cell.headerIndex])
 	s.headers[cell.headerIndex].paused = false
 	s.epochProgress = true
 	s.work.Accepts++
@@ -11043,8 +11205,10 @@ func (s *diagnosticParserCoreGenericScheduler) selectCompetingRecoveryLineage() 
 }
 
 // selectCompetingRecoveryLineageIndices prices the supplied stack versions
-// in frontier order. It compares each recovery group once. Acceptance passes
-// only finished versions. Direct policy tests pass the complete frontier.
+// and folds them in the supplied order. It compares each recovery group once.
+// Acceptance passes only finished versions, in acceptance order, which is the
+// order C's finished_tree fold uses. Direct policy tests pass the complete
+// frontier in header order.
 func (s *diagnosticParserCoreGenericScheduler) selectCompetingRecoveryLineageIndices(
 	indices []int,
 ) (int, bool, error) {
@@ -11054,13 +11218,12 @@ func (s *diagnosticParserCoreGenericScheduler) selectCompetingRecoveryLineageInd
 	if len(indices) < 2 {
 		return 0, false, nil
 	}
-	prior := -1
-	for _, index := range indices {
-		if index <= prior || index < 0 || index >= len(s.headers) ||
-			!s.headers[index].isRecoveryLineage() {
+	for position, index := range indices {
+		if index < 0 || index >= len(s.headers) ||
+			!s.headers[index].isRecoveryLineage() ||
+			slices.Contains(indices[:position], index) {
 			return 0, false, nil
 		}
-		prior = index
 	}
 	if s.tokenSource == nil || s.tokenSource.language == nil {
 		return 0, false, nil
@@ -11160,6 +11323,12 @@ func (s *diagnosticParserCoreGenericScheduler) completeAcceptance() (err error) 
 				acceptedIndices = append(acceptedIndices, index)
 			}
 		}
+		// C folds finished trees in acceptance order. Recovery condensation
+		// keeps accepted headers behind active ones, so a header that accepts
+		// later can sit at a lower index than an earlier finished tree.
+		sort.SliceStable(acceptedIndices, func(i, j int) bool {
+			return s.headers[acceptedIndices[i]].acceptOrdinal < s.headers[acceptedIndices[j]].acceptOrdinal
+		})
 		switch len(acceptedIndices) {
 		case 0:
 			return s.finish(DiagnosticParserCoreAccept, "generic scheduler requires one accepted compact head", 0)
@@ -12842,7 +13011,7 @@ func (s *diagnosticParserCoreGenericScheduler) collectCondenseCandidates(source 
 	// Independent graph expansion belongs to the same diagnostic route as
 	// early scanner ownership. Ordinary routes keep their existing condensation
 	// and fail closed at the ownership guard instead of extending doomed work.
-	independentOwners := core.ExternalLexerOwnershipProbeEnabled() && source >= 0 && source < len(s.headers)
+	independentOwners := (core.ExternalLexerOwnershipProbeEnabled() || s.compact.VersionLexerOwnershipActive()) && source >= 0 && source < len(s.headers)
 	if source >= 0 && source < len(s.headers) {
 		sourceHeader := &s.headers[source]
 		if sourceHeader.accepted || sourceHeader.paused ||
@@ -13131,6 +13300,9 @@ func (s *diagnosticParserCoreGenericScheduler) reconcileGenericConflictOutputsOw
 }
 
 func (s *diagnosticParserCoreGenericScheduler) applyGenericConflict(before []DiagnosticParserCoreHeaderReceipt, cell diagnosticParserCoreGenericCell) (err error) {
+	if activated, activationErr := s.trySinglePrefixLexerOwnership(cell); activated || activationErr != nil {
+		return activationErr
+	}
 	leafBefore, leafToken := s.beginCompactLeafReceipt(cell.dispatchToken(s.token))
 	defer s.endCompactLeafReceipt(leafBefore, leafToken, &err)
 	s.reuseDependencies.invalidate()
@@ -13954,6 +14126,9 @@ func (s *diagnosticParserCoreGenericScheduler) canonicalizeOwned(owner core.Sche
 }
 
 func (s *diagnosticParserCoreGenericScheduler) canonicalizeOwnedWithMutation(owner core.SchedulerTransactionToken, expected core.DropCohortProducerMutation) error {
+	if !s.versionLexerOwnershipActive {
+		s.singleLexerPrefix.ObserveUnownedWidth(s.compact, len(s.headers))
+	}
 	previousVersionStateOwner := s.canonicalScratch.versionStateOwner
 	s.canonicalScratch.versionStateOwner = s
 	defer func() {
@@ -14037,7 +14212,8 @@ func (s *diagnosticParserCoreGenericScheduler) elect(first bool) error {
 	if cap(states) < len(s.headers) {
 		states = make([]StateID, 0, max(len(s.headers), 2*cap(states)))
 	}
-	for _, header := range s.headers {
+	for index := range s.headers {
+		header := &s.headers[index]
 		state, err := s.electHeaderState(header)
 		if err != nil {
 			return err
@@ -14078,12 +14254,16 @@ func (s *diagnosticParserCoreGenericScheduler) elect(first bool) error {
 		s.electGLRStates = glr
 		s.tokenSource.SetGLRStates(glr)
 	}
+	var scannerBefore ExternalScanner
+	if s.tokenSource.language != nil {
+		scannerBefore = s.tokenSource.language.ExternalScanner
+	}
 	beforeBytes := s.tokenSource.captureExternalScannerStateInto(s.scannerScratch)
 	// Retain the exact DFA and scanner state at this election's token start.
 	// A ragged per-header relex may activate ownership before any shared cell
 	// executes. Reuse the checkpoint serialization instead of serializing the
 	// scanner twice at the same cursor.
-	if err := s.captureSharedElectionSnapshotFromExternalPayload(beforeBytes); err != nil {
+	if err := s.captureSharedElectionSnapshotFromExternalPayloadWithBinding(beforeBytes, scannerBefore); err != nil {
 		return err
 	}
 	beforeID, before, err := diagnosticParserCoreInternCheckpoint(s.compact, beforeBytes)
@@ -14275,7 +14455,7 @@ func (s *diagnosticParserCoreGenericScheduler) publishTotals() {
 }
 
 func authenticatedParserCoreGoLanguage(scanner ExternalScanner) (*Language, error) {
-	const goBlobSHA256 = "df63fc35604c4e4e7a484abde9eb2110b61640045601c23991723f323a48310d"
+	const goBlobSHA256 = "9ad1f8d7d0f2b9aa32c61bd8295b56177caabb0ae2fb8dd4617559ee0f71fed4"
 	if fmt.Sprintf("%x", sha256.Sum256(parserCoreCertifiedGoBlob)) != goBlobSHA256 {
 		return nil, errors.New("parser-core phase zero: certified Go grammar identity mismatch")
 	}
@@ -14427,4 +14607,114 @@ func rootParserCoreAction(action core.Action) ParseAction {
 		ProductionID: action.ProductionID, Extra: action.Extra,
 		ExtraChain: action.ExtraChain, Repetition: action.Repetition,
 	}
+}
+
+func (s *diagnosticParserCoreGenericScheduler) trySinglePrefixLexerOwnership(cell diagnosticParserCoreGenericCell) (bool, error) {
+	if s == nil || core.ExternalLexerOwnershipProbeEnabled() || !s.versionLexerBefore.externalScannerPresent || s.versionLexerOwnershipActive || s.freshSessionOwner == nil || s.fullReceipts() || s.recoveryIsolation || !s.singleLexerPrefix.AllowsFork(s.compact, len(s.headers)) {
+		return false, nil
+	}
+	if cell.headerIndex != 0 || cell.boundary.Head() != s.headers[0].head || cell.descriptor().Kind() != core.ActionRowConflict {
+		return false, nil
+	}
+	header := &s.headers[0]
+	if header.shifted || header.paused || header.accepted || header.recoveryRegion() != nil || header.isRecoveryLineage() || header.isRecoveryCosted() {
+		return false, nil
+	}
+	token := cell.dispatchToken(s.token)
+	if token != s.token || s.currentElection.Token != s.token {
+		return false, nil
+	}
+	if token.Missing || token.NoLookahead || token.Symbol == 0 || !s.versionLexerBeforeValid || s.versionLexerBeforeElection != s.electionIndex || s.versionLexerBeforeCheckpoint != s.checkpointBeforeID {
+		return false, nil
+	}
+	if s.tokenSource == nil || s.tokenSource.language == nil || !s.compact.CheckpointMatches(s.checkpointBeforeID, s.versionLexerBefore.externalPayload) {
+		return false, nil
+	}
+	if !core.ScannerBindingUnchanged(s.versionLexerBeforeBinding, s.tokenSource.language.ExternalScanner) {
+		return false, nil
+	}
+
+	language := s.tokenSource.language
+	if !core.ExternalLexerOwnsAllTerminals(language.TokenCount, language.ExternalSymbols) || len(s.currentElection.States) != 1 {
+		return false, nil
+	}
+	scanner := language.ExternalScanner
+	contract, err := diagnosticParserCoreVersionLexerScannerContractForLanguage(language)
+	if err != nil || !core.ScannerBindingUnchanged(scanner, language.ExternalScanner) || contract.stateless || len(s.versionLexerBefore.externalPayload) == 0 || !contract.equal(s.versionLexerContract) {
+		return false, nil
+	}
+	identity, required, valid := diagnosticParserCoreVersionLexerCheckpointIdentity(language)
+	// Within-parse ownership uses the existing private snapshot contract. A
+	// cross-tree checkpoint identity stays mandatory only when advertised.
+	if !core.ScannerBindingUnchanged(scanner, language.ExternalScanner) || (required && (!valid || !s.versionLexerBeforeIdentityValid || identity != s.versionLexerBeforeIdentity)) {
+		return false, nil
+	}
+	return s.transferSinglePrefixLexerRequest()
+}
+
+// A proved single-version prefix owns the already executed shared election.
+// Preserve that request's original lexer state even if reductions changed the
+// graph state while lookahead remained pending. No scanner request is replayed.
+func (s *diagnosticParserCoreGenericScheduler) transferSinglePrefixLexerRequest() (activated bool, err error) {
+	if len(s.headers) != 1 || len(s.currentElection.States) != 1 || s.freshSessionOwner == nil {
+		return false, nil
+	}
+	if err = s.headerRollbackScratch.begin(s.headers); err != nil {
+		return false, err
+	}
+	requestsBefore, workBefore := len(s.versionLexerRequests), s.work
+	committed := false
+	defer func() {
+		s.headerRollbackScratch.finish(&s.headers, !committed)
+		if !committed {
+			clear(s.versionLexerRequests[requestsBefore:])
+			s.versionLexerRequests = s.versionLexerRequests[:requestsBefore]
+			s.work = workBefore
+			s.versionLexerOwnershipActive = false
+		}
+	}()
+	// This view is consumed only by the copying snapshot constructor below.
+	// Reuse the existing after scratch; publication still owns independent bytes.
+	afterDFA := s.tokenSource.snapshotRelexStateWithScratch(&s.relexAfterScratch)
+	if afterDFA.lexerPos != int(s.token.EndByte) || !s.compact.CheckpointMatches(s.checkpointID, afterDFA.externalPayload) {
+		return false, nil
+	}
+	owner := *s.freshSessionOwner
+	before, err := s.newVersionLexerSnapshot(owner, s.versionLexerBefore, s.checkpointBeforeID, s.checkpointBeforeID)
+	if err != nil {
+		return false, err
+	}
+	after, err := s.newVersionLexerSnapshot(owner, afterDFA, s.checkpointID, s.checkpointID)
+	if err != nil {
+		return false, err
+	}
+	if err = before.validateDestination(s.compact, s.tokenSource.language); err != nil {
+		return false, err
+	}
+	if err = after.validateDestination(s.compact, s.tokenSource.language); err != nil {
+		return false, err
+	}
+	request := diagnosticParserCoreVersionLexerRequest{
+		electionIndex: s.electionIndex, headerCreationSeq: s.headers[0].creationSeq,
+		state: s.currentElection.States[0], token: s.token, before: before, after: after,
+		beforeCheckpoint: before.afterCheckpointInfo, afterCheckpoint: after.afterCheckpointInfo,
+		beforeID: s.checkpointBeforeID, afterID: s.checkpointID, valid: true,
+	}
+	s.versionLexerRequests = append(s.versionLexerRequests, request)
+	reference := uint32(len(s.versionLexerRequests))
+	if err = s.publishVersionLexerRequestOwned(owner, 0, before, reference); err != nil {
+		return false, err
+	}
+	s.headers[0].checkpoint = s.checkpointID
+	if err = s.compact.SetVersionLexerOwnershipActiveOwned(owner, true); err != nil {
+		return false, err
+	}
+	s.work.add(&s.work.PerVersionLexPublications, 1)
+	s.work.add(&s.work.PerVersionLexRequests, 1)
+	if s.work.PeakLiveVersions < 1 {
+		s.work.PeakLiveVersions = 1
+	}
+	s.versionLexerOwnershipActive = true
+	committed = true
+	return true, nil
 }

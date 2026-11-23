@@ -34,17 +34,26 @@ type SelectedAliasChildPair struct {
 }
 
 // SelectedStorePolicy is the fail-closed compact-to-consumer contract. Unary
-// is a dense parent-major matrix with stride len(Symbols).
+// is the mutable dense form. An immutable unary program can replace that matrix
+// when the authenticated adapter supplies exact symbol and pair rules.
 type SelectedStorePolicy struct {
 	Symbols               []SelectedSymbolPolicy
+	TypeArguments         SelectedTypeArgumentPolicy
 	Unary                 []SelectedUnaryRule
+	unaryProgram          SelectedUnaryProgram
 	RetainedAliasChildren []SelectedAliasChildPair
+	SupertypeMasks        []uint32
 	ExpectedRoot          Symbol
-	Semicolon             Symbol
-	SemicolonNUL          Symbol
-	SemicolonContainers   []bool
-	Cases                 []bool
-	StatementLists        []bool
+	// ProjectSyntheticSiblingRoot matches result publication when accepted extras
+	// surround an unfielded grammar root. Fielded roots retain their provenance.
+	ProjectSyntheticSiblingRoot bool
+	transientProjection         bool
+	projectionCapacityHint      int
+	Semicolon                   Symbol
+	SemicolonNUL                Symbol
+	SemicolonContainers         []bool
+	Cases                       []bool
+	StatementLists              []bool
 }
 
 // SetRetainedAliasChildren installs parser-compiled symbol facts. The compact
@@ -95,10 +104,13 @@ func (p SelectedStorePolicy) symbol(symbol Symbol) (SelectedSymbolPolicy, bool) 
 	return p.Symbols[symbol], true
 }
 
-func (p SelectedStorePolicy) unary(parent, child Symbol) SelectedUnaryRule {
+func (p *SelectedStorePolicy) unary(parent, child Symbol) SelectedUnaryRule {
 	stride := len(p.Symbols)
 	if int(parent) >= stride || int(child) >= stride {
 		return SelectedUnaryKeep
+	}
+	if p.unaryProgram.Width() != 0 {
+		return p.unaryProgram.Rule(parent, child)
 	}
 	slot := int(parent)*stride + int(child)
 	if slot >= len(p.Unary) {
@@ -124,12 +136,24 @@ func (p SelectedStorePolicy) validate() error {
 		return errors.New("parser-core phase zero: selected-store policy has no authenticated root")
 	}
 	width := len(p.Symbols)
-	if width > math.MaxInt/width || len(p.Unary) != width*width {
+	if p.unaryProgram.Width() != 0 {
+		if len(p.Unary) != 0 || p.unaryProgram.Width() != width {
+			return errors.New("parser-core phase zero: selected-store unary program width drifted")
+		}
+	} else if width > math.MaxInt/width || len(p.Unary) != width*width {
 		return errors.New("parser-core phase zero: selected-store unary policy width drifted")
 	}
 	for _, pair := range p.RetainedAliasChildren {
 		if pair.Alias == 0 || int(pair.Alias) >= width || int(pair.Child) >= width || !p.Symbols[pair.Alias].Visible {
 			return errors.New("parser-core phase zero: selected-store retained-alias policy is invalid")
+		}
+	}
+	if len(p.SupertypeMasks) != 0 && len(p.SupertypeMasks) != width {
+		return errors.New("parser-core phase zero: selected-store supertype policy width drifted")
+	}
+	for _, mask := range p.SupertypeMasks {
+		if mask&(mask-1) != 0 {
+			return errors.New("parser-core phase zero: selected-store supertype policy is not a single bit")
 		}
 	}
 	compatWidth := len(p.SemicolonContainers)
@@ -159,6 +183,7 @@ const (
 	// would report an ordinary zero-width token.
 	selectedNodeFlagMissing
 	selectedNodeFlagHasError
+	selectedNodeFlagFragile
 )
 
 // SelectedNodeRecord is one immutable logical occurrence after hidden-parent
@@ -168,10 +193,11 @@ type SelectedNodeRecord struct {
 	FirstChild        uint32
 	StartByte         uint32
 	EndByte           uint32
+	DynamicPrecedence int32
+	SupertypeMask     uint32
 	Symbol            Symbol
 	Field             FieldID
 	ProductionID      uint16
-	DynamicPrecedence int32
 	ChildCount        uint16
 	ChildIndex        uint16
 	flags             uint8
@@ -188,19 +214,23 @@ func (r SelectedNodeRecord) Missing() bool { return r.flags&selectedNodeFlagMiss
 // HasError reports recovery content on this occurrence or its descendants.
 func (r SelectedNodeRecord) HasError() bool { return r.flags&selectedNodeFlagHasError != 0 }
 
+func (r SelectedNodeRecord) Fragile() bool { return r.flags&selectedNodeFlagFragile != 0 }
+
 // SelectedStore is the sealed, pointer-free selected syntax backing store.
 // IDs are occurrence identities; repeated compact SubtreeIDs remain distinct.
 type SelectedStore struct {
-	root     SelectedNodeID
-	records  []SelectedNodeRecord
-	children []SelectedNodeID
-	owner    *Core
-	released bool
+	root           SelectedNodeID
+	records        []SelectedNodeRecord
+	children       []SelectedNodeID
+	payloadSources []SubtreeID
+	owner          *selectedStorePool
+	released       bool
 }
 
 type selectedStoreBacking struct {
-	records  []SelectedNodeRecord
-	children []SelectedNodeID
+	records        []SelectedNodeRecord
+	children       []SelectedNodeID
+	payloadSources []SubtreeID
 }
 
 type selectedStoreBuildScratch struct {
@@ -220,6 +250,38 @@ type selectedOccurrenceFrame struct {
 	occurrence uint32
 	next       uint32
 	hasError   bool
+}
+
+// SelectedBuildAuxiliaryBytes reports selected-build backing not included in
+// the core footprint's resultHasError plane. Publication charges this scratch
+// beside the live selected store and its own construction buffers.
+func (c *Core) SelectedBuildAuxiliaryBytes() uint64 {
+	if c == nil {
+		return 0
+	}
+	s := &c.selectedBuild
+	buffers := [...]struct {
+		capacity int
+		size     uintptr
+	}{
+		{cap(s.raw), unsafe.Sizeof(selectedRawOccurrence{})},
+		{cap(s.rawChildren), unsafe.Sizeof(uint32(0))},
+		{cap(s.rawRoots), unsafe.Sizeof(uint32(0))},
+		{cap(s.results), unsafe.Sizeof(SelectedNodeID(0))},
+		{cap(s.precedence), unsafe.Sizeof(int32(0))},
+		{cap(s.collect), unsafe.Sizeof(uint32(0))},
+		{cap(s.logical), unsafe.Sizeof(SelectedNodeID(0))},
+		{cap(s.rootIDs), unsafe.Sizeof(SelectedNodeID(0))},
+		{cap(s.stack), unsafe.Sizeof(selectedOccurrenceFrame{})},
+	}
+	var total uint64
+	for _, item := range buffers {
+		if uint64(item.capacity) > (math.MaxUint64-total)/uint64(item.size) {
+			return math.MaxUint64
+		}
+		total += uint64(item.capacity) * uint64(item.size)
+	}
+	return total
 }
 
 func (s *SelectedStore) Root() SelectedNodeID {
@@ -249,7 +311,40 @@ func (s *SelectedStore) RetainedBytes() uint64 {
 	if s == nil || s.released {
 		return 0
 	}
-	return selectedStoreRetainedBytes(cap(s.records), cap(s.children))
+	return selectedStoreRetainedBytesWithSources(cap(s.records), cap(s.children), cap(s.payloadSources))
+}
+
+func selectedStoreRetainedBytesWithSources(records, children, sources int) uint64 {
+	return selectedStoreRetainedBytes(records, children) + uint64(sources)*uint64(unsafe.Sizeof(SubtreeID(0)))
+}
+
+func (s *SelectedStore) retainedBytesForCapacity(records, children int) uint64 {
+	sources := 0
+	if s.payloadSources != nil {
+		sources = records
+	}
+	return selectedStoreRetainedBytesWithSources(records, children, sources)
+}
+
+// PayloadSource identifies the outer compact occurrence that supplied replay
+// metadata. Ordinary selected snapshots retain no provenance plane.
+func (s *SelectedStore) PayloadSource(id SelectedNodeID) (SubtreeID, bool) {
+	if s == nil || s.released || id == 0 || uint64(id) > uint64(len(s.payloadSources)) {
+		return 0, false
+	}
+	return s.payloadSources[id-1], true
+}
+
+func (s *SelectedStore) setPayloadSource(id SelectedNodeID, source SubtreeID) {
+	if s.payloadSources != nil {
+		s.payloadSources[id-1] = source
+	}
+}
+
+func (s *SelectedStore) appendPayloadSource(source SubtreeID) {
+	if s.payloadSources != nil {
+		s.payloadSources = append(s.payloadSources, source)
+	}
 }
 
 func selectedStoreRetainedBytes(recordCapacity, childCapacity int) uint64 {
@@ -354,56 +449,52 @@ func (s *SelectedStore) Release() {
 	}
 	s.released = true
 	owner := s.owner
-	records, children := s.records, s.children
+	records, children, sources := s.records, s.children, s.payloadSources
 	s.root, s.owner, s.records, s.children = 0, nil, nil, nil
+	s.payloadSources = nil
 	if owner != nil {
-		owner.recycleSelectedStore(records, children)
+		owner.recycle(records, children, sources)
 	}
 }
 
 func (c *Core) acquireSelectedStore(recordCapacity, childCapacity int) *SelectedStore {
-	c.selectedPoolMu.Lock()
-	records := c.selectedPool.records
-	children := c.selectedPool.children
-	c.selectedPool = selectedStoreBacking{}
-	c.selectedPoolMu.Unlock()
+	return c.acquireSelectedStoreWithSources(recordCapacity, childCapacity, false)
+}
+
+func (c *Core) acquireSelectedStoreWithSources(recordCapacity, childCapacity int, trackSources bool) *SelectedStore {
+	owner := c.selectedStoreOwner()
+	backing := owner.take()
+	records, children, sources := backing.records, backing.children, backing.payloadSources
 	prospectiveRecords := max(cap(records), recordCapacity)
 	prospectiveChildren := max(cap(children), childCapacity)
-	if selectedStoreRetainedBytes(prospectiveRecords, prospectiveChildren) > c.limits.MaxSelectedBytes {
+	prospectiveSources := 0
+	if trackSources {
+		prospectiveSources = prospectiveRecords
+	}
+	if selectedStoreRetainedBytesWithSources(prospectiveRecords, prospectiveChildren, prospectiveSources) > c.limits.MaxSelectedBytes {
 		records, children = nil, nil
+		sources = nil
 	}
 	if cap(records) < recordCapacity {
 		records = make([]SelectedNodeRecord, 0, recordCapacity)
 	} else {
-		clear(records)
 		records = records[:0]
 	}
 	if cap(children) < childCapacity {
 		children = make([]SelectedNodeID, 0, childCapacity)
 	} else {
-		clear(children)
 		children = children[:0]
 	}
-	return &SelectedStore{records: records, children: children, owner: c}
-}
-
-func (c *Core) recycleSelectedStore(records []SelectedNodeRecord, children []SelectedNodeID) {
-	if c == nil {
-		return
+	if !trackSources {
+		sources = nil
+	} else if cap(sources) != cap(records) {
+		sources = make([]SubtreeID, 0, cap(records))
+	} else if sources == nil {
+		sources = make([]SubtreeID, 0)
+	} else {
+		sources = sources[:0]
 	}
-	clear(records)
-	clear(children)
-	incoming := selectedStoreBacking{records: records[:0], children: children[:0]}
-	incomingBytes := selectedStoreRetainedBytes(cap(records), cap(children))
-	if incomingBytes > c.limits.MaxSelectedBytes {
-		return
-	}
-	c.selectedPoolMu.Lock()
-	defer c.selectedPoolMu.Unlock()
-	pooledBytes := selectedStoreRetainedBytes(cap(c.selectedPool.records), cap(c.selectedPool.children))
-	if incomingBytes >= pooledBytes {
-		c.selectedPool = incoming
-	}
+	return &SelectedStore{records: records, children: children, payloadSources: sources, owner: owner}
 }
 
 // SelectedCursor is a direct indexed cursor over a sealed store. It contains
@@ -569,6 +660,9 @@ func (c *Core) buildSelectedStoreStaged(roots []SubtreeID, policy SelectedStoreP
 			child := &store.records[childID-1]
 			rule := policy.unary(record.symbol, child.Symbol)
 			if !child.Extra() && (rule == SelectedUnaryPass || rule == SelectedUnaryRenameLeaf && child.ChildCount == 0) {
+				if rule == SelectedUnaryPass && record.symbol != child.Symbol {
+					child.SupertypeMask |= policy.supertypeMask(record.symbol)
+				}
 				if hasError {
 					child.flags |= selectedNodeFlagHasError
 				}
@@ -602,6 +696,11 @@ func (c *Core) buildSelectedStoreStaged(roots []SubtreeID, policy SelectedStoreP
 		}
 
 		if !meta.Visible && !record.extra {
+			if mask := policy.supertypeMask(record.symbol); mask != 0 {
+				for _, id := range logical {
+					store.records[id-1].SupertypeMask |= mask
+				}
+			}
 			resultHasError[index] = hasError
 			continue
 		}
@@ -669,10 +768,13 @@ func (c *Core) buildSelectedStoreStaged(roots []SubtreeID, policy SelectedStoreP
 			}
 		}
 	}
-	if err := store.finishRoots(rootIDs, policy, c.limits.MaxSelectedBytes, poll); err != nil {
+	if err := store.finishRoots(rootIDs, policy, precedenceDeltas, c.limits.MaxSelectedBytes, poll); err != nil {
 		return nil, err
 	}
 	if err := store.normalizeGoCompatibility(policy, source, poll); err != nil {
+		return nil, err
+	}
+	if err := store.normalizeResultRootSourceStart(policy, source); err != nil {
 		return nil, err
 	}
 	if err := store.recomputePrecedence(precedenceDeltas); err != nil {
@@ -753,6 +855,26 @@ func (s *SelectedStore) recomputePrecedence(deltas []int32) error {
 // the Core's exact table adapter. Generic/public compact-parser controls do not
 // pay the quadratic unary-policy initialization or retention cost.
 func (c *Core) BuildAuthenticatedSelectedStore(roots []SubtreeID, source []byte, poll func() error) (*SelectedStore, error) {
+	return c.buildAuthenticatedSelectedStore(roots, source, poll, false, 0)
+}
+
+// BuildAuthenticatedSelectedProjectionPlan retains admitted construction
+// capacity for a transient native projection. The plan must be released after
+// projection; snapshot consumers keep the exact-sized selected-store path.
+func (c *Core) BuildAuthenticatedSelectedProjectionPlan(roots []SubtreeID, source []byte, poll func() error) (*SelectedStore, error) {
+	return c.buildAuthenticatedSelectedStore(roots, source, poll, true, 0)
+}
+
+// BuildAuthenticatedSelectedProjectionPlanWithCapacityHint accepts a reserve
+// estimate from the required replay traversal. Growth still enforces every cap.
+func (c *Core) BuildAuthenticatedSelectedProjectionPlanWithCapacityHint(roots []SubtreeID, source []byte, poll func() error, hint int) (*SelectedStore, error) {
+	if hint < 0 {
+		return nil, errors.New("parser-core phase zero: negative projection capacity hint")
+	}
+	return c.buildAuthenticatedSelectedStore(roots, source, poll, true, hint)
+}
+
+func (c *Core) buildAuthenticatedSelectedStore(roots []SubtreeID, source []byte, poll func() error, transient bool, hint int) (*SelectedStore, error) {
 	if c == nil || c.selectedProvider == nil {
 		return nil, errors.New("parser-core phase zero: selected-store policy is unavailable")
 	}
@@ -771,7 +893,13 @@ func (c *Core) BuildAuthenticatedSelectedStore(roots []SubtreeID, source []byte,
 		}
 		c.selectedPolicy = &policy
 	}
-	return c.BuildSelectedStore(roots, *c.selectedPolicy, source, poll)
+	policy := *c.selectedPolicy
+	if transient {
+		policy.transientProjection = true
+		policy.projectionCapacityHint = hint
+		return c.buildSelectedStoreOnePass(roots, policy, source, poll)
+	}
+	return c.BuildSelectedStore(roots, policy, source, poll)
 }
 
 func selectedMarked(table []bool, symbol Symbol) bool {
@@ -792,6 +920,11 @@ func (s *SelectedStore) normalizeGoCompatibility(policy SelectedStorePolicy, sou
 			}
 		}
 		record := &s.records[index]
+		if policy.TypeArguments.Call != 0 && record.Symbol == policy.TypeArguments.Call {
+			if err := s.normalizeTypeArgument(SelectedNodeID(index+1), policy.TypeArguments, policy.Symbols, source, poll); err != nil {
+				return err
+			}
+		}
 		old := s.children[record.FirstChild : record.FirstChild+uint32(record.ChildCount)]
 		record.FirstChild = uint32(len(children))
 		for _, childID := range old {
@@ -990,8 +1123,10 @@ func appendSelectedRetainedAliasWrapper(
 	store.records = append(store.records, SelectedNodeRecord{
 		FirstChild: first, StartByte: child.StartByte, EndByte: child.EndByte,
 		Symbol: alias, Field: field, ProductionID: productionID, ChildCount: 1,
-		flags: selectedFlags(meta, false, false, false, false, child.HasError()),
+		flags: selectedFlags(meta, false, false, false, false, child.HasError()) | child.flags&selectedNodeFlagFragile,
 	})
+	source, _ := store.PayloadSource(childID)
+	store.appendPayloadSource(source)
 	precedenceDeltas = append(precedenceDeltas, 0)
 	child = &store.records[childID-1]
 	child.Parent = id
@@ -1088,7 +1223,7 @@ func moveSelectedStoreChildren(children []SelectedNodeID, destination, source, c
 	return nil
 }
 
-func (s *SelectedStore) finishRoots(roots []SelectedNodeID, policy SelectedStorePolicy, retainedCap uint64, poll func() error) error {
+func (s *SelectedStore) finishRoots(roots []SelectedNodeID, policy SelectedStorePolicy, deltas []int32, retainedCap uint64, poll func() error) error {
 	if len(roots) == 0 {
 		return errors.New("parser-core phase zero: selected store sealed no logical roots")
 	}
@@ -1122,6 +1257,15 @@ func (s *SelectedStore) finishRoots(roots []SelectedNodeID, policy SelectedStore
 	oldStart := real.FirstChild
 	oldEnd := oldStart + uint32(real.ChildCount)
 	extraCount := len(roots) - 1
+	synthetic := policy.ProjectSyntheticSiblingRoot && real.ChildCount != 0
+	if synthetic {
+		for _, child := range s.children[oldStart:oldEnd] {
+			if s.records[child-1].Field != 0 {
+				synthetic = false
+				break
+			}
+		}
+	}
 	mergedCount, finalChildren, err := selectedRootMergeCounts(len(s.children), len(roots), real.ChildCount)
 	if err != nil {
 		return err
@@ -1130,7 +1274,7 @@ func (s *SelectedStore) finishRoots(roots []SelectedNodeID, policy SelectedStore
 	if childCapacity < finalChildren {
 		childCapacity = finalChildren
 	}
-	if selectedStoreRetainedBytes(cap(s.records), childCapacity) > retainedCap {
+	if s.retainedBytesForCapacity(cap(s.records), childCapacity) > retainedCap {
 		return errors.New("parser-core phase zero: selected store retained-byte cap")
 	}
 	oldLength := len(s.children)
@@ -1162,9 +1306,33 @@ func (s *SelectedStore) finishRoots(roots []SelectedNodeID, policy SelectedStore
 		}
 	}
 	real.ChildCount = uint16(mergedCount)
-	real.StartByte = 0
+	if synthetic {
+		real.ProductionID = 0
+		s.setPayloadSource(realID, 0)
+		if len(deltas) != len(s.records) {
+			return errors.New("parser-core phase zero: synthetic root precedence sidecar drifted")
+		}
+		deltas[realID-1] = 0
+		real.flags = selectedNodeFlagNamed
+		real.SupertypeMask = 0
+		real.EndByte = 0
+	}
 	merged := s.children[oldStart : oldStart+uint32(mergedCount)]
+	if !policy.ProjectSyntheticSiblingRoot {
+		real.StartByte = 0
+	} else if synthetic {
+		real.StartByte = s.records[merged[0]-1].StartByte
+	}
 	for childIndex, child := range merged {
+		if policy.ProjectSyntheticSiblingRoot && s.records[child-1].StartByte < real.StartByte {
+			real.StartByte = s.records[child-1].StartByte
+		}
+		if policy.ProjectSyntheticSiblingRoot && s.records[child-1].EndByte > real.EndByte {
+			real.EndByte = s.records[child-1].EndByte
+		}
+		if synthetic && s.records[child-1].HasError() {
+			real.flags |= selectedNodeFlagHasError
+		}
 		s.records[child-1].Parent = realID
 		s.records[child-1].ChildIndex = uint16(childIndex)
 	}
@@ -1173,7 +1341,7 @@ func (s *SelectedStore) finishRoots(roots []SelectedNodeID, policy SelectedStore
 }
 
 func (c *Core) selectedRawOccurrences(roots []SubtreeID, poll func() error) ([]selectedRawOccurrence, []uint32, []uint32, error) {
-	rawCapacity := min(len(c.subtrees), int(c.limits.MaxSelectedOccurrences))
+	rawCapacity := min(c.subtrees.Len(), int(c.limits.MaxSelectedOccurrences))
 	raw := c.selectedBuild.raw[:0]
 	if cap(raw) < rawCapacity {
 		raw = make([]selectedRawOccurrence, 0, rawCapacity)

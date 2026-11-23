@@ -76,10 +76,10 @@ func (s *derivationSummaryScratch) appendNodeLinks(n nodeRecord) (int, int, erro
 				return 0, 0, errors.New("parser-core phase zero: adjacency cycle")
 			}
 		}
-		if uint64(id) > uint64(len(s.core.links)) {
+		if uint64(id) > uint64(s.core.links.Len()) {
 			return 0, 0, errors.New("parser-core phase zero: link adjacency out of range")
 		}
-		link := s.core.links[id-1]
+		link := s.core.links.At(int(id - 1))
 		if err := link.validateShape(); err != nil {
 			return 0, 0, err
 		}
@@ -107,12 +107,12 @@ func (s *derivationSummaryScratch) walk(id NodeID) (derivationPathSummary, bool,
 		}
 		return entry.summary, true, nil
 	}
-	n, err := s.core.node(id)
+	n, nPaths, err := s.core.nodeWithPathCount(id)
 	if err != nil {
 		return derivationPathSummary{}, true, err
 	}
 	if n.linkCount == 0 {
-		if n.pathCount != 1 {
+		if nPaths != 1 {
 			return derivationPathSummary{}, true, errors.New("parser-core phase zero: malformed seed path count")
 		}
 		summary := derivationPathSummary{pathCount: 1}
@@ -154,8 +154,8 @@ func (s *derivationSummaryScratch) walk(id NodeID) (derivationPathSummary, bool,
 		}
 		summary.pathCount += prefix.pathCount
 	}
-	if n.pathCount != math.MaxUint64 && summary.pathCount != n.pathCount {
-		return derivationPathSummary{}, true, fmt.Errorf("parser-core phase zero: path-count mismatch: enumerated %d, recorded %d", summary.pathCount, n.pathCount)
+	if nPaths != math.MaxUint64 && summary.pathCount != nPaths {
+		return derivationPathSummary{}, true, fmt.Errorf("parser-core phase zero: path-count mismatch: enumerated %d, recorded %d", summary.pathCount, nPaths)
 	}
 	s.nodes[entryIndex].state = derivationSummaryNodeComplete
 	s.nodes[entryIndex].summary = summary

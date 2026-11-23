@@ -178,11 +178,11 @@ func (c *Core) VisitEOFAdmissionExactPath(
 	var reverse [EOFAdmissionMaxTopPayloads]LinkID
 	id := head.Node
 	for {
-		node, err := c.node(id)
+		node, nodePaths, err := c.nodeWithPathCount(id)
 		if err != nil {
 			return result, err
 		}
-		if node.pathCount != 1 {
+		if nodePaths != 1 {
 			return result, ErrEOFAdmissionInexactPath
 		}
 		if node.linkCount == 0 {
@@ -201,10 +201,10 @@ func (c *Core) VisitEOFAdmissionExactPath(
 			return result, ErrEOFAdmissionTopPayloadCap
 		}
 		linkID := LinkID(node.firstLink)
-		if linkID == 0 || uint64(linkID) > uint64(len(c.links)) {
+		if linkID == 0 || uint64(linkID) > uint64(c.links.Len()) {
 			return result, fmt.Errorf("%w: link is outside its arena", ErrEOFAdmissionMalformed)
 		}
-		link := c.links[linkID-1]
+		link := c.links.At(int(linkID - 1))
 		if link.next != 0 {
 			return result, fmt.Errorf("%w: adjacency is not singular", ErrEOFAdmissionMalformed)
 		}
@@ -217,7 +217,7 @@ func (c *Core) VisitEOFAdmissionExactPath(
 		if link.isRecoveryDiscontinuity() {
 			return result, fmt.Errorf("%w: recovery discontinuity requires a recovery-aware visitor", ErrEOFAdmissionMalformed)
 		}
-		if link.payload != 0 && uint64(link.payload) > uint64(len(c.subtrees)) {
+		if link.payload != 0 && uint64(link.payload) > uint64(c.subtrees.Len()) {
 			return result, fmt.Errorf("%w: payload is outside its arena", ErrEOFAdmissionMalformed)
 		}
 		reverse[result.Links] = linkID
@@ -225,7 +225,7 @@ func (c *Core) VisitEOFAdmissionExactPath(
 		id = link.prev
 	}
 	for reverseIndex := int(result.Links) - 1; reverseIndex >= 0; reverseIndex-- {
-		link := c.links[reverse[reverseIndex]-1]
+		link := c.links.At(int(reverse[reverseIndex] - 1))
 		score, err := checkedAddScore(result.Score, link.scoreDelta)
 		if err != nil {
 			return result, err

@@ -99,6 +99,7 @@ const (
 	diagnosticParserCoreFootprintState uint8 = iota + 1
 	diagnosticParserCoreFootprintRegion
 	diagnosticParserCoreFootprintSnapshot
+	diagnosticParserCoreFootprintRecoveryState
 )
 
 func appendDiagnosticParserCoreFootprintRef(
@@ -109,7 +110,8 @@ func appendDiagnosticParserCoreFootprintRef(
 	if pointer == nil {
 		return refs
 	}
-	return append(refs, diagnosticParserCoreFootprintRef{pointer: pointer, kind: kind})
+	refs = append(refs, diagnosticParserCoreFootprintRef{pointer: pointer, kind: kind})
+	return refs
 }
 
 func appendDiagnosticParserCoreVersionFootprintRefs(
@@ -120,7 +122,8 @@ func appendDiagnosticParserCoreVersionFootprintRefs(
 		return refs
 	}
 	refs = appendDiagnosticParserCoreFootprintRef(refs, diagnosticParserCoreFootprintState, unsafe.Pointer(state))
-	refs = appendDiagnosticParserCoreFootprintRef(refs, diagnosticParserCoreFootprintRegion, unsafe.Pointer(state.s3Region))
+	refs = appendDiagnosticParserCoreFootprintRef(refs, diagnosticParserCoreFootprintRecoveryState, unsafe.Pointer(state.recovery))
+	refs = appendDiagnosticParserCoreFootprintRef(refs, diagnosticParserCoreFootprintRegion, unsafe.Pointer(state.recovery.Value().Region))
 	return appendDiagnosticParserCoreFootprintRef(refs, diagnosticParserCoreFootprintSnapshot, unsafe.Pointer(state.relexSnapshot))
 }
 
@@ -283,7 +286,7 @@ func (s *parserCoreRunnerScratch) materializationRetainedBytes() uint64 {
 		total += uint64(buffer.capacity) * uint64(buffer.size)
 	}
 	for _, bytes := range [...]uint64{
-		s.postorder.RetainedBytes(), s.acceptedLeaves.footprintBytes(), s.materialization.checkpoints.RetainedBytes(), s.derivations.RetainedBytes(),
+		s.nativeProjection.retainedBytes(), s.postorder.RetainedBytes(), s.acceptedLeaves.footprintBytes(), s.materialization.checkpoints.RetainedBytes(), s.derivations.RetainedBytes(),
 	} {
 		if bytes > math.MaxUint64-total {
 			return math.MaxUint64
@@ -327,7 +330,12 @@ func diagnosticParserCoreSchedulerFootprintBytes(s *diagnosticParserCoreGenericS
 		addBytes(countBytes * sizeBytes)
 	}
 	addBytes(s.options.compactIncrementalReuse.footprintBytes())
+	addBytes(s.nativeProjectionScratch.retainedBytes())
+	addBytes(s.options.nativeSelectedOutput.retainedBytes())
 	addBytes(s.recoveryCostMemo.FootprintBytes())
+	if s.negativeRelexMemo != nil {
+		addBytes(uint64(unsafe.Sizeof(*s.negativeRelexMemo)))
+	}
 	if s.versionLexerMetadata != nil {
 		addBytes(uint64(unsafe.Sizeof(*s.versionLexerMetadata)))
 	}
@@ -345,6 +353,10 @@ func diagnosticParserCoreSchedulerFootprintBytes(s *diagnosticParserCoreGenericS
 	// buffer keeps repeated polls allocation-free while growing exactly for a
 	// wider frontier.
 	refs := s.footprintRefs[:0]
+	currentStorage, currentPackedStorage := s.versionLexerSnapshotPages.CurrentStorage()
+	currentStorageSeen, currentPackedStorageSeen := false, false
+	var lastStorage *core.ScannerSnapshotStorage
+
 	defer func() {
 		clear(refs)
 		s.footprintRefs = refs[:0]
@@ -372,12 +384,31 @@ func diagnosticParserCoreSchedulerFootprintBytes(s *diagnosticParserCoreGenericS
 		switch ref.kind {
 		case diagnosticParserCoreFootprintState:
 			addBytes(uint64(unsafe.Sizeof(diagnosticParserCoreVersionState{})))
+		case diagnosticParserCoreFootprintRecoveryState:
+			addBytes(uint64(unsafe.Sizeof(core.FrozenValue[diagnosticParserCoreVersionRecoveryState]{})))
 		case diagnosticParserCoreFootprintRegion:
 			addBytes(diagnosticParserCoreVersionS3RegionFootprintBytes((*diagnosticParserCoreS3Region)(ref.pointer)))
 		case diagnosticParserCoreFootprintSnapshot:
-			addBytes(diagnosticParserCoreVersionLexerSnapshotFootprintBytes((*diagnosticParserCoreVersionLexerSnapshot)(ref.pointer)))
+			snapshot := (*diagnosticParserCoreVersionLexerSnapshot)(ref.pointer)
+			addBytes(diagnosticParserCoreVersionLexerSnapshotFootprintWithoutStorage(snapshot))
+			if storage := snapshot.storage; storage != nil {
+				// The sorted record pointers group slots of one allocation;
+				// no separately allocated record can lie inside that object.
+				if storage != lastStorage {
+					addBytes(storage.FootprintBytes())
+					lastStorage = storage
+				}
+				currentStorageSeen = currentStorageSeen || storage == currentStorage
+				currentPackedStorageSeen = currentPackedStorageSeen || storage == currentPackedStorage
+			}
 		}
 		index = next
+	}
+	if !currentStorageSeen {
+		addBytes(currentStorage.FootprintBytes())
+	}
+	if !currentPackedStorageSeen {
+		addBytes(currentPackedStorage.FootprintBytes())
 	}
 	add(cap(refs), unsafe.Sizeof(diagnosticParserCoreFootprintRef{}))
 	add(cap(s.headers), unsafe.Sizeof(diagnosticParserCoreHeader{}))

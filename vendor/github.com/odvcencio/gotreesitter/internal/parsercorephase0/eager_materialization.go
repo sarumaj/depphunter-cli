@@ -6,19 +6,19 @@ package parsercorephase0
 // one link, or an unset link, reports ok=false so the caller declines quietly
 // and leaves the subtree to the postorder pass.
 func (c *Core) PushedFrontier(head Head) (payload SubtreeID, pre StateID, ok bool) {
-	if c == nil || head.Node == 0 || uint64(head.Node) > uint64(len(c.nodes)) {
+	if c == nil || head.Node == 0 || uint64(head.Node) > uint64(c.nodes.Len()) {
 		return 0, 0, false
 	}
-	n := &c.nodes[head.Node-1]
-	if n.linkCount != 1 || n.firstLink == 0 || uint64(n.firstLink) > uint64(len(c.links)) {
+	n := c.nodes.At(int(head.Node - 1))
+	if n.linkCount != 1 || n.firstLink == 0 || uint64(n.firstLink) > uint64(c.links.Len()) {
 		return 0, 0, false
 	}
-	link := &c.links[n.firstLink-1]
-	if link.next != 0 || link.prev == 0 || uint64(link.prev) > uint64(len(c.nodes)) ||
-		link.payload == 0 || uint64(link.payload) > uint64(len(c.subtrees)) {
+	link := c.links.At(int(n.firstLink - 1))
+	if link.next != 0 || link.prev == 0 || uint64(link.prev) > uint64(c.nodes.Len()) ||
+		link.payload == 0 || uint64(link.payload) > uint64(c.subtrees.Len()) {
 		return 0, 0, false
 	}
-	return link.payload, c.nodes[link.prev-1].state, true
+	return link.payload, (*c.nodes.At(int(link.prev - 1))).state, true
 }
 
 // FillMaterializationView validates one committed subtree record and fills

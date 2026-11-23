@@ -433,6 +433,13 @@ const schSttFrz int8 = -1
 // Section 2: Types
 // ---------------------------------------------------------------------------
 
+// yamlIndent keeps the type and width of one indentation level together.
+// One backing array owns each history, so push/pop cannot separate the pair.
+type yamlIndent struct {
+	typ    int16
+	length int16
+}
+
 // yamlState holds the persistent scanner state (serialized between parses).
 type yamlState struct {
 	row       int16
@@ -440,8 +447,7 @@ type yamlState struct {
 	blkImpRow int16
 	blkImpCol int16
 	blkImpTab int16
-	indTypStk []int16
-	indLenStk []int16
+	indents   []yamlIndent
 }
 
 // yamlEnv holds transient per-Scan state.
@@ -451,13 +457,15 @@ type yamlEnv struct {
 	st           *yamlState
 	symMap       []gotreesitter.Symbol
 
-	endRow int16
-	endCol int16
-	curRow int16
-	curCol int16
-	curChr int32
-	schStt int8
-	rltSch int8
+	endRow         int16
+	endCol         int16
+	curRow         int16
+	curCol         int16
+	curChr         int32
+	lookahead      int32
+	lookaheadValid bool
+	schStt         int8
+	rltSch         int8
 }
 
 // yamlPayload is stored as the scanner payload.
@@ -480,8 +488,15 @@ type yamlPayload struct {
 // hardcoded ID would silently emit the wrong (but still structurally valid)
 // node type instead of failing loudly.
 type YamlExternalScanner struct {
-	symbols         [yTokCount]gotreesitter.Symbol
-	externalToToken []int
+	binding *yamlExternalScannerBinding
+}
+
+// yamlExternalScannerBinding is immutable after language binding. Value
+// receivers share this table; all per-parse state remains in yamlPayload.
+type yamlExternalScannerBinding struct {
+	symbols          [yTokCount]gotreesitter.Symbol
+	externalToToken  []int
+	identityValidity bool
 }
 
 // ExternalScannerForLanguage binds the scanner's token slots to the loaded
@@ -491,29 +506,67 @@ type YamlExternalScanner struct {
 // prior per-payload lazy loadEmbeddedLanguage("yaml.bin") lookup entirely:
 // the scanner now resolves its symbols once, at bind time.
 func (YamlExternalScanner) ExternalScannerForLanguage(lang *gotreesitter.Language) gotreesitter.ExternalScanner {
-	s := YamlExternalScanner{symbols: yamlDefaultSymTable}
-	s.externalToToken = bindExternalScannerSpec(lang, yamlExternalScannerSpec, func(tokenIdx int, sym gotreesitter.Symbol) {
-		s.symbols[tokenIdx] = sym
+	binding := &yamlExternalScannerBinding{symbols: yamlDefaultSymTable}
+	binding.externalToToken = bindExternalScannerSpec(lang, yamlExternalScannerSpec, func(tokenIdx int, sym gotreesitter.Symbol) {
+		binding.symbols[tokenIdx] = sym
 	})
+	binding.prepare()
+	s := YamlExternalScanner{binding: binding}
 	// The binding is immutable; per-parse state lives in Create's payload.
 	// Give it a stable instance identity so owned lexer snapshots do not copy
 	// or fingerprint the entire symbol mapping on each validation.
 	return &s
 }
 
+// prepare finishes the immutable binding before it becomes visible to any
+// scanner. A direct validity mask is sound only for a complete identity map.
+func (b *yamlExternalScannerBinding) prepare() {
+	if b.symbols == ([yTokCount]gotreesitter.Symbol{}) {
+		b.symbols = yamlDefaultSymTable
+	}
+	b.identityValidity = len(b.externalToToken) == yTokCount
+	for index, token := range b.externalToToken {
+		if index != token {
+			b.identityValidity = false
+			break
+		}
+	}
+}
+
+// semanticValidity keeps the public valid-symbol slice read-only. Nonidentity
+// mappings and every unusual mask length retain the general mapping semantics.
+func (s YamlExternalScanner) semanticValidity(valid []bool, scratch *[yTokCount]bool) []bool {
+	if s.binding == nil || len(s.binding.externalToToken) == 0 {
+		return valid
+	}
+	if s.binding.identityValidity && len(valid) == yTokCount {
+		return valid
+	}
+	clear(scratch[:])
+	for external, enabled := range valid {
+		if !enabled || external >= len(s.binding.externalToToken) {
+			continue
+		}
+		token := s.binding.externalToToken[external]
+		if token >= 0 && token < yTokCount {
+			scratch[token] = true
+		}
+	}
+	return scratch[:]
+}
+
 func (s YamlExternalScanner) symbolTable() *[yTokCount]gotreesitter.Symbol {
-	if s.symbols == ([yTokCount]gotreesitter.Symbol{}) {
+	if s.binding == nil {
 		return &yamlDefaultSymTable
 	}
-	return &s.symbols
+	return &s.binding.symbols
 }
 
 func (YamlExternalScanner) Create() any {
 	p := &yamlPayload{}
 	p.state.blkImpRow = -1
 	p.state.blkImpCol = -1
-	p.state.indTypStk = []int16{yIndRot}
-	p.state.indLenStk = []int16{-1}
+	p.state.indents = []yamlIndent{{typ: yIndRot, length: -1}}
 	return p
 }
 
@@ -538,10 +591,10 @@ func (YamlExternalScanner) Serialize(payload any, buf []byte) int {
 	binary.LittleEndian.PutUint16(buf[size:], uint16(s.blkImpTab))
 	size += 2
 	// Stack entries (skip index 0 = root sentinel)
-	for i := 1; i < len(s.indTypStk) && size+4 <= len(buf); i++ {
-		binary.LittleEndian.PutUint16(buf[size:], uint16(s.indTypStk[i]))
+	for i := 1; i < len(s.indents) && size+4 <= len(buf); i++ {
+		binary.LittleEndian.PutUint16(buf[size:], uint16(s.indents[i].typ))
 		size += 2
-		binary.LittleEndian.PutUint16(buf[size:], uint16(s.indLenStk[i]))
+		binary.LittleEndian.PutUint16(buf[size:], uint16(s.indents[i].length))
 		size += 2
 	}
 	return size
@@ -558,8 +611,7 @@ func (YamlExternalScanner) Deserialize(payload any, buf []byte) {
 	// A restore replaces the current cursor's indentation history. Snapshots
 	// own serialized bytes, so retaining these private buffers cannot alias
 	// another version's history.
-	s.indTypStk = append(s.indTypStk[:0], yIndRot)
-	s.indLenStk = append(s.indLenStk[:0], -1)
+	s.indents = append(s.indents[:0], yamlIndent{typ: yIndRot, length: -1})
 	if len(buf) >= 10 {
 		off := 0
 		s.row = int16(binary.LittleEndian.Uint16(buf[off:]))
@@ -577,8 +629,7 @@ func (YamlExternalScanner) Deserialize(payload any, buf []byte) {
 			off += 2
 			ln := int16(binary.LittleEndian.Uint16(buf[off:]))
 			off += 2
-			s.indTypStk = append(s.indTypStk, typ)
-			s.indLenStk = append(s.indLenStk, ln)
+			s.indents = append(s.indents, yamlIndent{typ: typ, length: ln})
 		}
 	}
 }
@@ -586,19 +637,9 @@ func (YamlExternalScanner) Deserialize(payload any, buf []byte) {
 func (s YamlExternalScanner) Scan(payload any, lexer *gotreesitter.ExternalLexer, validSymbols []bool) bool {
 	p := payload.(*yamlPayload)
 
-	if len(s.externalToToken) > 0 {
-		var semanticValid [yTokCount]bool
-		for externalIdx, valid := range validSymbols {
-			if !valid || externalIdx >= len(s.externalToToken) {
-				continue
-			}
-			tokenIdx := s.externalToToken[externalIdx]
-			if tokenIdx >= 0 && tokenIdx < yTokCount {
-				semanticValid[tokenIdx] = true
-			}
-		}
-		validSymbols = semanticValid[:]
-	}
+	var semanticValid [yTokCount]bool
+	validSymbols = s.semanticValidity(validSymbols, &semanticValid)
+
 	syms := s.symbolTable()
 
 	env := yamlEnv{
@@ -616,28 +657,32 @@ func (s YamlExternalScanner) Scan(payload any, lexer *gotreesitter.ExternalLexer
 
 func (e *yamlEnv) adv() {
 	e.curCol++
-	e.curChr = int32(e.lexer.Lookahead())
+	e.curChr = e.lka()
 	e.lexer.Advance(false)
+	e.lookaheadValid = false
 }
 
 func (e *yamlEnv) advNwl() {
 	e.curRow++
 	e.curCol = 0
-	e.curChr = int32(e.lexer.Lookahead())
+	e.curChr = e.lka()
 	e.lexer.Advance(false)
+	e.lookaheadValid = false
 }
 
 func (e *yamlEnv) skp() {
 	e.curCol++
-	e.curChr = int32(e.lexer.Lookahead())
+	e.curChr = e.lka()
 	e.lexer.Advance(true)
+	e.lookaheadValid = false
 }
 
 func (e *yamlEnv) skpNwl() {
 	e.curRow++
 	e.curCol = 0
-	e.curChr = int32(e.lexer.Lookahead())
+	e.curChr = e.lka()
 	e.lexer.Advance(true)
+	e.lookaheadValid = false
 }
 
 func (e *yamlEnv) mrkEnd() {
@@ -650,6 +695,7 @@ func (e *yamlEnv) init() {
 	e.curRow = e.st.row
 	e.curCol = e.st.col
 	e.curChr = 0
+	e.lookaheadValid = false
 	e.schStt = 0
 	e.rltSch = rsStr
 }
@@ -666,35 +712,42 @@ func (e *yamlEnv) retSym(tok int) bool {
 }
 
 func (e *yamlEnv) popInd() bool {
-	if len(e.st.indTypStk) == 1 {
+	if len(e.st.indents) == 1 {
 		return false // incorrect status caused by error recovering
 	}
-	e.st.indTypStk = e.st.indTypStk[:len(e.st.indTypStk)-1]
-	e.st.indLenStk = e.st.indLenStk[:len(e.st.indLenStk)-1]
+	e.st.indents = e.st.indents[:len(e.st.indents)-1]
 	return true
 }
 
 func (e *yamlEnv) pushInd(typ, length int16) {
-	e.st.indTypStk = append(e.st.indTypStk, typ)
-	e.st.indLenStk = append(e.st.indLenStk, length)
+	e.st.indents = append(e.st.indents, yamlIndent{typ: typ, length: length})
 }
 
 func (e *yamlEnv) curInd() int16 {
-	return e.st.indLenStk[len(e.st.indLenStk)-1]
+	return e.st.indents[len(e.st.indents)-1].length
 }
 
 func (e *yamlEnv) curIndTyp() int16 {
-	return e.st.indTypStk[len(e.st.indTypStk)-1]
+	return e.st.indents[len(e.st.indents)-1].typ
 }
 
 func (e *yamlEnv) prtInd() int16 {
-	if len(e.st.indLenStk) < 2 {
+	if len(e.st.indents) < 2 {
 		return -1
 	}
-	return e.st.indLenStk[len(e.st.indLenStk)-2]
+	return e.st.indents[len(e.st.indents)-2].length
 }
 
-func (e *yamlEnv) lka() int32 { return int32(e.lexer.Lookahead()) }
+// Lookahead is stable until one of the four cursor-advance helpers runs.
+// Keep this cache on the scan-local environment: a retry or checkpoint restore
+// constructs another environment and cannot inherit a rune from the old scan.
+func (e *yamlEnv) lka() int32 {
+	if !e.lookaheadValid {
+		e.lookahead = int32(e.lexer.Lookahead())
+		e.lookaheadValid = true
+	}
+	return e.lookahead
+}
 
 // Character classification helpers.
 func yIsWsp(c int32) bool { return c == ' ' || c == '\t' }
@@ -1788,7 +1841,13 @@ func (e *yamlEnv) scan() bool {
 			if shouldEmitComment {
 				e.adv()
 				for !yIsNwl(e.lka()) && e.lka() != 0 {
-					e.adv()
+					if _, count, last := e.lexer.AdvanceLineContent(false); count > 0 {
+						e.curCol += int16(count)
+						e.curChr = int32(last)
+						e.lookaheadValid = false
+					} else {
+						e.adv()
+					}
 				}
 				e.mrkEnd()
 				return e.retSym(yTokComment)

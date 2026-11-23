@@ -2,12 +2,12 @@ package gotreesitter
 
 import (
 	"fmt"
+	"github.com/odvcencio/gotreesitter/internal/incr"
 	"io"
 	"sort"
 	"strings"
 	"sync"
-
-	"github.com/odvcencio/gotreesitter/internal/incr"
+	"sync/atomic"
 )
 
 // Range is a span of source text.
@@ -46,6 +46,9 @@ type Node struct {
 // supertypeMask returns the bit set of hidden supertype ancestors recorded
 // for the node, one bit per supertype symbol (Language.supertypeBit).
 func (n *Node) supertypeMask() uint32 {
+	if views := nodeViews(n); views != nil {
+		return views.supertype(n)
+	}
 	if n == nil || n.ownerArena == nil {
 		return 0
 	}
@@ -829,6 +832,9 @@ func setNodeParentLink(child, parent *Node, index int) {
 }
 
 func nodeParentLink(n *Node) (*Node, int, bool) {
+	if views := nodeViews(n); views != nil {
+		return views.parent(n)
+	}
 	if n == nil {
 		return nil, -1, false
 	}
@@ -981,6 +987,14 @@ func nodeChildCountNoMaterialize(n *Node) int {
 	if n.childIndex > finalChildSidecarIndexBase || n.ownerArena == nil {
 		return len(n.children)
 	}
+	return nodeChildCountWithBacking(n)
+}
+
+// Keep indexed backing dispatch out of the ordinary, inlined child count.
+func nodeChildCountWithBacking(n *Node) int {
+	if views := nodeViews(n); views != nil {
+		return views.childCount(n)
+	}
 	id := int(-n.childIndex - 2)
 	if id < 0 || id >= len(n.ownerArena.finalChildSidecars) {
 		return len(n.children)
@@ -1001,6 +1015,20 @@ func nodeHasFinalChildRefs(n *Node) bool {
 }
 
 func nodeChildEntryAtNoMaterialize(n *Node, i int) (stackEntry, bool) {
+	if n != nil && n.childIndex > finalChildSidecarIndexBase {
+		if uint(i) >= uint(len(n.children)) || n.children[i] == nil {
+			return stackEntry{}, false
+		}
+		child := n.children[i]
+		return newStackEntryNode(child.parseState, child), true
+	}
+	if views := nodeViews(n); views != nil {
+		child := views.child(n, i)
+		if child == nil {
+			return stackEntry{}, false
+		}
+		return newStackEntryNode(child.parseState, child), true
+	}
 	if n == nil || i < 0 {
 		return stackEntry{}, false
 	}
@@ -1028,6 +1056,10 @@ func nodeChildEntryAtNoMaterialize(n *Node, i int) (stackEntry, bool) {
 }
 
 func nodeMaterializeFinalChildRefs(n *Node, reason materializeReason) {
+	if views := nodeViews(n); views != nil {
+		views.children(n)
+		return
+	}
 	if n == nil || n.ownerArena == nil {
 		return
 	}
@@ -1061,6 +1093,9 @@ func nodeMaterializeFinalChildRefs(n *Node, reason materializeReason) {
 }
 
 func nodeMaterializeFinalChildRefAt(n *Node, i int, reason materializeReason) *Node {
+	if views := nodeViews(n); views != nil {
+		return views.child(n, i)
+	}
 	if n == nil {
 		return nil
 	}
@@ -1111,6 +1146,16 @@ func nodeChildCount(n *Node) int {
 }
 
 func nodeChildAtForReason(n *Node, i int, reason materializeReason) *Node {
+	if n != nil && n.childIndex > finalChildSidecarIndexBase {
+		if uint(i) < uint(len(n.children)) {
+			return n.children[i]
+		}
+		return nil
+	}
+	return nodeChildAtWithBacking(n, i, reason)
+}
+
+func nodeChildAtWithBacking(n *Node, i int, reason materializeReason) *Node {
 	if n == nil || i < 0 || i >= nodeChildCountNoMaterialize(n) {
 		return nil
 	}
@@ -1118,6 +1163,9 @@ func nodeChildAtForReason(n *Node, i int, reason materializeReason) *Node {
 }
 
 func nodeChildrenForReason(n *Node, reason materializeReason) []*Node {
+	if views := nodeViews(n); views != nil {
+		return views.children(n)
+	}
 	if n == nil {
 		return nil
 	}
@@ -2174,9 +2222,11 @@ func (n *Node) ParseState() StateID {
 }
 
 // PreGotoState returns the parser state that was on top of the stack before
-// this node was pushed (i.e., the state exposed after popping children during
-// reduce). For non-leaf nodes: lookupGoto(PreGotoState, Symbol) == ParseState.
-// Returns 0 for a nil node.
+// this node was originally pushed (i.e., the state exposed after popping
+// children during reduce). A reused node retains that historical state, which
+// can differ from the state in a fresh parse of the edited source. For
+// non-leaf nodes: lookupGoto(PreGotoState, Symbol) == ParseState. Returns 0
+// for a nil node.
 func (n *Node) PreGotoState() StateID {
 	if n == nil {
 		return 0
@@ -2368,6 +2418,9 @@ func (n *Node) PrevSibling() *Node {
 
 // NamedChildCount returns the number of named children.
 func (n *Node) NamedChildCount() int {
+	if views := nodeViews(n); views != nil {
+		return views.namedChildCount(n)
+	}
 	count := 0
 	childCount := nodeChildCountNoMaterialize(n)
 	for i := 0; i < childCount; i++ {
@@ -2382,6 +2435,9 @@ func (n *Node) NamedChildCount() int {
 // NamedChild returns the i-th named child (skipping anonymous children),
 // or nil if i is out of range.
 func (n *Node) NamedChild(i int) *Node {
+	if views := nodeViews(n); views != nil {
+		return views.namedChild(n, i)
+	}
 	if i < 0 {
 		return nil
 	}
@@ -3217,6 +3273,10 @@ func (t *Tree) ensureParentLinks() {
 	if t == nil || t.root == nil {
 		return
 	}
+	// Incremental publication can rewrite shared parent links even when callers
+	// omit Tree.Edit for a same-width change. Restore the mutation representation
+	// here too; ordinary Node.Parent reads continue using immutable view links.
+	materializeNodeViews(t.root)
 	t.root.ensureParentLinks()
 }
 
@@ -3300,6 +3360,7 @@ func (t *Tree) ensureResultCompatibility() {
 		}
 		hadCompactLineage := t.compactMaterialized || compactTreeContainsMaterializedNode(t.root)
 		compatibilitySnapshot := snapshotCompactCompatibilityTree(t.root, hadCompactLineage)
+		defer compatibilitySnapshot.release()
 		if !parsePhaseTimingEnabled() {
 			parser := &Parser{language: t.language}
 			result := normalizeResultCompatibility(t.root, t.source, parser, nil)
@@ -3341,9 +3402,9 @@ func (t *Tree) disableIncrementalReuseAfterCompactCompatibility(snapshot *compac
 
 type compactCompatibilityNodeSnapshot struct {
 	node              *Node
-	children          []*Node
-	fieldIDs          []FieldID
-	fieldSources      []uint8
+	childCount        int
+	fieldCount        int
+	sourceCount       int
 	startPoint        Point
 	endPoint          Point
 	startByte         uint32
@@ -3357,30 +3418,74 @@ type compactCompatibilityNodeSnapshot struct {
 	semanticFlags     nodeFlags
 }
 
+const compactCompatibilitySnapshotPageSize = 512
+
+type compactCompatibilitySnapshotPage [compactCompatibilitySnapshotPageSize]compactCompatibilityNodeSnapshot
+
 type compactCompatibilityTreeSnapshot struct {
-	root  *Node
-	nodes []compactCompatibilityNodeSnapshot
+	root         *Node
+	nodePages    []*compactCompatibilitySnapshotPage
+	nodeCount    int
+	children     []*Node
+	fieldIDs     []FieldID
+	fieldSources []uint8
+	stack        []*Node
+}
+
+// At most one bounded, scrubbed workspace is retained across calls.
+var compactCompatibilitySnapshotSpare atomic.Pointer[compactCompatibilityTreeSnapshot]
+
+func (s *compactCompatibilityTreeSnapshot) release() {
+	if s == nil || len(s.nodePages) > 4 || cap(s.children) > 4096 ||
+		cap(s.fieldIDs) > 4096 || cap(s.fieldSources) > 4096 || cap(s.stack) > 2048 ||
+		compactCompatibilitySnapshotSpare.Load() != nil {
+		return
+	}
+	for _, page := range s.nodePages {
+		clear(page[:])
+	}
+	clear(s.children[:cap(s.children)])
+	clear(s.stack[:cap(s.stack)])
+	s.root = nil
+	s.nodeCount = 0
+	s.children = s.children[:0]
+	s.fieldIDs = s.fieldIDs[:0]
+	s.fieldSources = s.fieldSources[:0]
+	s.stack = s.stack[:0]
+	compactCompatibilitySnapshotSpare.CompareAndSwap(nil, s)
 }
 
 func snapshotCompactCompatibilityTree(root *Node, enabled bool) *compactCompatibilityTreeSnapshot {
 	if !enabled || root == nil {
 		return nil
 	}
-	snapshot := &compactCompatibilityTreeSnapshot{root: root}
-	stack := []*Node{root}
-	for len(stack) > 0 {
-		last := len(stack) - 1
-		node := stack[last]
-		stack = stack[:last]
+	snapshot := compactCompatibilitySnapshotSpare.Swap(nil)
+	if snapshot == nil {
+		snapshot = &compactCompatibilityTreeSnapshot{}
+	}
+	snapshot.root = root
+	snapshot.stack = append(snapshot.stack, root)
+	for len(snapshot.stack) > 0 {
+		last := len(snapshot.stack) - 1
+		node := snapshot.stack[last]
+		snapshot.stack = snapshot.stack[:last]
 		if node == nil {
 			continue
 		}
-		children := append([]*Node(nil), nodeChildrenForReason(node, materializeForEdit)...)
-		snapshot.nodes = append(snapshot.nodes, compactCompatibilityNodeSnapshot{
+		childStart, fieldStart, sourceStart := len(snapshot.children), len(snapshot.fieldIDs), len(snapshot.fieldSources)
+		snapshot.children = append(snapshot.children, nodeChildrenForReason(node, materializeForEdit)...)
+		snapshot.fieldIDs = append(snapshot.fieldIDs, node.fieldIDs()...)
+		snapshot.fieldSources = append(snapshot.fieldSources, node.fieldSources()...)
+		children := snapshot.children[childStart:]
+		pageIndex := snapshot.nodeCount / compactCompatibilitySnapshotPageSize
+		if pageIndex == len(snapshot.nodePages) {
+			snapshot.nodePages = append(snapshot.nodePages, new(compactCompatibilitySnapshotPage))
+		}
+		snapshot.nodePages[pageIndex][snapshot.nodeCount%compactCompatibilitySnapshotPageSize] = compactCompatibilityNodeSnapshot{
 			node:              node,
-			children:          children,
-			fieldIDs:          append([]FieldID(nil), node.fieldIDs()...),
-			fieldSources:      append([]uint8(nil), node.fieldSources()...),
+			childCount:        len(children),
+			fieldCount:        len(snapshot.fieldIDs) - fieldStart,
+			sourceCount:       len(snapshot.fieldSources) - sourceStart,
 			startPoint:        node.startPoint,
 			endPoint:          node.endPoint,
 			startByte:         node.startByte,
@@ -3392,9 +3497,10 @@ func snapshotCompactCompatibilityTree(root *Node, enabled bool) *compactCompatib
 			symbol:            node.symbol,
 			productionID:      node.productionID,
 			semanticFlags:     node.flags &^ (nodeFlagFieldIDCacheComputed | nodeFlagFieldIDCacheHasFieldIDs),
-		})
+		}
+		snapshot.nodeCount++
 		for i := len(children) - 1; i >= 0; i-- {
-			stack = append(stack, children[i])
+			snapshot.stack = append(snapshot.stack, children[i])
 		}
 	}
 	return snapshot
@@ -3404,7 +3510,15 @@ func (s *compactCompatibilityTreeSnapshot) matches(root *Node) bool {
 	if s == nil || s.root != root {
 		return false
 	}
-	for _, before := range s.nodes {
+	childOffset, fieldOffset, sourceOffset := 0, 0, 0
+	for i := 0; i < s.nodeCount; i++ {
+		before := &s.nodePages[i/compactCompatibilitySnapshotPageSize][i%compactCompatibilitySnapshotPageSize]
+		children := s.children[childOffset : childOffset+before.childCount]
+		fields := s.fieldIDs[fieldOffset : fieldOffset+before.fieldCount]
+		sources := s.fieldSources[sourceOffset : sourceOffset+before.sourceCount]
+		childOffset += before.childCount
+		fieldOffset += before.fieldCount
+		sourceOffset += before.sourceCount
 		node := before.node
 		if node == nil ||
 			node.startPoint != before.startPoint || node.endPoint != before.endPoint ||
@@ -3413,9 +3527,9 @@ func (s *compactCompatibilityTreeSnapshot) matches(root *Node) bool {
 			node.equivVersion != before.equivVersion || node.dynamicPrecedence != before.dynamicPrecedence ||
 			node.symbol != before.symbol || node.productionID != before.productionID ||
 			node.flags&^(nodeFlagFieldIDCacheComputed|nodeFlagFieldIDCacheHasFieldIDs) != before.semanticFlags ||
-			!sameNodePointers(node.children, before.children) ||
-			!sameFieldIDs(node.fieldIDs(), before.fieldIDs) ||
-			!sameBytes(node.fieldSources(), before.fieldSources) {
+			!sameNodePointers(node.children, children) ||
+			!sameFieldIDs(node.fieldIDs(), fields) ||
+			!sameBytes(node.fieldSources(), sources) {
 			return false
 		}
 	}
@@ -4116,6 +4230,11 @@ func (t *Tree) RootNodeWithOffset(offsetBytes uint32, offsetExtent Point) *Node 
 	if offsetBytes == 0 && offsetExtent == (Point{}) {
 		return t.root
 	}
+	if views := nodeViews(t.root); views != nil {
+		copy := views.copyTree(t)
+		defer copy.Release()
+		return cloneTreeNodesWithOffset(copy.root, offsetBytes, offsetExtent)
+	}
 	return cloneTreeNodesWithOffset(t.root, offsetBytes, offsetExtent)
 }
 
@@ -4351,6 +4470,9 @@ func (t *Tree) DOT(lang *Language) string {
 func (t *Tree) Copy() *Tree {
 	if t == nil {
 		return nil
+	}
+	if views := nodeViews(t.root); views != nil {
+		return views.copyTree(t)
 	}
 	t.ensureResultCompatibility()
 	// Fold before the clone. The clone copies a node's column-dependency
@@ -5185,6 +5307,7 @@ func (n *Node) Edit(edit InputEdit) {
 		}
 		return
 	}
+	materializeNodeViews(n)
 	if root := nodeEditRoot(n); root != nil {
 		editNode(root, edit)
 	}
@@ -5258,11 +5381,19 @@ func (t *Tree) Edit(edit InputEdit) {
 	if t == nil {
 		return
 	}
+	materializeNodeViews(t.root)
 	t.setIncrementalFreshVerified(false)
 	t.ensureResultCompatibility()
 	t.ensureDependsOnColumnPropagated()
 	t.prepareLegacyReuseDependencies()
 	t.editCompactReuseDependencies(edit)
+	// Only a possible identifier edit needs the stronger small-source read
+	// invalidation. Admission checks this same necessary condition again with
+	// the new source and authenticates the actual token before selecting it.
+	smallIdentifierEdit := false
+	if len(t.edits) == 0 && t.arena != nil && t.arena.legacyReuseReads.DefaultProducerSchedule(len(t.source)) != 0 {
+		_, _, smallIdentifierEdit = incr.IdentifierEditOldToken(t.source, incr.TokenEdit{Start: edit.StartByte, OldEnd: edit.OldEndByte, NewEnd: edit.NewEndByte, Row: edit.StartPoint.Row})
+	}
 	if perfCountersEnabled {
 		perfRecordNodeEditCall()
 		if inputEditIsNoop(edit) {
@@ -5281,7 +5412,7 @@ func (t *Tree) Edit(edit InputEdit) {
 		rowDelta := int64(edit.NewEndPoint.Row) - int64(edit.OldEndPoint.Row)
 		hasTailShift := byteDelta != 0 || edit.NewEndPoint != edit.OldEndPoint
 		var shiftScratch []*Node
-		editNodeWithDelta(t.root, edit, byteDelta, rowDelta, hasTailShift, &shiftScratch, &t.lastEditedLeaf)
+		editNodeWithDeltaPolicy(t.root, edit, byteDelta, rowDelta, hasTailShift, &shiftScratch, &t.lastEditedLeaf, smallIdentifierEdit)
 	}
 }
 
@@ -5679,7 +5810,11 @@ func editNodeSingleByteReplacement(n *Node, edit InputEdit, leafHint **Node) {
 }
 
 func editNodeWithDelta(n *Node, edit InputEdit, byteDelta, rowDelta int64, hasTailShift bool, shiftScratch *[]*Node, leafHint **Node) {
-	if editLegacyLookaheadOnly(n, edit) {
+	editNodeWithDeltaPolicy(n, edit, byteDelta, rowDelta, hasTailShift, shiftScratch, leafHint, false)
+}
+
+func editNodeWithDeltaPolicy(n *Node, edit InputEdit, byteDelta, rowDelta int64, hasTailShift bool, shiftScratch *[]*Node, leafHint **Node, smallIdentifierEdit bool) {
+	if editLegacyLookaheadOnlyPolicy(n, edit, smallIdentifierEdit) {
 		return
 	}
 	if editMissingNodeDependency(n, edit, byteDelta, rowDelta) {
@@ -5783,7 +5918,7 @@ func editNodeWithDelta(n *Node, edit InputEdit, byteDelta, rowDelta int64, hasTa
 				continue
 			}
 			descended = true
-			editNodeWithDelta(c, edit, byteDelta, rowDelta, hasTailShift, shiftScratch, leafHint)
+			editNodeWithDeltaPolicy(c, edit, byteDelta, rowDelta, hasTailShift, shiftScratch, leafHint, smallIdentifierEdit)
 		}
 	} else {
 		for i := 0; i < childCount; i++ {
@@ -5816,7 +5951,7 @@ func editNodeWithDelta(n *Node, edit InputEdit, byteDelta, rowDelta int64, hasTa
 				continue
 			}
 			descended = true
-			editStackEntryWithDelta(n.ownerArena, entry, edit, byteDelta, rowDelta, hasTailShift, shiftScratch, leafHint)
+			editStackEntryWithDeltaPolicy(n.ownerArena, entry, edit, byteDelta, rowDelta, hasTailShift, shiftScratch, leafHint, smallIdentifierEdit)
 		}
 	}
 	if leafHint != nil && !descended && childCount == 0 {
@@ -5825,8 +5960,12 @@ func editNodeWithDelta(n *Node, edit InputEdit, byteDelta, rowDelta int64, hasTa
 }
 
 func editStackEntryWithDelta(arena *nodeArena, entry stackEntry, edit InputEdit, byteDelta, rowDelta int64, hasTailShift bool, shiftScratch *[]*Node, leafHint **Node) {
+	editStackEntryWithDeltaPolicy(arena, entry, edit, byteDelta, rowDelta, hasTailShift, shiftScratch, leafHint, false)
+}
+
+func editStackEntryWithDeltaPolicy(arena *nodeArena, entry stackEntry, edit InputEdit, byteDelta, rowDelta int64, hasTailShift bool, shiftScratch *[]*Node, leafHint **Node, smallIdentifierEdit bool) {
 	if node := stackEntryNode(entry); node != nil {
-		editNodeWithDelta(node, edit, byteDelta, rowDelta, hasTailShift, shiftScratch, leafHint)
+		editNodeWithDeltaPolicy(node, edit, byteDelta, rowDelta, hasTailShift, shiftScratch, leafHint, smallIdentifierEdit)
 		return
 	}
 	if !stackEntryHasNode(entry) || stackEntryEndsBeforeEditDependency(arena, entry, edit.StartByte) {
@@ -5891,7 +6030,7 @@ func editStackEntryWithDelta(arena *nodeArena, entry stackEntry, edit InputEdit,
 		if perfCountersEnabled {
 			perfRecordNodeEditCompactRef()
 		}
-		editStackEntryWithDelta(arena, child, edit, byteDelta, rowDelta, hasTailShift, shiftScratch, leafHint)
+		editStackEntryWithDeltaPolicy(arena, child, edit, byteDelta, rowDelta, hasTailShift, shiftScratch, leafHint, smallIdentifierEdit)
 	}
 }
 
@@ -5989,7 +6128,11 @@ func shiftSubtreeAfterEdit(roots []*Node, edit InputEdit, byteDelta, rowDelta in
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		dependency, hasMissingDependency := missingNodeDependencyForNode(n)
+		var dependency missingNodeDependency
+		hasMissingDependency := false
+		if n.isMissing() {
+			dependency, hasMissingDependency = missingNodeDependencyForNode(n)
+		}
 
 		n.startByte = addUint32Delta(n.startByte, byteDelta)
 		n.endByte = addUint32Delta(n.endByte, byteDelta)
@@ -6199,4 +6342,127 @@ func addChangedRange(oldNode, newNode *Node, ranges *[]Range) {
 		StartPoint: startPoint,
 		EndPoint:   endPoint,
 	})
+}
+
+// Detached view metadata is bounded independently of arena and parser pools.
+// Released entries contain no node, arena, source, or producing-core pointers.
+var nodeViewBackingPool struct {
+	sync.Mutex
+	free []nodeViewBacking
+}
+
+const maxRetainedNodeViewBackingBytes = 4 << 20
+
+// Views share the negative-index dispatch used by final-child sidecars. The
+// arena's views field distinguishes them from ordinary sidecar zero, which also
+// uses -2. Ordinary parent links keep their existing fast path.
+const compactViewChildIndex = -2
+
+func takeNodeViewBacking() nodeViewBacking {
+	nodeViewBackingPool.Lock()
+	defer nodeViewBackingPool.Unlock()
+	n := len(nodeViewBackingPool.free)
+	if n == 0 {
+		return nil
+	}
+	v := nodeViewBackingPool.free[n-1]
+	nodeViewBackingPool.free[n-1] = nil
+	nodeViewBackingPool.free = nodeViewBackingPool.free[:n-1]
+	return v
+}
+
+func recycleNodeViewBacking(v nodeViewBacking) {
+	if v.retainedBytes() > maxRetainedNodeViewBackingBytes {
+		return
+	}
+	nodeViewBackingPool.Lock()
+	defer nodeViewBackingPool.Unlock()
+	if len(nodeViewBackingPool.free) < 4 {
+		nodeViewBackingPool.free = append(nodeViewBackingPool.free, v)
+	}
+}
+
+func drainNodeViewBackings() {
+	nodeViewBackingPool.Lock()
+	nodeViewBackingPool.free = nil
+	nodeViewBackingPool.Unlock()
+}
+
+// Views begin with a small header slab. They retain the ordinary full-tree
+// growth and eviction limits once callers actually visit the whole tree.
+// A separate pool avoids inheriting a large eager parse's unused reserve.
+var nodeViewArenaPool = nodeArenaPool{class: arenaClassFull, maxSize: 4}
+
+func acquireNodeViewArena() *nodeArena {
+	p := &nodeViewArenaPool
+	p.mu.Lock()
+	var arena *nodeArena
+	if n := len(p.free); n != 0 {
+		arena = p.free[n-1]
+		p.free = p.free[:n-1]
+	}
+	p.mu.Unlock()
+	if arena == nil {
+		arena = &nodeArena{class: arenaClassFull, viewArena: true, nodes: make([]Node, minArenaNodeCap)}
+		arena.recomputeAllocatedBytes()
+		if arenaProfileEnabled {
+			arenaProfileData.FullNew++
+		}
+	}
+	if arenaProfileEnabled {
+		arenaProfileData.FullAcquire++
+	}
+	arena.refs.Store(1)
+	arena.viewNodeLimit = 0
+	arena.breakdownEnabled = arenaBreakdownEnabled.Load()
+	arena.clearBudget()
+	arena.audit = nil
+	return arena
+}
+
+// A mutating caller commits to visiting the whole tree. Reserve only the
+// missing headers, in bounded slabs, without moving pointers already returned.
+func reserveNodeViewMaterialization(a *nodeArena, count int) {
+	remaining := count - len(a.nodes)
+	for i := range a.nodeSlabs {
+		remaining -= len(a.nodeSlabs[i].data)
+	}
+	ceiling := maxOverflowSlabGrowthBytes / int(nodeBytesForCap(1))
+	for remaining > 0 {
+		capacity := min(remaining, ceiling)
+		a.nodeSlabs = append(a.nodeSlabs, nodeSlab{data: make([]Node, capacity)})
+		a.allocatedBytes += nodeBytesForCap(capacity)
+		remaining -= capacity
+	}
+}
+
+// nodeViewBacking is the adapter boundary between indexed syntax and the
+// public pointer API. Reading creates stable views; mutation first restores
+// the complete arena representation, including its reuse receipts.
+type nodeViewBacking interface {
+	childCount(*Node) int
+	namedChildCount(*Node) int
+	namedChild(*Node, int) *Node
+	child(*Node, int) *Node
+	children(*Node) []*Node
+	parent(*Node) (*Node, int, bool)
+	supertype(*Node) uint32
+	equalTree(*Node, *Node, *Language) bool
+	copyTree(*Tree) *Tree
+	retainedBytes() uint64
+	materialize()
+	release()
+}
+
+func nodeViews(n *Node) nodeViewBacking {
+	if n == nil || n.childIndex != compactViewChildIndex || n.ownerArena == nil {
+		return nil
+	}
+	return n.ownerArena.views
+}
+
+func materializeNodeViews(n *Node) {
+	if views := nodeViews(n); views != nil {
+		views.materialize()
+	}
 }

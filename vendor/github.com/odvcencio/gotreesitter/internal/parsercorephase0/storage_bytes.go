@@ -60,11 +60,13 @@ func (c *Core) StorageBytes() uint64 {
 	if c == nil {
 		return 0
 	}
-	return uint64(len(c.nodes))*coreNodeRecordBytes +
+	return uint64(c.nodes.Len())*coreNodeRecordBytes +
+		uint64(len(c.nodePrecedenceWide))*coreInt64Bytes +
+		uint64(len(c.nodePathCountsWide))*coreNodePathCountRecordBytes +
 		uint64(len(c.nodeLineageRefSets))*coreNodeLineageRefSetBytes +
-		uint64(len(c.links))*coreLinkRecordBytes +
+		c.links.CloneActiveFootprintBytes() +
 		uint64(len(c.dropCohortLinkRefIndexes))*coreUint32Bytes +
-		uint64(len(c.subtrees))*coreSubtreeRecordBytes +
+		uint64(c.subtrees.Len())*coreSubtreeRecordBytes +
 		uint64(len(c.recoveryVisibleCounts))*coreRecoveryVisibleCountBytes +
 		uint64(len(c.recoveryVisibleSymbols))*coreBoolBytes +
 		uint64(len(c.reusedSubtrees))*coreReusedSubtreeBytes +
@@ -99,7 +101,7 @@ func (c *Core) StorageBytes() uint64 {
 var (
 	coreDropCohortRefRecordBytes            = uint64(unsafe.Sizeof(dropCohortRefRecord{}))
 	coreNodeLineageRefSetBytes              = uint64(unsafe.Sizeof(DropCohortRefSet{}))
-	coreNodeLineageRecordBytes              = uint64(unsafe.Sizeof(nodeLineageRecord{}))
+	coreNodeLineageRecordBytes              = uint64(unsafe.Sizeof(nodeLineageHot{}))
 	coreCheckpointIDBytes                   = uint64(unsafe.Sizeof(CheckpointID(0)))
 	coreExternalProvenanceBytes             = uint64(unsafe.Sizeof(externalPayloadProvenance{}))
 	coreMissingLeafProvenanceBytes          = uint64(unsafe.Sizeof(missingLeafProvenance{}))
@@ -107,6 +109,8 @@ var (
 	coreReusedSubtreeBytes                  = uint64(unsafe.Sizeof(reusedSubtreeProvenance{}))
 	coreRecoveryDiscontinuityReductionBytes = uint64(unsafe.Sizeof(recoveryDiscontinuityReduction{}))
 	coreCheckpointRecordBytes               = uint64(unsafe.Sizeof(checkpointRecord{}))
+	coreCheckpointDigestCacheBytes          = uint64(unsafe.Sizeof(checkpointDigestCacheEntry{}))
+	coreNodePathCountRecordBytes            = uint64(unsafe.Sizeof(nodePathCountRecord{}))
 	coreCheckpointBucketBytes               = uint64(unsafe.Sizeof(uint64(0))) + uint64(unsafe.Sizeof(CheckpointID(0)))
 	coreBoundarySlotBytes                   = uint64(unsafe.Sizeof(boundarySlot{}))
 	coreBoundaryMutationBytes               = uint64(unsafe.Sizeof(boundaryMutation{}))
@@ -161,9 +165,11 @@ func (c *Core) FootprintBytes() uint64 {
 	if c == nil {
 		return 0
 	}
-	total := uint64(cap(c.nodes))*coreNodeRecordBytes +
-		uint64(cap(c.links))*coreLinkRecordBytes +
-		uint64(cap(c.subtrees))*coreSubtreeRecordBytes +
+	total := c.nodes.FootprintBytes() +
+		uint64(cap(c.nodePrecedenceWide))*coreInt64Bytes +
+		uint64(cap(c.nodePathCountsWide))*coreNodePathCountRecordBytes +
+		c.links.FootprintBytes() +
+		c.subtrees.FootprintBytes() +
 		uint64(cap(c.recoveryVisibleCounts))*coreRecoveryVisibleCountBytes +
 		uint64(cap(c.recoveryVisibleSymbols))*coreBoolBytes +
 		uint64(cap(c.eofRecoveryRoots))*coreSubtreeIDBytes +
@@ -173,6 +179,7 @@ func (c *Core) FootprintBytes() uint64 {
 		uint64(cap(c.aliases))*coreAliasRecordBytes
 
 	total += uint64(cap(c.nodeLineages)) * coreNodeLineageRecordBytes
+	total += uint64(cap(c.nodeLineageRecovery)) * 8
 	total += uint64(cap(c.nodeLineageRefSets)) * coreNodeLineageRefSetBytes
 	total += uint64(cap(c.nodeCheckpoints)) * coreCheckpointIDBytes
 	total += uint64(cap(c.externalProvenance)) * coreExternalProvenanceBytes
@@ -218,7 +225,8 @@ func (c *Core) FootprintBytes() uint64 {
 	total += c.popScratch.footprintBytes()
 	total += c.reductionScratch.footprintBytes()
 	total += uint64(cap(c.selectedBuild.resultHasError)) * coreBoolBytes
-	total += selectedStoreRetainedBytes(cap(c.selectedPool.records), cap(c.selectedPool.children))
+	total += c.selectedPool.retainedBytes()
+	total += c.selectedPolicy.RetainedBytes()
 
 	return total
 }
@@ -247,11 +255,12 @@ func (c *Core) DominantCapacityBytes() uint64 {
 	if c == nil {
 		return 0
 	}
-	return uint64(cap(c.nodes))*coreNodeRecordBytes +
-		uint64(cap(c.nodeLineages))*coreNodeLineageRecordBytes +
+	return c.nodes.FootprintBytes() +
+		uint64(cap(c.nodePathCountsWide))*coreNodePathCountRecordBytes +
+		uint64(cap(c.nodeLineages))*coreNodeLineageRecordBytes + uint64(cap(c.nodeLineageRecovery))*8 +
 		uint64(cap(c.alternativeSpillArena))*coreUint32Bytes +
-		uint64(cap(c.subtrees))*coreSubtreeRecordBytes +
-		uint64(cap(c.links))*coreLinkRecordBytes +
+		c.subtrees.FootprintBytes() +
+		c.links.FootprintBytes() +
 		uint64(cap(c.children))*coreChildRecordBytes
 }
 
@@ -260,6 +269,7 @@ func (i *checkpointInterner) footprintBytes() uint64 {
 		return 0
 	}
 	return uint64(cap(i.records))*coreCheckpointRecordBytes +
+		uint64(cap(i.receipts))*coreCheckpointDigestCacheBytes +
 		uint64(cap(i.bytes)) +
 		uint64(len(i.buckets))*coreCheckpointBucketBytes
 }
@@ -362,13 +372,17 @@ func (c *Core) releaseRecordArenaReserve() {
 	if c == nil {
 		return
 	}
-	c.nodes = nil
+	c.nodes = nodeRecordBlocks{}
+	c.nodePrecedenceWide = nil
+	c.nodePathCountsWide = nil
+	c.nodePrecedenceWideBase = 0
 	c.nodeLineages = nil
+	c.nodeLineageRecovery = nil
 	c.nodeLineageRefSets = nil
-	c.links = nil
+	c.links = linkRecordStorage{}
 	c.dropCohortLinkRefIndexes = nil
 	c.dropCohortLinkRefJournal = nil
-	c.subtrees = nil
+	c.subtrees = subtreeRecordBlocks{}
 	c.recoveryVisibleCounts = nil
 	c.recoveryVisibleSymbols = nil
 	c.reusedSubtrees = nil
@@ -399,14 +413,18 @@ func (c *Core) releaseOversizedRetention() {
 	if c == nil || c.FootprintBytes() <= coreRetentionCapBytes {
 		return
 	}
-	c.nodes = nil
+	c.nodes = nodeRecordBlocks{}
+	c.nodePrecedenceWide = nil
+	c.nodePathCountsWide = nil
+	c.nodePrecedenceWideBase = 0
 	c.nodeLineages = nil
+	c.nodeLineageRecovery = nil
 	c.nodeLineageRefSets = nil
 	c.nodeCheckpoints = nil
-	c.links = nil
+	c.links = linkRecordStorage{}
 	c.dropCohortLinkRefIndexes = nil
 	c.dropCohortLinkRefJournal = nil
-	c.subtrees = nil
+	c.subtrees = subtreeRecordBlocks{}
 	c.recoveryVisibleCounts = nil
 	c.recoveryVisibleSymbols = nil
 	c.reusedSubtrees = nil
@@ -451,7 +469,9 @@ func (c *Core) releaseOversizedRetention() {
 	c.popScratch.dropOversized()
 	c.reductionScratch.dropOversized()
 	c.selectedBuild.resultHasError = nil
-	c.selectedPool = selectedStoreBacking{}
+	// Detach this pool generation. Results already handed to callers may
+	// release later; they must not repopulate the trimmed core's new pool.
+	c.selectedPool = nil
 }
 
 func (s *derivationSummaryScratch) footprintBytes() uint64 {
@@ -483,6 +503,7 @@ func (i *checkpointInterner) dropOversized() {
 		return
 	}
 	i.records = nil
+	i.receipts = nil
 	i.bytes = nil
 	i.buckets = nil
 }

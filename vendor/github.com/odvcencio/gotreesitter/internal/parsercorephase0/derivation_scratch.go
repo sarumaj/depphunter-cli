@@ -126,14 +126,14 @@ func (s *DerivationScratch) walk(c *Core, id NodeID, depth int, poll func() erro
 	if uint64(id) < uint64(len(s.colors)) && s.colors[id] != 0 {
 		return nil, errors.New("parser-core phase zero: graph cycle")
 	}
-	n, err := c.node(id)
+	n, nPaths, err := c.nodeWithPathCount(id)
 	if err != nil {
 		return nil, err
 	}
 	f := s.frame(depth)
 	f.paths = f.paths[:0]
 	if n.linkCount == 0 {
-		if n.pathCount != 1 {
+		if nPaths != 1 {
 			return nil, errors.New("parser-core phase zero: malformed seed path count")
 		}
 		f.paths = append(f.paths, Derivation{})
@@ -158,10 +158,10 @@ func (s *DerivationScratch) walk(c *Core, id NodeID, depth int, poll func() erro
 					return nil, errors.New("parser-core phase zero: adjacency cycle")
 				}
 			}
-			if uint64(linkID) > uint64(len(c.links)) {
+			if uint64(linkID) > uint64(c.links.Len()) {
 				return nil, errors.New("parser-core phase zero: link adjacency out of range")
 			}
-			link := c.links[linkID-1]
+			link := c.links.At(int(linkID - 1))
 			if err := link.validateShape(); err != nil {
 				return nil, err
 			}
@@ -200,8 +200,8 @@ func (s *DerivationScratch) walk(c *Core, id NodeID, depth int, poll func() erro
 		}
 	}
 	paths := s.frames[depth].paths
-	if n.pathCount != math.MaxUint64 && uint64(len(paths)) != n.pathCount {
-		return nil, fmt.Errorf("parser-core phase zero: path-count mismatch: enumerated %d, recorded %d", len(paths), n.pathCount)
+	if nPaths != math.MaxUint64 && uint64(len(paths)) != nPaths {
+		return nil, fmt.Errorf("parser-core phase zero: path-count mismatch: enumerated %d, recorded %d", len(paths), nPaths)
 	}
 	return paths, nil
 }
@@ -231,11 +231,11 @@ func (c *Core) DerivationsWithScratch(head Head, scratch *DerivationScratch, pol
 	if err := poll(); err != nil {
 		return nil, err
 	}
-	n, err := c.node(head.Node)
+	_, nPaths, err := c.nodeWithPathCount(head.Node)
 	if err != nil {
 		return nil, err
 	}
-	if n.pathCount == 1 {
+	if nPaths == 1 {
 		var exact bool
 		scratch.reverse, exact, err = c.appendSingleDerivationLinks(head.Node, scratch.reverse[:0])
 		if err != nil {
@@ -251,7 +251,7 @@ func (c *Core) DerivationsWithScratch(head Head, scratch *DerivationScratch, pol
 				path.Payloads = []SubtreeID{}
 			}
 			for i := len(scratch.reverse) - 1; i >= 0; i-- {
-				link := &c.links[scratch.reverse[i]-1]
+				link := c.links.At(int(scratch.reverse[i] - 1))
 				path.Score, err = checkedAddScore(path.Score, link.scoreDelta)
 				if err != nil {
 					return nil, err
@@ -271,7 +271,7 @@ func (c *Core) DerivationsWithScratch(head Head, scratch *DerivationScratch, pol
 			return f.paths, nil
 		}
 	}
-	count := len(c.nodes) + 1
+	count := c.nodes.Len() + 1
 	if cap(scratch.colors) < count {
 		scratch.colors = make([]uint8, count)
 	} else {

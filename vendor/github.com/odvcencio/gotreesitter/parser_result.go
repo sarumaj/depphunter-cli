@@ -37,6 +37,12 @@ func reconcileStaleHasErrorFlags(n *Node, depth int) bool {
 }
 
 func reconcileStaleHasErrorFlagsWithMissing(n *Node, depth int, retainMissing bool) bool {
+	return reconcileStaleHasErrorFlagsWithMissingEvidence(n, depth, retainMissing, nil)
+}
+
+// The optional output records only a successful selected raw-MISSING proof.
+// It reuses the existing walk and does not broaden visible-token repair.
+func reconcileStaleHasErrorFlagsWithMissingEvidence(n *Node, depth int, retainMissing bool, rawOnlyMissing *bool) bool {
 	if n == nil {
 		return false
 	}
@@ -53,7 +59,7 @@ func reconcileStaleHasErrorFlagsWithMissing(n *Node, depth int, retainMissing bo
 	// exactly the subtrees this repair exists for.
 	for i, count := 0, nodeChildCount(n); i < count; i++ {
 		// No early exit: every stale sibling flag gets repaired.
-		if reconcileStaleHasErrorFlagsWithMissing(resultChildAt(n, i), depth+1, retainMissing) {
+		if reconcileStaleHasErrorFlagsWithMissingEvidence(resultChildAt(n, i), depth+1, retainMissing, rawOnlyMissing) {
 			has = true
 		}
 	}
@@ -72,6 +78,9 @@ func reconcileStaleHasErrorFlagsWithMissing(n *Node, depth int, retainMissing bo
 			func(item rawStackWalkEntry, i int) (rawStackWalkEntry, bool) {
 				return rawStackWalkChildAt(arena, item, i)
 			})
+		if has && rawOnlyMissing != nil {
+			*rawOnlyMissing = true
+		}
 	}
 	n.setHasError(has)
 	return has
@@ -1644,8 +1653,14 @@ func (p *Parser) buildResultFromNodes(nodes []*Node, source []byte, arena *nodeA
 		return tree
 	}
 	if len(nodes) == 0 {
+		// An accepted parse with no nodes still needs a root. Grammars whose
+		// state 0 answers EOF with a recover action (doxygen, tlaplus, norg and
+		// xml for empty input, markdown_inline for "") reach this point on
+		// empty or whitespace-only source. tree-sitter C publishes a childless
+		// ERROR root there. Returning a Tree with a nil root broke every
+		// caller that reads RootNode() without a nil check.
 		if isWhitespaceOnlySource(source) {
-			return newTreeWithArenas(nil, source, p.language, arena, nil)
+			return parseEOFErrorTreeWithArena(source, p.language, arena)
 		}
 		return parseErrorTreeWithArena(source, p.language, arena)
 	}

@@ -81,8 +81,8 @@ func (c *Core) ReserveRecordArenas(sourceLen int, maxBytes uint64) {
 	if c == nil || sourceLen <= 0 {
 		return
 	}
-	if len(c.nodes) != 0 || len(c.nodeLineages) != 0 || len(c.links) != 0 ||
-		len(c.subtrees) != 0 || len(c.children) != 0 {
+	if c.nodes.Len() != 0 || len(c.nodeLineages) != 0 || c.links.Len() != 0 ||
+		c.subtrees.Len() != 0 || len(c.children) != 0 {
 		return
 	}
 	nodes := reserveRecordCount(sourceLen, reserveNodesPerKiB, c.limits.MaxNodes)
@@ -93,16 +93,11 @@ func (c *Core) ReserveRecordArenas(sourceLen int, maxBytes uint64) {
 	if total == 0 {
 		return
 	}
-	if maxBytes > 0 && total > maxBytes {
-		nodes = scaleReserveCount(nodes, maxBytes, total)
-		links = scaleReserveCount(links, maxBytes, total)
-		subtrees = scaleReserveCount(subtrees, maxBytes, total)
-		children = scaleReserveCount(children, maxBytes, total)
-	}
-	c.nodes = reserveArena(c.nodes, nodes)
+	nodes, links, subtrees, children = boundedRecordReserveCounts(nodes, links, subtrees, children, maxBytes)
+	c.nodes.Grow(nodes)
 	c.nodeLineages = reserveArena(c.nodeLineages, nodes)
-	c.links = reserveArena(c.links, links)
-	c.subtrees = reserveArena(c.subtrees, subtrees)
+	c.links.Reserve(links)
+	c.subtrees.Grow(subtrees)
 	c.children = reserveArena(c.children, children)
 }
 
@@ -125,16 +120,11 @@ func (c *Core) GrowRecordArenas(sourceLen int, maxBytes uint64) {
 	if total == 0 {
 		return
 	}
-	if maxBytes > 0 && total > maxBytes {
-		nodes = scaleReserveCount(nodes, maxBytes, total)
-		links = scaleReserveCount(links, maxBytes, total)
-		subtrees = scaleReserveCount(subtrees, maxBytes, total)
-		children = scaleReserveCount(children, maxBytes, total)
-	}
-	c.nodes = growArena(c.nodes, nodes)
+	nodes, links, subtrees, children = boundedRecordReserveCounts(nodes, links, subtrees, children, maxBytes)
+	c.nodes.Grow(nodes)
 	c.nodeLineages = growArena(c.nodeLineages, nodes)
-	c.links = growArena(c.links, links)
-	c.subtrees = growArena(c.subtrees, subtrees)
+	c.links.Grow(links)
+	c.subtrees.Grow(subtrees)
 	c.children = growArena(c.children, children)
 }
 
@@ -169,24 +159,16 @@ func (c *Core) ReserveRecordArenaBytes(sourceLen int, maxBytes uint64) uint64 {
 	links := reserveRecordCount(sourceLen, reserveLinksPerKiB, c.limits.MaxLinks)
 	subtrees := reserveRecordCount(sourceLen, reserveSubtreesPerKiB, c.limits.MaxSubtrees)
 	children := reserveRecordCount(sourceLen, reserveChildrenPerKiB, c.limits.MaxChildren)
-	total := reserveTotalBytes(nodes, links, subtrees, children)
-	if maxBytes > 0 && total > maxBytes {
-		return reserveTotalBytes(
-			scaleReserveCount(nodes, maxBytes, total),
-			scaleReserveCount(links, maxBytes, total),
-			scaleReserveCount(subtrees, maxBytes, total),
-			scaleReserveCount(children, maxBytes, total),
-		)
-	}
-	return total
+	nodes, links, subtrees, children = boundedRecordReserveCounts(nodes, links, subtrees, children, maxBytes)
+	return reserveTotalBytes(nodes, links, subtrees, children)
 }
 
 // reserveTotalBytes is the byte cost of one reserve. nodes counts twice
 // because nodes and nodeLineages are reserved to the same count.
 func reserveTotalBytes(nodes, links, subtrees, children int) uint64 {
-	return uint64(nodes)*coreNodeRecordBytes +
+	return nodeRecordBlockMetadataBytes(nodes) + subtreeRecordBlockMetadataBytes(subtrees) + uint64(nodes)*coreNodeRecordBytes +
 		uint64(nodes)*coreNodeLineageRecordBytes +
-		uint64(links)*coreLinkRecordBytes +
+		uint64(links)*packedLinkRecordBytes +
 		uint64(subtrees)*coreSubtreeRecordBytes +
 		uint64(children)*coreChildRecordBytes
 }
@@ -242,3 +224,19 @@ func reserveArena[T any](arena []T, want int) []T {
 // another package can prove its own reserve ceiling stays strictly below the
 // size at which this core drops retained capacity.
 func RetentionCapBytesForTest() uint64 { return coreRetentionCapBytes }
+
+// Deduct unscaled block-table costs before scaling record counts. Scaled
+// tables cannot be larger, so rounding never exceeds the byte ceiling.
+func boundedRecordReserveCounts(nodes, links, subtrees, children int, maxBytes uint64) (int, int, int, int) {
+	total := reserveTotalBytes(nodes, links, subtrees, children)
+	if maxBytes == 0 || total <= maxBytes {
+		return nodes, links, subtrees, children
+	}
+	metadata := nodeRecordBlockMetadataBytes(nodes) + subtreeRecordBlockMetadataBytes(subtrees)
+	allowed := uint64(0)
+	if maxBytes > metadata {
+		allowed = maxBytes - metadata
+	}
+	records := total - metadata
+	return scaleReserveCount(nodes, allowed, records), scaleReserveCount(links, allowed, records), scaleReserveCount(subtrees, allowed, records), scaleReserveCount(children, allowed, records)
+}

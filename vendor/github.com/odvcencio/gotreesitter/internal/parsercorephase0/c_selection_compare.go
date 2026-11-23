@@ -25,7 +25,7 @@ func (c *Core) CompareCSelectionSubtrees(left, right SubtreeID) (int, error) {
 	}
 	stack := make([]cSelectionSubtreePair, 1, 64)
 	stack[0] = cSelectionSubtreePair{left: left, right: right}
-	workBudget := uint64(len(c.subtrees)) + uint64(len(c.children))
+	workBudget := uint64(c.subtrees.Len()) + uint64(len(c.children))
 	if workBudget == 0 {
 		workBudget = 1
 	}
@@ -75,7 +75,7 @@ func (c *Core) CompareCSelectionSubtrees(left, right SubtreeID) (int, error) {
 				return 0, errors.New("parser-core phase zero: compact subtree child identifier is out of order during C selection comparison")
 			}
 			stack = append(stack, cSelectionSubtreePair{left: leftChild, right: rightChild})
-			if len(stack) > len(c.subtrees) {
+			if len(stack) > c.subtrees.Len() {
 				return 0, errors.New("parser-core phase zero: C selection comparison exceeded the subtree arena")
 			}
 		}

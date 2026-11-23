@@ -76,18 +76,19 @@ func (d *dfaTokenSource) sourceLength() int {
 	return len(d.lexer.source)
 }
 
-// compactStagedArenaReserve splits the record-arena reserve into two steps.
-// The first step, before the seed, reserves a small source-proportional base.
-// The scheduler takes the whole-source reserve only after enough source
-// progress. The progress window can exceed the initial capacity estimate:
-// early declines then allocate less, while dense prefixes can grow normally.
+// compactStagedArenaReserve bounds speculative capacity before the seed,
+// then takes the density reserve after enough source progress. When the
+// density reserve is capped, one later projection uses observed demand.
+// Early declines keep their small reserve; every step preserves live records.
 type compactStagedArenaReserve struct {
 	sourceBytes int
 	prefixBytes int
 	maxBytes    uint64
-	// growAt is the token start byte that triggers the whole-source reserve.
-	// Zero means the reserve already covers the whole source.
+	// growAt is the next token start byte that triggers capacity growth.
+	// Zero means no further reserve is scheduled.
 	growAt uint32
+	// project marks the observed-demand step after the bounded density reserve.
+	project bool
 }
 
 func newCompactStagedArenaReserve(sourceBytes int, maxBytes uint64) compactStagedArenaReserve {
