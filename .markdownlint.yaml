@@ -3,3 +3,7 @@ MD013:
   line_length: 80
   tables: false
   code_blocks: false
+# The changelog repeats its kinds of change (### Dependencies) under every version: the
+# same heading is allowed, but not twice under one parent.
+MD024:
+  siblings_only: true
